@@ -22,6 +22,90 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class StaffService {
 
+    private static final java.util.regex.Pattern USERNAME_PATTERN = java.util.regex.Pattern.compile("^[a-z][a-z0-9._]{3,19}$");
+
+    @Transactional
+    public UserDto createStaff(UserPrincipal currentUser, com.sep490.bms.dto.request.CreateStaffRequest request) {
+        Long targetLocationId;
+
+        if (currentUser.getRole() == Role.OWNER) {
+            Location location = locationRepository.findByOwnerId(currentUser.getId())
+                    .orElseThrow(() -> new AppException("Chủ sân chưa có cơ sở trực thuộc để thêm nhân viên"));
+            targetLocationId = location.getId();
+        } else if (currentUser.getRole() == Role.ADMIN) {
+            if (request.getLocationId() == null) {
+                throw new AppException("Admin cần chỉ định mã cơ sở (locationId) cho nhân viên");
+            }
+            if (!locationRepository.existsById(request.getLocationId())) {
+                throw new AppException("Cơ sở chỉ định không tồn tại");
+            }
+            targetLocationId = request.getLocationId();
+        } else {
+            throw new AppException("Bạn không có quyền tạo tài khoản nhân viên", HttpStatus.FORBIDDEN);
+        }
+
+        String email = request.getEmail().trim().toLowerCase();
+        if (accountRepository.existsByEmail(email)) {
+            throw new AppException("Địa chỉ email đã được sử dụng bởi tài khoản khác (MSG09)");
+        }
+
+        String phone = null;
+        if (StringUtils.hasText(request.getPhone())) {
+            phone = request.getPhone().trim();
+            if (!phone.matches("^[0-9]{10}$")) {
+                throw new AppException("Số điện thoại phải gồm đúng 10 chữ số (MSG02)");
+            }
+        }
+
+        String username;
+        if (StringUtils.hasText(request.getUsername())) {
+            username = request.getUsername().trim().toLowerCase();
+            if (!USERNAME_PATTERN.matcher(username).matches()) {
+                throw new AppException("Tên đăng nhập phải bắt đầu bằng chữ cái thường, từ 4-20 ký tự");
+            }
+            if (accountRepository.existsByUsername(username)) {
+                throw new AppException("Tên đăng nhập đã tồn tại trong hệ thống");
+            }
+        } else {
+            username = generateStaffUsername(email);
+        }
+
+        Account staff = Account.builder()
+                .username(username)
+                .email(email)
+                .phone(phone)
+                .fullName(request.getFullName().trim())
+                .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .role(Role.STAFF)
+                .locationId(targetLocationId)
+                .status(AccountStatus.ACTIVE)
+                .build();
+
+        Account saved = accountRepository.save(staff);
+        return UserDto.fromEntity(saved);
+    }
+
+    private String generateStaffUsername(String email) {
+        String prefix = "s_" + email.split("@")[0].toLowerCase().replaceAll("[^a-z0-9._]", "");
+        if (prefix.length() > 14) {
+            prefix = prefix.substring(0, 14);
+        }
+        if (prefix.length() < 4) {
+            prefix = prefix + "123";
+        }
+
+        String candidate = prefix;
+        int count = 1;
+        while (accountRepository.existsByUsername(candidate)) {
+            candidate = prefix + count;
+            if (candidate.length() > 20) {
+                candidate = prefix.substring(0, 14) + count;
+            }
+            count++;
+        }
+        return candidate;
+    }
+
     private final AccountRepository accountRepository;
     private final LocationRepository locationRepository;
     private final PasswordEncoder passwordEncoder;

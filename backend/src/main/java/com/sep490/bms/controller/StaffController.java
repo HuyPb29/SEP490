@@ -20,6 +20,15 @@ import lombok.RequiredArgsConstructor;
 @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
 public class StaffController {
 
+    @org.springframework.web.bind.annotation.PostMapping
+    public ResponseEntity<ApiResponse<UserDto>> createStaff(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody com.sep490.bms.dto.request.CreateStaffRequest request) {
+        UserDto staff = staffService.createStaff(currentUser, request);
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(ApiResponse.success("Tạo tài khoản nhân viên thành công (MSG12)", staff));
+    }
+
     private final StaffService staffService;
 
     @GetMapping
