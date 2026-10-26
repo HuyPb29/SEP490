@@ -247,6 +247,30 @@ public class AuthService {
     public void logout() {
     }
 
+    
+    @Transactional
+    public void forgotPassword(com.sep490.bms.dto.request.ForgotPasswordRequest request) {
+        String email = request.getEmail().trim().toLowerCase();
+
+        accountRepository.findByEmail(email).ifPresent(account -> {
+            if (account.getStatus() == AccountStatus.ACTIVE) {
+                String otpCode = generateOtpCode();
+                String codeHash = passwordEncoder.encode(otpCode);
+
+                OtpRequest otpRequest = OtpRequest.builder()
+                        .email(email)
+                        .purpose(OtpPurpose.RESET_PASSWORD)
+                        .codeHash(codeHash)
+                        .failedAttempts(0)
+                        .expiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES))
+                        .build();
+
+                otpRequestRepository.save(otpRequest);
+                emailService.sendPasswordResetOtp(email, otpCode);
+            }
+        });
+    }
+
     private String generateOtpCode() {
         int code = 100000 + secureRandom.nextInt(900000);
         return String.valueOf(code);

@@ -20,6 +20,12 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AuthController {
 
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody com.sep490.bms.dto.request.ForgotPasswordRequest request) {
+        authService.forgotPassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Yêu cầu khôi phục mật khẩu đã được gửi (MSG97). Nếu email tồn tại, bạn sẽ nhận được mã OTP."));
+    }
+
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout() {
         authService.logout();
