@@ -8,7 +8,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.dto.LoginResponse;
 import com.sep490.bms.dto.request.RegisterRequest;
+import com.sep490.bms.dto.request.VerifyEmailRequest;
 import com.sep490.bms.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,5 +27,11 @@ public class AuthController {
         Map<String, Object> result = authService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Đăng ký thành công. Vui lòng kiểm tra email để lấy mã xác thực (MSG08).", result));
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<ApiResponse<LoginResponse>> verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+        LoginResponse response = authService.verifyEmail(request);
+        return ResponseEntity.ok(ApiResponse.success("Xác thực email thành công (MSG94)!", response));
     }
 }
