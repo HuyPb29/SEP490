@@ -165,6 +165,56 @@ public class AuthService {
                 .build();
     }
 
+    
+    @Transactional
+    public void resendOtp(com.sep490.bms.dto.request.ResendOtpRequest request) {
+        String email = request.getEmail().trim().toLowerCase();
+        OtpPurpose purpose = request.getPurpose();
+
+        if (purpose == OtpPurpose.REGISTER) {
+            OtpRequest latest = otpRequestRepository
+                    .findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER)
+                    .orElseThrow(() -> new AppException("Không tìm thấy thông tin đăng ký đang chờ cho email này"));
+
+            if (accountRepository.existsByEmail(email)) {
+                throw new AppException("Tài khoản với email này đã được kích hoạt");
+            }
+
+            String newOtp = generateOtpCode();
+            String codeHash = passwordEncoder.encode(newOtp);
+
+            OtpRequest newOtpRequest = OtpRequest.builder()
+                    .email(email)
+                    .purpose(OtpPurpose.REGISTER)
+                    .codeHash(codeHash)
+                    .pendingData(latest.getPendingData())
+                    .failedAttempts(0)
+                    .expiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES))
+                    .build();
+
+            otpRequestRepository.save(newOtpRequest);
+            emailService.sendVerificationOtp(email, newOtp);
+        } else if (purpose == OtpPurpose.RESET_PASSWORD) {
+            accountRepository.findByEmail(email).ifPresent(account -> {
+                if (account.getStatus() == AccountStatus.ACTIVE) {
+                    String newOtp = generateOtpCode();
+                    String codeHash = passwordEncoder.encode(newOtp);
+
+                    OtpRequest newOtpRequest = OtpRequest.builder()
+                            .email(email)
+                            .purpose(OtpPurpose.RESET_PASSWORD)
+                            .codeHash(codeHash)
+                            .failedAttempts(0)
+                            .expiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES))
+                            .build();
+
+                    otpRequestRepository.save(newOtpRequest);
+                    emailService.sendPasswordResetOtp(email, newOtp);
+                }
+            });
+        }
+    }
+
     private String generateOtpCode() {
         int code = 100000 + secureRandom.nextInt(900000);
         return String.valueOf(code);

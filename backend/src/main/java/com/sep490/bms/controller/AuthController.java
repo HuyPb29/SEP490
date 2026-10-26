@@ -20,6 +20,12 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AuthController {
 
+    @PostMapping("/resend-otp")
+    public ResponseEntity<ApiResponse<Void>> resendOtp(@Valid @RequestBody com.sep490.bms.dto.request.ResendOtpRequest request) {
+        authService.resendOtp(request);
+        return ResponseEntity.ok(ApiResponse.success("Mã xác thực mới đã được gửi tới email của bạn"));
+    }
+
     private final AuthService authService;
 
     @PostMapping("/register")
