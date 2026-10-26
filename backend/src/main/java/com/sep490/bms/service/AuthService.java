@@ -243,6 +243,10 @@ public class AuthService {
                 .build();
     }
 
+    
+    public void logout() {
+    }
+
     private String generateOtpCode() {
         int code = 100000 + secureRandom.nextInt(900000);
         return String.valueOf(code);
