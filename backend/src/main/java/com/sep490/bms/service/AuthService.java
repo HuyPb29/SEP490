@@ -5,14 +5,21 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sep490.bms.dto.LoginResponse;
 import com.sep490.bms.dto.UserDto;
+import com.sep490.bms.dto.request.ForgotPasswordRequest;
+import com.sep490.bms.dto.request.LoginRequest;
 import com.sep490.bms.dto.request.RegisterRequest;
+import com.sep490.bms.dto.request.ResendOtpRequest;
+import com.sep490.bms.dto.request.ResetPasswordRequest;
 import com.sep490.bms.dto.request.VerifyEmailRequest;
 import com.sep490.bms.entity.Account;
 import com.sep490.bms.entity.AccountStatus;
@@ -23,10 +30,13 @@ import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.AccountRepository;
 import com.sep490.bms.repository.OtpRequestRepository;
 import com.sep490.bms.security.JwtTokenProvider;
+
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthService {
 
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[a-z][a-z0-9._]{3,19}$");
@@ -94,6 +104,7 @@ public class AuthService {
                 .build();
 
         otpRequestRepository.save(otpRequest);
+
         emailService.sendVerificationOtp(email, otpCode);
 
         Map<String, Object> result = new HashMap<>();
@@ -156,6 +167,7 @@ public class AuthService {
                 .build();
 
         Account saved = accountRepository.save(account);
+
         String token = jwtTokenProvider.generateToken(saved);
 
         return LoginResponse.builder()
@@ -165,9 +177,8 @@ public class AuthService {
                 .build();
     }
 
-    
     @Transactional
-    public void resendOtp(com.sep490.bms.dto.request.ResendOtpRequest request) {
+    public void resendOtp(ResendOtpRequest request) {
         String email = request.getEmail().trim().toLowerCase();
         OtpPurpose purpose = request.getPurpose();
 
@@ -215,23 +226,22 @@ public class AuthService {
         }
     }
 
-    
     @Transactional(readOnly = true)
-    public LoginResponse login(com.sep490.bms.dto.request.LoginRequest request) {
+    public LoginResponse login(LoginRequest request) {
         String identifier = request.getEmail().trim();
         Account account = accountRepository.findByEmailOrUsername(identifier)
-                .orElseThrow(() -> new AppException("Tài khoản hoặc mật khẩu không chính xác (MSG10)", org.springframework.http.HttpStatus.UNAUTHORIZED));
+                .orElseThrow(() -> new AppException("Tài khoản hoặc mật khẩu không chính xác (MSG10)", HttpStatus.UNAUTHORIZED));
 
         if (!passwordEncoder.matches(request.getPassword(), account.getPasswordHash())) {
-            throw new AppException("Tài khoản hoặc mật khẩu không chính xác (MSG10)", org.springframework.http.HttpStatus.UNAUTHORIZED);
+            throw new AppException("Tài khoản hoặc mật khẩu không chính xác (MSG10)", HttpStatus.UNAUTHORIZED);
         }
 
         if (account.getStatus() == AccountStatus.LOCKED) {
-            throw new AppException("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên (MSG11)", org.springframework.http.HttpStatus.FORBIDDEN);
+            throw new AppException("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên (MSG11)", HttpStatus.FORBIDDEN);
         }
 
         if (account.getStatus() == AccountStatus.DISABLED) {
-            throw new AppException("Tài khoản đã bị vô hiệu hóa (MSG11)", org.springframework.http.HttpStatus.FORBIDDEN);
+            throw new AppException("Tài khoản đã bị vô hiệu hóa (MSG11)", HttpStatus.FORBIDDEN);
         }
 
         String token = jwtTokenProvider.generateToken(account);
@@ -243,13 +253,12 @@ public class AuthService {
                 .build();
     }
 
-    
     public void logout() {
+        log.info("User requested logout.");
     }
 
-    
     @Transactional
-    public void forgotPassword(com.sep490.bms.dto.request.ForgotPasswordRequest request) {
+    public void forgotPassword(ForgotPasswordRequest request) {
         String email = request.getEmail().trim().toLowerCase();
 
         accountRepository.findByEmail(email).ifPresent(account -> {
@@ -269,6 +278,40 @@ public class AuthService {
                 emailService.sendPasswordResetOtp(email, otpCode);
             }
         });
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        String email = request.getEmail().trim().toLowerCase();
+        String otp = request.getOtp().trim();
+
+        OtpRequest otpRequest = otpRequestRepository
+                .findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.RESET_PASSWORD)
+                .orElseThrow(() -> new AppException("Yêu cầu đặt lại mật khẩu không hợp lệ hoặc đã hết hạn (MSG96)"));
+
+        if (otpRequest.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new AppException("Mã xác thực đã hết hạn. Vui lòng yêu cầu lại (MSG96)");
+        }
+
+        if (otpRequest.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
+            throw new AppException("Bạn đã nhập sai mã xác thực quá số lần quy định. Vui lòng gửi lại mã mới");
+        }
+
+        if (!passwordEncoder.matches(otp, otpRequest.getCodeHash())) {
+            otpRequest.setFailedAttempts(otpRequest.getFailedAttempts() + 1);
+            otpRequestRepository.save(otpRequest);
+            throw new AppException("Mã xác thực không chính xác");
+        }
+
+        otpRequest.setUsedAt(LocalDateTime.now());
+        otpRequestRepository.save(otpRequest);
+
+        Account account = accountRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản để đặt lại mật khẩu"));
+
+        account.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        account.setUpdatedAt(LocalDateTime.now());
+        accountRepository.save(account);
     }
 
     private String generateOtpCode() {
