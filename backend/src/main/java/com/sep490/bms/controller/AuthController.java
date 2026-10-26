@@ -20,6 +20,12 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AuthController {
 
+    @PostMapping("/login")
+    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody com.sep490.bms.dto.request.LoginRequest request) {
+        LoginResponse response = authService.login(request);
+        return ResponseEntity.ok(ApiResponse.success("Đăng nhập thành công", response));
+    }
+
     @PostMapping("/resend-otp")
     public ResponseEntity<ApiResponse<Void>> resendOtp(@Valid @RequestBody com.sep490.bms.dto.request.ResendOtpRequest request) {
         authService.resendOtp(request);

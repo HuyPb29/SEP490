@@ -215,6 +215,34 @@ public class AuthService {
         }
     }
 
+    
+    @Transactional(readOnly = true)
+    public LoginResponse login(com.sep490.bms.dto.request.LoginRequest request) {
+        String identifier = request.getEmail().trim();
+        Account account = accountRepository.findByEmailOrUsername(identifier)
+                .orElseThrow(() -> new AppException("Tài khoản hoặc mật khẩu không chính xác (MSG10)", org.springframework.http.HttpStatus.UNAUTHORIZED));
+
+        if (!passwordEncoder.matches(request.getPassword(), account.getPasswordHash())) {
+            throw new AppException("Tài khoản hoặc mật khẩu không chính xác (MSG10)", org.springframework.http.HttpStatus.UNAUTHORIZED);
+        }
+
+        if (account.getStatus() == AccountStatus.LOCKED) {
+            throw new AppException("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên (MSG11)", org.springframework.http.HttpStatus.FORBIDDEN);
+        }
+
+        if (account.getStatus() == AccountStatus.DISABLED) {
+            throw new AppException("Tài khoản đã bị vô hiệu hóa (MSG11)", org.springframework.http.HttpStatus.FORBIDDEN);
+        }
+
+        String token = jwtTokenProvider.generateToken(account);
+
+        return LoginResponse.builder()
+                .token(token)
+                .tokenType("Bearer")
+                .user(UserDto.fromEntity(account))
+                .build();
+    }
+
     private String generateOtpCode() {
         int code = 100000 + secureRandom.nextInt(900000);
         return String.valueOf(code);
