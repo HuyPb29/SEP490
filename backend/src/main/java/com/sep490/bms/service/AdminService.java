@@ -1,7 +1,9 @@
 package com.sep490.bms.service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -10,12 +12,17 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
 import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.UserDto;
+import com.sep490.bms.dto.request.UpdateStatusRequest;
 import com.sep490.bms.entity.Account;
 import com.sep490.bms.entity.AccountStatus;
 import com.sep490.bms.entity.Role;
+import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.security.UserPrincipal;
+
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 
@@ -74,5 +81,28 @@ public class AdminService {
 
         Page<Account> accountsPage = accountRepository.findAll(spec, pageable);
         return PageResponse.from(accountsPage.map(UserDto::fromEntity));
+    }
+
+    @Transactional
+    public UserDto updateAccountStatus(UserPrincipal currentAdmin, Long accountId, UpdateStatusRequest request) {
+        if (currentAdmin.getId().equals(accountId)) {
+            throw new AppException("Bạn không thể tự thay đổi trạng thái tài khoản của chính mình");
+        }
+
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản"));
+
+        AccountStatus newStatus;
+        try {
+            newStatus = AccountStatus.valueOf(request.getStatus().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new AppException("Trạng thái không hợp lệ. Chấp nhận: ACTIVE, LOCKED, DISABLED");
+        }
+
+        account.setStatus(newStatus);
+        account.setUpdatedAt(LocalDateTime.now());
+        Account saved = accountRepository.save(account);
+
+        return UserDto.fromEntity(saved);
     }
 }
