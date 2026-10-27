@@ -53,7 +53,7 @@ Các route dưới đây là **hợp đồng khung**, vẫn trả **501** vì ch
 
 ## Còn cần triển khai/chốt ngoài các sửa lỗi trên
 
-- F5/F6 chưa có entity/repository/service nghiệp vụ: tính hạn đổi lịch/chênh lệch, xử lý hủy/hoàn tiền, validate/redeem voucher/điểm, cộng/trả điểm và tặng voucher tự động. Thêm route không thực hiện những nghiệp vụ này.
+- F5/F6 đã có entity/repository sau merge nhánh Minh; chưa có service nghiệp vụ: tính hạn đổi lịch/chênh lệch, xử lý hủy/hoàn tiền, validate/redeem voucher/điểm, cộng/trả điểm và tặng voucher tự động. Thêm route không thực hiện những nghiệp vụ này.
 - DTO phản hồi và các DTO request còn thiếu của khung feature cần được hoàn thiện khi xác định hợp đồng nghiệp vụ; chưa coi G4 đã xong toàn bộ.
 - F2: chốt trường chính sách/chuyển khoản và nơi lưu/upload ảnh QR; controller địa điểm vẫn là khung.
 - F7: đã có PATCH/cancel kèo; cách phối hợp giữ/hủy kèo khi đổi lịch vẫn cần thống nhất giữa chủ feature.
@@ -64,3 +64,12 @@ Các route dưới đây là **hợp đồng khung**, vẫn trả **501** vì ch
 ## Kiểm tra
 
 Chạy `mvnw.cmd test` trong thư mục backend với SQL Server `BMS_Test`. Test tích hợp dùng transaction rollback, tự tạo Owner/Admin/địa điểm, không phụ thuộc tài khoản seed. Các kiểm tra bao gồm khôi phục API, đa địa điểm, phân quyền, khóa địa điểm, mật khẩu, OTP, validation và OpenAPI.
+
+## Tích hợp nhánh Minh và API Hoàng
+
+- Merge toàn bộ `origin/MinhDDHE181209` tại `751f67e`: khung API F3/F4, entity/repository cho các bảng còn lại.
+- Chọn hai commit API F7 của Hoàng: `1141cdb` và `63c8bf8` (controller, DTO, entity, repository, service đội/kèo và sửa constraint liên quan trong file SQL). Không lấy commit seed, cấu hình môi trường hoặc bộ entity F8 riêng của Hoàng; entity F8 đã có từ nhánh Minh.
+- Giải quyết xung đột tại `ScheduleController`, `PaymentController`, `ReconciliationController`. Loại bỏ các mapping bị lặp sau auto-merge tại booking/package/batch offers; giữ request DTO cho summary/tạo booking và các route thanh toán đổi lịch.
+- API GET xem kèo đã có service thật: Guest không cần tài khoản; không truy vấn trạng thái tham gia cá nhân và không được thấy số điện thoại chủ kèo.
+- File `BMS_database.sql` có sửa `ck_match_players` để cho phép `needed_players = 0` khi duyệt người cuối cùng. Không chạy lại script tạo database hoặc tự sửa constraint của database đang dùng trong bước merge.
+- Bổ sung kiểm tra đọc mapping của toàn bộ 35 entity và luồng tạo đội → xin tham gia → đội trưởng duyệt, kèm kiểm tra quyền.

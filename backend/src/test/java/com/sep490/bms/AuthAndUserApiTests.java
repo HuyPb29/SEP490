@@ -65,6 +65,7 @@ class AuthAndUserApiTests {
 
     @Autowired private com.sep490.bms.repository.LocationRepository locationRepository;
     @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    @Autowired private jakarta.persistence.EntityManager entityManager;
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
@@ -347,9 +348,12 @@ class AuthAndUserApiTests {
 
     @Test
     void publicReadsAndSwaggerAreAccessibleButWritesRequireAuthentication() throws Exception {
-        for (String path : java.util.List.of("/api/locations", "/api/courts/1", "/api/matches", "/api/courts/1/reviews")) {
+        for (String path : java.util.List.of("/api/locations", "/api/courts/1", "/api/courts/1/reviews")) {
             mockMvc.perform(get(path)).andExpect(status().isNotImplemented());
         }
+        mockMvc.perform(get("/api/matches")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").isArray());
+        mockMvc.perform(get("/api/matches/9223372036854775807")).andExpect(status().isNotFound());
         mockMvc.perform(get("/api/users/me")).andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/matches")).andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/matches/1/join-requests")).andExpect(status().isUnauthorized());
@@ -368,8 +372,45 @@ class AuthAndUserApiTests {
 
     private Account fixtureAccount(String username, Role role) {
         return accountRepository.saveAndFlush(Account.builder().username(username).email(username + "@example.com")
-                .phone("0987654321").fullName("Người Kiểm Thử").passwordHash(passwordEncoder.encode("Password123"))
+                .phone("09" + (10000000 + new java.security.SecureRandom().nextInt(90000000)))
+                .fullName("Người Kiểm Thử").passwordHash(passwordEncoder.encode("Password123"))
                 .role(role).status(AccountStatus.ACTIVE).build());
+    }
+
+    @Test
+    void mergedEntitiesCanReadTheExistingSchema() {
+        var entities = entityManager.getMetamodel().getEntities();
+        assertThat(entities).hasSize(35);
+        for (var entity : entities) {
+            entityManager.createQuery("select e from " + entity.getName() + " e", entity.getJavaType())
+                    .setMaxResults(1).getResultList();
+        }
+    }
+
+    @Test
+    void mergedTeamApisCreateJoinAndApproveWithCaptainAuthorization() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        Account captain = fixtureAccount("captain_" + suffix, Role.PLAYER);
+        Account applicant = fixtureAccount("member_" + suffix, Role.PLAYER);
+        String captainToken = jwtTokenProvider.generateToken(captain);
+        String applicantToken = jwtTokenProvider.generateToken(applicant);
+        var created = mockMvc.perform(post("/api/teams").header("Authorization", "Bearer " + captainToken)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Team " + suffix + "\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.memberCount").value(1)).andReturn();
+        long teamId = objectMapper.readTree(created.getResponse().getContentAsString()).at("/data/id").asLong();
+        var joined = mockMvc.perform(post("/api/teams/" + teamId + "/join-requests")
+                .header("Authorization", "Bearer " + applicantToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"phoneConsent\":true}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("PENDING")).andReturn();
+        long requestId = objectMapper.readTree(joined.getResponse().getContentAsString()).at("/data/id").asLong();
+        mockMvc.perform(post("/api/team-join-requests/" + requestId + "/approve")
+                .header("Authorization", "Bearer " + applicantToken)).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/team-join-requests/" + requestId + "/approve")
+                .header("Authorization", "Bearer " + captainToken)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
+        mockMvc.perform(get("/api/teams/" + teamId + "/members")
+                .header("Authorization", "Bearer " + applicantToken)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
     }
 
     private com.sep490.bms.entity.Location fixtureLocation(Account owner) {

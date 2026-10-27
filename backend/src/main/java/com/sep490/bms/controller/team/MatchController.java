@@ -81,13 +81,13 @@ public class MatchController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(ApiResponse.success(
-                matchService.getMatches(currentUser.getId(), status, locationId, playDate, page, size)));
+                matchService.getMatches(currentUser == null ? null : currentUser.getId(), status, locationId, playDate, page, size)));
     }
 
     @GetMapping("/api/matches/{id}")
     public ResponseEntity<ApiResponse<MatchResponse>> getMatchesById(
             @AuthenticationPrincipal UserPrincipal currentUser,
             @PathVariable("id") Long id) {
-        return ResponseEntity.ok(ApiResponse.success(matchService.getMatch(currentUser.getId(), id)));
+        return ResponseEntity.ok(ApiResponse.success(matchService.getMatch(currentUser == null ? null : currentUser.getId(), id)));
     }
 }

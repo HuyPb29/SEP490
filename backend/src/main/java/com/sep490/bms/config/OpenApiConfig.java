@@ -22,7 +22,7 @@ public class OpenApiConfig {
 
     @Bean public OpenAPI bmsOpenAPI() {
         return new OpenAPI().info(new Info().title("BMS API").version("1.0")
-            .description("F1 có service; các route khung trả HTTP 501 cho đến khi triển khai nghiệp vụ. Owner gửi X-Location-Id cho các API theo địa điểm."))
+            .description("F1 và F7 có service; các route khung trả HTTP 501 cho đến khi triển khai nghiệp vụ. Owner gửi X-Location-Id cho các API theo địa điểm."))
             .components(new Components().addSecuritySchemes("bearerAuth", new SecurityScheme()
                 .type(SecurityScheme.Type.HTTP).scheme("bearer").bearerFormat("JWT")))
             .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));

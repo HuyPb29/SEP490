@@ -258,7 +258,7 @@ public class MatchService {
 
     private MatchResponse enrich(MatchResponse match, Long userId) {
         boolean isHost = match.getHostId().equals(userId);
-        String myJoinStatus = matchJoinRequestRepository
+        String myJoinStatus = userId == null ? null : matchJoinRequestRepository
                 .findFirstByMatchIdAndPlayerIdOrderByCreatedAtDesc(match.getId(), userId)
                 .map(r -> r.getStatus().name())
                 .orElse(null);
