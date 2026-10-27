@@ -1,4 +1,4 @@
-package com.sep490.bms.entity.feedback;
+package com.sep490.bms.entity.enums;
 
 public enum ComplaintStatus {
     SUBMITTED,

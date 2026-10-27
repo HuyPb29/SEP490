@@ -38,7 +38,7 @@ public class Review {
     private Long playerId;
 
     @Column(nullable = false)
-    private short rating;
+    private int rating;
 
     @Column(length = 1000)
     private String comment;

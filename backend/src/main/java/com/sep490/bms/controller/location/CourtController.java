@@ -27,7 +27,7 @@ public class CourtController {
     }
 
     /**
-     * UC12 – Xem thông tin sân công khai
+     * UC12 – Xem thông tin sân công khai (#2: trả kèm bảng giá của sân)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
      * Status: NOT_IMPLEMENTED

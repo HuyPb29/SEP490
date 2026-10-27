@@ -15,37 +15,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class ScheduleController {
 
     /**
-     * UC13 – Xem lịch sân
+     * UC13 – Xem lịch sân (?date=; lịch theo ngày của cả địa điểm: mỗi hàng một sân, mỗi cột một slot)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
      * Status: NOT_IMPLEMENTED
      */
     @GetMapping("/api/locations/{id}/schedules")
     public ResponseEntity<Void> getLocationsByIdSchedules(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-
-    /**
-     * UC13 – Xem lịch sân
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
-    @GetMapping("/api/courts/{id}/schedules")
-    public ResponseEntity<Void> getCourtsByIdSchedules(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-
-    /**
-     * UC13 – Xem lịch sân
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
-    @GetMapping("/api/courts/{id}/available-slots")
-    public ResponseEntity<Void> getCourtsByIdAvailableSlots(@PathVariable("id") String id) {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }

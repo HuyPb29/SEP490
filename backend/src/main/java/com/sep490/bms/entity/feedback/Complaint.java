@@ -2,6 +2,9 @@ package com.sep490.bms.entity.feedback;
 
 import java.time.LocalDateTime;
 
+import com.sep490.bms.entity.enums.ComplaintResult;
+import com.sep490.bms.entity.enums.ComplaintStatus;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -48,7 +51,6 @@ public class Complaint {
     @Column(name = "created_by", nullable = false)
     private Long createdBy;
 
-    // Tập giá trị mở (PAYMENT_ISSUE, COURT_SERVICE, LATE_PAYMENT_CONFIRMATION, ...) nên giữ String.
     @Column(name = "complaint_type", nullable = false, length = 30)
     private String complaintType;
 
@@ -57,7 +59,8 @@ public class Complaint {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 15)
-    private ComplaintStatus status;
+    @Builder.Default
+    private ComplaintStatus status = ComplaintStatus.SUBMITTED;
 
     @Column(name = "staff_note", length = 1000)
     private String staffNote;
@@ -88,9 +91,6 @@ public class Complaint {
     public void prePersist() {
         if (this.createdAt == null) {
             this.createdAt = LocalDateTime.now();
-        }
-        if (this.status == null) {
-            this.status = ComplaintStatus.SUBMITTED;
         }
     }
 }
