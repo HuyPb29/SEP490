@@ -100,7 +100,7 @@ public class MatchService {
 
         match.setCurrentPlayers(current);
         match.setNeededPlayers(needed);
-        matchRepository.save(match);
+        matchRepository.saveAndFlush(match);
         return getMatch(userId, matchId);
     }
 
@@ -113,7 +113,7 @@ public class MatchService {
         }
         match.setStatus(MatchStatus.CLOSED);
         match.setClosedAt(LocalDateTime.now());
-        matchRepository.save(match);
+        matchRepository.saveAndFlush(match);
         return getMatch(userId, matchId);
     }
 
@@ -126,7 +126,7 @@ public class MatchService {
         }
         match.setStatus(MatchStatus.CANCELLED);
         match.setClosedAt(LocalDateTime.now());
-        matchRepository.save(match);
+        matchRepository.saveAndFlush(match);
 
         // Các yêu cầu chưa được duyệt không còn ý nghĩa nữa.
         List<MatchJoinRequest> pending = matchJoinRequestRepository.findByMatchIdAndStatus(matchId, JoinRequestStatus.PENDING);
@@ -158,11 +158,13 @@ public class MatchService {
             throw new AppException("Kèo không còn mở, không thể duyệt thêm người");
         }
 
-        // needed_players không được xuống 0 (ck_match_players), nên người cuối cùng được duyệt sẽ đóng kèo.
-        if (match.getNeededPlayers() > 1) {
-            match.setCurrentPlayers(match.getCurrentPlayers() + 1);
-            match.setNeededPlayers(match.getNeededPlayers() - 1);
-        } else {
+        if (match.getNeededPlayers() < 1) {
+            throw new AppException("Kèo đã đủ người, không thể duyệt thêm");
+        }
+        match.setCurrentPlayers(match.getCurrentPlayers() + 1);
+        match.setNeededPlayers(match.getNeededPlayers() - 1);
+        // Người cuối cùng được duyệt thì kèo đầy và tự đóng.
+        if (match.getNeededPlayers() == 0) {
             match.setStatus(MatchStatus.CLOSED);
             match.setClosedAt(LocalDateTime.now());
         }

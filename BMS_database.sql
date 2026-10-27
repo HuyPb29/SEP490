@@ -647,7 +647,7 @@ CREATE TABLE match (
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_match_created_at DEFAULT SYSDATETIME(),
     closed_at DATETIME2(0) NULL,
     CONSTRAINT pk_match PRIMARY KEY (id),
-    CONSTRAINT ck_match_players CHECK (current_players >= 1 AND needed_players >= 1 AND current_players + needed_players <= 8),
+    CONSTRAINT ck_match_players CHECK (current_players >= 1 AND needed_players >= 0 AND current_players + needed_players <= 8),
     CONSTRAINT ck_match_status CHECK (status IN ('OPEN','CLOSED','CANCELLED','EXPIRED'))
 );
 CREATE UNIQUE INDEX ux_match_booking_active ON match (booking_id) WHERE status IN ('OPEN','CLOSED');
