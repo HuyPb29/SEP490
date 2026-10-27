@@ -16,7 +16,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class BookingPackageController {
 
     /**
-     * UC15 – Đặt nhiều buổi
+     * UC15 – Đặt nhiều buổi (#4, #5, #6, #9, #10: lịch toàn kỳ, buổi trùng, tổng tiền, chương trình theo lô; không lưu gì)
+     * Feature: F3 – Tìm và đặt sân
+     * Owner: Minh
+     * Status: NOT_IMPLEMENTED
+     */
+    @PostMapping("/api/booking-packages/preview")
+    public ResponseEntity<Void> postBookingPackagesPreview() {
+        // TODO: implement
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+
+    /**
+     * UC15 – Đặt nhiều buổi (#8, #11: tạo gói và các buổi con, giữ chỗ 15 phút)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
      * Status: NOT_IMPLEMENTED
@@ -49,11 +61,6 @@ public class BookingPackageController {
     @GetMapping("/api/me/booking-packages")
     public ResponseEntity<Void> getMeBookingPackages() {
         // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-    /** API contract scaffold; business service is not implemented yet. */
-    @PostMapping("/api/booking-packages/preview")
-    public ResponseEntity<Void> previewPackage() {
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
 }
