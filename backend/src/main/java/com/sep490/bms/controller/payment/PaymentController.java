@@ -33,7 +33,7 @@ public class PaymentController {
      * Owner: Minh
      * Status: NOT_IMPLEMENTED
      */
-    @GetMapping("/api/payments/{id}/payment-instructions")
+    @GetMapping("/api/bookings/{id}/payment-instructions")
     public ResponseEntity<Void> getPaymentsByIdPaymentInstructions(@PathVariable("id") String id) {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
@@ -45,7 +45,7 @@ public class PaymentController {
      * Owner: Minh
      * Status: NOT_IMPLEMENTED
      */
-    @PostMapping("/api/payments/{id}/submit")
+    @PostMapping("/api/bookings/{id}/payments")
     public ResponseEntity<Void> postPaymentsByIdSubmit(@PathVariable("id") String id) {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
@@ -120,6 +120,26 @@ public class PaymentController {
     @PostMapping("/api/staff/payments/{id}/request-resubmission")
     public ResponseEntity<Void> postStaffPaymentsByIdRequestResubmission(@PathVariable("id") String id) {
         // TODO: implement
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+    /** API contract scaffold; business service is not implemented yet. */
+    @GetMapping("/api/reschedule-requests/{id}/payment-instructions")
+    public ResponseEntity<Void> rescheduleInstructions(@PathVariable("id") Long id) {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+    /** API contract scaffold; business service is not implemented yet. */
+    @PostMapping("/api/reschedule-requests/{id}/payments")
+    public ResponseEntity<Void> submitReschedulePayment(@PathVariable("id") Long id) {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+    /** API contract scaffold; business service is not implemented yet. */
+    @GetMapping("/api/booking-packages/{id}/payment-instructions")
+    public ResponseEntity<Void> packagePaymentinstructions(@PathVariable("id") Long id) {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+    /** API contract scaffold; business service is not implemented yet. */
+    @PostMapping("/api/booking-packages/{id}/payments")
+    public ResponseEntity<Void> packagePayments(@PathVariable("id") Long id) {
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
 }

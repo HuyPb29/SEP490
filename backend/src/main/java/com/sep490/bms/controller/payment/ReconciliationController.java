@@ -50,4 +50,9 @@ public class ReconciliationController {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
+    /** API contract scaffold; business service is not implemented yet. */
+    @GetMapping("/api/owner/reconciliations")
+    public ResponseEntity<Void> ownerReconciliations() {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
 }

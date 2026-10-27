@@ -5,7 +5,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.sep490.bms.dto.request.BookingRequest;
+
+import jakarta.validation.Valid;
 
 /**
  * Feature: F3 – Tìm và đặt sân
@@ -22,7 +27,9 @@ public class BookingController {
      * Status: NOT_IMPLEMENTED
      */
     @PostMapping("/api/bookings")
-    public ResponseEntity<Void> postBookings() {
+    public ResponseEntity<Void> postBookings(
+            @Valid @RequestBody
+            BookingRequest request) {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
@@ -73,6 +80,18 @@ public class BookingController {
     @GetMapping("/api/me/bookings")
     public ResponseEntity<Void> getMeBookings() {
         // TODO: implement
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+    /** API contract scaffold; business service is not implemented yet. */
+    @PostMapping("/api/bookings/summary")
+    public ResponseEntity<Void> bookingSummary(
+            @Valid @RequestBody
+            BookingRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+    /** API contract scaffold; business service is not implemented yet. */
+    @PostMapping("/api/staff/bookings/{id}/confirm")
+    public ResponseEntity<Void> confirmWalkInBooking(@PathVariable("id") Long id) {
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
 }

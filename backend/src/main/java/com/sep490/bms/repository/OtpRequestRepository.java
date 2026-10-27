@@ -11,5 +11,7 @@ import com.sep490.bms.entity.OtpRequest;
 @Repository
 public interface OtpRequestRepository extends JpaRepository<OtpRequest, Long> {
 
+    long countByEmailAndCreatedAtAfter(String email, java.time.LocalDateTime since);
+
     Optional<OtpRequest> findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(String email, OtpPurpose purpose);
 }

@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -20,7 +21,10 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.sep490.bms.repository.LocationRepository;
 import com.sep490.bms.security.JwtAuthenticationFilter;
+import com.sep490.bms.security.LocationAccessService;
+import com.sep490.bms.security.LocationScopeFilter;
 
 import lombok.RequiredArgsConstructor;
 
@@ -30,6 +34,8 @@ import lombok.RequiredArgsConstructor;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final LocationAccessService locationAccess;
+    private final LocationRepository locations;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -49,10 +55,21 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/swagger-ui", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
                 .requestMatchers("/api/health", "/actuator/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/locations", "/api/locations/*", "/api/locations/*/courts",
+                    "/api/locations/*/schedules", "/api/locations/*/batch-offers", "/api/courts/*",
+                    "/api/courts/*/reviews", "/api/matches", "/api/matches/*").permitAll()
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/owner/**").hasRole("OWNER")
+                .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "OWNER")
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .exceptionHandling(errors -> errors
+                .authenticationEntryPoint((req, res, ex) -> res.sendError(401))
+                .accessDeniedHandler((req, res, ex) -> res.sendError(403)))
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(new LocationScopeFilter(locationAccess, locations), JwtAuthenticationFilter.class);
 
         return http.build();
     }

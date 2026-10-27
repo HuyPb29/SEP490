@@ -64,4 +64,9 @@ public class BatchOfferController {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
+    /** API contract scaffold; business service is not implemented yet. */
+    @GetMapping("/api/locations/{id}/batch-offers")
+    public ResponseEntity<Void> publicBatchOffers(@PathVariable("id") Long id) {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
 }

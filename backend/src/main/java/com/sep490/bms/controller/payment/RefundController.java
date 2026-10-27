@@ -21,7 +21,7 @@ public class RefundController {
      * Owner: Huy
      * Status: NOT_IMPLEMENTED
      */
-    @GetMapping("/api/staff/refunds")
+    @GetMapping("/api/owner/refunds")
     public ResponseEntity<Void> getStaffRefunds() {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
@@ -33,7 +33,7 @@ public class RefundController {
      * Owner: Huy
      * Status: NOT_IMPLEMENTED
      */
-    @GetMapping("/api/staff/refunds/{id}")
+    @GetMapping("/api/owner/refunds/{id}")
     public ResponseEntity<Void> getStaffRefundsById(@PathVariable("id") String id) {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
@@ -45,7 +45,7 @@ public class RefundController {
      * Owner: Huy
      * Status: NOT_IMPLEMENTED
      */
-    @PostMapping("/api/staff/refunds/{id}/record")
+    @PostMapping("/api/owner/refunds/{id}/record")
     public ResponseEntity<Void> postStaffRefundsByIdRecord(@PathVariable("id") String id) {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();

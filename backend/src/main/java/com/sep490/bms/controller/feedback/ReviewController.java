@@ -90,4 +90,9 @@ public class ReviewController {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
+    /** API contract scaffold; business service is not implemented yet. */
+    @PatchMapping("/api/owner/reviews/{id}")
+    public ResponseEntity<Void> hideOwnerReview(@PathVariable("id") Long id) {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
 }

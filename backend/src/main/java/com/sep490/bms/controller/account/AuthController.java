@@ -1,4 +1,4 @@
-package com.sep490.bms.controller;
+package com.sep490.bms.controller.account;
 
 import java.util.Map;
 
@@ -20,6 +20,7 @@ import com.sep490.bms.dto.request.VerifyEmailRequest;
 import com.sep490.bms.service.AuthService;
 
 import jakarta.validation.Valid;
+
 import lombok.RequiredArgsConstructor;
 
 @RestController

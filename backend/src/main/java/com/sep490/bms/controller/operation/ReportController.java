@@ -48,4 +48,19 @@ public class ReportController {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
+    /** API contract scaffold; business service is not implemented yet. */
+    @GetMapping("/api/owner/cancellation-reports")
+    public ResponseEntity<Void> cancellationReport() {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+    /** API contract scaffold; business service is not implemented yet. */
+    @GetMapping("/api/owner/reschedule-reports")
+    public ResponseEntity<Void> rescheduleReport() {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+    /** API contract scaffold; business service is not implemented yet. */
+    @GetMapping("/api/owner/voucher-reports")
+    public ResponseEntity<Void> voucherReport() {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
 }

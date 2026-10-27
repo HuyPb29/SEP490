@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
  * UC: UC26 – Quản lý ưu đãi tích lũy
  */
 @RestController
-public class LoyaltyTierController {
+public class LoyaltyMilestoneController {
 
     /**
      * UC26 – Quản lý ưu đãi tích lũy
@@ -22,8 +22,8 @@ public class LoyaltyTierController {
      * Owner: Huy
      * Status: NOT_IMPLEMENTED
      */
-    @GetMapping("/api/owner/loyalty-tiers")
-    public ResponseEntity<Void> getOwnerLoyaltyTiers() {
+    @GetMapping("/api/owner/loyalty-milestones")
+    public ResponseEntity<Void> getOwnerLoyaltyMilestones() {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
@@ -34,8 +34,8 @@ public class LoyaltyTierController {
      * Owner: Huy
      * Status: NOT_IMPLEMENTED
      */
-    @PostMapping("/api/owner/loyalty-tiers")
-    public ResponseEntity<Void> postOwnerLoyaltyTiers() {
+    @PostMapping("/api/owner/loyalty-milestones")
+    public ResponseEntity<Void> postOwnerLoyaltyMilestones() {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
@@ -46,8 +46,8 @@ public class LoyaltyTierController {
      * Owner: Huy
      * Status: NOT_IMPLEMENTED
      */
-    @PatchMapping("/api/owner/loyalty-tiers/{id}")
-    public ResponseEntity<Void> patchOwnerLoyaltyTiersById(@PathVariable("id") String id) {
+    @PatchMapping("/api/owner/loyalty-milestones/{id}")
+    public ResponseEntity<Void> patchOwnerLoyaltyMilestonesById(@PathVariable("id") String id) {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }

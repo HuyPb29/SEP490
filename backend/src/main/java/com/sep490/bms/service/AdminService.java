@@ -24,6 +24,7 @@ import com.sep490.bms.repository.AccountRepository;
 import com.sep490.bms.security.UserPrincipal;
 
 import jakarta.persistence.criteria.Predicate;
+
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -42,6 +43,11 @@ public class AdminService {
             String sortBy,
             String sortDirection) {
 
+        if (page < 0 || size < 1 || size > 100) throw new AppException("Phân trang không hợp lệ");
+        if (!List.of("id", "username", "email", "phone", "fullName", "role", "status", "createdAt", "updatedAt").contains(sortBy)) {
+            throw new AppException("Trường sắp xếp không hợp lệ");
+        }
+        if (!List.of("asc", "desc").contains(sortDirection.toLowerCase())) throw new AppException("Chiều sắp xếp không hợp lệ");
         Sort sort = Sort.by("asc".equalsIgnoreCase(sortDirection) ? Sort.Direction.ASC : Sort.Direction.DESC,
                 StringUtils.hasText(sortBy) ? sortBy : "id");
         Pageable pageable = PageRequest.of(page, size, sort);
@@ -92,11 +98,16 @@ public class AdminService {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản"));
 
+        if (account.getRole() == Role.ADMIN) throw new AppException("Không được thay đổi trạng thái tài khoản Admin");
         AccountStatus newStatus;
         try {
             newStatus = AccountStatus.valueOf(request.getStatus().trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new AppException("Trạng thái không hợp lệ. Chấp nhận: ACTIVE, LOCKED, DISABLED");
+            throw new AppException("Trạng thái không hợp lệ. Chấp nhận: ACTIVE, LOCKED");
+        }
+
+        if (newStatus != AccountStatus.ACTIVE && newStatus != AccountStatus.LOCKED) {
+            throw new AppException("Admin chỉ được khóa hoặc mở tài khoản: ACTIVE, LOCKED");
         }
 
         account.setStatus(newStatus);

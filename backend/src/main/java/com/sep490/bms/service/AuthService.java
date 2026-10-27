@@ -28,6 +28,7 @@ import com.sep490.bms.entity.OtpRequest;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.LocationRepository;
 import com.sep490.bms.repository.OtpRequestRepository;
 import com.sep490.bms.security.JwtTokenProvider;
 
@@ -48,6 +49,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final EmailService emailService;
+    private final LocationRepository locationRepository;
     private final ObjectMapper objectMapper;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -64,18 +66,10 @@ public class AuthService {
             throw new AppException("Số điện thoại này đã được đăng ký cho một tài khoản Player khác");
         }
 
-        String username;
-        if (request.getUsername() != null && !request.getUsername().trim().isEmpty()) {
-            username = request.getUsername().trim().toLowerCase();
-            if (!USERNAME_PATTERN.matcher(username).matches()) {
-                throw new AppException("Tên đăng nhập phải bắt đầu bằng chữ cái thường, từ 4-20 ký tự (chỉ chứa chữ thường, số, dấu chấm, gạch dưới)");
-            }
-            if (accountRepository.existsByUsername(username)) {
-                throw new AppException("Tên đăng nhập đã tồn tại trong hệ thống");
-            }
-        } else {
-            username = generateCompliantUsername(email);
-        }
+        String username = request.getUsername();
+        if (username == null || !USERNAME_PATTERN.matcher(username).matches()) throw new AppException("Tên đăng nhập không hợp lệ (DR22)");
+        if (accountRepository.existsByUsername(username)) throw new AppException("Tên đăng nhập đã tồn tại");
+        checkOtpLimit(email);
 
         String otpCode = generateOtpCode();
         String codeHash = passwordEncoder.encode(otpCode);
@@ -152,7 +146,7 @@ public class AuthService {
             throw new AppException("Tài khoản với email này đã tồn tại");
         }
         if (accountRepository.existsByUsername(username)) {
-            username = generateCompliantUsername(email);
+            throw new AppException("Tên đăng nhập đã tồn tại. Vui lòng đăng ký lại (DR22)");
         }
 
         Account account = Account.builder()
@@ -183,6 +177,7 @@ public class AuthService {
         OtpPurpose purpose = request.getPurpose();
 
         if (purpose == OtpPurpose.REGISTER) {
+            checkOtpLimit(email);
             OtpRequest latest = otpRequestRepository
                     .findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER)
                     .orElseThrow(() -> new AppException("Không tìm thấy thông tin đăng ký đang chờ cho email này"));
@@ -207,7 +202,8 @@ public class AuthService {
             emailService.sendVerificationOtp(email, newOtp);
         } else if (purpose == OtpPurpose.RESET_PASSWORD) {
             accountRepository.findByEmail(email).ifPresent(account -> {
-                if (account.getStatus() == AccountStatus.ACTIVE) {
+                if (account.getStatus() == AccountStatus.ACTIVE && account.getRole() != Role.STAFF) {
+                    checkOtpLimit(email);
                     String newOtp = generateOtpCode();
                     String codeHash = passwordEncoder.encode(newOtp);
 
@@ -244,6 +240,10 @@ public class AuthService {
             throw new AppException("Tài khoản đã bị vô hiệu hóa (MSG11)", HttpStatus.FORBIDDEN);
         }
 
+        if (account.getRole() == Role.STAFF && (account.getLocationId() == null
+                || locationRepository.findById(account.getLocationId()).filter(l -> "ACTIVE".equals(l.getStatus())).isEmpty())) {
+            throw new AppException("Địa điểm của nhân viên đã bị khóa", HttpStatus.FORBIDDEN);
+        }
         String token = jwtTokenProvider.generateToken(account);
 
         return LoginResponse.builder()
@@ -262,7 +262,8 @@ public class AuthService {
         String email = request.getEmail().trim().toLowerCase();
 
         accountRepository.findByEmail(email).ifPresent(account -> {
-            if (account.getStatus() == AccountStatus.ACTIVE) {
+            if (account.getStatus() == AccountStatus.ACTIVE && account.getRole() != Role.STAFF) {
+                    checkOtpLimit(email);
                 String otpCode = generateOtpCode();
                 String codeHash = passwordEncoder.encode(otpCode);
 
@@ -309,6 +310,7 @@ public class AuthService {
         Account account = accountRepository.findByEmail(email)
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản để đặt lại mật khẩu"));
 
+        if (account.getRole() == Role.STAFF) throw new AppException("Nhân viên cần liên hệ Owner để cấp lại mật khẩu");
         account.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         account.setUpdatedAt(LocalDateTime.now());
         accountRepository.save(account);
@@ -319,27 +321,12 @@ public class AuthService {
         return String.valueOf(code);
     }
 
-    private String generateCompliantUsername(String email) {
-        String prefix = email.split("@")[0].toLowerCase().replaceAll("[^a-z0-9._]", "");
-        if (prefix.isEmpty() || !Character.isLetter(prefix.charAt(0))) {
-            prefix = "u" + prefix;
+    private void checkOtpLimit(String email) {
+        LocalDateTime now = LocalDateTime.now();
+        if (otpRequestRepository.countByEmailAndCreatedAtAfter(email, now.minusSeconds(60)) > 0
+                || otpRequestRepository.countByEmailAndCreatedAtAfter(email, now.minusHours(1)) >= 5
+                || otpRequestRepository.countByEmailAndCreatedAtAfter(email, now.minusDays(1)) >= 10) {
+            throw new AppException("Vượt giới hạn gửi OTP: chờ 60 giây, tối đa 5 lần/giờ và 10 lần/ngày (MSG107)", HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (prefix.length() < 4) {
-            prefix = prefix + "123";
-        }
-        if (prefix.length() > 14) {
-            prefix = prefix.substring(0, 14);
-        }
-
-        String candidate = prefix;
-        int count = 1;
-        while (accountRepository.existsByUsername(candidate)) {
-            candidate = prefix + count;
-            if (candidate.length() > 20) {
-                candidate = prefix.substring(0, 14) + count;
-            }
-            count++;
-        }
-        return candidate;
     }
 }

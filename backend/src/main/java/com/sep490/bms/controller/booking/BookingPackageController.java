@@ -51,4 +51,9 @@ public class BookingPackageController {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
+    /** API contract scaffold; business service is not implemented yet. */
+    @PostMapping("/api/booking-packages/preview")
+    public ResponseEntity<Void> previewPackage() {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
 }

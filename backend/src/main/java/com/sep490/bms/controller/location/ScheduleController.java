@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -21,32 +22,10 @@ public class ScheduleController {
      * Status: NOT_IMPLEMENTED
      */
     @GetMapping("/api/locations/{id}/schedules")
-    public ResponseEntity<Void> getLocationsByIdSchedules(@PathVariable("id") String id) {
+    public ResponseEntity<Void> getLocationsByIdSchedules(@PathVariable("id") String id, @RequestParam java.time.LocalDate date) {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
 
-    /**
-     * UC13 – Xem lịch sân
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
-    @GetMapping("/api/courts/{id}/schedules")
-    public ResponseEntity<Void> getCourtsByIdSchedules(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
 
-    /**
-     * UC13 – Xem lịch sân
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
-    @GetMapping("/api/courts/{id}/available-slots")
-    public ResponseEntity<Void> getCourtsByIdAvailableSlots(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
 }

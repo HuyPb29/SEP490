@@ -39,17 +39,6 @@ public class LoyaltyPointController {
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
 
-    /**
-     * UC25 – Tích điểm và dùng điểm
-     * Feature: F6 – Ưu đãi
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
-    @PostMapping("/api/bookings/{id}/apply-points")
-    public ResponseEntity<Void> postBookingsByIdApplyPoints(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
 
     /**
      * UC25 – Tích điểm và dùng điểm
