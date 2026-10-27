@@ -16,7 +16,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class BookingController {
 
     /**
-     * UC14 – Đặt sân lẻ
+     * UC14 – Đặt sân lẻ (#1–5: màn tóm tắt, áp voucher và điểm; không lưu gì)
+     * Feature: F3 – Tìm và đặt sân
+     * Owner: Minh
+     * Status: NOT_IMPLEMENTED
+     */
+    @PostMapping("/api/bookings/summary")
+    public ResponseEntity<Void> postBookingsSummary() {
+        // TODO: implement
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+
+    /**
+     * UC14 – Đặt sân lẻ (#6–8: body gồm voucherCode, pointsToUse; trừ lượt/điểm khi tạo booking)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
      * Status: NOT_IMPLEMENTED
@@ -60,6 +72,18 @@ public class BookingController {
      */
     @GetMapping("/api/staff/bookings")
     public ResponseEntity<Void> getStaffBookings() {
+        // TODO: implement
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+
+    /**
+     * UC16 – Đặt sân tại quầy (#3: Staff thấy tiền đã về thì xác nhận; không có ảnh chứng từ)
+     * Feature: F3 – Tìm và đặt sân
+     * Owner: Minh
+     * Status: NOT_IMPLEMENTED
+     */
+    @PostMapping("/api/staff/bookings/{id}/confirm")
+    public ResponseEntity<Void> postStaffBookingsByIdConfirm(@PathVariable("id") String id) {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }

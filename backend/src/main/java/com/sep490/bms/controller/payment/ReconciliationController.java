@@ -50,4 +50,16 @@ public class ReconciliationController {
         // TODO: implement
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
+
+    /**
+     * UC20 – Đối soát doanh thu cuối ngày (#5: Owner xem kết quả đối soát)
+     * Feature: F4 – Thanh toán
+     * Owner: Minh
+     * Status: NOT_IMPLEMENTED
+     */
+    @GetMapping("/api/owner/reconciliations")
+    public ResponseEntity<Void> getOwnerReconciliations() {
+        // TODO: implement
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
 }
