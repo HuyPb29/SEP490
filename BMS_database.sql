@@ -4,7 +4,6 @@
 -- Khóa ngoại thêm sau cùng (account <-> location tham chiếu vòng).
 -- Trạng thái lưu bằng mã viết hoa theo sheet Trang_thai (@Enumerated(EnumType.STRING)).
 -- Giờ trong ngày (cột ..._minute) lưu bằng số phút từ 0 giờ, bội số 30: 06:00 = 360, 23:30 = 1410, 24:00 = 1440.
--- Số điện thoại: 10 chữ số, bắt đầu bằng 0 (DR01).
 -- Khóa ngoại kép (fkc_...): cột location_id/player_id lặp lại phải khớp với bảng cha, ví dụ booking.location_id = địa điểm của sân.
 -- Cách chạy: mở trong SSMS rồi Execute, hoặc
 --   sqlcmd -S localhost -E -C -b -f 65001 -i BMS_database.sql
@@ -47,7 +46,7 @@ CREATE TABLE account (
     CONSTRAINT ck_account_staff_location CHECK ((role = 'STAFF' AND location_id IS NOT NULL) OR (role <> 'STAFF' AND location_id IS NULL)),
     CONSTRAINT ck_account_email CHECK (role NOT IN ('PLAYER','OWNER') OR email IS NOT NULL),
     CONSTRAINT ck_account_phone CHECK (role NOT IN ('PLAYER','OWNER') OR phone IS NOT NULL),
-    CONSTRAINT ck_account_phone_digits CHECK (phone IS NULL OR (LEN(phone) = 10 AND phone COLLATE Latin1_General_BIN LIKE '0%' AND phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
+    CONSTRAINT ck_account_phone_digits CHECK (phone IS NULL OR (LEN(phone) = 10 AND phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
     CONSTRAINT ck_account_username CHECK (LEN(username) >= 4 AND username COLLATE Latin1_General_BIN LIKE '[a-z]%' AND username COLLATE Latin1_General_BIN NOT LIKE '%[^a-z0-9._]%')
 );
 CREATE UNIQUE INDEX ux_account_email ON account (email) WHERE email IS NOT NULL;
@@ -89,7 +88,7 @@ CREATE TABLE service_registration (
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_service_registration_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_service_registration PRIMARY KEY (id),
     CONSTRAINT ck_sreg_courts CHECK (court_count > 0),
-    CONSTRAINT ck_sreg_phone_digits CHECK (contact_phone IS NULL OR (LEN(contact_phone) = 10 AND contact_phone COLLATE Latin1_General_BIN LIKE '0%' AND contact_phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
+    CONSTRAINT ck_sreg_phone_digits CHECK (contact_phone IS NULL OR (LEN(contact_phone) = 10 AND contact_phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
     CONSTRAINT ck_sreg_status CHECK (status IN ('PENDING','APPROVED','REJECTED')),
     CONSTRAINT ck_sreg_guest_contact CHECK (requester_id IS NOT NULL OR (contact_name IS NOT NULL AND contact_phone IS NOT NULL AND contact_email IS NOT NULL)),
     CONSTRAINT ck_sreg_reject_reason CHECK (status <> 'REJECTED' OR reject_reason IS NOT NULL)
@@ -117,7 +116,7 @@ CREATE TABLE location (
     updated_at DATETIME2(0) NULL,
     CONSTRAINT pk_location PRIMARY KEY (id),
     CONSTRAINT ck_location_status CHECK (status IN ('ACTIVE','LOCKED')),
-    CONSTRAINT ck_location_phone_digits CHECK (contact_phone IS NULL OR (LEN(contact_phone) = 10 AND contact_phone COLLATE Latin1_General_BIN LIKE '0%' AND contact_phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
+    CONSTRAINT ck_location_phone_digits CHECK (contact_phone IS NULL OR (LEN(contact_phone) = 10 AND contact_phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
     CONSTRAINT ck_location_advance CHECK (advance_booking_days > 0),
     CONSTRAINT ck_location_rate CHECK (point_earning_rate BETWEEN 1000 AND 100000)
 );
@@ -280,7 +279,7 @@ CREATE TABLE booking (
     CONSTRAINT uk_booking_id_location UNIQUE (id, location_id),
     CONSTRAINT uk_booking_id_player UNIQUE (id, player_id),
     CONSTRAINT ck_booking_type CHECK (booking_type IN ('SINGLE','SESSION','WALK_IN')),
-    CONSTRAINT ck_booking_phone_digits CHECK (customer_phone IS NULL OR (LEN(customer_phone) = 10 AND customer_phone COLLATE Latin1_General_BIN LIKE '0%' AND customer_phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
+    CONSTRAINT ck_booking_phone_digits CHECK (customer_phone IS NULL OR (LEN(customer_phone) = 10 AND customer_phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
     CONSTRAINT ck_booking_status CHECK (status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','IN_USE','COMPLETED','PAYMENT_REJECTED','EXPIRED','CANCELLED_BY_PLAYER','CANCELLED_BY_FACILITY')),
     CONSTRAINT ck_booking_walkin CHECK ((booking_type = 'WALK_IN' AND player_id IS NULL AND team_id IS NULL AND staff_id IS NOT NULL AND customer_name IS NOT NULL AND customer_phone IS NOT NULL) OR (booking_type <> 'WALK_IN' AND player_id IS NOT NULL)),
     CONSTRAINT ck_booking_session CHECK ((booking_type = 'SESSION' AND package_id IS NOT NULL) OR (booking_type <> 'SESSION' AND package_id IS NULL)),
@@ -687,8 +686,6 @@ CREATE TABLE review (
 CREATE INDEX ix_review_location ON review (location_id, created_at);
 
 -- complaint: Khiếu nại (UC33, BR49, BR58).
--- complaint_type: LATE_PAYMENT_CONFIRMATION = Chậm xác nhận thanh toán (FR115); PAYMENT_ISSUE = Đã chuyển tiền nhưng booking bị từ chối hoặc hết hạn (BR03, BR34);
---   FACILITY_CANCELLED = Sân hủy booking tại quầy, Staff tạo thay khách (BR43); COURT_SERVICE = Chất lượng sân, dịch vụ; OTHER = Khác.
 CREATE TABLE complaint (
     id BIGINT IDENTITY(1,1) NOT NULL,
     location_id BIGINT NOT NULL,
@@ -709,7 +706,6 @@ CREATE TABLE complaint (
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_complaint_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_complaint PRIMARY KEY (id),
     CONSTRAINT ck_complaint_target CHECK (booking_id IS NOT NULL OR payment_id IS NOT NULL),
-    CONSTRAINT ck_complaint_type CHECK (complaint_type IN ('LATE_PAYMENT_CONFIRMATION','PAYMENT_ISSUE','FACILITY_CANCELLED','COURT_SERVICE','OTHER')),
     CONSTRAINT ck_complaint_status CHECK (status IN ('SUBMITTED','PENDING_OWNER','RESOLVED','REJECTED')),
     CONSTRAINT ck_complaint_result CHECK (result IS NULL OR result IN ('LATE_PAYMENT_CONFIRMED','REFUND','POINTS','NO_COMPENSATION')),
     CONSTRAINT ck_complaint_resolved CHECK (status <> 'RESOLVED' OR result IS NOT NULL),

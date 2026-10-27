@@ -1,0 +1,37 @@
+package com.sep490.bms.controller;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.dto.UserDto;
+import com.sep490.bms.dto.request.UpdateStatusRequest;
+import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.AdminService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+
+@RestController
+@RequestMapping("/api/admin")
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
+public class AdminController {
+
+    private final AdminService adminService;
+
+    @PatchMapping("/accounts/{id}/status")
+    public ResponseEntity<ApiResponse<UserDto>> updateAccountStatus(
+            @AuthenticationPrincipal UserPrincipal currentAdmin,
+            @PathVariable("id") Long id,
+            @Valid @RequestBody UpdateStatusRequest request) {
+        UserDto updated = adminService.updateAccountStatus(currentAdmin, id, request);
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật trạng thái tài khoản thành công (MSG03)", updated));
+    }
+}
