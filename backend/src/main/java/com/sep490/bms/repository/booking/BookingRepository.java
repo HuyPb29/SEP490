@@ -7,4 +7,6 @@ import com.sep490.bms.entity.booking.Booking;
 
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
+
+    boolean existsByBookingCode(String bookingCode);
 }
