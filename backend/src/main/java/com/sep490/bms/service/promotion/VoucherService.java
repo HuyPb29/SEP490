@@ -196,4 +196,27 @@ public class VoucherService {
         return new VoucherCheckResponse(v.getId(),selection.grantId(),amount,discount,amount.subtract(discount));
     }
 
+    /** F3 must call inside booking-creation transaction, after saving the booking. Never expose as an HTTP mutation. */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public VoucherUsage consumeForBooking(Long bookingId,@Valid VoucherSelection selection) {
+        var b=em.find(com.sep490.bms.entity.booking.Booking.class,bookingId,LockModeType.PESSIMISTIC_WRITE);
+        if(b==null) throw new AppException("Không tìm thấy booking",HttpStatus.NOT_FOUND);
+        if(b.getPlayerId()==null || b.getBookingType()==BookingType.WALK_IN || b.getPackageId()!=null || b.getStatus()!=BookingStatus.HOLDING
+                || b.getHoldExpiresAt()!=null && !b.getHoldExpiresAt().isAfter(LocalDateTime.now())) throw new AppException("Booking không thể dùng voucher");
+        Voucher v=resolve(b.getLocationId(),selection,true);
+        Optional<VoucherUsage> existing=usages.findByBookingId(bookingId);
+        if(existing.isPresent()) {
+            VoucherUsage u=existing.get();
+            if(u.getStatus()!=VoucherUsageStatus.USED || !u.getVoucherId().equals(v.getId()) || !Objects.equals(u.getVoucherGrantId(),selection.grantId()))
+                throw new AppException("Booking đã có lịch sử voucher",HttpStatus.CONFLICT);
+            return u;
+        }
+        VoucherCheckResponse quote=evaluate(v,b.getPlayerId(),b.getLocationId(),b.getListAmount(),selection);
+        if(quote.discountAmount().add(b.getPointDiscount()).compareTo(b.getListAmount())>=0) throw new AppException("Tổng giảm phải nhỏ hơn giá trị đơn");
+        v.setUsedCount(v.getUsedCount()+1); v.setBudgetUsed(v.getBudgetUsed().add(quote.discountAmount()));
+        if(selection.grantId()!=null) grants.findById(selection.grantId()).orElseThrow().setStatus(VoucherGrantStatus.USED);
+        b.setVoucherDiscount(quote.discountAmount()); b.setFinalAmount(quote.amountAfterVoucher().subtract(b.getPointDiscount()));
+        return usages.saveAndFlush(VoucherUsage.builder().voucherId(v.getId()).voucherGrantId(selection.grantId()).playerId(b.getPlayerId())
+                .bookingId(bookingId).discountAmount(quote.discountAmount()).build());
+    }
 }

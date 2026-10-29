@@ -137,6 +137,16 @@ class VoucherApiTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.discountAmount").value(100));
         assertThat(vouchers.findById(v.getId()).orElseThrow().getUsedCount()).isZero();
     }
+    @Test void concurrencyCannotOverspendLastUse() throws Exception {
+        Voucher v=voucher(VoucherTargetGroup.ALL_PLAYERS); Booking a=booking(player),b=booking(other);
+        var pool=Executors.newFixedThreadPool(2); var start=new CountDownLatch(1);
+        java.util.function.Function<Long,Callable<Boolean>> consume=id -> () -> { start.await(); try { tx.execute(s -> service.consumeForBooking(id,new VoucherSelection(v.getCode(),null))); return true; } catch(AppException ex) { return false; } };
+        try { var first=pool.submit(consume.apply(a.getId())); var second=pool.submit(consume.apply(b.getId())); start.countDown();
+            assertThat(List.of(first.get(25,TimeUnit.SECONDS),second.get(25,TimeUnit.SECONDS))).containsExactlyInAnyOrder(true,false);
+            assertThat(vouchers.findById(v.getId()).orElseThrow().getUsedCount()).isEqualTo(1);
+            assertThat(vouchers.findById(v.getId()).orElseThrow().getBudgetUsed()).isEqualByComparingTo("100");
+        } finally { pool.shutdownNow(); pool.awaitTermination(10,TimeUnit.SECONDS); }
+    }
     @Test void newPlayerAndMinimumAmountRules() {
         Voucher v=voucher(VoucherTargetGroup.NEW_PLAYERS);
         assertThatThrownBy(() -> service.check(UserPrincipal.create(player),new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(100),new VoucherSelection(v.getCode(),null))))
@@ -146,5 +156,20 @@ class VoucherApiTests {
         tx.executeWithoutResult(s -> em.find(Booking.class,b.getId()).setStatus(BookingStatus.CONFIRMED));
         assertThatThrownBy(() -> service.check(UserPrincipal.create(player),new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(1000),new VoucherSelection(v.getCode(),null))))
                 .isInstanceOf(AppException.class).hasMessageContaining("Player mới");
+    }
+    @Test void percentageExpiryBudgetAndPerPlayerLimits() {
+        Voucher v=voucher(VoucherTargetGroup.ALL_PLAYERS);
+        v.setDiscountType(DiscountType.PERCENT); v.setDiscountValue(BigDecimal.valueOf(33)); v.setBudget(BigDecimal.valueOf(1000)); v.setMaxTotalUses(5);
+        v=vouchers.saveAndFlush(v);
+        var request=new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(1001),new VoucherSelection(v.getCode(),null));
+        assertThat(service.check(UserPrincipal.create(player),request).discountAmount()).isEqualByComparingTo("330");
+        v.setBudget(BigDecimal.valueOf(100)); v=vouchers.saveAndFlush(v);
+        assertThatThrownBy(() -> service.check(UserPrincipal.create(player),request)).hasMessageContaining("ngân sách");
+        v.setBudget(BigDecimal.valueOf(1000)); v.setValidTo(LocalDate.now().minusDays(1)); v=vouchers.saveAndFlush(v);
+        assertThatThrownBy(() -> service.check(UserPrincipal.create(player),request)).hasMessageContaining("thời hạn");
+        v.setValidTo(LocalDate.now().plusDays(1)); v=vouchers.saveAndFlush(v);
+        Booking b=booking(player);
+        tx.executeWithoutResult(s -> service.consumeForBooking(b.getId(),request.selection()));
+        assertThatThrownBy(() -> service.check(UserPrincipal.create(player),request)).hasMessageContaining("cá nhân");
     }
 }
