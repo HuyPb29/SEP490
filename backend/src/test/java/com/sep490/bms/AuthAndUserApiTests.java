@@ -46,6 +46,9 @@ import com.sep490.bms.security.JwtTokenProvider;
 @Transactional
 class AuthAndUserApiTests {
 
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.sep490.bms.service.EmailService emailService;
+
     private MockMvc mockMvc;
 
     @Autowired

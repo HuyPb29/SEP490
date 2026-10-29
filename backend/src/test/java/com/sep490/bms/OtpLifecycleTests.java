@@ -91,6 +91,17 @@ class OtpLifecycleTests {
         assertThatThrownBy(() -> verify(OtpPurpose.RESET_PASSWORD, "654321")).isInstanceOf(AppException.class);
     }
 
+    @Test
+    void smtpFailureRollsBackNewRequestAndPreservesPreviousCode() {
+        player();
+        OtpRequest old = otp(OtpPurpose.RESET_PASSWORD);
+        doThrow(new AppException("Mail unavailable", HttpStatus.SERVICE_UNAVAILABLE))
+                .when(mail).sendPasswordResetOtp(eq(email), anyString());
+        assertThatThrownBy(() -> auth.forgotPassword(new ForgotPasswordRequest(email))).isInstanceOf(AppException.class);
+        assertThat(otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.RESET_PASSWORD)
+                .orElseThrow().getId()).isEqualTo(old.getId());
+        assertThat(otps.countByEmailAndCreatedAtAfter(email, LocalDateTime.now().minusDays(1))).isEqualTo(1);
+    }
 
     @Test
     void expiredCodeAndLockedAccountCannotResetPassword() {
