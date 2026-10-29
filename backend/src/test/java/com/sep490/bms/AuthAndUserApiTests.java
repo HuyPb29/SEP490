@@ -348,7 +348,9 @@ class AuthAndUserApiTests {
 
     @Test
     void publicReadsAndSwaggerAreAccessibleButWritesRequireAuthentication() throws Exception {
-        for (String path : java.util.List.of("/api/locations", "/api/courts/1", "/api/courts/1/reviews")) {
+        mockMvc.perform(get("/api/locations")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+        for (String path : java.util.List.of("/api/courts/1", "/api/courts/1/reviews")) {
             mockMvc.perform(get(path)).andExpect(status().isNotImplemented());
         }
         mockMvc.perform(get("/api/matches")).andExpect(status().isOk())
