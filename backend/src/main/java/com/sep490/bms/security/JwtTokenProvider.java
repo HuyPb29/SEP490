@@ -31,10 +31,9 @@ public class JwtTokenProvider {
     public void init() {
         byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
         if (keyBytes.length < 32) {
-            byte[] padded = new byte[32];
-            System.arraycopy(keyBytes, 0, padded, 0, keyBytes.length);
-            keyBytes = padded;
+            throw new IllegalStateException("JWT_SECRET phải có ít nhất 32 byte");
         }
+        if (jwtExpirationMs <= 0) throw new IllegalStateException("JWT expiration phải lớn hơn 0");
         this.key = Keys.hmacShaKeyFor(keyBytes);
     }
 
