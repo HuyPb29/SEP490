@@ -97,7 +97,7 @@ public class AdminService {
             throw new AppException("Bạn không thể tự thay đổi trạng thái tài khoản của chính mình");
         }
 
-        Account account = accountRepository.findById(accountId)
+        Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản"));
 
         if (account.getRole() == Role.ADMIN) throw new AppException("Không được thay đổi trạng thái tài khoản Admin");

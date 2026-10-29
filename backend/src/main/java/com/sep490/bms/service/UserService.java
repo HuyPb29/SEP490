@@ -34,7 +34,7 @@ public class UserService {
 
     @Transactional
     public UserDto updateCurrentUserProfile(Long userId, UpdateProfileRequest request) {
-        Account account = accountRepository.findById(userId)
+        Account account = accountRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new AppException("Không tìm thấy người dùng"));
 
         if (StringUtils.hasText(request.getFullName())) {
@@ -53,7 +53,7 @@ public class UserService {
     }
     @Transactional
     public void changePassword(Long userId, ChangePasswordRequest request) {
-        Account account = accountRepository.findById(userId)
+        Account account = accountRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new AppException("Không tìm thấy người dùng"));
         if (account.getRole() != Role.PLAYER && account.getRole() != Role.OWNER) {
             throw new AppException("Nhân viên cần liên hệ Owner để cấp lại mật khẩu", HttpStatus.FORBIDDEN);

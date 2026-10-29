@@ -82,7 +82,7 @@ public class StaffService {
 
     private Account managedStaff(UserPrincipal user, Long id) {
         Long locationId = ownerLocation(user);
-        Account staff = accountRepository.findById(id).orElseThrow(() -> new AppException("Không tìm thấy nhân viên", HttpStatus.NOT_FOUND));
+        Account staff = accountRepository.findByIdForUpdate(id).orElseThrow(() -> new AppException("Không tìm thấy nhân viên", HttpStatus.NOT_FOUND));
         if (staff.getRole() != Role.STAFF || !locationId.equals(staff.getLocationId())) {
             throw new AppException("Không có quyền quản lý nhân viên này", HttpStatus.FORBIDDEN);
         }

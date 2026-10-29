@@ -323,7 +323,7 @@ public class AuthService {
         otpRequest.setUsedAt(LocalDateTime.now());
         otpRequestRepository.save(otpRequest);
 
-        Account account = accountRepository.findByEmail(email)
+        Account account = accountRepository.findByEmailForUpdate(email)
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản để đặt lại mật khẩu"));
 
         if (account.getRole() == Role.STAFF) throw new AppException("Nhân viên cần liên hệ Owner để cấp lại mật khẩu");
