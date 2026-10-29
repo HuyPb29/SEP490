@@ -123,4 +123,28 @@ class VoucherApiTests {
         mvc.perform(post("/api/admin/vouchers/"+id+"/disable").header("Authorization",token(admin))).andExpect(status().isOk());
         mvc.perform(get("/api/locations/"+location.getId()+"/vouchers")).andExpect(jsonPath("$.data.content[?(@.id == "+id+")]").isEmpty());
     }
+    @Test void personalGrantIsPrivateAndCannotBeStolen() throws Exception {
+        Voucher v=voucher(VoucherTargetGroup.SPECIFIED);
+        var r=mvc.perform(post("/api/owner/vouchers/"+v.getId()+"/grants").header("Authorization",token(owner)).header("X-Location-Id",location.getId())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"playerIds\":["+player.getId()+"]}"))
+                .andExpect(status().isCreated()).andReturn();
+        long grant=json.readTree(r.getResponse().getContentAsString()).at("/data/0/grantId").asLong();
+        mvc.perform(get("/api/me/vouchers").header("Authorization",token(player))).andExpect(jsonPath("$.data.totalElements").value(1));
+        mvc.perform(get("/api/me/vouchers").header("Authorization",token(other))).andExpect(jsonPath("$.data.totalElements").value(0));
+        VoucherCheckRequest request=new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(1000),new VoucherSelection(null,grant));
+        mvc.perform(post("/api/vouchers/check").header("Authorization",token(other)).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request))).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/vouchers/check").header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.discountAmount").value(100));
+        assertThat(vouchers.findById(v.getId()).orElseThrow().getUsedCount()).isZero();
+    }
+    @Test void newPlayerAndMinimumAmountRules() {
+        Voucher v=voucher(VoucherTargetGroup.NEW_PLAYERS);
+        assertThatThrownBy(() -> service.check(UserPrincipal.create(player),new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(100),new VoucherSelection(v.getCode(),null))))
+                .isInstanceOf(AppException.class).hasMessageContaining("tối thiểu");
+        Booking b=booking(player);
+        assertThat(service.check(UserPrincipal.create(player),new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(1000),new VoucherSelection(v.getCode(),null))).discountAmount()).isEqualByComparingTo("100");
+        tx.executeWithoutResult(s -> em.find(Booking.class,b.getId()).setStatus(BookingStatus.CONFIRMED));
+        assertThatThrownBy(() -> service.check(UserPrincipal.create(player),new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(1000),new VoucherSelection(v.getCode(),null))))
+                .isInstanceOf(AppException.class).hasMessageContaining("Player mới");
+    }
 }

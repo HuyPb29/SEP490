@@ -150,5 +150,50 @@ public class VoucherService {
         }
         return result;
     }
+    public VoucherCheckResponse check(UserPrincipal user,@Valid VoucherCheckRequest request) {
+        role(user,Role.PLAYER);
+        Voucher v=resolve(request.locationId(),request.selection(),false);
+        return evaluate(v,user.getId(),request.locationId(),request.orderAmount(),request.selection());
+    }
+    private Voucher resolve(Long location,VoucherSelection selection,boolean lock) {
+        Long id;
+        if(selection.grantId()!=null) id=grants.findById(selection.grantId()).orElseThrow(() -> new AppException("Voucher không khả dụng")).getVoucherId();
+        else id=vouchers.findIdByLocationAndCode(location,selection.code().trim().toUpperCase(Locale.ROOT))
+                .orElseThrow(() -> new AppException("Voucher không khả dụng"));
+        if(!lock) return vouchers.findById(id).orElseThrow();
+        Voucher v=locked(id);
+        // resolve may have loaded this entity before waiting for another transaction.
+        em.refresh(v,LockModeType.PESSIMISTIC_WRITE);
+        if(selection.grantId()!=null) em.refresh(grants.findById(selection.grantId()).orElseThrow());
+        return v;
+    }
+    private VoucherCheckResponse evaluate(Voucher v,Long player,Long location,BigDecimal amount,VoucherSelection selection) {
+        activeLocation(location);
+        if(!location.equals(v.getLocationId()) || v.getStatus()!=VoucherStatus.PUBLISHED) throw new AppException("Voucher không khả dụng");
+        LocalDateTime now=LocalDateTime.now();
+        if(v.getValidFrom()!=null && now.toLocalDate().isBefore(v.getValidFrom()) || v.getValidTo()!=null && now.toLocalDate().isAfter(v.getValidTo()))
+            throw new AppException("Voucher ngoài thời hạn sử dụng");
+        if(v.getTargetGroup()==VoucherTargetGroup.SPECIFIED) {
+            VoucherGrant g=selection.grantId()==null ? null:grants.findById(selection.grantId()).orElse(null);
+            if(g==null || !g.getVoucherId().equals(v.getId()) || !g.getPlayerId().equals(player) || g.getStatus()!=VoucherGrantStatus.AVAILABLE
+                    || g.getExpiresAt()!=null && !g.getExpiresAt().isAfter(now)) throw new AppException("Voucher cá nhân không khả dụng");
+        } else if(selection.grantId()!=null) throw new AppException("Voucher công khai phải chọn bằng code");
+        if(v.getTargetGroup()==VoucherTargetGroup.NEW_PLAYERS && em.createQuery(
+                "select count(b) from Booking b where b.playerId=:p and b.locationId=:l and b.status in :states",Long.class)
+                .setParameter("p",player).setParameter("l",location)
+                .setParameter("states",List.of(BookingStatus.CONFIRMED,BookingStatus.IN_USE,BookingStatus.COMPLETED)).getSingleResult()>0)
+            throw new AppException("Voucher chỉ dành cho Player mới tại địa điểm");
+        if(amount.compareTo(v.getMinOrderAmount())<0) throw new AppException("Chưa đạt giá trị đơn tối thiểu");
+        if(v.getMaxTotalUses()!=null && v.getUsedCount()>=v.getMaxTotalUses()) throw new AppException("Voucher hết lượt");
+        if(v.getMaxUsesPerPlayer()!=null && usages.countByVoucherIdAndPlayerIdAndStatus(v.getId(),player,VoucherUsageStatus.USED)>=v.getMaxUsesPerPlayer())
+            throw new AppException("Đã hết lượt sử dụng cá nhân");
+        BigDecimal discount=v.getDiscountType()==DiscountType.AMOUNT ? v.getDiscountValue()
+                :amount.multiply(v.getDiscountValue()).divide(BigDecimal.valueOf(100),0,RoundingMode.DOWN);
+        // The existing SQL schema requires a strictly positive final_amount.
+        discount=discount.min(amount.subtract(BigDecimal.ONE));
+        if(discount.signum()<=0) throw new AppException("Giá trị giảm không hợp lệ");
+        if(v.getBudget()!=null && v.getBudgetUsed().add(discount).compareTo(v.getBudget())>0) throw new AppException("Voucher không đủ ngân sách");
+        return new VoucherCheckResponse(v.getId(),selection.grantId(),amount,discount,amount.subtract(discount));
+    }
 
 }

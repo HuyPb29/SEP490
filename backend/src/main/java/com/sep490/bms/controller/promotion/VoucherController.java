@@ -65,6 +65,6 @@ public class VoucherController {
     @PostMapping("/api/vouchers/check") @PreAuthorize("hasRole('PLAYER')")
     @Operation(summary="Kiểm điều kiện và tính giảm dự kiến",description="Không tiêu lượt/giữ ngân sách. Amount client chỉ để preview. F3 kiểm lại bằng giá DB trong transaction tạo booking.")
     public ApiResponse<VoucherCheckResponse> check(@AuthenticationPrincipal UserPrincipal user,@Valid @RequestBody VoucherCheckRequest request) {
-        throw new com.sep490.bms.exception.AppException("Chưa triển khai", HttpStatus.NOT_IMPLEMENTED);
+        return ApiResponse.success(service.check(user,request));
     }
 }
