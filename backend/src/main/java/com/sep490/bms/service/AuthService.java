@@ -151,6 +151,9 @@ public class AuthService {
             throw new AppException("Tên đăng nhập đã tồn tại. Vui lòng đăng ký lại (DR22)");
         }
 
+        if (accountRepository.existsByPhoneAndRole(pendingData.get("phone"), Role.PLAYER)) {
+            throw new AppException("Số điện thoại này đã được đăng ký cho một tài khoản Player khác");
+        }
         otpRequestRepository.invalidateUnused(email, OtpPurpose.REGISTER, LocalDateTime.now());
 
         Account account = Account.builder()
