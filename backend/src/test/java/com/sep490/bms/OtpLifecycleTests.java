@@ -92,6 +92,22 @@ class OtpLifecycleTests {
     }
 
 
+    @Test
+    void expiredCodeAndLockedAccountCannotResetPassword() {
+        Account account = player();
+        OtpRequest request = otp(OtpPurpose.RESET_PASSWORD);
+        request.setExpiresAt(LocalDateTime.now().minusSeconds(1));
+        otps.saveAndFlush(request);
+        assertThatThrownBy(() -> verify(OtpPurpose.RESET_PASSWORD, "123456")).hasMessageContaining("hết hạn");
+        request.setExpiresAt(LocalDateTime.now().plusMinutes(5));
+        otps.saveAndFlush(request);
+        account.setStatus(AccountStatus.LOCKED);
+        accounts.saveAndFlush(account);
+        assertThatThrownBy(() -> verify(OtpPurpose.RESET_PASSWORD, "123456"))
+                .isInstanceOfSatisfying(AppException.class, ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+        assertThat(otps.findById(request.getId()).orElseThrow().getUsedAt()).isNull();
+        assertThat(encoder.matches("Original123", accounts.findByEmail(email).orElseThrow().getPasswordHash())).isTrue();
+    }
 
 
     @Test

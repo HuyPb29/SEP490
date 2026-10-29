@@ -321,6 +321,9 @@ public class AuthService {
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản để đặt lại mật khẩu"));
 
         if (account.getRole() == Role.STAFF) throw new AppException("Nhân viên cần liên hệ Owner để cấp lại mật khẩu");
+        if (account.getStatus() != AccountStatus.ACTIVE) {
+            throw new AppException("Tài khoản không hoạt động", HttpStatus.FORBIDDEN);
+        }
         otpRequestRepository.invalidateUnused(email, OtpPurpose.RESET_PASSWORD, LocalDateTime.now());
         account.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         account.setUpdatedAt(LocalDateTime.now());
