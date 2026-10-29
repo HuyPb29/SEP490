@@ -53,14 +53,14 @@ import lombok.RequiredArgsConstructor;
 /**
  * F8 – UC33 Gửi và xử lý khiếu nại.
  * Luồng: Player gửi (SUBMITTED) → Staff ghi chú và chuyển (PENDING_OWNER) → Owner xử lý (RESOLVED/REJECTED).
- * Khiếu nại LATE_PAYMENT_CONFIRMATION (BR49) do Staff tạo và vào thẳng PENDING_OWNER.
+ * Khiếu nại LATE_PAYMENT_CONFIRMATION (BR49) đi cùng luồng, bắt buộc có paymentId.
  */
 @Service
 @RequiredArgsConstructor
 public class ComplaintService {
 
     private static final int MAX_PAGE_SIZE = 50;
-    private static final Set<String> PLAYER_TYPES = Set.of("SERVICE", "PAYMENT", "FACILITY", "OTHER");
+    private static final Set<String> PLAYER_TYPES = Set.of("PAYMENT_ISSUE", "COURT_SERVICE", "OTHER", Complaint.TYPE_LATE_PAYMENT_CONFIRMATION);
 
     private final ComplaintRepository complaintRepository;
     private final BookingRepository bookingRepository;
@@ -77,18 +77,11 @@ public class ComplaintService {
     @Transactional
     public ComplaintResponse createComplaint(UserPrincipal user, CreateComplaintRequest request) {
         String type = request.getComplaintType().trim().toUpperCase();
-        Complaint complaint = user.getRole() == Role.STAFF
-                ? buildLatePaymentComplaint(user, type, request)
-                : buildPlayerComplaint(user, type, request);
-        complaint = complaintRepository.save(complaint);
+        Complaint complaint = complaintRepository.save(buildPlayerComplaint(user, type, request));
 
-        if (complaint.getStatus() == ComplaintStatus.SUBMITTED) {
-            String title = "Có khiếu nại mới từ người chơi";
-            for (Account staff : accountRepository.findByRoleAndLocationId(Role.STAFF, complaint.getLocationId())) {
-                notify(staff.getId(), "COMPLAINT_SUBMITTED", title, truncate(complaint.getContent(), 500), complaint);
-            }
-        } else {
-            notifyOwner(complaint, "Khiếu nại xác nhận thanh toán trễ cần duyệt");
+        String title = "Có khiếu nại mới từ người chơi";
+        for (Account staff : accountRepository.findByRoleAndLocationId(Role.STAFF, complaint.getLocationId())) {
+            notify(staff.getId(), "COMPLAINT_SUBMITTED", title, truncate(complaint.getContent(), 500), complaint);
         }
         return toResponses(List.of(complaint)).get(0);
     }
@@ -104,11 +97,18 @@ public class ComplaintService {
         if (!user.getId().equals(booking.getPlayerId())) {
             throw new AppException("Bạn chỉ được khiếu nại booking của chính mình", HttpStatus.FORBIDDEN);
         }
+        boolean latePayment = Complaint.TYPE_LATE_PAYMENT_CONFIRMATION.equals(type);
+        if (latePayment && request.getPaymentId() == null) {
+            throw new AppException("Khiếu nại xác nhận thanh toán trễ phải gắn với khoản thanh toán");
+        }
         if (request.getPaymentId() != null) {
             Payment payment = findPayment(request.getPaymentId());
             if (!booking.getId().equals(payment.getBookingId())) {
                 throw new AppException("Khoản thanh toán không thuộc booking này");
             }
+        }
+        if (latePayment && complaintRepository.existsByPaymentIdAndComplaintType(request.getPaymentId(), type)) {
+            throw new AppException("Khoản thanh toán này đã có khiếu nại xác nhận trễ", HttpStatus.CONFLICT);
         }
         return Complaint.builder()
                 .locationId(booking.getLocationId())
@@ -121,34 +121,6 @@ public class ComplaintService {
                 .build();
     }
 
-    private Complaint buildLatePaymentComplaint(UserPrincipal user, String type, CreateComplaintRequest request) {
-        if (!Complaint.TYPE_LATE_PAYMENT_CONFIRMATION.equals(type)) {
-            throw new AppException("Nhân viên chỉ được tạo khiếu nại xác nhận thanh toán trễ");
-        }
-        if (request.getPaymentId() == null) {
-            throw new AppException("Khiếu nại xác nhận thanh toán trễ phải gắn với khoản thanh toán");
-        }
-        Payment payment = findPayment(request.getPaymentId());
-        if (!payment.getLocationId().equals(user.getLocationId())) {
-            throw new AppException("Khoản thanh toán không thuộc địa điểm của bạn", HttpStatus.FORBIDDEN);
-        }
-        if (complaintRepository.existsByPaymentIdAndComplaintType(payment.getId(), type)) {
-            throw new AppException("Khoản thanh toán này đã có khiếu nại xác nhận trễ", HttpStatus.CONFLICT);
-        }
-        Long playerId = payment.getBookingId() == null ? null
-                : bookingRepository.findById(payment.getBookingId()).map(Booking::getPlayerId).orElse(null);
-        return Complaint.builder()
-                .locationId(payment.getLocationId())
-                .bookingId(payment.getBookingId())
-                .paymentId(payment.getId())
-                .playerId(playerId)
-                .createdBy(user.getId())
-                .complaintType(type)
-                .content(request.getContent().trim())
-                .status(ComplaintStatus.PENDING_OWNER)
-                .handledBy(user.getId())
-                .build();
-    }
 
     // ---------------------------------------------------------------- Xem khiếu nại
 

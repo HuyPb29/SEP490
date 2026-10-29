@@ -35,9 +35,9 @@ public class ComplaintController {
 
     private final ComplaintService complaintService;
 
-    /** Player gửi khiếu nại; Staff tạo khiếu nại xác nhận thanh toán trễ (BR49). */
+    /** Player gửi khiếu nại, gồm cả xác nhận thanh toán trễ (BR49). */
     @PostMapping("/api/complaints")
-    @PreAuthorize("hasAnyRole('PLAYER','STAFF')")
+    @PreAuthorize("hasRole('PLAYER')")
     public ResponseEntity<ApiResponse<ComplaintResponse>> postComplaints(
             @AuthenticationPrincipal UserPrincipal currentUser,
             @Valid @RequestBody CreateComplaintRequest request) {
@@ -46,7 +46,7 @@ public class ComplaintController {
     }
 
     @GetMapping("/api/me/complaints")
-    @PreAuthorize("hasAnyRole('PLAYER','STAFF')")
+    @PreAuthorize("hasRole('PLAYER')")
     public ResponseEntity<ApiResponse<PageResponse<ComplaintResponse>>> getMeComplaints(
             @AuthenticationPrincipal UserPrincipal currentUser,
             @RequestParam(defaultValue = "0") int page,
