@@ -75,9 +75,45 @@ class OtpLifecycleTests {
         else auth.resetPassword(new ResetPasswordRequest(email, code, "Changed123"));
     }
 
+    @Test
+    void resendInvalidatesOldResetCodeAndNeitherCodeCanReplayAfterSuccess() {
+        player();
+        OtpRequest old = otp(OtpPurpose.RESET_PASSWORD);
+        auth.resendOtp(new ResendOtpRequest(email, OtpPurpose.RESET_PASSWORD));
+        assertThat(otps.findById(old.getId()).orElseThrow().getUsedAt()).isNotNull();
+        OtpRequest latest = otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.RESET_PASSWORD).orElseThrow();
+        latest.setCodeHash(encoder.encode("654321"));
+        otps.saveAndFlush(latest);
+        assertThatThrownBy(() -> verify(OtpPurpose.RESET_PASSWORD, "123456")).isInstanceOf(AppException.class);
+        verify(OtpPurpose.RESET_PASSWORD, "654321");
+        assertThat(encoder.matches("Changed123", accounts.findByEmail(email).orElseThrow().getPasswordHash())).isTrue();
+        assertThatThrownBy(() -> verify(OtpPurpose.RESET_PASSWORD, "123456")).isInstanceOf(AppException.class);
+        assertThatThrownBy(() -> verify(OtpPurpose.RESET_PASSWORD, "654321")).isInstanceOf(AppException.class);
+    }
 
 
 
 
+    @Test
+    void registrationResendInvalidatesOldCodeAndActivatesOnlyOnce() throws Exception {
+        auth.register(RegisterRequest.builder().email(email).username("p" + suffix)
+                .phone("0" + String.format("%09d", Math.floorMod((long) suffix.hashCode(), 1000000000L)))
+                .fullName("Test Player").password("Original123").build());
+        OtpRequest old = otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER).orElseThrow();
+        jdbc.update("UPDATE otp_request SET created_at = ? WHERE id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(2)), old.getId());
+        old.setCodeHash(encoder.encode("123456"));
+        otps.saveAndFlush(old);
+        auth.resendOtp(new ResendOtpRequest(email, OtpPurpose.REGISTER));
+        assertThat(otps.findById(old.getId()).orElseThrow().getUsedAt()).isNotNull();
+        OtpRequest latest = otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER).orElseThrow();
+        latest.setCodeHash(encoder.encode("654321"));
+        otps.saveAndFlush(latest);
+        assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "123456")).isInstanceOf(AppException.class);
+        verify(OtpPurpose.REGISTER, "654321");
+        assertThat(accounts.findByEmail(email).orElseThrow().getStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "123456")).isInstanceOf(AppException.class);
+        assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "654321")).isInstanceOf(AppException.class);
+    }
 
 }

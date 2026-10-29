@@ -98,6 +98,7 @@ public class AuthService {
                 .expiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES))
                 .build();
 
+        otpRequestRepository.invalidateUnused(email, OtpPurpose.REGISTER, LocalDateTime.now());
         otpRequestRepository.save(otpRequest);
 
         emailService.sendVerificationOtp(email, otpCode);
@@ -150,6 +151,7 @@ public class AuthService {
             throw new AppException("Tên đăng nhập đã tồn tại. Vui lòng đăng ký lại (DR22)");
         }
 
+        otpRequestRepository.invalidateUnused(email, OtpPurpose.REGISTER, LocalDateTime.now());
 
         Account account = Account.builder()
                 .username(username)
@@ -200,6 +202,7 @@ public class AuthService {
                     .expiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES))
                     .build();
 
+            otpRequestRepository.invalidateUnused(email, purpose, LocalDateTime.now());
             otpRequestRepository.save(newOtpRequest);
             emailService.sendVerificationOtp(email, newOtp);
         } else if (purpose == OtpPurpose.RESET_PASSWORD) {
@@ -217,6 +220,7 @@ public class AuthService {
                             .expiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES))
                             .build();
 
+                    otpRequestRepository.invalidateUnused(email, purpose, LocalDateTime.now());
                     otpRequestRepository.save(newOtpRequest);
                     emailService.sendPasswordResetOtp(email, newOtp);
                 }
@@ -277,6 +281,7 @@ public class AuthService {
                         .expiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES))
                         .build();
 
+                otpRequestRepository.invalidateUnused(email, OtpPurpose.RESET_PASSWORD, LocalDateTime.now());
                 otpRequestRepository.save(otpRequest);
                 emailService.sendPasswordResetOtp(email, otpCode);
             }
@@ -313,6 +318,7 @@ public class AuthService {
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản để đặt lại mật khẩu"));
 
         if (account.getRole() == Role.STAFF) throw new AppException("Nhân viên cần liên hệ Owner để cấp lại mật khẩu");
+        otpRequestRepository.invalidateUnused(email, OtpPurpose.RESET_PASSWORD, LocalDateTime.now());
         account.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         account.setUpdatedAt(LocalDateTime.now());
         accountRepository.save(account);
