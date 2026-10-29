@@ -27,6 +27,7 @@ import com.sep490.bms.entity.OtpPurpose;
 import com.sep490.bms.entity.OtpRequest;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.exception.InvalidOtpException;
 import com.sep490.bms.repository.AccountRepository;
 import com.sep490.bms.repository.LocationRepository;
 import com.sep490.bms.repository.OtpRequestRepository;
@@ -108,7 +109,7 @@ public class AuthService {
         return result;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = InvalidOtpException.class)
     public LoginResponse verifyEmail(VerifyEmailRequest request) {
         String email = request.getEmail().trim().toLowerCase();
         String otp = request.getOtp().trim();
@@ -128,7 +129,7 @@ public class AuthService {
         if (!passwordEncoder.matches(otp, otpRequest.getCodeHash())) {
             otpRequest.setFailedAttempts(otpRequest.getFailedAttempts() + 1);
             otpRequestRepository.save(otpRequest);
-            throw new AppException("Mã xác thực không chính xác");
+            throw new InvalidOtpException();
         }
 
         otpRequest.setUsedAt(LocalDateTime.now());
@@ -148,6 +149,7 @@ public class AuthService {
         if (accountRepository.existsByUsername(username)) {
             throw new AppException("Tên đăng nhập đã tồn tại. Vui lòng đăng ký lại (DR22)");
         }
+
 
         Account account = Account.builder()
                 .username(username)
@@ -281,7 +283,7 @@ public class AuthService {
         });
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = InvalidOtpException.class)
     public void resetPassword(ResetPasswordRequest request) {
         String email = request.getEmail().trim().toLowerCase();
         String otp = request.getOtp().trim();
@@ -301,7 +303,7 @@ public class AuthService {
         if (!passwordEncoder.matches(otp, otpRequest.getCodeHash())) {
             otpRequest.setFailedAttempts(otpRequest.getFailedAttempts() + 1);
             otpRequestRepository.save(otpRequest);
-            throw new AppException("Mã xác thực không chính xác");
+            throw new InvalidOtpException();
         }
 
         otpRequest.setUsedAt(LocalDateTime.now());
