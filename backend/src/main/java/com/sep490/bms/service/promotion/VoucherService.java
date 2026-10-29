@@ -112,5 +112,14 @@ public class VoucherService {
         v.setValidTo(r.validTo()); v.setGrantValidDays(r.grantValidDays()); v.setMaxUsesPerPlayer(r.maxUsesPerPlayer());
         v.setMaxTotalUses(r.maxTotalUses()); v.setBudget(r.budget());
     }
+    @Transactional
+    public VoucherResponse publish(UserPrincipal user,Long id) {
+        Voucher v=owned(user,id);
+        if(v.getStatus()==VoucherStatus.DISABLED || v.getSource()!=VoucherSource.CAMPAIGN)
+            throw new AppException("Voucher không thể publish",HttpStatus.CONFLICT);
+        if(v.getValidFrom()==null || v.getValidTo()==null || v.getValidTo().isBefore(LocalDate.now()))
+            throw new AppException("Ngày hiệu lực voucher không hợp lệ");
+        v.setStatus(VoucherStatus.PUBLISHED); return VoucherResponse.from(vouchers.saveAndFlush(v));
+    }
 
 }

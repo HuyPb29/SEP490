@@ -53,9 +53,7 @@ public class VoucherController {
     }
     @PostMapping("/api/owner/vouchers/{id}/publish") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Publish campaign; gọi lặp an toàn",description="Không publish lại DISABLED")
-    public ApiResponse<VoucherResponse> publish(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id) {
-        throw new com.sep490.bms.exception.AppException("Chưa triển khai", HttpStatus.NOT_IMPLEMENTED);
-    }
+    public ApiResponse<VoucherResponse> publish(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id) { return ApiResponse.success(service.publish(user,id)); }
     @PostMapping("/api/admin/vouchers/{id}/disable") @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary="Chỉ Admin vô hiệu voucher; gọi lặp an toàn")
     public ApiResponse<VoucherResponse> disable(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id) {
