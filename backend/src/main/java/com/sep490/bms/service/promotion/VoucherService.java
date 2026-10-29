@@ -127,5 +127,28 @@ public class VoucherService {
         v.setStatus(VoucherStatus.DISABLED); v.setDisabledBy(user.getId());
         return VoucherResponse.from(vouchers.saveAndFlush(v));
     }
+    @Transactional
+    public List<PersonalVoucherResponse> grant(UserPrincipal user,Long id,@Valid VoucherGrantRequest request) {
+        Voucher v=owned(user,id);
+        if(v.getStatus()!=VoucherStatus.PUBLISHED || v.getTargetGroup()!=VoucherTargetGroup.SPECIFIED || v.getSource()!=VoucherSource.CAMPAIGN)
+            throw new AppException("Chỉ cấp campaign SPECIFIED đã publish",HttpStatus.CONFLICT);
+        if(v.getValidTo()!=null && v.getValidTo().isBefore(LocalDate.now())) throw new AppException("Voucher hết hạn");
+        Set<Long> ids=new LinkedHashSet<>(request.playerIds());
+        if(ids.size()>100) throw new AppException("Tối đa100 Player mỗi yêu cầu");
+        for(Long player:ids) if(accounts.findById(player).filter(a -> a.getRole()==Role.PLAYER && a.getStatus()==AccountStatus.ACTIVE).isEmpty())
+            throw new AppException("Player không tồn tại hoặc không hoạt động");
+        LocalDateTime now=LocalDateTime.now();
+        LocalDateTime expiry=v.getValidTo()==null ? null:v.getValidTo().plusDays(1).atStartOfDay();
+        if(v.getGrantValidDays()!=null) {
+            LocalDateTime relative=now.plusDays(v.getGrantValidDays());
+            if(expiry==null || relative.isBefore(expiry)) expiry=relative;
+        }
+        List<PersonalVoucherResponse> result=new ArrayList<>();
+        for(Long player:ids) {
+            VoucherGrant g=grants.saveAndFlush(VoucherGrant.builder().voucherId(id).playerId(player).expiresAt(expiry).build());
+            result.add(new PersonalVoucherResponse(g.getId(),g.getStatus(),g.getGrantedAt(),g.getExpiresAt(),VoucherResponse.from(v)));
+        }
+        return result;
+    }
 
 }

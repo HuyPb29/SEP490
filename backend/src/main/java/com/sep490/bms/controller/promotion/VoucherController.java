@@ -60,7 +60,7 @@ public class VoucherController {
     @PostMapping("/api/owner/vouchers/{id}/grants") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Cấp campaign SPECIFIED đã publish cho tối đa100 Player",description="Mỗi request cấp lượt mới; retry sẽ cấp thêm lượt")
     public ResponseEntity<ApiResponse<List<PersonalVoucherResponse>>> grant(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id,@Valid @RequestBody VoucherGrantRequest request) {
-        throw new com.sep490.bms.exception.AppException("Chưa triển khai", HttpStatus.NOT_IMPLEMENTED);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(service.grant(user,id,request)));
     }
     @PostMapping("/api/vouchers/check") @PreAuthorize("hasRole('PLAYER')")
     @Operation(summary="Kiểm điều kiện và tính giảm dự kiến",description="Không tiêu lượt/giữ ngân sách. Amount client chỉ để preview. F3 kiểm lại bằng giá DB trong transaction tạo booking.")
