@@ -186,4 +186,15 @@ class VoucherApiTests {
         tx.executeWithoutResult(s -> service.consumeForBooking(b.getId(),request.selection()));
         assertThatThrownBy(() -> service.check(UserPrincipal.create(player),request)).hasMessageContaining("cá nhân");
     }
+    @Test void openApiContractAndInputValidation() throws Exception {
+        String body=mvc.perform(get("/v3/api-docs/f6-vouchers")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        JsonNode api=json.readTree(body);
+        assertThat(api.at("/paths/~1api~1owner~1vouchers/post/responses/201").isMissingNode()).isFalse();
+        assertThat(api.at("/paths/~1api~1locations~1{id}~1vouchers/get/security").size()).isZero();
+        assertThat(api.at("/paths/~1api~1owner~1vouchers/post/parameters").toString()).contains("X-Location-Id");
+        java.nio.file.Files.writeString(java.nio.file.Path.of("target/f6-openapi.json"),json.writerWithDefaultPrettyPrinter().writeValueAsString(api));
+        mvc.perform(post("/api/owner/vouchers").header("Authorization",token(owner)).header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"bad\",\"discountValue\":-1}")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/locations/"+location.getId()+"/vouchers?size=101")).andExpect(status().isBadRequest());
+    }
 }
