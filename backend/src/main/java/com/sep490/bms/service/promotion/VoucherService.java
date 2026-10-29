@@ -43,6 +43,12 @@ public class VoucherService {
     private void role(UserPrincipal user, Role role) {
         if (user == null || user.getRole() != role) throw new AppException("Không có quyền thực hiện",HttpStatus.FORBIDDEN);
     }
+    private Long ownerLocation(UserPrincipal user) {
+        role(user,Role.OWNER);
+        Location l=scope.selectedLocation(user);
+        activeLocation(l.getId());
+        return l.getId();
+    }
     private void activeLocation(Long id) {
         if (locations.findById(id).filter(l -> "ACTIVE".equals(l.getStatus())).isEmpty())
             throw new AppException("Địa điểm không hoạt động",HttpStatus.NOT_FOUND);
@@ -57,6 +63,14 @@ public class VoucherService {
                 c.or(c.isNull(r.get("validTo")),c.greaterThanOrEqualTo(r.get("validTo"),today)),
                 c.or(c.isNull(r.get("maxTotalUses")),c.lessThan(r.get("usedCount"),r.get("maxTotalUses"))),
                 c.or(c.isNull(r.get("budget")),c.lessThan(r.get("budgetUsed"),r.get("budget")))) ,page(page,size)).map(VoucherResponse::from));
+    }
+    public PageResponse<VoucherResponse> ownerList(UserPrincipal user, VoucherStatus status,int page,int size) {
+        return list(ownerLocation(user),status,page,size);
+    }
+    private PageResponse<VoucherResponse> list(Long location,VoucherStatus status,int page,int size) {
+        Specification<Voucher> spec=(r,q,c) -> c.and(location==null ? c.conjunction():c.equal(r.get("locationId"),location),
+                status==null ? c.conjunction():c.equal(r.get("status"),status));
+        return PageResponse.from(vouchers.findAll(spec,page(page,size)).map(VoucherResponse::from));
     }
     public PageResponse<PersonalVoucherResponse> personalList(UserPrincipal user,int page,int size) {
         role(user,Role.PLAYER);
