@@ -120,6 +120,30 @@ class OtpLifecycleTests {
         assertThat(encoder.matches("Original123", accounts.findByEmail(email).orElseThrow().getPasswordHash())).isTrue();
     }
 
+    @Test
+    void concurrentResetConsumesCodeOnlyOnce() throws Exception {
+        player();
+        otp(OtpPurpose.RESET_PASSWORD);
+        var pool = Executors.newFixedThreadPool(2);
+        var start = new CountDownLatch(1);
+        java.util.concurrent.Callable<Integer> reset = () -> {
+            start.await();
+            try {
+                verify(OtpPurpose.RESET_PASSWORD, "123456");
+                return 200;
+            } catch (AppException ex) { return ex.getStatus().value(); }
+        };
+        try {
+            var first = pool.submit(reset);
+            var second = pool.submit(reset);
+            start.countDown();
+            assertThat(java.util.List.of(first.get(25, TimeUnit.SECONDS), second.get(25, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 400);
+        } finally {
+            pool.shutdownNow();
+            pool.awaitTermination(10, TimeUnit.SECONDS);
+        }
+    }
 
     @Test
     void registrationResendInvalidatesOldCodeAndActivatesOnlyOnce() throws Exception {
@@ -143,4 +167,29 @@ class OtpLifecycleTests {
         assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "654321")).isInstanceOf(AppException.class);
     }
 
+    @Test
+    void concurrentFirstRegistrationCannotBypassCooldown() throws Exception {
+        var pool = Executors.newFixedThreadPool(2);
+        var start = new CountDownLatch(1);
+        java.util.concurrent.Callable<Integer> register = () -> {
+            start.await();
+            try {
+                auth.register(RegisterRequest.builder().email(email).username("p" + suffix)
+                        .phone("0" + String.format("%09d", Math.floorMod((long) suffix.hashCode(), 1000000000L)))
+                        .fullName("Test Player").password("Original123").build());
+                return 201;
+            } catch (AppException ex) { return ex.getStatus().value(); }
+        };
+        try {
+            var first = pool.submit(register);
+            var second = pool.submit(register);
+            start.countDown();
+            assertThat(java.util.List.of(first.get(25, TimeUnit.SECONDS), second.get(25, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(201, 429);
+            assertThat(otps.countByEmailAndCreatedAtAfter(email, LocalDateTime.now().minusDays(1))).isEqualTo(1);
+        } finally {
+            pool.shutdownNow();
+            pool.awaitTermination(10, TimeUnit.SECONDS);
+        }
+    }
 }

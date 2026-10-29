@@ -52,11 +52,13 @@ public class AuthService {
     private final EmailService emailService;
     private final LocationRepository locationRepository;
     private final ObjectMapper objectMapper;
+    private final OtpLockService otpLock;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
     public Map<String, Object> register(RegisterRequest request) {
         String email = request.getEmail().trim().toLowerCase();
+        otpLock.acquire(email);
         String phone = request.getPhone().trim();
 
         if (accountRepository.existsByEmail(email)) {
@@ -113,6 +115,7 @@ public class AuthService {
     @Transactional(noRollbackFor = InvalidOtpException.class)
     public LoginResponse verifyEmail(VerifyEmailRequest request) {
         String email = request.getEmail().trim().toLowerCase();
+        otpLock.acquire(email);
         String otp = request.getOtp().trim();
 
         OtpRequest otpRequest = otpRequestRepository
@@ -181,6 +184,7 @@ public class AuthService {
     @Transactional
     public void resendOtp(ResendOtpRequest request) {
         String email = request.getEmail().trim().toLowerCase();
+        otpLock.acquire(email);
         OtpPurpose purpose = request.getPurpose();
 
         if (purpose == OtpPurpose.REGISTER) {
@@ -269,6 +273,7 @@ public class AuthService {
     @Transactional
     public void forgotPassword(ForgotPasswordRequest request) {
         String email = request.getEmail().trim().toLowerCase();
+        otpLock.acquire(email);
 
         accountRepository.findByEmail(email).ifPresent(account -> {
             if (account.getStatus() == AccountStatus.ACTIVE && account.getRole() != Role.STAFF) {
@@ -294,6 +299,7 @@ public class AuthService {
     @Transactional(noRollbackFor = InvalidOtpException.class)
     public void resetPassword(ResetPasswordRequest request) {
         String email = request.getEmail().trim().toLowerCase();
+        otpLock.acquire(email);
         String otp = request.getOtp().trim();
 
         OtpRequest otpRequest = otpRequestRepository
