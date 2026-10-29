@@ -59,7 +59,8 @@ public class AdminService {
                 try {
                     Role r = Role.valueOf(role.trim().toUpperCase());
                     predicates.add(cb.equal(root.get("role"), r));
-                } catch (IllegalArgumentException ignored) {
+                } catch (IllegalArgumentException ex) {
+                    throw new AppException("Bộ lọc role/status không hợp lệ");
                 }
             }
 
@@ -67,7 +68,8 @@ public class AdminService {
                 try {
                     AccountStatus s = AccountStatus.valueOf(status.trim().toUpperCase());
                     predicates.add(cb.equal(root.get("status"), s));
-                } catch (IllegalArgumentException ignored) {
+                } catch (IllegalArgumentException ex) {
+                    throw new AppException("Bộ lọc role/status không hợp lệ");
                 }
             }
 
