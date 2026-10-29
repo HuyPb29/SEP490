@@ -57,6 +57,9 @@ public class StaffService {
         Account staff = managedStaff(user, id);
         String status = request.getStatus().trim().toUpperCase();
         if (!List.of("ACTIVE", "DISABLED").contains(status)) throw new AppException("Chỉ chấp nhận ACTIVE hoặc DISABLED");
+        if (staff.getStatus() == AccountStatus.LOCKED) {
+            throw new AppException("Chỉ Admin được mở khóa tài khoản đã bị khóa", HttpStatus.FORBIDDEN);
+        }
         staff.setStatus(AccountStatus.valueOf(status));
         staff.setUpdatedAt(LocalDateTime.now());
         return UserDto.fromEntity(accountRepository.save(staff));

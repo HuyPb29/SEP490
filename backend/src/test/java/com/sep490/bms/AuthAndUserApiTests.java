@@ -304,6 +304,10 @@ class AuthAndUserApiTests {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/admin/accounts?sortBy=missing").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isBadRequest());
+        mockMvc.perform(patch("/api/owner/staff-members/" + createdStaffId + "/status")
+                .header("Authorization", "Bearer " + ownerToken).header("X-Location-Id", location.getId())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isForbidden());
         var secondAdmin = fixtureAccount("admin2_" + uniqueSuffix, Role.ADMIN);
         mockMvc.perform(patch("/api/admin/accounts/" + secondAdmin.getId() + "/status")
                 .header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON)
