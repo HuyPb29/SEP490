@@ -67,6 +67,9 @@ public class VoucherService {
     public PageResponse<VoucherResponse> ownerList(UserPrincipal user, VoucherStatus status,int page,int size) {
         return list(ownerLocation(user),status,page,size);
     }
+    public PageResponse<VoucherResponse> adminList(UserPrincipal user, Long location,VoucherStatus status,int page,int size) {
+        role(user,Role.ADMIN); return list(location,status,page,size);
+    }
     private PageResponse<VoucherResponse> list(Long location,VoucherStatus status,int page,int size) {
         Specification<Voucher> spec=(r,q,c) -> c.and(location==null ? c.conjunction():c.equal(r.get("locationId"),location),
                 status==null ? c.conjunction():c.equal(r.get("status"),status));

@@ -39,7 +39,7 @@ public class VoucherController {
     @GetMapping("/api/admin/vouchers") @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary="Admin lọc voucher theo facility/trạng thái")
     public ApiResponse<PageResponse<VoucherResponse>> adminList(@AuthenticationPrincipal UserPrincipal user,@RequestParam(required=false) Long locationId,@RequestParam(required=false) VoucherStatus status,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
-        throw new com.sep490.bms.exception.AppException("Chưa triển khai", HttpStatus.NOT_IMPLEMENTED);
+        return ApiResponse.success(service.adminList(user,locationId,status,page,size));
     }
     @PostMapping("/api/owner/vouchers") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Tạo campaign DRAFT",description="Source CAMPAIGN; location lấy từ scope; code unique trong facility")
