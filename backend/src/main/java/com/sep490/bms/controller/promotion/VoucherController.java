@@ -29,7 +29,7 @@ public class VoucherController {
     @GetMapping("/api/me/vouchers") @PreAuthorize("hasRole('PLAYER')")
     @Operation(summary="Voucher được cấp cho Player hiện tại",description="Bao gồm lịch sử đã dùng/hết hạn")
     public ApiResponse<PageResponse<PersonalVoucherResponse>> personal(@AuthenticationPrincipal UserPrincipal user,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
-        throw new com.sep490.bms.exception.AppException("Chưa triển khai", HttpStatus.NOT_IMPLEMENTED);
+        return ApiResponse.success(service.personalList(user,page,size));
     }
     @GetMapping("/api/owner/vouchers") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Voucher trong facility chọn bằng X-Location-Id")

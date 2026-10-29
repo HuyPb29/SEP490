@@ -40,6 +40,9 @@ public class VoucherService {
         if (page < 0 || size < 1 || size > 100) throw new AppException("Phân trang không hợp lệ");
         return PageRequest.of(page,size,Sort.by(Sort.Direction.DESC,"id"));
     }
+    private void role(UserPrincipal user, Role role) {
+        if (user == null || user.getRole() != role) throw new AppException("Không có quyền thực hiện",HttpStatus.FORBIDDEN);
+    }
     private void activeLocation(Long id) {
         if (locations.findById(id).filter(l -> "ACTIVE".equals(l.getStatus())).isEmpty())
             throw new AppException("Địa điểm không hoạt động",HttpStatus.NOT_FOUND);
@@ -54,6 +57,11 @@ public class VoucherService {
                 c.or(c.isNull(r.get("validTo")),c.greaterThanOrEqualTo(r.get("validTo"),today)),
                 c.or(c.isNull(r.get("maxTotalUses")),c.lessThan(r.get("usedCount"),r.get("maxTotalUses"))),
                 c.or(c.isNull(r.get("budget")),c.lessThan(r.get("budgetUsed"),r.get("budget")))) ,page(page,size)).map(VoucherResponse::from));
+    }
+    public PageResponse<PersonalVoucherResponse> personalList(UserPrincipal user,int page,int size) {
+        role(user,Role.PLAYER);
+        return PageResponse.from(grants.findByPlayerId(user.getId(),page(page,size)).map(g -> new PersonalVoucherResponse(
+                g.getId(),g.getStatus(),g.getGrantedAt(),g.getExpiresAt(),VoucherResponse.from(vouchers.findById(g.getVoucherId()).orElseThrow()))));
     }
 
 }
