@@ -44,7 +44,7 @@ public class VoucherController {
     @PostMapping("/api/owner/vouchers") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Tạo campaign DRAFT",description="Source CAMPAIGN; location lấy từ scope; code unique trong facility")
     public ResponseEntity<ApiResponse<VoucherResponse>> create(@AuthenticationPrincipal UserPrincipal user,@Valid @RequestBody VoucherWriteRequest request) {
-        throw new com.sep490.bms.exception.AppException("Chưa triển khai", HttpStatus.NOT_IMPLEMENTED);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(service.create(user,request)));
     }
     @PatchMapping("/api/owner/vouchers/{id}") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Thay toàn bộ cấu hình campaign DRAFT",description="Body gồm version và voucher đầy đủ; cấm sửa PUBLISHED/DISABLED")

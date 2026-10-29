@@ -80,5 +80,20 @@ public class VoucherService {
         return PageResponse.from(grants.findByPlayerId(user.getId(),page(page,size)).map(g -> new PersonalVoucherResponse(
                 g.getId(),g.getStatus(),g.getGrantedAt(),g.getExpiresAt(),VoucherResponse.from(vouchers.findById(g.getVoucherId()).orElseThrow()))));
     }
+    @Transactional
+    public VoucherResponse create(UserPrincipal user,@Valid VoucherWriteRequest request) {
+        Voucher v=Voucher.builder().locationId(ownerLocation(user)).source(VoucherSource.CAMPAIGN).build();
+        configure(v,request); return VoucherResponse.from(vouchers.saveAndFlush(v));
+    }
+    private void configure(Voucher v,VoucherWriteRequest r) {
+        if(r.validTo().isBefore(LocalDate.now())) throw new AppException("Voucher đã hết hạn");
+        String code=r.code()==null ? null:r.code().toUpperCase(Locale.ROOT);
+        if(code!=null && !code.equals(v.getCode()) && vouchers.existsByLocationIdAndCode(v.getLocationId(),code))
+            throw new AppException("Mã voucher đã tồn tại tại địa điểm",HttpStatus.CONFLICT);
+        v.setCode(code); v.setName(r.name().trim()); v.setTargetGroup(r.targetGroup()); v.setDiscountType(r.discountType());
+        v.setDiscountValue(r.discountValue()); v.setMinOrderAmount(r.minOrderAmount()); v.setValidFrom(r.validFrom());
+        v.setValidTo(r.validTo()); v.setGrantValidDays(r.grantValidDays()); v.setMaxUsesPerPlayer(r.maxUsesPerPlayer());
+        v.setMaxTotalUses(r.maxTotalUses()); v.setBudget(r.budget());
+    }
 
 }
