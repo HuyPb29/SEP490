@@ -49,7 +49,7 @@ public class VoucherController {
     @PatchMapping("/api/owner/vouchers/{id}") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Thay toàn bộ cấu hình campaign DRAFT",description="Body gồm version và voucher đầy đủ; cấm sửa PUBLISHED/DISABLED")
     public ApiResponse<VoucherResponse> update(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id,@Valid @RequestBody VoucherUpdateRequest request) {
-        throw new com.sep490.bms.exception.AppException("Chưa triển khai", HttpStatus.NOT_IMPLEMENTED);
+        return ApiResponse.success(service.update(user,id,request));
     }
     @PostMapping("/api/owner/vouchers/{id}/publish") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Publish campaign; gọi lặp an toàn",description="Không publish lại DISABLED")

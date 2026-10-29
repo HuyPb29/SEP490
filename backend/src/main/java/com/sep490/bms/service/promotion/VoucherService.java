@@ -53,6 +53,15 @@ public class VoucherService {
         if (locations.findById(id).filter(l -> "ACTIVE".equals(l.getStatus())).isEmpty())
             throw new AppException("Địa điểm không hoạt động",HttpStatus.NOT_FOUND);
     }
+    private Voucher locked(Long id) {
+        return vouchers.lockById(id).orElseThrow(() -> new AppException("Không tìm thấy voucher",HttpStatus.NOT_FOUND));
+    }
+    private Voucher owned(UserPrincipal user, Long id) {
+        Long location=ownerLocation(user);
+        Voucher v=locked(id);
+        if (!location.equals(v.getLocationId())) throw new AppException("Voucher không thuộc địa điểm đã chọn",HttpStatus.FORBIDDEN);
+        return v;
+    }
     public PageResponse<VoucherResponse> publicList(Long location, int page, int size) {
         activeLocation(location);
         LocalDate today=LocalDate.now();
@@ -84,6 +93,14 @@ public class VoucherService {
     public VoucherResponse create(UserPrincipal user,@Valid VoucherWriteRequest request) {
         Voucher v=Voucher.builder().locationId(ownerLocation(user)).source(VoucherSource.CAMPAIGN).build();
         configure(v,request); return VoucherResponse.from(vouchers.saveAndFlush(v));
+    }
+    @Transactional
+    public VoucherResponse update(UserPrincipal user,Long id,@Valid VoucherUpdateRequest request) {
+        Voucher v=owned(user,id);
+        if(v.getStatus()!=VoucherStatus.DRAFT || v.getSource()!=VoucherSource.CAMPAIGN)
+            throw new AppException("Chỉ sửa được campaign DRAFT",HttpStatus.CONFLICT);
+        if(v.getVersion()!=request.version()) throw new AppException("Voucher đã thay đổi; tải lại dữ liệu",HttpStatus.CONFLICT);
+        configure(v,request.voucher()); return VoucherResponse.from(vouchers.saveAndFlush(v));
     }
     private void configure(Voucher v,VoucherWriteRequest r) {
         if(r.validTo().isBefore(LocalDate.now())) throw new AppException("Voucher đã hết hạn");
