@@ -137,6 +137,20 @@ class VoucherApiTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.discountAmount").value(100));
         assertThat(vouchers.findById(v.getId()).orElseThrow().getUsedCount()).isZero();
     }
+    @Test void consumeRollbackIdempotencyAndRestoreGrant() {
+        Voucher v=voucher(VoucherTargetGroup.SPECIFIED); Booking b=booking(player);
+        VoucherGrant g=grants.saveAndFlush(VoucherGrant.builder().voucherId(v.getId()).playerId(player.getId()).expiresAt(LocalDateTime.now().plusDays(1)).build());
+        VoucherSelection selection=new VoucherSelection(null,g.getId());
+        assertThatThrownBy(() -> tx.execute(s -> { service.consumeForBooking(b.getId(),selection); throw new AppException("Simulated booking failure"); })).isInstanceOf(AppException.class);
+        assertThat(vouchers.findById(v.getId()).orElseThrow().getUsedCount()).isZero(); assertThat(usages.findByBookingId(b.getId())).isEmpty();
+        tx.executeWithoutResult(s -> { long first=service.consumeForBooking(b.getId(),selection).getId(); assertThat(service.consumeForBooking(b.getId(),selection).getId()).isEqualTo(first); });
+        assertThat(vouchers.findById(v.getId()).orElseThrow().getUsedCount()).isEqualTo(1);
+        assertThat(grants.findById(g.getId()).orElseThrow().getStatus()).isEqualTo(VoucherGrantStatus.USED);
+        tx.executeWithoutResult(s -> { em.find(Booking.class,b.getId()).setStatus(BookingStatus.EXPIRED); service.restoreForFailedBooking(b.getId()); service.restoreForFailedBooking(b.getId()); });
+        assertThat(vouchers.findById(v.getId()).orElseThrow().getBudgetUsed()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(grants.findById(g.getId()).orElseThrow().getStatus()).isEqualTo(VoucherGrantStatus.AVAILABLE);
+        assertThat(usages.findByBookingId(b.getId()).orElseThrow().getStatus()).isEqualTo(VoucherUsageStatus.RETURNED);
+    }
     @Test void concurrencyCannotOverspendLastUse() throws Exception {
         Voucher v=voucher(VoucherTargetGroup.ALL_PLAYERS); Booking a=booking(player),b=booking(other);
         var pool=Executors.newFixedThreadPool(2); var start=new CountDownLatch(1);

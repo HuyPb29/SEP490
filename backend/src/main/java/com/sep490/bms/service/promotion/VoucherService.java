@@ -219,4 +219,20 @@ public class VoucherService {
         return usages.saveAndFlush(VoucherUsage.builder().voucherId(v.getId()).voucherGrantId(selection.grantId()).playerId(b.getPlayerId())
                 .bookingId(bookingId).discountAmount(quote.discountAmount()).build());
     }
+    /** F3 failure/expiry/cancellation transaction; rollback of creation already restores all state automatically. */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void restoreForFailedBooking(Long bookingId) {
+        var b=em.find(com.sep490.bms.entity.booking.Booking.class,bookingId,LockModeType.PESSIMISTIC_WRITE);
+        if(b==null) throw new AppException("Không tìm thấy booking",HttpStatus.NOT_FOUND);
+        if(!List.of(BookingStatus.EXPIRED,BookingStatus.PAYMENT_REJECTED,BookingStatus.CANCELLED_BY_FACILITY).contains(b.getStatus()))
+            throw new AppException("Booking chưa ở trạng thái thất bại được hoàn voucher");
+        var found=usages.findByBookingId(bookingId);
+        if(found.isEmpty()) return;
+        VoucherUsage u=found.get(); Voucher v=locked(u.getVoucherId());
+        if(u.getStatus()==VoucherUsageStatus.RETURNED) return;
+        if(v.getUsedCount()<1 || v.getBudgetUsed().compareTo(u.getDiscountAmount())<0) throw new AppException("Dữ liệu lượt voucher không nhất quán",HttpStatus.CONFLICT);
+        v.setUsedCount(v.getUsedCount()-1); v.setBudgetUsed(v.getBudgetUsed().subtract(u.getDiscountAmount()));
+        if(u.getVoucherGrantId()!=null) grants.findById(u.getVoucherGrantId()).orElseThrow().setStatus(VoucherGrantStatus.AVAILABLE);
+        u.setStatus(VoucherUsageStatus.RETURNED); u.setReturnedAt(LocalDateTime.now());
+    }
 }
