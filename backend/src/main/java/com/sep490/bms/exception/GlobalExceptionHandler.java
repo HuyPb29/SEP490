@@ -25,7 +25,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(ApiResponse.error("Dữ liệu không hợp lệ"));
     }
 
-    @ExceptionHandler(DataIntegrityViolationException.class)
+    @ExceptionHandler({DataIntegrityViolationException.class, org.springframework.orm.ObjectOptimisticLockingFailureException.class})
     public ResponseEntity<ApiResponse<Void>> handleDataConflict(Exception ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error("Dữ liệu trùng lặp hoặc vi phạm ràng buộc"));
