@@ -56,9 +56,7 @@ public class VoucherController {
     public ApiResponse<VoucherResponse> publish(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id) { return ApiResponse.success(service.publish(user,id)); }
     @PostMapping("/api/admin/vouchers/{id}/disable") @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary="Chỉ Admin vô hiệu voucher; gọi lặp an toàn")
-    public ApiResponse<VoucherResponse> disable(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id) {
-        throw new com.sep490.bms.exception.AppException("Chưa triển khai", HttpStatus.NOT_IMPLEMENTED);
-    }
+    public ApiResponse<VoucherResponse> disable(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id) { return ApiResponse.success(service.disable(user,id)); }
     @PostMapping("/api/owner/vouchers/{id}/grants") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Cấp campaign SPECIFIED đã publish cho tối đa100 Player",description="Mỗi request cấp lượt mới; retry sẽ cấp thêm lượt")
     public ResponseEntity<ApiResponse<List<PersonalVoucherResponse>>> grant(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id,@Valid @RequestBody VoucherGrantRequest request) {

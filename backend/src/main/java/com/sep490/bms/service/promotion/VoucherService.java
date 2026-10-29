@@ -121,5 +121,11 @@ public class VoucherService {
             throw new AppException("Ngày hiệu lực voucher không hợp lệ");
         v.setStatus(VoucherStatus.PUBLISHED); return VoucherResponse.from(vouchers.saveAndFlush(v));
     }
+    @Transactional
+    public VoucherResponse disable(UserPrincipal user,Long id) {
+        role(user,Role.ADMIN); Voucher v=locked(id);
+        v.setStatus(VoucherStatus.DISABLED); v.setDisabledBy(user.getId());
+        return VoucherResponse.from(vouchers.saveAndFlush(v));
+    }
 
 }
