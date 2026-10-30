@@ -5,6 +5,21 @@ import io.swagger.v3.oas.models.responses.ApiResponse;
 @Configuration
 public class F6OpenApiConfig {
     @Bean
+    public GroupedOpenApi f6LoyaltyOpenApi(@org.springframework.beans.factory.annotation.Qualifier("locationHeader")
+            org.springdoc.core.customizers.OpenApiCustomizer locationHeader) {
+        return GroupedOpenApi.builder().group("f6-loyalty")
+                .pathsToMatch("/api/me/loyalty-*","/api/owner/loyalty-*","/api/owner/loyalty-milestones/**")
+                .addOpenApiCustomizer(locationHeader)
+                .addOpenApiCustomizer(api -> api.getPaths().forEach((path,item) -> item.readOperationsMap().forEach((method,op) -> {
+                    for(String code:java.util.List.of("400","401","403","404","409"))
+                        op.getResponses().addApiResponse(code,new ApiResponse().description("ApiResponse: validation/auth/scope/resource/conflict"));
+                    if(method==io.swagger.v3.oas.models.PathItem.HttpMethod.POST) {
+                        var response=op.getResponses().remove("200");
+                        op.getResponses().addApiResponse("201",response==null ? new ApiResponse().description("Created"):response);
+                    }
+                }))).build();
+    }
+    @Bean
     public GroupedOpenApi f6OpenApi(@org.springframework.beans.factory.annotation.Qualifier("locationHeader")
             org.springdoc.core.customizers.OpenApiCustomizer locationHeader) {
         return GroupedOpenApi.builder().group("f6-vouchers")
