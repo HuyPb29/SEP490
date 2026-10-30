@@ -7,4 +7,6 @@ import com.sep490.bms.entity.promotion.LoyaltyTier;
 
 @Repository
 public interface LoyaltyTierRepository extends JpaRepository<LoyaltyTier, Long> {
+    java.util.List<LoyaltyTier> findByLocationIdOrderByMilestoneAmountAsc(Long locationId);
+    boolean existsByLocationIdAndMilestoneAmount(Long locationId,java.math.BigDecimal amount);
 }

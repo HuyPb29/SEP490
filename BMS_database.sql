@@ -1,5 +1,5 @@
 ﻿-- ============================================================
--- BMS (SEP490-G13) - Tạo database BMS và 35 bảng, SQL Server 2019+. Chỉ có cấu trúc, chưa có dữ liệu.
+-- BMS (SEP490-G13) - Tạo database BMS và 36 bảng, SQL Server 2019+. Chỉ có cấu trúc, chưa có dữ liệu.
 -- Theo Baseline 2 (UC_FR_NFR_baseline2.xlsx, 21/10/2026). Sinh tự động từ erd_spec.js, khớp BMS_ERD.drawio.
 -- Khóa ngoại thêm sau cùng (account <-> location tham chiếu vòng).
 -- Trạng thái lưu bằng mã viết hoa theo sheet Trang_thai (@Enumerated(EnumType.STRING)).
@@ -274,6 +274,8 @@ CREATE TABLE booking (
     version INT NOT NULL CONSTRAINT df_booking_version DEFAULT 0,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_booking_created_at DEFAULT SYSDATETIME(),
     updated_at DATETIME2(0) NULL,
+    loyalty_refund_processed BIT NOT NULL CONSTRAINT df_booking_loyalty_refund DEFAULT 0,
+    loyalty_compensation_processed BIT NOT NULL CONSTRAINT df_booking_loyalty_compensation DEFAULT 0,
     CONSTRAINT pk_booking PRIMARY KEY (id),
     CONSTRAINT uq_booking_booking_code UNIQUE (booking_code),
     CONSTRAINT uk_booking_id_location UNIQUE (id, location_id),
@@ -473,6 +475,9 @@ CREATE TABLE voucher (
     disabled_by BIGINT NULL,
     version INT NOT NULL CONSTRAINT df_voucher_version DEFAULT 0,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_voucher_created_at DEFAULT SYSDATETIME(),
+    allow_points BIT NOT NULL CONSTRAINT df_voucher_allow_points DEFAULT 0,
+    max_point_percent INT NULL,
+    CONSTRAINT ck_voucher_point_policy CHECK ((allow_points=0 AND max_point_percent IS NULL) OR (allow_points=1 AND max_point_percent IS NOT NULL AND max_point_percent BETWEEN 1 AND 100)),
     CONSTRAINT pk_voucher PRIMARY KEY (id),
     CONSTRAINT ck_voucher_source CHECK (source IN ('CAMPAIGN','LOYALTY','BATCH_OFFER','COMPENSATION')),
     CONSTRAINT ck_voucher_target CHECK (target_group IN ('ALL_PLAYERS','NEW_PLAYERS','SPECIFIED')),
@@ -526,13 +531,15 @@ CREATE TABLE player_location_balance (
     id BIGINT IDENTITY(1,1) NOT NULL,
     player_id BIGINT NOT NULL,
     location_id BIGINT NOT NULL,
+    loyalty_sessions INT NOT NULL CONSTRAINT df_balance_loyalty_sessions DEFAULT 0,
     point_balance INT NOT NULL CONSTRAINT df_player_location_balance_point_balance DEFAULT 0,
     total_paid DECIMAL(14,0) NOT NULL CONSTRAINT df_player_location_balance_total_paid DEFAULT 0,
     version INT NOT NULL CONSTRAINT df_player_location_balance_version DEFAULT 0,
     updated_at DATETIME2(0) NULL,
     CONSTRAINT pk_player_location_balance PRIMARY KEY (id),
     CONSTRAINT ux_balance_player_location UNIQUE (player_id, location_id),
-    CONSTRAINT ck_balance_nonneg CHECK (point_balance >= 0 AND total_paid >= 0)
+    CONSTRAINT ck_balance_nonneg CHECK (point_balance >= 0 AND total_paid >= 0),
+    CONSTRAINT ck_balance_sessions CHECK (loyalty_sessions >= 0)
 );
 
 -- point_transaction: Lịch sử điểm (FR85, DR09).
@@ -557,20 +564,38 @@ CREATE TABLE point_transaction (
 );
 CREATE INDEX ix_ptx_balance ON point_transaction (balance_id, created_at);
 
--- loyalty_tier: Mốc ưu đãi tích lũy do Owner cài (P14, FR87).
+-- loyalty_accrual: durable payment receipt, including payments earning zero points.
+CREATE TABLE loyalty_accrual (
+  id BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT pk_loyalty_accrual PRIMARY KEY,
+  payment_id BIGINT NOT NULL CONSTRAINT uq_loyalty_accrual_payment UNIQUE,
+  balance_id BIGINT NOT NULL,
+  paid_amount DECIMAL(12,0) NOT NULL,
+  earned_points INT NOT NULL,
+  earning_rate INT NOT NULL,
+  CONSTRAINT fk_loyalty_accrual_payment FOREIGN KEY(payment_id) REFERENCES payment(id),
+  CONSTRAINT fk_loyalty_accrual_balance FOREIGN KEY(balance_id) REFERENCES player_location_balance(id),
+  CONSTRAINT ck_loyalty_accrual CHECK(paid_amount > 0 AND earned_points >= 0 AND earning_rate=10000)
+ );
+
+-- loyalty_tier: SRS V2 8.3/BR12 paid-session reward configuration; legacy spending fields retained.
 CREATE TABLE loyalty_tier (
     id BIGINT IDENTITY(1,1) NOT NULL,
     location_id BIGINT NOT NULL,
-    milestone_amount DECIMAL(14,0) NOT NULL,
+    session_threshold INT NULL, -- SRS V2: number of paid sessions; NULL marks a legacy spending tier
+    version INT NOT NULL CONSTRAINT df_tier_version DEFAULT 0,
+    milestone_amount DECIMAL(14,0) NOT NULL, -- legacy storage, no longer the reward criterion
     voucher_id BIGINT NOT NULL,
     is_active BIT NOT NULL CONSTRAINT df_loyalty_tier_is_active DEFAULT 1,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_loyalty_tier_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_loyalty_tier PRIMARY KEY (id),
     CONSTRAINT ux_tier_amount UNIQUE (location_id, milestone_amount),
+    CONSTRAINT ck_tier_sessions CHECK (session_threshold IS NULL OR session_threshold BETWEEN 1 AND 100000),
     CONSTRAINT ck_tier_amount CHECK (milestone_amount > 0)
 );
 
--- loyalty_reward: Mỗi lần Player được tặng ở một mốc; mốc cao nhất tặng lặp lại ở 2×, 3×… (BR12, FR88, D156).
+CREATE UNIQUE INDEX ux_tier_session_config ON loyalty_tier(location_id) WHERE session_threshold IS NOT NULL;
+
+-- loyalty_reward: SRS V2 session reward audit; reached_amount stores a reward sequence for session tiers.
 CREATE TABLE loyalty_reward (
     id BIGINT IDENTITY(1,1) NOT NULL,
     player_id BIGINT NOT NULL,
@@ -835,10 +860,10 @@ ALTER TABLE complaint ADD CONSTRAINT fkc_complaint_payment_location FOREIGN KEY 
 
 COMMIT TRANSACTION;
 GO
--- Kiểm tra: phải ra 35 bảng, 88 khóa ngoại một cột, 9 khóa ngoại kép.
-SELECT COUNT(*) AS so_bang_BMS FROM sys.tables WHERE name IN ('account', 'otp_request', 'service_registration', 'location', 'service_term', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
+-- Kiểm tra: phải ra 36 bảng, 90 khóa ngoại một cột, 9 khóa ngoại kép.
+SELECT COUNT(*) AS so_bang_BMS FROM sys.tables WHERE name IN ('account', 'otp_request', 'service_registration', 'location', 'service_term', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'loyalty_accrual', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
 SELECT COUNT(*) AS so_khoa_ngoai_BMS FROM sys.foreign_keys WHERE name LIKE 'fk[_]%' COLLATE Latin1_General_CS_AS;
 SELECT COUNT(*) AS so_khoa_ngoai_kep FROM sys.foreign_keys WHERE name LIKE 'fkc[_]%' COLLATE Latin1_General_CS_AS;
 -- Database mới được sao từ database hệ thống model. Nếu model có bảng thì các bảng đó hiện ở đây: không thuộc BMS, nên xóa.
-SELECT name AS bang_khong_thuoc_BMS FROM sys.tables WHERE name NOT IN ('account', 'otp_request', 'service_registration', 'location', 'service_term', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
+SELECT name AS bang_khong_thuoc_BMS FROM sys.tables WHERE name NOT IN ('account', 'otp_request', 'service_registration', 'location', 'service_term', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'loyalty_accrual', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
 GO
