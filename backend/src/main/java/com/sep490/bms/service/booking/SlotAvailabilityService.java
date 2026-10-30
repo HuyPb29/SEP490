@@ -71,6 +71,25 @@ public class SlotAvailabilityService {
                 .map(h -> new OpeningWindow(h.getOpenMinute(), h.getCloseMinute()));
     }
 
+    /**
+     * Khoảng cột của lịch sân: từ giờ mở sớm nhất đến giờ đóng muộn nhất trong tuần, tính cả ngày đang xem
+     * vì ngày ngoại lệ có thể rộng hơn. Nhờ vậy cột không đổi khi chuyển ngày, phần ngoài giờ của ngày đó
+     * hiện là "ngoài giờ mở cửa" (FR33). Địa điểm chưa cài giờ mở cửa thì trả về rỗng.
+     */
+    @Transactional(readOnly = true)
+    public Optional<OpeningWindow> scheduleRange(Long locationId, LocalDate date) {
+        List<OpeningWindow> windows = new ArrayList<>();
+        openingHourRepository.findAllByLocationIdOrderByDayOfWeek(locationId)
+                .forEach(h -> windows.add(new OpeningWindow(h.getOpenMinute(), h.getCloseMinute())));
+        openingWindow(locationId, date).ifPresent(windows::add);
+        if (windows.isEmpty()) {
+            return Optional.empty();
+        }
+        int open = windows.stream().mapToInt(OpeningWindow::openMinute).min().getAsInt();
+        int close = windows.stream().mapToInt(OpeningWindow::closeMinute).max().getAsInt();
+        return Optional.of(new OpeningWindow(open, close));
+    }
+
     /** Sân → các phút bắt đầu đã có booking_slot đang hiệu lực (đang giữ chỗ hoặc đã đặt). */
     @Transactional(readOnly = true)
     public Map<Long, Set<Integer>> bookedStarts(Collection<Long> courtIds, LocalDate date) {
