@@ -307,6 +307,40 @@ class AccountSecurityAuditTests {
         assertThat(getMe(token(player)).statusCode()).isEqualTo(200);
     }
 
+    @Test void mergedOwnerApisUseSelectedLocationAndCsvExportsRemainAvailableWhenLocked() throws Exception {
+        Location second = location(owner);
+        Location foreign = location(account(Role.OWNER, null));
+        String ownerToken = token(owner);
+        for (Long selected : List.of(location.getId(), second.getId())) {
+            for (String path : List.of("/api/owner/booking-exports", "/api/owner/revenue-exports")) {
+                var response = call("GET", path, ownerToken, null, selected);
+                assertThat(response.statusCode()).as(path + ": " + response.body()).isEqualTo(200);
+                assertThat(response.headers().firstValue("Content-Type").orElse("")).contains("text/csv");
+                assertThat(response.body()).startsWith("\uFEFF");
+                assertThat(call("GET", path, ownerToken, null, null).statusCode()).isEqualTo(400);
+                assertThat(call("GET", path, ownerToken, null, foreign.getId()).statusCode()).isEqualTo(403);
+            }
+            for (String path : List.of("/api/owner/booking-reports", "/api/owner/revenue-reports",
+                    "/api/owner/occupancy-reports", "/api/owner/reviews", "/api/owner/complaints")) {
+                var response = call("GET", path, ownerToken, null, selected);
+                assertThat(response.statusCode()).as(path + ": " + response.body()).isEqualTo(200);
+            }
+        }
+        second.setStatus("LOCKED");
+        locations.saveAndFlush(second);
+        assertThat(call("GET", "/api/owner/booking-exports", ownerToken, null, second.getId()).statusCode()).isEqualTo(200);
+        assertThat(call("GET", "/api/owner/revenue-exports", ownerToken, null, second.getId()).statusCode()).isEqualTo(200);
+        assertThat(call("GET", "/api/owner/booking-reports", ownerToken, null, second.getId()).statusCode()).isEqualTo(403);
+    }
+
+    @Test void mergedPublicRoutesPreserveGuestAccessAndSpecificInputErrors() throws Exception {
+        var matches = call("GET", "/api/matches", null, null, null);
+        assertThat(matches.statusCode()).as(matches.body()).isEqualTo(200);
+        var malformedId = call("GET", "/api/locations/abc", null, null, null);
+        assertThat(malformedId.statusCode()).isEqualTo(400);
+        assertThat(malformedId.body()).contains("id");
+    }
+
     @Test void realHttpPreserves403ForWrongRoleAndForeignLocation() throws Exception {
         assertThat(call("GET", "/api/owner/locations", token(player), null, null).statusCode()).isEqualTo(403);
         assertThat(call("GET", "/api/admin/accounts", token(owner), null, null).statusCode()).isEqualTo(403);

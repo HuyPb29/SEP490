@@ -5,6 +5,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -359,8 +360,9 @@ class AuthAndUserApiTests {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/owner/staff-members").header("Authorization", "Bearer " + ownerToken)
                 .header("X-Location-Id", location.getId())).andExpect(status().isForbidden());
-        mockMvc.perform(get("/api/owner/exports").header("Authorization", "Bearer " + ownerToken)
-                .header("X-Location-Id", location.getId())).andExpect(status().isNotImplemented());
+        mockMvc.perform(get("/api/owner/booking-exports").header("Authorization", "Bearer " + ownerToken)
+                .header("X-Location-Id", location.getId())).andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"));
     }
 
     @Test
@@ -369,7 +371,7 @@ class AuthAndUserApiTests {
                 .andExpect(jsonPath("$.data").isArray());
         mockMvc.perform(get("/api/locations/abc")).andExpect(status().isBadRequest());
         mockMvc.perform(get("/api/courts/9223372036854775807")).andExpect(status().isNotFound());
-        mockMvc.perform(get("/api/courts/1/reviews")).andExpect(status().isNotImplemented());
+        mockMvc.perform(get("/api/courts/9223372036854775807/reviews")).andExpect(status().isNotFound());
         mockMvc.perform(get("/api/matches")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content").isArray());
         mockMvc.perform(get("/api/matches/9223372036854775807")).andExpect(status().isNotFound());
