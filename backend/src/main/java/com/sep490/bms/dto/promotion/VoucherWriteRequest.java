@@ -18,7 +18,16 @@ public record VoucherWriteRequest(
         @Min(1) @Max(3650) Integer grantValidDays,
         @Min(1) Integer maxUsesPerPlayer,
         @Min(1) Integer maxTotalUses,
-        @DecimalMin("1") @Digits(integer=12, fraction=0) BigDecimal budget) {
+        @DecimalMin("1") @Digits(integer=12, fraction=0) BigDecimal budget,
+        Boolean allowPoints, @Min(1) @Max(100) Integer maxPointPercent) {
+    public VoucherWriteRequest(String code, String name, VoucherTargetGroup targetGroup, DiscountType discountType,
+            BigDecimal discountValue, BigDecimal minOrderAmount, LocalDate validFrom, LocalDate validTo,
+            Integer grantValidDays, Integer maxUsesPerPlayer, Integer maxTotalUses, BigDecimal budget) {
+        this(code,name,targetGroup,discountType,discountValue,minOrderAmount,validFrom,validTo,grantValidDays,
+                maxUsesPerPlayer,maxTotalUses,budget,false,null);
+    }
+    @AssertTrue(message="Kết hợp điểm yêu cầu tỷ lệ tối đa 1–100%; không kết hợp thì bỏ tỷ lệ")
+    public boolean isPointPolicyValid() { return Boolean.TRUE.equals(allowPoints) ? maxPointPercent!=null : maxPointPercent==null; }
     @AssertTrue(message="Ngày hết hạn phải từ ngày bắt đầu trở đi")
     public boolean isDateRangeValid() { return validFrom == null || validTo == null || !validTo.isBefore(validFrom); }
     @AssertTrue(message="SPECIFIED không có code; voucher công khai bắt buộc có code")

@@ -111,6 +111,7 @@ public class VoucherService {
         v.setDiscountValue(r.discountValue()); v.setMinOrderAmount(r.minOrderAmount()); v.setValidFrom(r.validFrom());
         v.setValidTo(r.validTo()); v.setGrantValidDays(r.grantValidDays()); v.setMaxUsesPerPlayer(r.maxUsesPerPlayer());
         v.setMaxTotalUses(r.maxTotalUses()); v.setBudget(r.budget());
+        v.setAllowPoints(Boolean.TRUE.equals(r.allowPoints())); v.setMaxPointPercent(r.maxPointPercent());
     }
     @Transactional
     public VoucherResponse publish(UserPrincipal user,Long id) {
@@ -212,6 +213,7 @@ public class VoucherService {
             return u;
         }
         VoucherCheckResponse quote=evaluate(v,b.getPlayerId(),b.getLocationId(),b.getListAmount(),selection);
+        if(b.getPointsUsed()>0) throw new AppException("Phải áp voucher trước điểm (BR41)");
         if(quote.discountAmount().add(b.getPointDiscount()).compareTo(b.getListAmount())>=0) throw new AppException("Tổng giảm phải nhỏ hơn giá trị đơn");
         v.setUsedCount(v.getUsedCount()+1); v.setBudgetUsed(v.getBudgetUsed().add(quote.discountAmount()));
         if(selection.grantId()!=null) grants.findById(selection.grantId()).orElseThrow().setStatus(VoucherGrantStatus.USED);
