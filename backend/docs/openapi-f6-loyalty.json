@@ -1,0 +1,764 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "BMS API",
+    "description" : "F1, F7 và F6 voucher/points/loyalty có service; các route khung trả HTTP 501. Owner gửi X-Location-Id. Voucher/points/payment accrual là service nội bộ; F3 tạo booking chưa triển khai.",
+    "version" : "1.0"
+  },
+  "servers" : [ {
+    "url" : "http://localhost",
+    "description" : "Generated server url"
+  } ],
+  "security" : [ {
+    "bearerAuth" : [ ]
+  } ],
+  "paths" : {
+    "/api/owner/loyalty-milestones" : {
+      "get" : {
+        "tags" : [ "F6 - UC26 Loyalty (SRS UC18)" ],
+        "operationId" : "list",
+        "parameters" : [ {
+          "name" : "X-Location-Id",
+          "in" : "header",
+          "description" : "Owner: bắt buộc, địa điểm phải thuộc Owner. Staff: có thể bỏ qua, dùng địa điểm của tài khoản.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseListLoyaltyMilestoneResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "401" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "403" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "404" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "409" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "F6 - UC26 Loyalty (SRS UC18)" ],
+        "operationId" : "create",
+        "parameters" : [ {
+          "name" : "X-Location-Id",
+          "in" : "header",
+          "description" : "Owner: bắt buộc, địa điểm phải thuộc Owner. Staff: có thể bỏ qua, dùng địa điểm của tài khoản.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoyaltyMilestoneRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "400" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "401" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "403" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "404" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "409" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "201" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseLoyaltyMilestoneResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/owner/loyalty-adjustments" : {
+      "post" : {
+        "tags" : [ "F6 - UC25 Points (SRS UC20)" ],
+        "operationId" : "adjust",
+        "parameters" : [ {
+          "name" : "X-Location-Id",
+          "in" : "header",
+          "description" : "Owner: bắt buộc, địa điểm phải thuộc Owner. Staff: có thể bỏ qua, dùng địa điểm của tài khoản.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoyaltyAdjustmentRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "400" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "401" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "403" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "404" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "409" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "201" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponsePointTransactionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/owner/loyalty-milestones/{id}" : {
+      "patch" : {
+        "tags" : [ "F6 - UC26 Loyalty (SRS UC18)" ],
+        "operationId" : "update",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }, {
+          "name" : "X-Location-Id",
+          "in" : "header",
+          "description" : "Owner: bắt buộc, địa điểm phải thuộc Owner. Staff: có thể bỏ qua, dùng địa điểm của tài khoản.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoyaltyMilestoneUpdateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseLoyaltyMilestoneResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "401" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "403" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "404" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "409" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          }
+        }
+      }
+    },
+    "/api/me/loyalty-transactions" : {
+      "get" : {
+        "tags" : [ "F6 - UC25 Points (SRS UC20)" ],
+        "operationId" : "history",
+        "parameters" : [ {
+          "name" : "locationId",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }, {
+          "name" : "type",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "EARN", "REDEEM", "RETURN", "REVOKE", "ADJUST" ]
+          }
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponsePageResponsePointTransactionResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "401" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "403" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "404" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "409" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          }
+        }
+      }
+    },
+    "/api/me/loyalty-balances" : {
+      "get" : {
+        "tags" : [ "F6 - UC25 Points (SRS UC20)" ],
+        "operationId" : "balances",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponsePageResponseLoyaltyBalanceResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "401" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "403" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "404" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          },
+          "409" : {
+            "description" : "ApiResponse: validation/auth/scope/resource/conflict"
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "LoyaltyMilestoneRequest" : {
+        "type" : "object",
+        "properties" : {
+          "sessionThreshold" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100000,
+            "minimum" : 1
+          },
+          "name" : {
+            "type" : "string",
+            "maxLength" : 100,
+            "minLength" : 0
+          },
+          "rewardValue" : {
+            "type" : "number",
+            "minimum" : 1
+          },
+          "voucherValidDays" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 3650,
+            "minimum" : 1
+          }
+        },
+        "required" : [ "name", "rewardValue", "sessionThreshold", "voucherValidDays" ]
+      },
+      "ApiResponseLoyaltyMilestoneResponse" : {
+        "type" : "object",
+        "properties" : {
+          "success" : {
+            "type" : "boolean"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/LoyaltyMilestoneResponse"
+          },
+          "errors" : { },
+          "timestamp" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "LoyaltyMilestoneResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "locationId" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "sessionThreshold" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "active" : {
+            "type" : "boolean"
+          },
+          "version" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "voucher" : {
+            "$ref" : "#/components/schemas/VoucherResponse"
+          }
+        }
+      },
+      "VoucherResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "locationId" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "code" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "source" : {
+            "type" : "string",
+            "enum" : [ "CAMPAIGN", "LOYALTY", "BATCH_OFFER", "COMPENSATION" ]
+          },
+          "targetGroup" : {
+            "type" : "string",
+            "enum" : [ "ALL_PLAYERS", "NEW_PLAYERS", "SPECIFIED" ]
+          },
+          "discountType" : {
+            "type" : "string",
+            "enum" : [ "PERCENT", "AMOUNT" ]
+          },
+          "discountValue" : {
+            "type" : "number"
+          },
+          "minOrderAmount" : {
+            "type" : "number"
+          },
+          "validFrom" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "validTo" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "grantValidDays" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "maxUsesPerPlayer" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "maxTotalUses" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "usedCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "budget" : {
+            "type" : "number"
+          },
+          "budgetUsed" : {
+            "type" : "number"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "DRAFT", "PUBLISHED", "DISABLED" ]
+          },
+          "version" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "allowPoints" : {
+            "type" : "boolean"
+          },
+          "maxPointPercent" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "LoyaltyAdjustmentRequest" : {
+        "type" : "object",
+        "properties" : {
+          "bookingId" : {
+            "type" : "integer",
+            "format" : "int64",
+            "exclusiveMinimum" : 0
+          },
+          "points" : {
+            "type" : "integer",
+            "format" : "int32",
+            "exclusiveMinimum" : 0
+          },
+          "reason" : {
+            "type" : "string",
+            "maxLength" : 255,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "bookingId", "points", "reason" ]
+      },
+      "ApiResponsePointTransactionResponse" : {
+        "type" : "object",
+        "properties" : {
+          "success" : {
+            "type" : "boolean"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/PointTransactionResponse"
+          },
+          "errors" : { },
+          "timestamp" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "PointTransactionResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "balanceId" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "bookingId" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "packageId" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "type" : {
+            "type" : "string",
+            "enum" : [ "EARN", "REDEEM", "RETURN", "REVOKE", "ADJUST" ]
+          },
+          "points" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "balanceAfter" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "earningRate" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "reason" : {
+            "type" : "string"
+          },
+          "createdBy" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "LoyaltyMilestoneUpdateRequest" : {
+        "type" : "object",
+        "properties" : {
+          "version" : {
+            "type" : "integer",
+            "format" : "int32",
+            "minimum" : 0
+          },
+          "active" : {
+            "type" : "boolean"
+          },
+          "settings" : {
+            "$ref" : "#/components/schemas/LoyaltyMilestoneRequest"
+          }
+        },
+        "required" : [ "active", "settings", "version" ]
+      },
+      "ApiResponseListLoyaltyMilestoneResponse" : {
+        "type" : "object",
+        "properties" : {
+          "success" : {
+            "type" : "boolean"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "data" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/LoyaltyMilestoneResponse"
+            }
+          },
+          "errors" : { },
+          "timestamp" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "ApiResponsePageResponsePointTransactionResponse" : {
+        "type" : "object",
+        "properties" : {
+          "success" : {
+            "type" : "boolean"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/PageResponsePointTransactionResponse"
+          },
+          "errors" : { },
+          "timestamp" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "PageResponsePointTransactionResponse" : {
+        "type" : "object",
+        "properties" : {
+          "content" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PointTransactionResponse"
+            }
+          },
+          "pageNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "pageSize" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "totalElements" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "last" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "ApiResponsePageResponseLoyaltyBalanceResponse" : {
+        "type" : "object",
+        "properties" : {
+          "success" : {
+            "type" : "boolean"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/PageResponseLoyaltyBalanceResponse"
+          },
+          "errors" : { },
+          "timestamp" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "LoyaltyBalanceResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "locationId" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "pointBalance" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "totalPaid" : {
+            "type" : "number"
+          },
+          "loyaltySessions" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "PageResponseLoyaltyBalanceResponse" : {
+        "type" : "object",
+        "properties" : {
+          "content" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/LoyaltyBalanceResponse"
+            }
+          },
+          "pageNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "pageSize" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "totalElements" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "last" : {
+            "type" : "boolean"
+          }
+        }
+      }
+    },
+    "securitySchemes" : {
+      "bearerAuth" : {
+        "type" : "http",
+        "scheme" : "bearer",
+        "bearerFormat" : "JWT"
+      }
+    }
+  }
+}

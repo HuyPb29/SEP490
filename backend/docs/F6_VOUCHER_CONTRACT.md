@@ -85,7 +85,8 @@ existing USED usage on retry; a different selection or a returned usage conflict
 Restore accepts only EXPIRED, PAYMENT_REJECTED and CANCELLED_BY_FACILITY bookings.
 It returns quota/budget/grant once, records RETURNED/returnedAt and keeps historical booking prices.
 An expired or disabled voucher/grant remains unusable even after counters are restored.
-Player cancellation policy, package consume/restore, automatic jobs, booking hooks wiring,
-loyalty points and automatic reward issuance remain outside this implementation.
+Player cancellation orchestration, package voucher consume/restore, automatic jobs and booking hook wiring remain unimplemented. UC25/UC26 loyalty points and automatic session rewards are implemented separately; see F6_LOYALTY_CONTRACT.md. The F3/F4/F5 HTTP orchestration remains unimplemented.
 
-No schema migration or dependency changes are required.
+The original UC24 implementation did not change schema/dependencies. This backend version requires the UC25/UC26 additive schema migration described below; no new library dependency was added.
+
+UC25/UC26 adds optional `allowPoints` (default false) and `maxPointPercent` (1–100 when enabled) to voucher configuration and responses. Points are applied after vouchers and checked against the remaining amount; applying a new voucher after points is rejected. Apply the additive UC25/UC26 schema migration before using this backend version.

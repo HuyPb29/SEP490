@@ -2,7 +2,7 @@
   "openapi" : "3.1.0",
   "info" : {
     "title" : "BMS API",
-    "description" : "F1, F7 và voucher UC24 có service; các route khung trả HTTP 501. Owner gửi X-Location-Id. Voucher consume/restore là service nội bộ; F3 tạo booking chưa triển khai.",
+    "description" : "F1, F7 và F6 voucher/points/loyalty có service; các route khung trả HTTP 501. Owner gửi X-Location-Id. Voucher/points/payment accrual là service nội bộ; F3 tạo booking chưa triển khai.",
     "version" : "1.0"
   },
   "servers" : [ {
@@ -725,13 +725,25 @@
             "type" : "number",
             "minimum" : 1
           },
+          "allowPoints" : {
+            "type" : "boolean"
+          },
+          "maxPointPercent" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          },
+          "pointPolicyValid" : {
+            "type" : "boolean"
+          },
           "dateRangeValid" : {
             "type" : "boolean"
           },
-          "percentageValid" : {
+          "codeValid" : {
             "type" : "boolean"
           },
-          "codeValid" : {
+          "percentageValid" : {
             "type" : "boolean"
           }
         },
@@ -826,6 +838,13 @@
             "enum" : [ "DRAFT", "PUBLISHED", "DISABLED" ]
           },
           "version" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "allowPoints" : {
+            "type" : "boolean"
+          },
+          "maxPointPercent" : {
             "type" : "integer",
             "format" : "int32"
           }
