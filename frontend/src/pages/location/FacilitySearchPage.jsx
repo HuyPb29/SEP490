@@ -21,7 +21,7 @@ export default function FacilitySearchPage() {
         setFacilities(res.data.items || []);
       }
     } catch (err) {
-      console.error('Lỗi tải danh sách sân:', err);
+      console.error('Error loading facilities:', err);
     } finally {
       setLoading(false);
     }
@@ -66,7 +66,6 @@ export default function FacilitySearchPage() {
 
   return (
     <div className={styles.pageWrapper}>
-      {/* Top Navbar giống Mockup */}
       <header className={styles.navbar}>
         <div className={styles.navContainer}>
           <div className={styles.brand}>
@@ -79,13 +78,24 @@ export default function FacilitySearchPage() {
             <a href="#register-service">Register Service</a>
           </nav>
           <div className={styles.authActions}>
-            <button type="button" className={styles.loginBtn}>Login</button>
-            <button type="button" className={styles.registerBtn}>Sign Up</button>
+            <button
+              type="button"
+              className={styles.loginBtn}
+              onClick={() => navigate('/login')}
+            >
+              Login
+            </button>
+            <button
+              type="button"
+              className={styles.registerBtn}
+              onClick={() => navigate('/login')}
+            >
+              Sign Up
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Hero Section nền tối + Thanh Search Bar 3 ô */}
       <section className={styles.heroSection}>
         <div className={styles.heroContainer}>
           <div className={styles.activeBadge}>
@@ -144,7 +154,6 @@ export default function FacilitySearchPage() {
         </div>
       </section>
 
-      {/* Kết quả tìm kiếm: Lưới Card 3 cột bên trái + Bản đồ bên phải */}
       <main className={styles.mainContent}>
         <div className={styles.resultsHeader}>
           <div>
@@ -171,7 +180,6 @@ export default function FacilitySearchPage() {
         </div>
 
         <div className={styles.contentGrid}>
-          {/* Danh sách Card bên trái (3 cột như Mockup) */}
           <div className={styles.cardsGrid}>
             {loading ? (
               <p>Loading facilities...</p>
@@ -187,7 +195,6 @@ export default function FacilitySearchPage() {
                     <span className={styles.slotBadge}>
                       <span className={styles.dot} /> {item.available_slots} slots left today
                     </span>
-                    {/* Hình vẽ mặt sân cầu lông bằng SVG */}
                     <svg viewBox="0 0 200 110" className={styles.courtSvg}>
                       <rect x="15" y="15" width="170" height="80" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" />
                       <line x1="100" y1="15" x2="100" y2="95" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" />
@@ -215,19 +222,16 @@ export default function FacilitySearchPage() {
             )}
           </div>
 
-          {/* Bản đồ giả lập bên phải (Không cần API Key, giống 100% Mockup) */}
+          {/* Mockup UI: Bản đồ CSS tĩnh (Không dùng API Key) */}
           <aside className={styles.mapCard}>
             <div className={styles.mapCanvas}>
-              {/* Đường phố giả lập như Mockup */}
               <div className={styles.roadH1} />
               <div className={styles.roadH2} />
               <div className={styles.roadV1} />
               <div className={styles.roadV2} />
 
-              {/* Chấm xanh vị trí người dùng */}
               <div className={styles.userDot} title="Your location" />
 
-              {/* Các điểm ghim (Pin) sân cầu lông */}
               {sortedFacilities.map((item) => (
                 <button
                   key={item.facility_id}

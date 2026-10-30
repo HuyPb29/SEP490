@@ -273,7 +273,7 @@ export async function getFacilityDetailAndSchedule(facilityId = 1, playDate = '2
     };
   }
 
-  // Tích hợp API thật theo chuẩn tài liệu V18
+  // Tích hợp API thật theo chuẩn tài liệu V18 (Đã vá lỗi thiếu time_headers)
   try {
     const [detailRes, scheduleRes] = await Promise.all([
       axios.get(`/api/v1/facilities/${facilityId}`),
@@ -282,20 +282,23 @@ export async function getFacilityDetailAndSchedule(facilityId = 1, playDate = '2
       }),
     ]);
 
+    const mappedCourts = scheduleRes.data.data.schedule_grid.map(court => ({
+      court_id: court.court_id,
+      court_name: court.court_name,
+      slots: court.slots.map(slot => ({
+        time: slot.slot_time.substring(0, 5),
+        status: slot.status,
+        price: slot.price_per_slot,
+        bookingInfo: slot.booking_info // BR57: Sẽ là null với Guest/Player
+      }))
+    }));
+
     return {
       success: true,
       data: {
         facility: detailRes.data.data,
-        courts: scheduleRes.data.data.schedule_grid.map(court => ({
-          court_id: court.court_id,
-          court_name: court.court_name,
-          slots: court.slots.map(slot => ({
-            time: slot.slot_time.substring(0, 5),
-            status: slot.status,
-            price: slot.price_per_slot,
-            bookingInfo: slot.booking_info // BR57: Sẽ là null với Guest/Player
-          }))
-        }))
+        time_headers: mappedCourts[0]?.slots.map(s => s.time) || TIME_HEADERS,
+        courts: mappedCourts,
       },
     };
   } catch (error) {

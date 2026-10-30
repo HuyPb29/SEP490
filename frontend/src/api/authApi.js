@@ -21,7 +21,7 @@ const mockUsers = [
     user_id: 11,
     username: 'unverified01',
     password: 'Password123',
-    full_name: 'Trần Văn Chưa Xác Thực',
+    full_name: 'Tran Van Chua Xac Thuc',
     email: 'unverified@gmail.com',
     phone_number: '0988776655',
     role_id: 1,
@@ -33,7 +33,7 @@ const mockUsers = [
     user_id: 12,
     username: 'locked01',
     password: 'Password123',
-    full_name: 'Lê Bị Khóa',
+    full_name: 'Le Bi Khoa',
     email: 'locked@gmail.com',
     phone_number: '0977665544',
     role_id: 1,
@@ -71,36 +71,35 @@ export async function loginApi({ username_or_email, password }) {
 
     // MSG10: Sai tên đăng nhập, email hoặc mật khẩu (HTTP 401)
     if (!user || user.password !== password) {
-      const error = new Error('Thông tin đăng nhập không đúng.');
-      error.status = 401;
-      error.code = 'MSG10';
-      throw error;
+      const msg = 'Invalid login credentials.';
+      const err = new Error(msg);
+      err.response = { data: { message: msg, code: 'MSG10' } };
+      throw err;
     }
 
     // MSG11: Tài khoản bị khóa hoặc vô hiệu hóa (HTTP 403)
     if (user.status === 'locked' || user.status === 'disabled') {
-      const error = new Error('Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên.');
-      error.status = 403;
-      error.code = 'MSG11';
-      throw error;
+      const msg = 'Your account has been locked. Please contact the administrator.';
+      const err = new Error(msg);
+      err.response = { data: { message: msg, code: 'MSG11' } };
+      throw err;
     }
 
     // MSG95: Tài khoản chưa xác thực OTP (HTTP 403)
     if (user.status === 'unverified') {
       ensureOtpSession(user.email);
-      const error = new Error(
-        'Tài khoản chưa được xác minh. Vui lòng mở email đã đăng ký để nhập mã OTP.'
-      );
-      error.status = 403;
-      error.code = 'MSG95';
-      error.email = user.email;
-      throw error;
+      const msg = 'Account is unverified. Please check your registered email for the OTP.';
+      const err = new Error(msg);
+      // Gắn thêm email vào lỗi để UI đẩy sang màn OTP
+      err.email = user.email; 
+      err.response = { data: { message: msg, code: 'MSG95' } };
+      throw err;
     }
 
     return {
       success: true,
       code: 200,
-      message: 'Đăng nhập thành công',
+      message: 'Login successful.',
       data: {
         token_type: 'Bearer',
         access_token: 'mock_jwt_access_token_' + user.user_id,
@@ -133,18 +132,21 @@ export async function registerPlayerApi({ username, password, full_name, email, 
     const normPhone = phone_number.trim();
 
     if (mockUsers.some((u) => u.username.toLowerCase() === normUser)) {
-      const err = new Error('Tên đăng nhập đã tồn tại trong hệ thống.');
-      err.status = 400;
+      const msg = 'This username already exists in the system.';
+      const err = new Error(msg);
+      err.response = { data: { message: msg } };
       throw err;
     }
     if (mockUsers.some((u) => u.email.toLowerCase() === normEmail)) {
-      const err = new Error('Email này đã được đăng ký.');
-      err.status = 400;
+      const msg = 'This email is already registered.';
+      const err = new Error(msg);
+      err.response = { data: { message: msg } };
       throw err;
     }
     if (mockUsers.some((u) => u.phone_number === normPhone)) {
-      const err = new Error('Số điện thoại này đã được sử dụng.');
-      err.status = 400;
+      const msg = 'This phone number is already in use.';
+      const err = new Error(msg);
+      err.response = { data: { message: msg } };
       throw err;
     }
 
@@ -166,7 +168,7 @@ export async function registerPlayerApi({ username, password, full_name, email, 
     return {
       success: true,
       code: 201,
-      message: `Mã xác minh đã được gửi tới ${normEmail}. Vui lòng nhập mã trong 10 phút.`,
+      message: `A verification code has been sent to ${normEmail}. Please enter it within 10 minutes.`,
       data: {
         email: normEmail,
         status: 'unverified',
@@ -192,10 +194,9 @@ export async function verifyOtpApi({ email, otp_code, purpose = 'register' }) {
     const session = ensureOtpSession(normEmail);
 
     if (Date.now() > session.expiresAt || session.failedAttempts >= 5) {
-      const err = new Error(
-        'Mã xác minh đã hết hiệu lực hoặc nhập sai quá 5 lần. Vui lòng yêu cầu gửi lại mã mới.'
-      );
-      err.code = 'MSG96';
+      const msg = 'The verification code has expired or was entered incorrectly 5 times. Please request a new code.';
+      const err = new Error(msg);
+      err.response = { data: { message: msg, code: 'MSG96' } };
       throw err;
     }
 
@@ -203,14 +204,14 @@ export async function verifyOtpApi({ email, otp_code, purpose = 'register' }) {
       session.failedAttempts += 1;
       const remaining = Math.max(0, 5 - session.failedAttempts);
       if (remaining === 0) {
-        const err = new Error(
-          'Bạn đã nhập sai quá 5 lần. Mã OTP hiện tại đã bị hủy, vui lòng bấm Gửi lại OTP.'
-        );
-        err.code = 'MSG96';
+        const msg = 'You have entered incorrectly 5 times. The current OTP is invalid, please click Resend OTP.';
+        const err = new Error(msg);
+        err.response = { data: { message: msg, code: 'MSG96' } };
         throw err;
       }
-      const err = new Error(`Mã xác minh không đúng. Bạn còn ${remaining} lần nhập.`);
-      err.code = 'MSG95';
+      const msg = `Incorrect verification code. You have ${remaining} attempts left.`;
+      const err = new Error(msg);
+      err.response = { data: { message: msg, code: 'MSG95' } };
       throw err;
     }
 
@@ -222,7 +223,7 @@ export async function verifyOtpApi({ email, otp_code, purpose = 'register' }) {
     return {
       success: true,
       code: 200,
-      message: 'Xác minh email thành công. Bạn có thể đăng nhập.',
+      message: 'Email verified successfully. You can now log in.',
     };
   }
 
@@ -238,10 +239,9 @@ export async function resendOtpApi({ email, purpose = 'register' }) {
     const session = ensureOtpSession(normEmail);
 
     if (session.resendCount >= 5) {
-      const err = new Error(
-        'Bạn đã gửi mã quá số lần cho phép (5 lần/giờ). Vui lòng thử lại sau 60 phút.'
-      );
-      err.code = 'MSG107';
+      const msg = 'You have requested the code too many times (5 times/hour). Please try again after 60 minutes.';
+      const err = new Error(msg);
+      err.response = { data: { message: msg, code: 'MSG107' } };
       throw err;
     }
 
@@ -253,7 +253,7 @@ export async function resendOtpApi({ email, purpose = 'register' }) {
     return {
       success: true,
       code: 200,
-      message: `Mã xác minh mới đã được gửi tới ${normEmail}. Vui lòng nhập mã trong 10 phút.`,
+      message: `A new verification code has been sent to ${normEmail}. Please enter it within 10 minutes.`,
     };
   }
 

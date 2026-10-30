@@ -13,7 +13,7 @@ export default function FacilityDetailPage() {
   const [timeHeaders, setTimeHeaders] = useState([]);
   const [courts, setCourts] = useState([]);
   
-  // Lưu danh sách slot đang chọn: [{ courtId, courtName, timeIdx, time, price }]
+  // Type: [{ courtId, courtName, timeIdx, time, price }]
   const [selectedSlots, setSelectedSlots] = useState([]);
   const [ruleMessage, setRuleMessage] = useState(
     'You can only select consecutive available slots on the same court. Each slot is 30 minutes.'
@@ -81,7 +81,7 @@ export default function FacilityDetailPage() {
           price: slot.price,
         },
       ]);
-      setRuleMessage('Selection changed to ' + court.court_name + ' (booking restricted to a single court).');
+      setRuleMessage(`Selection changed to ${court.court_name} (booking restricted to a single court).`);
       return;
     }
 
@@ -112,20 +112,18 @@ export default function FacilityDetailPage() {
     setRuleMessage('You can only select consecutive available slots on the same court. Each slot is 30 minutes.');
   };
 
+  // Đã vá lỗi múi giờ UTC bằng .toLocaleDateString('en-CA')
   const changeDay = (offset) => {
-    const d = new Date(playDate);
-    d.setDate(d.getDate() + offset);
-    setPlayDate(d.toISOString().split('T')[0]);
+    const [y, m, day] = playDate.split('-').map(Number);
+    const d = new Date(y, m - 1, day + offset);
+    setPlayDate(d.toLocaleDateString('en-CA')); 
   };
 
   const formatDateLabel = (dateStr) => {
-    const d = new Date(dateStr);
+    const [y, m, day] = dateStr.split('-').map(Number);
+    const d = new Date(y, m - 1, day);
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayName = days[d.getDay()];
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    return `${dayName}, ${mm}/${dd}/${yyyy}`;
+    return `${days[d.getDay()]}, ${String(m).padStart(2, '0')}/${String(day).padStart(2, '0')}/${y}`;
   };
 
   const totalPrice = selectedSlots.reduce((sum, s) => sum + s.price, 0);
@@ -149,7 +147,7 @@ export default function FacilityDetailPage() {
         <div className={styles.navContainer}>
           <div className={styles.brand} onClick={() => navigate('/')}>
             <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>Courtly</span>
+            <span className={styles.brandText}>BMS</span>
           </div>
           <nav className={styles.navLinks}>
             <Link to="/" className={styles.activeLink}>Find Court</Link>
