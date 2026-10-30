@@ -20,12 +20,13 @@ import com.sep490.bms.common.ApiResponse;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleMalformedInput(Exception ex) {
         return ResponseEntity.badRequest().body(ApiResponse.error("Dữ liệu không hợp lệ"));
     }
 
-    @ExceptionHandler({DataIntegrityViolationException.class, org.springframework.orm.ObjectOptimisticLockingFailureException.class})
+    @ExceptionHandler({ DataIntegrityViolationException.class,
+            org.springframework.orm.ObjectOptimisticLockingFailureException.class })
     public ResponseEntity<ApiResponse<Void>> handleDataConflict(Exception ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error("Dữ liệu trùng lặp hoặc vi phạm ràng buộc"));
@@ -47,6 +48,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("Dữ liệu không hợp lệ", errors));
+    }
+
+    /**
+     * Tham số trên URL sai kiểu, ví dụ /api/locations/abc hoặc ?date=abc: lỗi của
+     * request, không phải lỗi hệ thống.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatchException(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Giá trị của tham số " + ex.getName() + " không hợp lệ"));
     }
 
     @ExceptionHandler(BadCredentialsException.class)
