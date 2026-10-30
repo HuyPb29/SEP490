@@ -16,4 +16,9 @@ public interface OpeningHourRepository extends JpaRepository<OpeningHour, Long> 
 
     /** Giờ mở cửa cả tuần; thứ nào không có dòng là thứ đó đóng cửa. */
     List<OpeningHour> findAllByLocationIdOrderByDayOfWeek(Long locationId);
+    /**
+     * F2 - UC08: giờ mở cửa của một địa điểm.
+     * Dùng index của ux_ohour_day (location_id, day_of_week) nên không phát sinh sort.
+     */
+    List<OpeningHour> findAllByLocationIdOrderByDayOfWeekAsc(Long locationId);
 }

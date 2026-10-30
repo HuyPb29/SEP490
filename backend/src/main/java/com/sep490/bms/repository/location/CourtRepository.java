@@ -15,4 +15,12 @@ public interface CourtRepository extends JpaRepository<Court, Long> {
     List<Court> findAllByLocationIdAndActiveTrueOrderById(Long locationId);
 
     Optional<Court> findByIdAndActiveTrue(Long id);
+    /**
+     * F2 - UC07: sân của một địa điểm.
+     * Dùng index của ux_court_name (location_id, name) nên không phát sinh sort.
+     */
+    List<Court> findAllByLocationIdOrderByNameAsc(Long locationId);
+
+    /** F2 - UC07: kiểm tra trùng tên sân trong cùng một địa điểm. */
+    Optional<Court> findByLocationIdAndNameIgnoreCase(Long locationId, String name);
 }
