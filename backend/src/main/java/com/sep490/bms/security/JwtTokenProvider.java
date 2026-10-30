@@ -42,12 +42,14 @@ public class JwtTokenProvider {
         Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
 
         return Jwts.builder()
+                .id(java.util.UUID.randomUUID().toString())
                 .subject(String.valueOf(account.getId()))
                 .claim("email", account.getEmail())
                 .claim("username", account.getUsername())
                 .claim("fullName", account.getFullName())
                 .claim("role", account.getRole().name())
                 .claim("locationId", account.getLocationId())
+                .claim("tokenVersion", account.getTokenVersion())
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(key)
@@ -74,5 +76,12 @@ public class JwtTokenProvider {
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
+    }
+
+    /** Legacy tokens without a generation are intentionally rejected after this upgrade. */
+    public boolean matchesTokenVersion(String token, long currentVersion) {
+        Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+        Long version = claims.get("tokenVersion", Long.class);
+        return version != null && version >= 0 && version == currentVersion;
     }
 }

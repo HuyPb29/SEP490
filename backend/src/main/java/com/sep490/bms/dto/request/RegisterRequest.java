@@ -18,6 +18,14 @@ import lombok.Setter;
 @Builder
 public class RegisterRequest {
 
+    public void setFullName(String fullName) {
+        this.fullName = normalizeFullName(fullName);
+    }
+
+    public static String normalizeFullName(String value) {
+        return value == null ? null : value.replaceAll("(?U)\\s+", " ").trim();
+    }
+
     @NotBlank(message = "Email không được để trống")
     @Email(message = "Định dạng email không hợp lệ")
     private String email;

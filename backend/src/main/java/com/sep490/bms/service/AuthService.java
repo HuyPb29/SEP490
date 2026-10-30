@@ -22,6 +22,7 @@ import com.sep490.bms.dto.request.ResendOtpRequest;
 import com.sep490.bms.dto.request.ResetPasswordRequest;
 import com.sep490.bms.dto.request.VerifyEmailRequest;
 import com.sep490.bms.entity.Account;
+import com.sep490.bms.entity.AccountAuditAction;
 import com.sep490.bms.entity.AccountStatus;
 import com.sep490.bms.entity.OtpPurpose;
 import com.sep490.bms.entity.OtpRequest;
@@ -32,6 +33,7 @@ import com.sep490.bms.repository.AccountRepository;
 import com.sep490.bms.repository.LocationRepository;
 import com.sep490.bms.repository.OtpRequestRepository;
 import com.sep490.bms.security.JwtTokenProvider;
+import com.sep490.bms.security.UserPrincipal;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,6 +55,7 @@ public class AuthService {
     private final LocationRepository locationRepository;
     private final ObjectMapper objectMapper;
     private final OtpLockService otpLock;
+    private final AccountAuditService audit;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -60,6 +63,10 @@ public class AuthService {
         String email = request.getEmail().trim().toLowerCase();
         otpLock.acquire(email);
         String phone = request.getPhone().trim();
+        otpLock.acquire("phone:" + phone);
+        if (otpRequestRepository.countActiveReservations(email, phone, LocalDateTime.now(), 0) > 0) {
+            throw new AppException("Email hoặc số điện thoại đang chờ xác thực. Vui lòng xác thực, gửi lại OTP hoặc chờ hết 10 phút", HttpStatus.CONFLICT);
+        }
 
         if (accountRepository.existsByEmail(email)) {
             throw new AppException("Địa chỉ email đã được sử dụng bởi tài khoản khác (MSG09)");
@@ -80,7 +87,7 @@ public class AuthService {
         Map<String, String> pendingData = new HashMap<>();
         pendingData.put("email", email);
         pendingData.put("phone", phone);
-        pendingData.put("fullName", request.getFullName().trim());
+        pendingData.put("fullName", RegisterRequest.normalizeFullName(request.getFullName()));
         pendingData.put("username", username);
         pendingData.put("passwordHash", passwordEncoder.encode(request.getPassword()));
 
@@ -147,6 +154,7 @@ public class AuthService {
         }
 
         String username = pendingData.get("username");
+        otpLock.acquire("phone:" + pendingData.get("phone"));
         if (accountRepository.existsByEmail(email)) {
             throw new AppException("Tài khoản với email này đã tồn tại");
         }
@@ -163,7 +171,7 @@ public class AuthService {
                 .username(username)
                 .email(pendingData.get("email"))
                 .phone(pendingData.get("phone"))
-                .fullName(pendingData.get("fullName"))
+                .fullName(RegisterRequest.normalizeFullName(pendingData.get("fullName")))
                 .passwordHash(pendingData.get("passwordHash"))
                 .role(Role.PLAYER)
                 .status(AccountStatus.ACTIVE)
@@ -171,6 +179,7 @@ public class AuthService {
                 .build();
 
         Account saved = accountRepository.save(account);
+        audit.record(saved.getId(), saved.getRole(), saved, AccountAuditAction.REGISTER_VERIFIED, null, null);
 
         String token = jwtTokenProvider.generateToken(saved);
 
@@ -195,6 +204,18 @@ public class AuthService {
 
             if (accountRepository.existsByEmail(email)) {
                 throw new AppException("Tài khoản với email này đã được kích hoạt");
+            }
+
+            String reservedPhone;
+            try {
+                reservedPhone = objectMapper.readValue(latest.getPendingData(), new TypeReference<Map<String, String>>() {}).get("phone");
+            } catch (Exception ex) {
+                throw new AppException("Không thể đọc dữ liệu đăng ký đang chờ");
+            }
+            otpLock.acquire("phone:" + reservedPhone);
+            if (accountRepository.existsByPhoneAndRole(reservedPhone, Role.PLAYER)
+                    || otpRequestRepository.countActiveReservations(email, reservedPhone, LocalDateTime.now(), 1) > 0) {
+                throw new AppException("Số điện thoại đã được sử dụng hoặc đang chờ xác thực bởi yêu cầu khác", HttpStatus.CONFLICT);
             }
 
             String newOtp = generateOtpCode();
@@ -235,7 +256,7 @@ public class AuthService {
         }
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResponse login(LoginRequest request) {
         String identifier = request.getEmail().trim();
         Account account = accountRepository.findByEmailOrUsername(identifier)
@@ -258,6 +279,7 @@ public class AuthService {
             throw new AppException("Địa điểm của nhân viên đã bị khóa", HttpStatus.FORBIDDEN);
         }
         String token = jwtTokenProvider.generateToken(account);
+        audit.record(account.getId(), account.getRole(), account, AccountAuditAction.LOGIN, null, null);
 
         return LoginResponse.builder()
                 .token(token)
@@ -266,8 +288,19 @@ public class AuthService {
                 .build();
     }
 
-    public void logout() {
-        log.info("User requested logout.");
+    @Transactional
+    public void logout(UserPrincipal user) {
+        if (user == null) throw new AppException("Yêu cầu đăng nhập", HttpStatus.UNAUTHORIZED);
+        Account account = accountRepository.findByIdForUpdate(user.getId())
+                .orElseThrow(() -> new AppException("Phiên đăng nhập không hợp lệ", HttpStatus.UNAUTHORIZED));
+        // A queued logout with a stale token must not revoke a newly created generation.
+        if (account.getTokenVersion() != user.getTokenVersion()) {
+            throw new AppException("Phiên đăng nhập đã bị thu hồi", HttpStatus.UNAUTHORIZED);
+        }
+        account.revokeTokens();
+        account.setUpdatedAt(LocalDateTime.now());
+        accountRepository.save(account);
+        audit.record(account.getId(), account.getRole(), account, AccountAuditAction.LOGOUT_ALL, null, null);
     }
 
     @Transactional
@@ -332,8 +365,10 @@ public class AuthService {
         }
         otpRequestRepository.invalidateUnused(email, OtpPurpose.RESET_PASSWORD, LocalDateTime.now());
         account.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        account.revokeTokens();
         account.setUpdatedAt(LocalDateTime.now());
         accountRepository.save(account);
+        audit.record(account.getId(), account.getRole(), account, AccountAuditAction.PASSWORD_RESET, null, null);
     }
 
     private String generateOtpCode() {

@@ -17,6 +17,7 @@ import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.UserDto;
 import com.sep490.bms.dto.request.UpdateStatusRequest;
 import com.sep490.bms.entity.Account;
+import com.sep490.bms.entity.AccountAuditAction;
 import com.sep490.bms.entity.AccountStatus;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.exception.AppException;
@@ -32,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 public class AdminService {
 
     private final AccountRepository accountRepository;
+    private final AccountAuditService audit;
 
     @Transactional(readOnly = true)
     public PageResponse<UserDto> getAccounts(
@@ -112,9 +114,13 @@ public class AdminService {
             throw new AppException("Admin chỉ được khóa hoặc mở tài khoản: ACTIVE, LOCKED");
         }
 
+        AccountStatus previousStatus = account.getStatus();
         account.setStatus(newStatus);
+        if (newStatus == AccountStatus.LOCKED && previousStatus != newStatus) account.revokeTokens();
         account.setUpdatedAt(LocalDateTime.now());
         Account saved = accountRepository.save(account);
+        audit.record(currentAdmin.getId(), currentAdmin.getRole(), saved, AccountAuditAction.ACCOUNT_STATUS_CHANGED,
+                previousStatus, request.getReason());
 
         return UserDto.fromEntity(saved);
     }

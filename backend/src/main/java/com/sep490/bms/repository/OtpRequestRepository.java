@@ -14,6 +14,15 @@ import com.sep490.bms.entity.OtpRequest;
 @Repository
 public interface OtpRequestRepository extends JpaRepository<OtpRequest, Long> {
 
+    @Query(value = """
+            SELECT COUNT(*) FROM otp_request
+            WHERE purpose = 'REGISTER' AND used_at IS NULL AND expires_at > :now
+              AND (email = :email OR JSON_VALUE(pending_data, '$.phone') = :phone)
+              AND (:excludeOwn = 0 OR email <> :email)
+            """, nativeQuery = true)
+    long countActiveReservations(@Param("email") String email, @Param("phone") String phone,
+            @Param("now") java.time.LocalDateTime now, @Param("excludeOwn") int excludeOwn);
+
     long countByEmailAndCreatedAtAfter(String email, java.time.LocalDateTime since);
 
     @Modifying(flushAutomatically = true)

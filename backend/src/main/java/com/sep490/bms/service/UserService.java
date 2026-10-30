@@ -12,6 +12,7 @@ import com.sep490.bms.dto.UserDto;
 import com.sep490.bms.dto.request.ChangePasswordRequest;
 import com.sep490.bms.dto.request.UpdateProfileRequest;
 import com.sep490.bms.entity.Account;
+import com.sep490.bms.entity.AccountAuditAction;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.AccountRepository;
@@ -24,6 +25,7 @@ public class UserService {
 
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AccountAuditService audit;
 
     @Transactional(readOnly = true)
     public UserDto getCurrentUserProfile(Long userId) {
@@ -49,6 +51,7 @@ public class UserService {
 
         account.setUpdatedAt(LocalDateTime.now());
         Account saved = accountRepository.save(account);
+        audit.record(account.getId(), account.getRole(), saved, AccountAuditAction.PROFILE_UPDATED, null, null);
         return UserDto.fromEntity(saved);
     }
     @Transactional
@@ -62,7 +65,9 @@ public class UserService {
             throw new AppException("Mật khẩu hiện tại không chính xác (MSG113)");
         }
         account.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        account.revokeTokens();
         account.setUpdatedAt(LocalDateTime.now());
         accountRepository.save(account);
+        audit.record(account.getId(), account.getRole(), account, AccountAuditAction.PASSWORD_CHANGED, null, null);
     }
 }

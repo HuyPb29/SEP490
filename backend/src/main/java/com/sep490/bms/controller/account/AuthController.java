@@ -18,6 +18,8 @@ import com.sep490.bms.dto.request.ResendOtpRequest;
 import com.sep490.bms.dto.request.ResetPasswordRequest;
 import com.sep490.bms.dto.request.VerifyEmailRequest;
 import com.sep490.bms.service.AuthService;
+import com.sep490.bms.security.UserPrincipal;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import jakarta.validation.Valid;
 
@@ -56,9 +58,9 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout() {
-        authService.logout();
-        return ResponseEntity.ok(ApiResponse.success("Đăng xuất thành công"));
+    public ResponseEntity<ApiResponse<Void>> logout(@AuthenticationPrincipal UserPrincipal user) {
+        authService.logout(user);
+        return ResponseEntity.ok(ApiResponse.success("Đăng xuất khỏi tất cả phiên thành công"));
     }
 
     @PostMapping("/forgot-password")

@@ -1,5 +1,5 @@
 ﻿-- ============================================================
--- BMS (SEP490-G13) - Tạo database BMS và 36 bảng, SQL Server 2019+. Chỉ có cấu trúc, chưa có dữ liệu.
+-- BMS (SEP490-G13) - Tạo database BMS và 37 bảng, SQL Server 2019+. Chỉ có cấu trúc, chưa có dữ liệu.
 -- Theo Baseline 2 (UC_FR_NFR_baseline2.xlsx, 21/10/2026). Sinh tự động từ erd_spec.js, khớp BMS_ERD.drawio.
 -- Khóa ngoại thêm sau cùng (account <-> location tham chiếu vòng).
 -- Trạng thái lưu bằng mã viết hoa theo sheet Trang_thai (@Enumerated(EnumType.STRING)).
@@ -37,12 +37,14 @@ CREATE TABLE account (
     skill_level NVARCHAR(30) NULL,
     location_id BIGINT NULL,
     status VARCHAR(10) NOT NULL CONSTRAINT df_account_status DEFAULT 'ACTIVE',
+    token_version BIGINT NOT NULL CONSTRAINT df_account_token_version DEFAULT 0,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_account_created_at DEFAULT SYSDATETIME(),
     updated_at DATETIME2(0) NULL,
     CONSTRAINT pk_account PRIMARY KEY (id),
     CONSTRAINT uq_account_username UNIQUE (username),
     CONSTRAINT ck_account_role CHECK (role IN ('PLAYER','STAFF','OWNER','ADMIN')),
     CONSTRAINT ck_account_status CHECK (status IN ('ACTIVE','LOCKED','DISABLED')),
+    CONSTRAINT ck_account_token_version CHECK (token_version >= 0),
     CONSTRAINT ck_account_staff_location CHECK ((role = 'STAFF' AND location_id IS NOT NULL) OR (role <> 'STAFF' AND location_id IS NULL)),
     CONSTRAINT ck_account_email CHECK (role NOT IN ('PLAYER','OWNER') OR email IS NOT NULL),
     CONSTRAINT ck_account_phone CHECK (role NOT IN ('PLAYER','OWNER') OR phone IS NOT NULL),
@@ -51,6 +53,30 @@ CREATE TABLE account (
 );
 CREATE UNIQUE INDEX ux_account_email ON account (email) WHERE email IS NOT NULL;
 CREATE UNIQUE INDEX ux_account_player_phone ON account (phone) WHERE role = 'PLAYER';
+
+-- Append-only account history; historical IDs have no FK/cascade so account deletion retains evidence.
+CREATE TABLE account_audit (
+    id BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT pk_account_audit PRIMARY KEY,
+    actor_id BIGINT NOT NULL,
+    actor_role VARCHAR(10) NOT NULL,
+    target_account_id BIGINT NOT NULL,
+    location_id BIGINT NULL,
+    action VARCHAR(40) NOT NULL,
+    previous_status VARCHAR(10) NULL,
+    new_status VARCHAR(10) NULL,
+    reason NVARCHAR(500) NULL,
+    outcome VARCHAR(10) NOT NULL,
+    created_at DATETIME2(7) NOT NULL CONSTRAINT df_account_audit_created_at DEFAULT SYSDATETIME(),
+    CONSTRAINT ck_account_audit_role CHECK (actor_role IN ('PLAYER','STAFF','OWNER','ADMIN')),
+    CONSTRAINT ck_account_audit_outcome CHECK (outcome = 'SUCCESS'),
+    CONSTRAINT ck_account_audit_action CHECK (action IN ('REGISTER_VERIFIED','LOGIN','LOGOUT_ALL',
+        'PROFILE_UPDATED','PASSWORD_CHANGED','PASSWORD_RESET','STAFF_CREATED','STAFF_PASSWORD_RESET',
+        'STAFF_STATUS_CHANGED','ACCOUNT_STATUS_CHANGED')),
+    CONSTRAINT ck_account_audit_previous_status CHECK (previous_status IS NULL OR previous_status IN ('ACTIVE','LOCKED','DISABLED')),
+    CONSTRAINT ck_account_audit_new_status CHECK (new_status IS NULL OR new_status IN ('ACTIVE','LOCKED','DISABLED'))
+);
+CREATE INDEX ix_account_audit_target ON account_audit(target_account_id, id DESC);
+CREATE INDEX ix_account_audit_actor ON account_audit(actor_id, id DESC);
 
 -- otp_request: Mã OTP gửi qua email khi đăng ký và quên mật khẩu (DR25).
 CREATE TABLE otp_request (

@@ -196,8 +196,11 @@ class AuthAndUserApiTests {
         playerToken = reLoginNode.get("data").get("token").asText();
 
         // 7. POST /api/auth/logout
-        mockMvc.perform(post("/api/auth/logout"))
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + playerToken))
                 .andExpect(status().isOk());
+        mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + playerToken))
+                .andExpect(status().isUnauthorized());
+        playerToken = jwtTokenProvider.generateToken(accountRepository.findByEmail(testEmail).orElseThrow());
 
         // 8. GET /api/users/me
         mockMvc.perform(get("/api/users/me")
@@ -324,6 +327,9 @@ class AuthAndUserApiTests {
         mockMvc.perform(post("/api/users/me/password").header("Authorization", "Bearer " + playerToken)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"currentPassword\":\"NewPassword123@\",\"newPassword\":\"Changed123\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.message").value("Đổi mật khẩu thành công (MSG114)"));
+        mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + playerToken))
+                .andExpect(status().isUnauthorized());
+        playerToken = jwtTokenProvider.generateToken(accountRepository.findByEmail(testEmail).orElseThrow());
         mockMvc.perform(patch("/api/users/me").header("Authorization", "Bearer " + playerToken)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"phone\":\"0123456789\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.phone").value(testPhone));
@@ -391,7 +397,7 @@ class AuthAndUserApiTests {
     @Test
     void mergedEntitiesCanReadTheExistingSchema() {
         var entities = entityManager.getMetamodel().getEntities();
-        assertThat(entities).hasSize(36);
+        assertThat(entities).hasSize(37);
         for (var entity : entities) {
             entityManager.createQuery("select e from " + entity.getName() + " e", entity.getJavaType())
                     .setMaxResults(1).getResultList();

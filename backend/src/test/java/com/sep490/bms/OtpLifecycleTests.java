@@ -41,6 +41,7 @@ class OtpLifecycleTests {
     @AfterEach
     void cleanup() {
         jdbc.update("DELETE FROM otp_request WHERE email = ?", email);
+        jdbc.update("DELETE FROM account_audit WHERE target_account_id IN (SELECT id FROM account WHERE email = ?)", email);
         jdbc.update("DELETE FROM account WHERE email = ?", email);
     }
 
@@ -185,11 +186,38 @@ class OtpLifecycleTests {
             var second = pool.submit(register);
             start.countDown();
             assertThat(java.util.List.of(first.get(25, TimeUnit.SECONDS), second.get(25, TimeUnit.SECONDS)))
-                    .containsExactlyInAnyOrder(201, 429);
+                    .containsExactlyInAnyOrder(201, 409);
             assertThat(otps.countByEmailAndCreatedAtAfter(email, LocalDateTime.now().minusDays(1))).isEqualTo(1);
         } finally {
             pool.shutdownNow();
             pool.awaitTermination(10, TimeUnit.SECONDS);
         }
+    }
+    @Test
+    void pendingRegistrationReservesEmailAndPhoneUntilExpiryAndNormalizesName() {
+        String phone = "0" + String.format("%09d", Math.floorMod((long) suffix.hashCode(), 1000000000L));
+        RegisterRequest request = RegisterRequest.builder().email(email).username("p" + suffix)
+                .phone(phone).fullName("  Nguyễn   Văn A ").password("Original123").build();
+        auth.register(request);
+        assertThatThrownBy(() -> auth.register(request)).isInstanceOfSatisfying(AppException.class,
+                ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT));
+        request.setEmail("other_" + email);
+        assertThatThrownBy(() -> auth.register(request)).isInstanceOfSatisfying(AppException.class,
+                ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT));
+        request.setEmail(email);
+        OtpRequest pending = otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER).orElseThrow();
+        pending.setExpiresAt(LocalDateTime.now().minusSeconds(1));
+        otps.saveAndFlush(pending);
+        jdbc.update("UPDATE otp_request SET created_at = ? WHERE id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(11)), pending.getId());
+        auth.register(request);
+        OtpRequest current = otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER).orElseThrow();
+        current.setCodeHash(encoder.encode("123456"));
+        otps.saveAndFlush(current);
+        verify(OtpPurpose.REGISTER, "123456");
+        assertThat(accounts.findByEmail(email).orElseThrow().getFullName()).isEqualTo("Nguyễn Văn A");
+        RegisterRequest httpRequest = new RegisterRequest();
+        httpRequest.setFullName("  Nguyễn   Văn A ");
+        assertThat(httpRequest.getFullName()).isEqualTo("Nguyễn Văn A");
     }
 }
