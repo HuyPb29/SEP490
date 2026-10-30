@@ -14,3 +14,10 @@ dist/
 *.iml
 .DS_Store
 Thumbs.db
+/PROJECT_CONTEXT.md
+/AGENTS.md
+BAO_CAO_DU_AN_VA_TEST_CHI_TIET.md
+
+# Local backend documentation and database scripts
+/backend/docs/
+/backend/db/
