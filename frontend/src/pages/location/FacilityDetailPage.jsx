@@ -152,7 +152,7 @@ export default function FacilityDetailPage() {
           <nav className={styles.navLinks}>
             <Link to="/" className={styles.activeLink}>Find Court</Link>
             <a href="#matches">Open Matches</a>
-            <a href="#my-bookings">My Bookings</a>
+            <Link to="/my-bookings">My Bookings</Link>
           </nav>
           <div className={styles.userArea}>
             <button type="button" className={styles.bellBtn} aria-label="Notifications">🔔</button>

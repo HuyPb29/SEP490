@@ -238,7 +238,7 @@ export default function BookingPaymentPage() {
           <nav className={styles.navLinks}>
             <Link to="/">Find Courts</Link>
             <a href="#matches">Open Matches</a>
-            <Link to="/booking/payment" className={styles.activeLink}>
+            <Link to="/my-bookings" className={styles.activeLink}>
               My Bookings
             </Link>
           </nav>
@@ -260,9 +260,9 @@ export default function BookingPaymentPage() {
             <button
               type="button"
               className={styles.backHomeBtn}
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/my-bookings')}
             >
-              Back to Home
+              Go to My Bookings
             </button>
           </div>
         ) : isExpired ? (
