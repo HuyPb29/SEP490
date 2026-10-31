@@ -23,4 +23,6 @@ public interface PriceRuleRepository extends JpaRepository<PriceRule, Long> {
     @Query("SELECT p FROM PriceRule p WHERE p.courtId = :courtId AND (p.validTo IS NULL OR p.validTo >= :date) "
             + "ORDER BY p.validFrom, p.startMinute")
     List<PriceRule> findNotExpired(@Param("courtId") Long courtId, @Param("date") LocalDate date);
+    /** Bảng giá của một sân, sắp theo giờ bắt đầu để dễ đối chiếu trên màn hình quản lý. */
+    List<PriceRule> findAllByCourtIdOrderByStartMinuteAsc(Long courtId);
 }
