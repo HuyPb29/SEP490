@@ -1,7 +1,7 @@
-# Bộ test tay — F2 Quản lý địa điểm (UC07 + UC08)
+# Bộ test tay — F2 Quản lý địa điểm (UC07 + UC08 + UC09)
 
 Tài liệu dành cho test thủ công bằng Postman/Swagger. Mỗi case ghi rõ request, body và kết quả phải thấy.
-Toàn bộ 29 case dưới đây tương ứng 1-1 với 25 test tự động trong `F2LocationApiTests.java` (cộng 4 case bổ sung chỉ test tay được).
+Toàn bộ 42 case dưới đây phủ 44 test tự động (`F2LocationApiTests.java` 25 test cho UC07–UC08 và `F2PriceRuleApiTests.java` 19 test cho UC09), cộng vài case chỉ test tay được.
 
 ---
 
@@ -57,10 +57,11 @@ Dữ liệu gốc của địa điểm 1: **3 sân** (`Sân 1`, `Sân 2`, `Sân 
 
 ## 3. Ba lưu ý bắt buộc — đọc trước khi test
 
-1. **Header `X-Location-Id`** bắt buộc với 3 API có path không chứa id địa điểm:
+1. **Header `X-Location-Id`** bắt buộc với các API `/api/owner/**` mà path **không chứa** id địa điểm:
    - `PATCH /api/owner/courts/{id}`
-   - `PATCH /api/owner/opening-exceptions/{id}`
-   - `DELETE /api/owner/opening-exceptions/{id}`
+   - `PATCH|DELETE /api/owner/opening-exceptions/{id}`
+   - `GET|POST|PATCH|DELETE /api/owner/courts/{id}/price-rules` và `/api/owner/price-rules/{id}`
+   - `GET|POST|PATCH|DELETE /api/owner/batch-offers`
 
    Thiếu header → **401** (không phải lỗi token).
 
@@ -565,6 +566,194 @@ GET {{baseUrl}}/api/owner/locations
 
 ---
 
+## 3b. UC09 — Bảng giá và ưu đãi đặt theo lô
+
+Dữ liệu gốc: mỗi sân có **3 dòng giá** (T2–T6 `06:00–17:00` = 60.000đ, T2–T6 `17:00–23:30` = 90.000đ, T7–CN `06:00–23:30` = 100.000đ). Vì vậy khung giờ **đã bị phủ kín**, muốn tạo dòng giá mới hợp lệ phải chọn ngày/giờ chưa có hoặc dùng khoảng hiệu lực khác (ví dụ năm 2025).
+
+Voucher mẫu để test ưu đãi: `BATCH10` (id 1) và `BATCH50K` (id 2) thuộc **địa điểm 1**, trạng thái `PUBLISHED`.
+
+---
+
+### TC-30 · Xem bảng giá của sân
+
+```
+GET {{baseUrl}}/api/owner/courts/1/price-rules
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+```
+
+**Kỳ vọng:** **`200`**, `data` có 3 phần tử; mỗi phần tử có `applyDays` 7 ký tự, `dayLabels` tiếng Việt (`"Thứ 2"`), `startTime`/`endTime` dạng `HH:mm`, `active: true`.
+
+---
+
+### TC-31 · Thêm dòng giá hợp lệ
+
+```
+POST {{baseUrl}}/api/owner/courts/1/price-rules
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+
+{
+  "days": [1,2,3,4,5],
+  "startTime": "17:00",
+  "endTime": "22:00",
+  "pricePerSlot": 90000,
+  "validFrom": "2025-01-01",
+  "validTo": "2025-12-31"
+}
+```
+
+**Kỳ vọng:** **`201`**, `data.applyDays = "1111100"`, `data.days = [1,2,3,4,5]`, `data.durationMinutes = 300`.
+
+---
+
+### TC-32 · Trùng khung giờ của cùng một sân
+
+```
+POST {{baseUrl}}/api/owner/courts/1/price-rules
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+
+{ "days": [3], "startTime": "18:00", "endTime": "20:00", "pricePerSlot": 100000, "validFrom": "2025-06-01" }
+```
+
+**Kỳ vọng:** **`409`**, message `Bảng giá bị trùng với quy tắc #<id> (...)`.
+
+---
+
+### TC-33 · Giờ lẻ không phải bội số 30 phút
+
+```
+POST {{baseUrl}}/api/owner/courts/1/price-rules
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+
+{ "days": [6], "startTime": "17:15", "endTime": "18:00", "pricePerSlot": 80000, "validFrom": "2026-11-01" }
+```
+
+**Kỳ vọng:** **`400`**, message `Giờ bắt đầu phải là bội số của 30 phút`.
+
+---
+
+### TC-34 · Không chọn thứ nào
+
+```
+POST {{baseUrl}}/api/owner/courts/1/price-rules
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+
+{ "days": [], "startTime": "17:00", "endTime": "18:00", "pricePerSlot": 80000, "validFrom": "2026-11-01" }
+```
+
+**Kỳ vọng:** **`400`**, `errors.days = "Phải chọn ít nhất một ngày áp dụng giá"`.
+
+---
+
+### TC-35 · Sửa giá — chỉ đổi trường gửi lên
+
+```
+PATCH {{baseUrl}}/api/owner/price-rules/19
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+
+{ "pricePerSlot": 95000 }
+```
+
+**Kỳ vọng:** **`200`**, `pricePerSlot = 95000`, `applyDays`/`startMinute`/`validFrom` giữ nguyên.
+
+---
+
+### TC-36 · Xoá dòng giá rồi xoá lại
+
+```
+DELETE {{baseUrl}}/api/owner/price-rules/19
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+```
+
+**Kỳ vọng:** lần 1 **`200`** (`Đã xoá quy tắc giá`), lần 2 **`404`** (`Không tìm thấy quy tắc giá`).
+
+---
+
+### TC-37 · Danh sách ưu đãi theo lô
+
+```
+GET {{baseUrl}}/api/owner/batch-offers
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+```
+
+**Kỳ vọng:** **`200`**, `data[0].voucherCode = "BATCH10"`, `discountType = "PERCENT"`, `voucherStatus = "PUBLISHED"`, `active` phản ánh hôm nay có nằm trong `startDate–endDate` hay không.
+
+---
+
+### TC-38 · Tạo ưu đãi đặt theo lô
+
+```
+POST {{baseUrl}}/api/owner/batch-offers
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+
+{ "name": "Ưu đãi đặt lô tháng 11", "startDate": "2026-11-01", "endDate": "2026-11-30", "minPackageAmount": 500000, "voucherId": 1 }
+```
+
+**Kỳ vọng:** **`201`**, `data.voucherId = 1`, `data.minPackageAmount = 500000`.
+
+---
+
+### TC-39 · Voucher thuộc địa điểm khác
+
+```
+POST {{baseUrl}}/api/owner/batch-offers
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+
+{ "name": "Sai voucher", "startDate": "2026-11-01", "endDate": "2026-11-30", "minPackageAmount": 500000, "voucherId": 3 }
+```
+
+**Kỳ vọng:** **`400`**, message `Voucher không thuộc địa điểm này` (voucher id 3 thuộc địa điểm 3).
+
+---
+
+### TC-40 · Ngày kết thúc trước ngày bắt đầu
+
+```
+POST {{baseUrl}}/api/owner/batch-offers
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+
+{ "name": "Sai ngày", "startDate": "2026-11-30", "endDate": "2026-11-01", "minPackageAmount": 500000, "voucherId": 1 }
+```
+
+**Kỳ vọng:** **`400`**, message `Ngày kết thúc phải sau hoặc bằng ngày bắt đầu`.
+
+---
+
+### TC-41 · Sửa và xoá ưu đãi
+
+```
+PATCH {{baseUrl}}/api/owner/batch-offers/2
+Authorization: Bearer <token owner1>
+X-Location-Id: 1
+
+{ "minPackageAmount": 800000 }
+```
+
+**Kỳ vọng:** **`200`**, `minPackageAmount = 800000`. Sau đó `DELETE` cùng URL → **`200`**, gọi lại → **`404`**.
+
+---
+
+### TC-42 · Thiếu header X-Location-Id ở API ưu đãi
+
+```
+GET {{baseUrl}}/api/owner/batch-offers
+Authorization: Bearer <token owner1>
+```
+
+**Kỳ vọng:** **`401`** (đúng ra 400 — cùng lỗi `sendError` của F1 đã ghi ở mục 3), body trống.
+
+---
+
 ## 4. Bảng ghi kết quả
 
 | TC | Nội dung | Kỳ vọng | Thực tế | Đạt |
@@ -598,6 +787,19 @@ GET {{baseUrl}}/api/owner/locations
 | 27 | PLAYER gọi API owner | 401 | | ☐ |
 | 28 | Chéo chủ địa điểm | 401 | | ☐ |
 | 29 | Không token | 401 | | ☐ |
+| 30 | Xem bảng giá của sân | 200, 3 dòng | | ☐ |
+| 31 | Thêm dòng giá hợp lệ | 201 | | ☐ |
+| 32 | Trùng khung giờ | 409 | | ☐ |
+| 33 | Giờ lẻ 15 phút | 400 | | ☐ |
+| 34 | Không chọn thứ | 400 | | ☐ |
+| 35 | PATCH chỉ đổi giá | 200 | | ☐ |
+| 36 | Xoá dòng giá rồi xoá lại | 200 → 404 | | ☐ |
+| 37 | Danh sách ưu đãi theo lô | 200, có voucherCode | | ☐ |
+| 38 | Tạo ưu đãi theo lô | 201 | | ☐ |
+| 39 | Voucher khác địa điểm | 400 | | ☐ |
+| 40 | Ngày kết thúc trước bắt đầu | 400 | | ☐ |
+| 41 | Sửa + xoá ưu đãi | 200 → 200 → 404 | | ☐ |
+| 42 | Thiếu X-Location-Id (ưu đãi) | 401 | | ☐ |
 
 ---
 
@@ -610,6 +812,9 @@ GET {{baseUrl}}/api/owner/locations
 | 403 mong đợi nhưng thấy 401 | Bug F1 chưa sửa | Đúng hiện trạng, ghi nhận |
 | 400 "Tên sân đã tồn tại" khi tên có vẻ mới | So sánh không phân biệt hoa/thường | Đổi tên khác hẳn |
 | 400 "đã có cấu hình ngoại lệ" | Ngày đó đã có ngoại lệ từ lần test trước | Đổi ngày, hoặc xoá ngoại lệ cũ |
+| 409 "Bảng giá bị trùng với quy tắc #…" | Khung giờ + thứ + khoảng ngày đã có dòng giá khác | Đổi giờ/thứ, hoặc dùng `validFrom`/`validTo` khác |
+| 400 "Voucher không thuộc địa điểm này" | `voucherId` thuộc địa điểm khác với `X-Location-Id` | Dùng voucher 1 hoặc 2 (địa điểm 1) |
+| 400 "Voucher phải ở trạng thái PUBLISHED" | Voucher còn `DRAFT`/`DISABLED` | Phát hành voucher trước (F6/UC24) |
 | 500 khi PUT giờ mở cửa | Gửi phút lẻ hoặc `close <= open` lọt qua validate | Kiểm tra lại body |
 
 ---
@@ -632,35 +837,42 @@ DELETE FROM dbo.opening_hour WHERE location_id = 1;
 INSERT INTO dbo.opening_hour (location_id, day_of_week, open_minute, close_minute)
 SELECT 1, d, 360, 1410 FROM (VALUES (1),(2),(3),(4),(5),(6),(7)) AS t(d);
 
+-- Xoá dòng giá và ưu đãi tạo trong lúc test (giữ 18 dòng giá seed)
+DELETE FROM dbo.price_rule WHERE court_id NOT IN (1,2,3,4,5,6) OR id > 18;
+DELETE FROM dbo.batch_offer WHERE name <> N'Ưu đãi đặt lô tháng 11';
+
 -- Kiểm tra lại
 SELECT (SELECT COUNT(*) FROM dbo.court) AS courts,
        (SELECT COUNT(*) FROM dbo.opening_hour) AS hours,
-       (SELECT COUNT(*) FROM dbo.opening_exception) AS exceptions;
--- Kỳ vọng: 6 | 21 | 0
+       (SELECT COUNT(*) FROM dbo.opening_exception) AS exceptions,
+       (SELECT COUNT(*) FROM dbo.price_rule) AS price_rules,
+       (SELECT COUNT(*) FROM dbo.batch_offer) AS batch_offers;
+-- Kỳ vọng: 6 | 21 | 0 | 18 | 1
 ```
 
 Nếu muốn reset toàn bộ về seed gốc: xoá database `BMS` rồi chạy lại `BMS_database.sql` và `BMS_seed_dev.sql`.
 
 ---
 
-## 7. Chạy lại bộ test tự động (nhanh hơn 29 case tay)
+## 7. Chạy lại bộ test tự động (nhanh hơn 42 case tay)
 
 ```bash
 cd E:\SEP490\backend
 set DB_URL=jdbc:sqlserver://localhost:1433;databaseName=BMS;encrypt=true;trustServerCertificate=true
 set DB_USERNAME=sa
 set DB_PASSWORD=Bms@12345
-mvnw test -Dtest=F2LocationApiTests
+mvnw test -Dtest="F2LocationApiTests,F2PriceRuleApiTests"
 ```
 
-Kỳ vọng: `Tests run: 25, Failures: 0, Errors: 0`.
+Kỳ vọng: `Tests run: 44, Failures: 0, Errors: 0`.
 
-Hoặc chạy Postman collection (43 assertion):
+Hoặc chạy Postman collection (53 assertion):
 
 ```bash
 cd E:\SEP490\postman
 npx --yes newman run BMS_F2.postman_collection.json ^
   --folder "00 - Auth (chạy trước)" ^
   --folder "F2 - UC07 Địa điểm & sân (OWNER)" ^
-  --folder "F2 - UC08 Giờ mở cửa & ngày ngoại lệ (OWNER)" --reporters cli
+  --folder "F2 - UC08 Giờ mở cửa & ngày ngoại lệ (OWNER)" ^
+  --folder "F2 - UC09 Bảng giá & ưu đãi theo lô (OWNER)" --reporters cli
 ```

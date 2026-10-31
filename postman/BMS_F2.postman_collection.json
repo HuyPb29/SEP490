@@ -26,6 +26,10 @@
       "value": "2026-11-02"
     },
     {
+      "key": "voucherId",
+      "value": "1"
+    },
+    {
       "key": "priceRuleId",
       "value": "1"
     },
@@ -43,6 +47,10 @@
     },
     {
       "key": "serviceRegistrationId",
+      "value": "1"
+    },
+    {
+      "key": "batchLocationId",
       "value": "1"
     }
   ],
@@ -890,10 +898,28 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{token}}"
+              },
+              {
+                "key": "X-Location-Id",
+                "value": "{{locationId}}"
               }
             ],
             "url": "{{baseUrl}}/api/owner/courts/{{courtId}}/price-rules"
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || [];",
+                  "if (d.length) { pm.collectionVariables.set('priceRuleId', d[0].id); }",
+                  "console.log('Số quy tắc giá: ' + d.length);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "POST /api/owner/courts/{id}/price-rules",
@@ -905,13 +931,62 @@
                 "value": "Bearer {{token}}"
               },
               {
+                "key": "X-Location-Id",
+                "value": "{{locationId}}"
+              },
+              {
                 "key": "Content-Type",
                 "value": "application/json"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"applyDays\": \"1111100\",\n  \"startMinute\": 360,\n  \"endMinute\": 1020,\n  \"pricePerSlot\": 60000,\n  \"validFrom\": \"2026-11-01\",\n  \"validTo\": null\n}",
+              "raw": "{\n  \"days\": [\n    1,\n    2,\n    3,\n    4,\n    5\n  ],\n  \"startTime\": \"17:00\",\n  \"endTime\": \"22:00\",\n  \"pricePerSlot\": 90000,\n  \"validFrom\": \"2025-01-01\",\n  \"validTo\": \"2025-12-31\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/owner/courts/{{courtId}}/price-rules",
+            "description": "Sân mẫu (courtId=1) đã được seed bảng giá phủ kín 06:00–23:30, nên ví dụ này dùng khoảng hiệu lực năm 2025 để không bị chặn trùng khung giờ (409)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "if (d && d.id) { pm.collectionVariables.set('priceRuleId', d.id); }",
+                  "pm.test('applyDays dung dinh dang 7 ky tu', () => pm.expect(d.applyDays).to.match(/^[01]{7}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST price-rules — trùng khung giờ (mong đợi 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "X-Location-Id",
+                "value": "{{locationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"days\": [\n    3\n  ],\n  \"startTime\": \"18:00\",\n  \"endTime\": \"20:00\",\n  \"pricePerSlot\": 100000,\n  \"validFrom\": \"2025-06-01\",\n  \"validTo\": \"2025-06-30\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -919,7 +994,18 @@
               }
             },
             "url": "{{baseUrl}}/api/owner/courts/{{courtId}}/price-rules"
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "PATCH /api/owner/price-rules/{id}",
@@ -931,13 +1017,17 @@
                 "value": "Bearer {{token}}"
               },
               {
+                "key": "X-Location-Id",
+                "value": "{{locationId}}"
+              },
+              {
                 "key": "Content-Type",
                 "value": "application/json"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"pricePerSlot\": 65000\n}",
+              "raw": "{\n  \"pricePerSlot\": 95000\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -945,7 +1035,18 @@
               }
             },
             "url": "{{baseUrl}}/api/owner/price-rules/{{priceRuleId}}"
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "DELETE /api/owner/price-rules/{id}",
@@ -955,10 +1056,25 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{token}}"
+              },
+              {
+                "key": "X-Location-Id",
+                "value": "{{locationId}}"
               }
             ],
             "url": "{{baseUrl}}/api/owner/price-rules/{{priceRuleId}}"
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "GET /api/owner/batch-offers",
@@ -971,11 +1087,26 @@
               },
               {
                 "key": "X-Location-Id",
-                "value": "{{locationId}}"
+                "value": "{{batchLocationId}}"
               }
             ],
-            "url": "{{baseUrl}}/api/owner/batch-offers"
-          }
+            "url": "{{baseUrl}}/api/owner/batch-offers",
+            "description": "Dùng batchLocationId (mặc định 1) vì voucher mẫu BATCH10/BATCH50K thuộc địa điểm 1. Voucher phải cùng địa điểm và ở trạng thái PUBLISHED thì mới gắn được vào ưu đãi."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || [];",
+                  "if (d.length) { pm.collectionVariables.set('batchOfferId', d[0].id); }",
+                  "console.log('Số ưu đãi: ' + d.length);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "POST /api/owner/batch-offers",
@@ -988,7 +1119,7 @@
               },
               {
                 "key": "X-Location-Id",
-                "value": "{{locationId}}"
+                "value": "{{batchLocationId}}"
               },
               {
                 "key": "Content-Type",
@@ -997,15 +1128,29 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Ưu đãi giải đấu tháng 11\",\n  \"startDate\": \"2026-11-01\",\n  \"endDate\": \"2026-11-30\",\n  \"minPackageAmount\": 500000,\n  \"voucherId\": 1\n}",
+              "raw": "{\n  \"name\": \"Ưu đãi đặt lô tháng 11\",\n  \"startDate\": \"2026-11-01\",\n  \"endDate\": \"2026-11-30\",\n  \"minPackageAmount\": 500000,\n  \"voucherId\": \"{{voucherId}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "url": "{{baseUrl}}/api/owner/batch-offers"
-          }
+            "url": "{{baseUrl}}/api/owner/batch-offers",
+            "description": "Dùng batchLocationId (mặc định 1) vì voucher mẫu BATCH10/BATCH50K thuộc địa điểm 1. Voucher phải cùng địa điểm và ở trạng thái PUBLISHED thì mới gắn được vào ưu đãi."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "if (d && d.id) { pm.collectionVariables.set('batchOfferId', d.id); }"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "PATCH /api/owner/batch-offers/{id}",
@@ -1018,7 +1163,7 @@
               },
               {
                 "key": "X-Location-Id",
-                "value": "{{locationId}}"
+                "value": "{{batchLocationId}}"
               },
               {
                 "key": "Content-Type",
@@ -1027,15 +1172,27 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"minPackageAmount\": 600000\n}",
+              "raw": "{\n  \"minPackageAmount\": 800000\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "url": "{{baseUrl}}/api/owner/batch-offers/{{batchOfferId}}"
-          }
+            "url": "{{baseUrl}}/api/owner/batch-offers/{{batchOfferId}}",
+            "description": "Dùng batchLocationId (mặc định 1) vì voucher mẫu BATCH10/BATCH50K thuộc địa điểm 1. Voucher phải cùng địa điểm và ở trạng thái PUBLISHED thì mới gắn được vào ưu đãi."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "DELETE /api/owner/batch-offers/{id}",
@@ -1048,11 +1205,23 @@
               },
               {
                 "key": "X-Location-Id",
-                "value": "{{locationId}}"
+                "value": "{{batchLocationId}}"
               }
             ],
-            "url": "{{baseUrl}}/api/owner/batch-offers/{{batchOfferId}}"
-          }
+            "url": "{{baseUrl}}/api/owner/batch-offers/{{batchOfferId}}",
+            "description": "Dùng batchLocationId (mặc định 1) vì voucher mẫu BATCH10/BATCH50K thuộc địa điểm 1. Voucher phải cùng địa điểm và ở trạng thái PUBLISHED thì mới gắn được vào ưu đãi."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },

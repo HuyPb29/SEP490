@@ -86,6 +86,23 @@ SELECT c.id, '0000011', 360,  1410, 100000, CAST('2026-01-01' AS DATE), NULL FRO
 INSERT INTO dbo.service_term (location_id, start_date, end_date, recorded_by)
 SELECT l.id, CAST('2026-01-01' AS DATE), CAST('2026-12-31' AS DATE), @adminId FROM dbo.location l;
 
+-- Voucher mẫu cho ưu đãi đặt theo lô (UC09).
+-- Bảng voucher thuộc F6, ở đây chỉ tạo dữ liệu tối thiểu để test F2 vì batch_offer.voucher_id là NOT NULL.
+DECLARE @locOwner1 BIGINT = (SELECT MIN(id) FROM dbo.location WHERE owner_id = @owner1Id);
+DECLARE @locOwner2 BIGINT = (SELECT MIN(id) FROM dbo.location WHERE owner_id = @owner2Id);
+
+INSERT INTO dbo.voucher (location_id, code, name, source, target_group, discount_type, discount_value,
+                         min_order_amount, used_count, budget_used, status, version, created_at)
+VALUES (@locOwner1, 'BATCH10',  N'Giảm 10% cho gói đặt theo lô',     'BATCH_OFFER', 'ALL_PLAYERS', 'PERCENT', 10,    0, 0, 0, 'PUBLISHED', 0, SYSDATETIME()),
+       (@locOwner1, 'BATCH50K', N'Giảm 50.000đ cho gói đặt theo lô', 'BATCH_OFFER', 'ALL_PLAYERS', 'AMOUNT',  50000, 0, 0, 0, 'PUBLISHED', 0, SYSDATETIME()),
+       (@locOwner2, 'BATCH15',  N'Giảm 15% cho gói đặt theo lô',     'BATCH_OFFER', 'ALL_PLAYERS', 'PERCENT', 15,    0, 0, 0, 'PUBLISHED', 0, SYSDATETIME());
+
+-- Ưu đãi đặt theo lô mẫu của địa điểm 1 (UC09)
+INSERT INTO dbo.batch_offer (location_id, name, start_date, end_date, min_package_amount, voucher_id, created_at)
+SELECT @locOwner1, N'Ưu đãi đặt lô tháng 11',
+       CAST('2026-11-01' AS DATE), CAST('2026-11-30' AS DATE), 500000,
+       (SELECT id FROM dbo.voucher WHERE code = 'BATCH10'), SYSDATETIME();
+
 COMMIT TRANSACTION;
 
 SELECT (SELECT COUNT(*) FROM dbo.account)      AS accounts,
@@ -93,4 +110,6 @@ SELECT (SELECT COUNT(*) FROM dbo.account)      AS accounts,
        (SELECT COUNT(*) FROM dbo.court)        AS courts,
        (SELECT COUNT(*) FROM dbo.opening_hour) AS opening_hours,
        (SELECT COUNT(*) FROM dbo.price_rule)   AS price_rules,
-       (SELECT COUNT(*) FROM dbo.service_term) AS service_terms;
+       (SELECT COUNT(*) FROM dbo.service_term) AS service_terms,
+       (SELECT COUNT(*) FROM dbo.voucher)      AS vouchers,
+       (SELECT COUNT(*) FROM dbo.batch_offer)  AS batch_offers;
