@@ -4,16 +4,16 @@
 |----------|----------------------------------------|
 | Frontend | ReactJS (Vite) + TailwindCSS           |
 | Backend  | Java 21, Spring Boot, REST API         |
-| Database | Microsoft SQL Server (`bms_db`)        |
+| Database | Microsoft SQL Server (`BMS`)           |
 
 ## Structure
 - `frontend/` - React app (http://localhost:5173)
 - `backend/`  - Spring Boot app (http://localhost:8080)
-- `BMSquery.sql` - database schema (creates `bms_db`, drops & recreates tables)
+- `BMS_database.sql` - database schema (creates `BMS` with 35 tables; stops if `BMS` already has tables)
 
 ## Setup
-1. **Database**: run `BMSquery.sql` in SSMS / Azure Data Studio against your SQL Server. Enable TCP/IP and make sure the instance listens on a port.
-2. **Backend**: set `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` (see `backend/.env.example`), then
+1. **Database**: run `BMS_database.sql` in SSMS / Azure Data Studio (creates database `BMS` if missing). Enable TCP/IP for the instance and keep SQL Server Browser running when using a named instance.
+2. **Backend**: open `backend/src/main/resources/application.properties` and change the server name, username and password to match your SQL Server, then
    ```
    cd backend
    .\mvnw spring-boot:run

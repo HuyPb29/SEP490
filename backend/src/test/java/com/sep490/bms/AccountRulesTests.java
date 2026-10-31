@@ -26,7 +26,7 @@ class AccountRulesTests {
     private final EmailService email = mock(EmailService.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final AuthService auth = new AuthService(accounts, otps, encoder, mock(JwtTokenProvider.class),
-            email, mock(LocationRepository.class), mapper);
+            email, mock(LocationRepository.class), mapper, mock(OtpLockService.class), mock(AccountAuditService.class));
 
     @Test
     void hourlyAndDailyOtpLimitsRejectBeforeSending() {

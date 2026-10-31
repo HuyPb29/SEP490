@@ -28,6 +28,7 @@ public class UserPrincipal implements UserDetails {
     private final Role role;
     private final Long locationId;
     private final AccountStatus status;
+    private final long tokenVersion;
     private final Collection<? extends GrantedAuthority> authorities;
 
     public static UserPrincipal create(Account account) {
@@ -44,6 +45,7 @@ public class UserPrincipal implements UserDetails {
                 .role(account.getRole())
                 .locationId(account.getLocationId())
                 .status(account.getStatus())
+                .tokenVersion(account.getTokenVersion())
                 .authorities(authorities)
                 .build();
     }

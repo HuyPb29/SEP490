@@ -66,7 +66,8 @@ public class LocationScopeFilter extends OncePerRequestFilter {
         } else {
             location = locationAccess.selectedLocation(user);
         }
-        boolean export = "GET".equals(request.getMethod()) && path.equals("/api/owner/exports");
+        boolean export = "GET".equals(request.getMethod())
+                && (path.equals("/api/owner/booking-exports") || path.equals("/api/owner/revenue-exports"));
         if (!"ACTIVE".equals(location.getStatus()) && !export) {
             throw new AppException("Địa điểm đã bị khóa; chỉ được tải dữ liệu", HttpStatus.FORBIDDEN);
         }

@@ -1,10 +1,17 @@
 package com.sep490.bms.controller.location;
 
-import org.springframework.http.HttpStatus;
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.dto.location.CourtResponse;
+import com.sep490.bms.service.location.CourtQueryService;
+
+import lombok.RequiredArgsConstructor;
 
 /**
  * Feature: F3 – Tìm và đặt sân
@@ -12,29 +19,20 @@ import org.springframework.web.bind.annotation.RestController;
  * UC: UC12 – Xem thông tin sân công khai
  */
 @RestController
+@RequiredArgsConstructor
 public class CourtController {
 
-    /**
-     * UC12 – Xem thông tin sân công khai
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
+    private final CourtQueryService courtQueryService;
+
+    /** UC12 – Xem thông tin sân công khai (#1: danh sách sân). Công khai cho Guest. */
     @GetMapping("/api/locations/{id}/courts")
-    public ResponseEntity<Void> getLocationsByIdCourts(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    public ResponseEntity<ApiResponse<List<CourtResponse>>> getLocationsByIdCourts(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(ApiResponse.success(courtQueryService.listActive(id)));
     }
 
-    /**
-     * UC12 – Xem thông tin sân công khai (#2: trả kèm bảng giá của sân)
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
+    /** UC12 – Xem thông tin sân công khai (#2: chi tiết sân kèm bảng giá). Công khai cho Guest. */
     @GetMapping("/api/courts/{id}")
-    public ResponseEntity<Void> getCourtsById(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    public ResponseEntity<ApiResponse<CourtResponse>> getCourtsById(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(ApiResponse.success(courtQueryService.detail(id)));
     }
 }

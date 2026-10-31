@@ -29,6 +29,9 @@ import lombok.Setter;
 @Builder
 public class Complaint {
 
+    /** Loại khiếu nại đặc biệt: Owner xác nhận thanh toán trễ (BR49). */
+    public static final String TYPE_LATE_PAYMENT_CONFIRMATION = "LATE_PAYMENT_CONFIRMATION";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

@@ -113,6 +113,12 @@ public class Booking {
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
 
+    @Column(name="loyalty_refund_processed",nullable=false)
+    private boolean loyaltyRefundProcessed;
+
+    @Column(name="loyalty_compensation_processed",nullable=false)
+    private boolean loyaltyCompensationProcessed;
+
     @Version
     @Column(nullable = false)
     private int version;

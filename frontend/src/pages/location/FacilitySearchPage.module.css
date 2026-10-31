@@ -1,0 +1,451 @@
+.pageWrapper {
+  min-height: 100vh;
+  background-color: #f8fafb;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #0f172a;
+}
+
+/* Navbar */
+.navbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  height: 68px;
+  display: flex;
+  align-items: center;
+}
+
+.navContainer {
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 20px;
+}
+
+.brandIcon {
+  background: #0d8a52;
+  color: #fff;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.navLinks {
+  display: flex;
+  gap: 28px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.navLinks a {
+  text-decoration: none;
+  color: #334155;
+}
+
+.activeLink {
+  color: #0d8a52 !important;
+  font-weight: 600;
+}
+
+.authActions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.loginBtn {
+  background: none;
+  border: none;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.registerBtn {
+  background: #0d8a52;
+  color: #fff;
+  border: none;
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* Hero Banner */
+.heroSection {
+  background: radial-gradient(circle at 80% 20%, #0d3b2e 0%, #07191e 65%);
+  padding: 44px 24px 52px;
+  color: #ffffff;
+}
+
+.heroContainer {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.activeBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  margin-bottom: 18px;
+}
+
+.badgeCheck {
+  color: #facc15;
+  font-weight: bold;
+}
+
+.heroTitle {
+  font-size: 42px;
+  font-weight: 800;
+  margin: 0 0 10px;
+  letter-spacing: -0.02em;
+}
+
+.heroSubtitle {
+  color: #cbd5e1;
+  font-size: 15.5px;
+  margin: 0 0 28px;
+}
+
+/* Search Bar */
+.searchBar {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 10px 12px 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #0f172a;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+.searchField {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.fieldIcon {
+  color: #0d8a52;
+  font-size: 18px;
+}
+
+.fieldContent {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.fieldContent label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.fieldContent input {
+  border: none;
+  outline: none;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #0f172a;
+  width: 100%;
+}
+
+.divider {
+  width: 1px;
+  height: 36px;
+  background: #e2e8f0;
+}
+
+.gpsBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.submitSearchBtn {
+  background: #0d8a52;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 26px;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Main Results */
+.mainContent {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 24px 60px;
+}
+
+.resultsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 24px;
+}
+
+.sectionTag {
+  color: #0d8a52;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.resultsTitle {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 4px 0;
+}
+
+.resultsSubtitle {
+  color: #64748b;
+  font-size: 14px;
+  margin: 0;
+}
+
+.sortGroup {
+  display: flex;
+  gap: 10px;
+}
+
+.sortBtn {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sortBtnActive {
+  background: #e6f4ed;
+  border-color: #0d8a52;
+  color: #0d8a52;
+}
+
+/* Grid Layout: Trái 3 cột Card, Phải Bản đồ */
+.contentGrid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 22px;
+  align-items: start;
+}
+
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card:hover,
+.cardSelected {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  border-color: #0d8a52;
+}
+
+.cardThumb {
+  height: 125px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumbBlue {
+  background: linear-gradient(135deg, #165b68, #1e7065);
+}
+
+.thumbGreen {
+  background: linear-gradient(135deg, #146c4e, #1b855f);
+}
+
+.slotBadge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: #ffffff;
+  color: #0d8a52;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  background: #0d8a52;
+  border-radius: 50%;
+}
+
+.courtSvg {
+  width: 82%;
+  height: 82%;
+  margin-top: 12px;
+}
+
+.cardBody {
+  padding: 14px 16px 16px;
+}
+
+.cardTitleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.cardName {
+  font-size: 15.5px;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+
+.rating {
+  color: #f59e0b;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.rating strong {
+  color: #0f172a;
+}
+
+.cardAddress {
+  color: #64748b;
+  font-size: 12.5px;
+  margin: 0 0 12px;
+}
+
+.cardMeta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: #475569;
+}
+
+/* Fake Map giống 100% Mockup */
+.mapCard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 12px;
+}
+
+.mapCanvas {
+  height: 360px;
+  background: linear-gradient(160deg, #e9f2ec 0%, #f1f5f3 100%);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.roadH1, .roadH2, .roadV1, .roadV2 {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.roadH1 { width: 120%; height: 12px; top: 32%; left: -10%; transform: rotate(8deg); }
+.roadH2 { width: 120%; height: 10px; top: 68%; left: -10%; transform: rotate(-6deg); }
+.roadV1 { width: 12px; height: 120%; top: -10%; left: 32%; transform: rotate(12deg); }
+.roadV2 { width: 12px; height: 120%; top: -10%; left: 72%; transform: rotate(6deg); }
+
+.userDot {
+  position: absolute;
+  top: 52%;
+  left: 48%;
+  width: 16px;
+  height: 16px;
+  background: #2563eb;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 8px rgba(37, 99, 235, 0.18);
+}
+
+.mapPinWrapper {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: none;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+}
+
+.pinLabel {
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+.pinIcon {
+  width: 22px;
+  height: 22px;
+  background: #0d8a52;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 2px solid #ffffff;
+}
+
+.mapFooter {
+  font-size: 12.5px;
+  color: #64748b;
+  margin: 12px 4px 4px;
+}
