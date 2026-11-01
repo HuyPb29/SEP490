@@ -9,10 +9,13 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.dto.booking.BookingSummaryResponse;
 import com.sep490.bms.dto.booking.BookingSummaryResponse.SlotPrice;
+import com.sep490.bms.dto.promotion.VoucherCheckRequest;
+import com.sep490.bms.dto.promotion.VoucherSelection;
 import com.sep490.bms.dto.request.BookingRequest;
 import com.sep490.bms.entity.Account;
 import com.sep490.bms.entity.Location;
@@ -23,6 +26,7 @@ import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.SlotAvailabilityService.SlotProblem;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.promotion.VoucherService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,6 +42,7 @@ public class BookingService {
     private final LocationQueryService locationQueryService;
     private final SlotAvailabilityService slotAvailabilityService;
     private final PriceCalculator priceCalculator;
+    private final VoucherService voucherService;
     private final AccountRepository accountRepository;
 
     /** UC14 #1–5: tính màn tóm tắt để Player xem lại trước khi bấm Xác nhận. Không tạo booking, không giữ chỗ (D128). */
@@ -58,6 +63,8 @@ public class BookingService {
         Map<Integer, BigDecimal> prices = priceCalculator.rangePrices(
                 court.getId(), request.date(), request.startMinute(), request.endMinute());
         BigDecimal listAmount = prices.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal voucherDiscount = voucherDiscount(player, location.getId(), listAmount, request);
+        // TODO 4.4: áp điểm qua LoyaltyPointService.preview sau khi chốt với Huy lỗi allowPoints (BR41, FR82).
 
         return BookingSummaryResponse.builder()
                 .locationId(location.getId())
@@ -71,10 +78,39 @@ public class BookingService {
                 .bookerPhone(booker.getPhone())
                 .slots(toSlots(prices))
                 .listAmount(listAmount)
-                .voucherDiscount(BigDecimal.ZERO)
+                .voucherDiscount(voucherDiscount)
                 .pointDiscount(BigDecimal.ZERO)
-                .finalAmount(listAmount)
+                .finalAmount(listAmount.subtract(voucherDiscount))
                 .build();
+    }
+
+    /**
+     * UC14 #4: chỉ kiểm tra và tính số giảm, chưa trừ lượt (FR74). Lượt bị trừ khi tạo booking.
+     * Không chọn voucher thì giảm 0; voucher không dùng được thì báo MSG34 kèm lý do.
+     */
+    private BigDecimal voucherDiscount(UserPrincipal player, Long locationId, BigDecimal listAmount,
+            BookingRequest request) {
+        VoucherSelection selection = voucherSelection(request);
+        if (selection == null) {
+            return BigDecimal.ZERO;
+        }
+        try {
+            return voucherService.check(player, new VoucherCheckRequest(locationId, listAmount, selection))
+                    .discountAmount();
+        } catch (AppException e) {
+            if (e.getStatus() != HttpStatus.BAD_REQUEST) {
+                throw e;
+            }
+            throw new AppException("Mã giảm giá không dùng được: " + e.getMessage() + " (MSG34)");
+        }
+    }
+
+    /** Voucher công khai chọn bằng mã, voucher được tặng chọn bằng grantId; cả hai đều trống là không dùng voucher. */
+    private static VoucherSelection voucherSelection(BookingRequest request) {
+        if (request.voucherGrantId() != null) {
+            return new VoucherSelection(null, request.voucherGrantId());
+        }
+        return StringUtils.hasText(request.voucherCode()) ? new VoucherSelection(request.voucherCode(), null) : null;
     }
 
     /**

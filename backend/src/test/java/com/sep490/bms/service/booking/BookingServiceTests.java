@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -18,9 +20,13 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 
 import com.sep490.bms.dto.booking.BookingSummaryResponse;
+import com.sep490.bms.dto.promotion.VoucherCheckRequest;
+import com.sep490.bms.dto.promotion.VoucherCheckResponse;
+import com.sep490.bms.dto.promotion.VoucherSelection;
 import com.sep490.bms.dto.request.BookingRequest;
 import com.sep490.bms.entity.Account;
 import com.sep490.bms.entity.Location;
@@ -32,6 +38,7 @@ import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.SlotAvailabilityService.SlotProblem;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.promotion.VoucherService;
 
 class BookingServiceTests {
 
@@ -44,13 +51,16 @@ class BookingServiceTests {
     private static final LocalDate PLAY_DATE = TODAY.plusDays(3);
     /** 18:00–19:00: hai slot, giá khác nhau để thấy tổng tiền cộng từng slot. */
     private static final int START = 1080;
+    private static final BigDecimal LIST_AMOUNT = new BigDecimal("130000");
 
     private final CourtRepository courts = mock(CourtRepository.class);
     private final LocationQueryService locations = mock(LocationQueryService.class);
     private final SlotAvailabilityService availability = mock(SlotAvailabilityService.class);
     private final PriceCalculator prices = mock(PriceCalculator.class);
+    private final VoucherService vouchers = mock(VoucherService.class);
     private final AccountRepository accounts = mock(AccountRepository.class);
-    private final BookingService service = new BookingService(courts, locations, availability, prices, accounts);
+    private final BookingService service =
+            new BookingService(courts, locations, availability, prices, vouchers, accounts);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 
@@ -141,6 +151,70 @@ class BookingServiceTests {
         assertThat(service.previewSummary(player, requestOn(TODAY, 750), NOW).getDate()).isEqualTo(TODAY);
     }
 
+    @Test
+    void noVoucherDoesNotCallVoucherService() {
+        service.previewSummary(player, request(), NOW);
+
+        verifyNoInteractions(vouchers);
+    }
+
+    @Test
+    void voucherCodeReducesFinalAmountAfterCheckingListAmount() {
+        when(vouchers.check(any(), any())).thenReturn(
+                new VoucherCheckResponse(9L, null, LIST_AMOUNT, new BigDecimal("30000"), new BigDecimal("100000")));
+
+        BookingSummaryResponse summary = service.previewSummary(player, requestWithVoucher("SUMMER", null), NOW);
+
+        assertThat(summary.getVoucherDiscount()).isEqualByComparingTo("30000");
+        assertThat(summary.getFinalAmount()).isEqualByComparingTo("100000");
+        ArgumentCaptor<VoucherCheckRequest> checked = ArgumentCaptor.forClass(VoucherCheckRequest.class);
+        verify(vouchers).check(eq(player), checked.capture());
+        assertThat(checked.getValue().locationId()).isEqualTo(LOCATION);
+        assertThat(checked.getValue().orderAmount()).isEqualByComparingTo(LIST_AMOUNT);
+        assertThat(checked.getValue().selection()).isEqualTo(new VoucherSelection("SUMMER", null));
+    }
+
+    @Test
+    void grantedVoucherIsSelectedByGrantId() {
+        when(vouchers.check(any(), any())).thenReturn(
+                new VoucherCheckResponse(9L, 3L, LIST_AMOUNT, new BigDecimal("10000"), new BigDecimal("120000")));
+
+        service.previewSummary(player, requestWithVoucher(null, 3L), NOW);
+
+        ArgumentCaptor<VoucherCheckRequest> checked = ArgumentCaptor.forClass(VoucherCheckRequest.class);
+        verify(vouchers).check(eq(player), checked.capture());
+        assertThat(checked.getValue().selection()).isEqualTo(new VoucherSelection(null, 3L));
+    }
+
+    @Test
+    void blankVoucherCodeMeansNoVoucher() {
+        service.previewSummary(player, requestWithVoucher("  ", null), NOW);
+
+        verifyNoInteractions(vouchers);
+    }
+
+    @Test
+    void invalidVoucherIsMsg34WithReason() {
+        when(vouchers.check(any(), any())).thenThrow(new AppException("Voucher hết lượt"));
+
+        assertThatThrownBy(() -> service.previewSummary(player, requestWithVoucher("USEDUP", null), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(e.getMessage()).isEqualTo("Mã giảm giá không dùng được: Voucher hết lượt (MSG34)");
+                });
+    }
+
+    @Test
+    void locationClosedWhileCheckingVoucherKeepsNotFound() {
+        when(vouchers.check(any(), any())).thenThrow(new AppException("Địa điểm không hoạt động", HttpStatus.NOT_FOUND));
+
+        assertThatThrownBy(() -> service.previewSummary(player, requestWithVoucher("SUMMER", null), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(e.getMessage()).doesNotContain("MSG34");
+                });
+    }
+
     private void assertNotBookable(BookingRequest request) {
         assertThatThrownBy(() -> service.previewSummary(player, request, NOW))
                 .isInstanceOfSatisfying(AppException.class, e -> {
@@ -155,6 +229,10 @@ class BookingServiceTests {
 
     private static BookingRequest request() {
         return requestOn(PLAY_DATE, START);
+    }
+
+    private static BookingRequest requestWithVoucher(String code, Long grantId) {
+        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, code, grantId, 0);
     }
 
     private static BookingRequest requestOn(LocalDate date, int startMinute) {
