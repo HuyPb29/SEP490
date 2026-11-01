@@ -59,6 +59,14 @@ public class Account {
     @Column(nullable = false, length = 10)
     private AccountStatus status;
 
+    @Column(name = "token_version", nullable = false)
+    private long tokenVersion;
+
+    /** Caller must hold the account row lock. Invalidates every previously issued token. */
+    public void revokeTokens() {
+        this.tokenVersion = Math.incrementExact(this.tokenVersion);
+    }
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

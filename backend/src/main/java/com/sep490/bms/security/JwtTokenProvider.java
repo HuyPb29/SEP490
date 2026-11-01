@@ -31,10 +31,9 @@ public class JwtTokenProvider {
     public void init() {
         byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
         if (keyBytes.length < 32) {
-            byte[] padded = new byte[32];
-            System.arraycopy(keyBytes, 0, padded, 0, keyBytes.length);
-            keyBytes = padded;
+            throw new IllegalStateException("JWT_SECRET phải có ít nhất 32 byte");
         }
+        if (jwtExpirationMs <= 0) throw new IllegalStateException("JWT expiration phải lớn hơn 0");
         this.key = Keys.hmacShaKeyFor(keyBytes);
     }
 
@@ -43,12 +42,14 @@ public class JwtTokenProvider {
         Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
 
         return Jwts.builder()
+                .id(java.util.UUID.randomUUID().toString())
                 .subject(String.valueOf(account.getId()))
                 .claim("email", account.getEmail())
                 .claim("username", account.getUsername())
                 .claim("fullName", account.getFullName())
                 .claim("role", account.getRole().name())
                 .claim("locationId", account.getLocationId())
+                .claim("tokenVersion", account.getTokenVersion())
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(key)
@@ -75,5 +76,12 @@ public class JwtTokenProvider {
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
+    }
+
+    /** Legacy tokens without a generation are intentionally rejected after this upgrade. */
+    public boolean matchesTokenVersion(String token, long currentVersion) {
+        Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+        Long version = claims.get("tokenVersion", Long.class);
+        return version != null && version >= 0 && version == currentVersion;
     }
 }

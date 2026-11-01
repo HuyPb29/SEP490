@@ -91,7 +91,7 @@ export async function loginApi({ username_or_email, password }) {
       const msg = 'Account is unverified. Please check your registered email for the OTP.';
       const err = new Error(msg);
       // Gắn thêm email vào lỗi để UI đẩy sang màn OTP
-      err.email = user.email; 
+      err.email = user.email;
       err.response = { data: { message: msg, code: 'MSG95' } };
       throw err;
     }

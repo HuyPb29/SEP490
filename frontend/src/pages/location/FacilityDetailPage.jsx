@@ -12,7 +12,7 @@ export default function FacilityDetailPage() {
   const [facility, setFacility] = useState(null);
   const [timeHeaders, setTimeHeaders] = useState([]);
   const [courts, setCourts] = useState([]);
-  
+
   // Type: [{ courtId, courtName, timeIdx, time, price }]
   const [selectedSlots, setSelectedSlots] = useState([]);
   const [ruleMessage, setRuleMessage] = useState(
@@ -116,7 +116,7 @@ export default function FacilityDetailPage() {
   const changeDay = (offset) => {
     const [y, m, day] = playDate.split('-').map(Number);
     const d = new Date(y, m - 1, day + offset);
-    setPlayDate(d.toLocaleDateString('en-CA')); 
+    setPlayDate(d.toLocaleDateString('en-CA'));
   };
 
   const formatDateLabel = (dateStr) => {

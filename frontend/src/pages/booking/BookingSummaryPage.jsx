@@ -12,10 +12,10 @@ import styles from './BookingSummaryPage.module.css';
 function addThirtyMinutes(timeStr) {
   const [hh, mm] = timeStr.split(':').map(Number);
   const totalMins = hh * 60 + mm + 30;
-  
+
   // Nếu chạm mốc 24:00 (1440 phút), ép về 23:59 để DB không bị crash
   if (totalMins >= 1440) return '23:59';
-  
+
   const nextH = String(Math.floor(totalMins / 60)).padStart(2, '0');
   const nextM = String(totalMins % 60).padStart(2, '0');
   return `${nextH}:${nextM}`;

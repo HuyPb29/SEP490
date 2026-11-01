@@ -23,6 +23,7 @@ public class StaffService {
     private final AccountRepository accountRepository;
     private final LocationAccessService locationAccess;
     private final PasswordEncoder passwordEncoder;
+    private final AccountAuditService audit;
 
     @Transactional(readOnly = true)
     public List<UserDto> getStaffList(UserPrincipal user, String status, String search) {
@@ -49,7 +50,9 @@ public class StaffService {
             .phone(request.getPhone()).fullName(request.getFullName().trim())
             .passwordHash(passwordEncoder.encode(request.getPassword()))
             .role(Role.STAFF).locationId(locationId).status(AccountStatus.ACTIVE).build();
-        return UserDto.fromEntity(accountRepository.save(staff));
+        Account saved = accountRepository.save(staff);
+        audit.record(user.getId(), user.getRole(), saved, AccountAuditAction.STAFF_CREATED, null, null);
+        return UserDto.fromEntity(saved);
     }
 
     @Transactional
@@ -57,17 +60,26 @@ public class StaffService {
         Account staff = managedStaff(user, id);
         String status = request.getStatus().trim().toUpperCase();
         if (!List.of("ACTIVE", "DISABLED").contains(status)) throw new AppException("Chỉ chấp nhận ACTIVE hoặc DISABLED");
+        if (staff.getStatus() == AccountStatus.LOCKED) {
+            throw new AppException("Chỉ Admin được mở khóa tài khoản đã bị khóa", HttpStatus.FORBIDDEN);
+        }
+        AccountStatus previousStatus = staff.getStatus();
         staff.setStatus(AccountStatus.valueOf(status));
+        if (staff.getStatus() == AccountStatus.DISABLED && previousStatus != staff.getStatus()) staff.revokeTokens();
         staff.setUpdatedAt(LocalDateTime.now());
-        return UserDto.fromEntity(accountRepository.save(staff));
+        Account saved = accountRepository.save(staff);
+        audit.record(user.getId(), user.getRole(), saved, AccountAuditAction.STAFF_STATUS_CHANGED, previousStatus, request.getReason());
+        return UserDto.fromEntity(saved);
     }
 
     @Transactional
     public void resetStaffPassword(UserPrincipal user, Long id, StaffPasswordRequest request) {
         Account staff = managedStaff(user, id);
         staff.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        staff.revokeTokens();
         staff.setUpdatedAt(LocalDateTime.now());
         accountRepository.save(staff);
+        audit.record(user.getId(), user.getRole(), staff, AccountAuditAction.STAFF_PASSWORD_RESET, null, null);
     }
 
     private Long ownerLocation(UserPrincipal user) {
@@ -79,7 +91,7 @@ public class StaffService {
 
     private Account managedStaff(UserPrincipal user, Long id) {
         Long locationId = ownerLocation(user);
-        Account staff = accountRepository.findById(id).orElseThrow(() -> new AppException("Không tìm thấy nhân viên", HttpStatus.NOT_FOUND));
+        Account staff = accountRepository.findByIdForUpdate(id).orElseThrow(() -> new AppException("Không tìm thấy nhân viên", HttpStatus.NOT_FOUND));
         if (staff.getRole() != Role.STAFF || !locationId.equals(staff.getLocationId())) {
             throw new AppException("Không có quyền quản lý nhân viên này", HttpStatus.FORBIDDEN);
         }
