@@ -2,13 +2,21 @@ package com.sep490.bms.controller.booking;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
 import jakarta.validation.Valid;
+import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.dto.booking.BookingSummaryResponse;
 import com.sep490.bms.dto.request.BookingRequest;
+import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.booking.BookingService;
+
+import lombok.RequiredArgsConstructor;
 
 /**
  * Feature: F3 – Tìm và đặt sân
@@ -16,18 +24,22 @@ import com.sep490.bms.dto.request.BookingRequest;
  * UC: UC14 – Đặt sân lẻ; UC16 – Đặt sân tại quầy; UC17 – Xem lịch sử booking
  */
 @RestController
+@RequiredArgsConstructor
 public class BookingController {
+
+    private final BookingService bookingService;
 
     /**
      * UC14 – Đặt sân lẻ (#1–5: màn tóm tắt, áp voucher và điểm; không lưu gì)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @PostMapping("/api/bookings/summary")
-    public ResponseEntity<Void> postBookingsSummary(@Valid @RequestBody BookingRequest request) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<BookingSummaryResponse>> postBookingsSummary(
+            @Valid @RequestBody BookingRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(bookingService.previewSummary(currentUser, request)));
     }
 
     /**

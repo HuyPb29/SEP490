@@ -12,7 +12,7 @@ public record BookingRequest(
         @Min(30) @Max(1440) int endMinute,
         @Size(max = 20) String voucherCode,
         @Positive Long voucherGrantId,
-        @Min(0) int pointsToUse) {
+        @Min(0) Integer pointsToUse) {
     @AssertTrue(message = "Chỉ chọn voucherCode hoặc voucherGrantId")
     public boolean isVoucherSelectionValid() {
         return voucherCode == null || voucherCode.isBlank() || voucherGrantId == null;
