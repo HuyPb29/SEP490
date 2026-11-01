@@ -10,7 +10,9 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -28,6 +30,7 @@ import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.AccountRepository;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.booking.SlotAvailabilityService.SlotProblem;
 import com.sep490.bms.service.location.LocationQueryService;
 
 class BookingServiceTests {
@@ -35,16 +38,19 @@ class BookingServiceTests {
     private static final Long LOCATION = 1L;
     private static final Long COURT = 5L;
     private static final Long PLAYER = 7L;
-    private static final LocalDate PLAY_DATE = LocalDate.of(2026, 11, 2);
+    private static final LocalDate TODAY = LocalDate.of(2026, 10, 30);
+    /** Hôm nay 12:10, giữa slot 12:00. */
+    private static final LocalDateTime NOW = TODAY.atTime(12, 10);
+    private static final LocalDate PLAY_DATE = TODAY.plusDays(3);
     /** 18:00–19:00: hai slot, giá khác nhau để thấy tổng tiền cộng từng slot. */
     private static final int START = 1080;
-    private static final int END = 1140;
 
     private final CourtRepository courts = mock(CourtRepository.class);
     private final LocationQueryService locations = mock(LocationQueryService.class);
+    private final SlotAvailabilityService availability = mock(SlotAvailabilityService.class);
     private final PriceCalculator prices = mock(PriceCalculator.class);
     private final AccountRepository accounts = mock(AccountRepository.class);
-    private final BookingService service = new BookingService(courts, locations, prices, accounts);
+    private final BookingService service = new BookingService(courts, locations, availability, prices, accounts);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 
@@ -59,12 +65,13 @@ class BookingServiceTests {
         Map<Integer, BigDecimal> slotPrices = new LinkedHashMap<>();
         slotPrices.put(1080, new BigDecimal("60000"));
         slotPrices.put(1110, new BigDecimal("70000"));
-        when(prices.rangePrices(eq(COURT), eq(PLAY_DATE), anyInt(), anyInt())).thenReturn(slotPrices);
+        when(prices.rangePrices(eq(COURT), any(), anyInt(), anyInt())).thenReturn(slotPrices);
+        when(availability.findProblem(any(), any(), any(), anyInt(), anyInt())).thenReturn(Optional.empty());
     }
 
     @Test
     void summaryAddsUpListPriceOfEachSlot() {
-        BookingSummaryResponse summary = service.previewSummary(player, request());
+        BookingSummaryResponse summary = service.previewSummary(player, request(), NOW);
 
         assertThat(summary.getListAmount()).isEqualByComparingTo("130000");
         assertThat(summary.getFinalAmount()).isEqualByComparingTo("130000");
@@ -76,7 +83,7 @@ class BookingServiceTests {
 
     @Test
     void summaryShowsLocationCourtAndBooker() {
-        BookingSummaryResponse summary = service.previewSummary(player, request());
+        BookingSummaryResponse summary = service.previewSummary(player, request(), NOW);
 
         assertThat(summary.getLocationName()).isEqualTo("Cầu lông Sunrise");
         assertThat(summary.getCourtName()).isEqualTo("Sân 1");
@@ -90,12 +97,67 @@ class BookingServiceTests {
     void courtTurnedOffIsNotFound() {
         when(courts.findByIdAndActiveTrue(any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.previewSummary(player, request()))
+        assertThatThrownBy(() -> service.previewSummary(player, request(), NOW))
                 .isInstanceOfSatisfying(AppException.class,
                         e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
     }
 
+    @Test
+    void slotAlreadyHeldIsConflictMsg28() {
+        problem(SlotProblem.TAKEN);
+
+        assertThatThrownBy(() -> service.previewSummary(player, request(), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(e.getMessage()).contains("MSG28");
+                });
+    }
+
+    @Test
+    void closedOrMaintenanceSlotIsMsg31() {
+        for (SlotProblem reason : List.of(SlotProblem.CLOSED, SlotProblem.MAINTENANCE)) {
+            problem(reason);
+
+            assertNotBookable(request());
+        }
+    }
+
+    @Test
+    void dateAtAdvanceLimitIsAllowedButOneDayLaterIsMsg31() {
+        LocalDate limit = TODAY.plusDays(30);
+
+        assertThat(service.previewSummary(player, requestOn(limit, START), NOW).getDate()).isEqualTo(limit);
+        assertNotBookable(requestOn(limit.plusDays(1), START));
+    }
+
+    @Test
+    void pastDateIsMsg31() {
+        assertNotBookable(requestOn(TODAY.minusDays(1), START));
+    }
+
+    @Test
+    void slotThatAlreadyStartedTodayIsMsg31() {
+        assertNotBookable(requestOn(TODAY, 720));
+        assertThat(service.previewSummary(player, requestOn(TODAY, 750), NOW).getDate()).isEqualTo(TODAY);
+    }
+
+    private void assertNotBookable(BookingRequest request) {
+        assertThatThrownBy(() -> service.previewSummary(player, request, NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(e.getMessage()).contains("MSG31").contains("30 ngày");
+                });
+    }
+
+    private void problem(SlotProblem reason) {
+        when(availability.findProblem(any(), any(), any(), anyInt(), anyInt())).thenReturn(Optional.of(reason));
+    }
+
     private static BookingRequest request() {
-        return new BookingRequest(COURT, PLAY_DATE, START, END, null, null, 0);
+        return requestOn(PLAY_DATE, START);
+    }
+
+    private static BookingRequest requestOn(LocalDate date, int startMinute) {
+        return new BookingRequest(COURT, date, startMinute, startMinute + 60, null, null, 0);
     }
 }
