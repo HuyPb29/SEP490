@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
 import jakarta.validation.Valid;
 import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.dto.booking.BookingResponse;
 import com.sep490.bms.dto.booking.BookingSummaryResponse;
 import com.sep490.bms.dto.request.BookingRequest;
 import com.sep490.bms.security.UserPrincipal;
@@ -43,15 +44,17 @@ public class BookingController {
     }
 
     /**
-     * UC14 – Đặt sân lẻ (#6–8: body gồm voucherCode, pointsToUse; trừ lượt/điểm khi tạo booking)
+     * UC14 – Đặt sân lẻ (#6–8: bấm Xác nhận, tạo booking Đang giữ chỗ, giữ chỗ 5 phút)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @PostMapping("/api/bookings")
-    public ResponseEntity<Void> postBookings(@Valid @RequestBody BookingRequest request) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<BookingResponse>> postBookings(
+            @Valid @RequestBody BookingRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(bookingService.createSingleBooking(currentUser, request)));
     }
 
     /**

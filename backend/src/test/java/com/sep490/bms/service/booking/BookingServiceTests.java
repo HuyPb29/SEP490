@@ -33,7 +33,14 @@ import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.dto.booking.BookingResponse;
+import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingSlot;
+import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.booking.BookingRepository;
+import com.sep490.bms.repository.booking.BookingSlotRepository;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.SlotAvailabilityService.SlotProblem;
@@ -61,8 +68,11 @@ class BookingServiceTests {
     private final VoucherService vouchers = mock(VoucherService.class);
     private final LoyaltyPointService points = mock(LoyaltyPointService.class);
     private final AccountRepository accounts = mock(AccountRepository.class);
-    private final BookingService service =
-            new BookingService(courts, locations, availability, prices, vouchers, points, accounts);
+    private final BookingRepository bookings = mock(BookingRepository.class);
+    private final BookingSlotRepository bookingSlots = mock(BookingSlotRepository.class);
+    private final BookingCodeGenerator codes = mock(BookingCodeGenerator.class);
+    private final BookingService service = new BookingService(courts, locations, availability, prices, vouchers,
+            points, accounts, bookings, bookingSlots, codes);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 
@@ -259,6 +269,98 @@ class BookingServiceTests {
                 });
     }
 
+    // ---- UC14 #6–8: tạo booking giữ chỗ (5.1) ----
+
+    @Test
+    void createSavesHoldingBookingWithFiveMinuteHold() {
+        stubSave();
+
+        BookingResponse created = service.createSingleBooking(player, requestWithNote("  Mượn 2 vợt  "),
+                NOW.plusNanos(700_000_000));
+
+        ArgumentCaptor<Booking> saved = ArgumentCaptor.forClass(Booking.class);
+        verify(bookings).save(saved.capture());
+        Booking booking = saved.getValue();
+        assertThat(booking.getBookingType()).isEqualTo(BookingType.SINGLE);
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.HOLDING);
+        assertThat(booking.getPlayerId()).isEqualTo(PLAYER);
+        assertThat(booking.getLocationId()).isEqualTo(LOCATION);
+        assertThat(booking.getBookingCode()).isEqualTo("BK261030-ABCDEF");
+        assertThat(booking.getNote()).isEqualTo("Mượn 2 vợt");
+        assertThat(booking.getListAmount()).isEqualByComparingTo("130000");
+        assertThat(booking.getFinalAmount()).isEqualByComparingTo("130000");
+        // 12:10:00.7 + 5 phút, bỏ phần lẻ của giây.
+        assertThat(booking.getHoldExpiresAt()).isEqualTo(TODAY.atTime(12, 15));
+        assertThat(booking.getCreatedAt()).isEqualTo(TODAY.atTime(12, 10));
+        assertThat(created.getId()).isEqualTo(100L);
+        assertThat(created.getHoldExpiresAt()).isEqualTo(TODAY.atTime(12, 15));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void createSavesOneRowPerSlotWithListPrice() {
+        stubSave();
+
+        service.createSingleBooking(player, request(), NOW);
+
+        ArgumentCaptor<List<BookingSlot>> saved = ArgumentCaptor.forClass(List.class);
+        verify(bookingSlots).saveAllAndFlush(saved.capture());
+        assertThat(saved.getValue()).extracting(BookingSlot::getSlotStartMinute).containsExactly(1080, 1110);
+        assertThat(saved.getValue()).extracting(BookingSlot::getPrice)
+                .usingComparatorForType(BigDecimal::compareTo, BigDecimal.class)
+                .containsExactly(new BigDecimal("60000"), new BigDecimal("70000"));
+        assertThat(saved.getValue()).allSatisfy(slot -> {
+            assertThat(slot.getBookingId()).isEqualTo(100L);
+            assertThat(slot.getCourtId()).isEqualTo(COURT);
+            assertThat(slot.getSlotDate()).isEqualTo(PLAY_DATE);
+            assertThat(slot.isActive()).isTrue();
+        });
+    }
+
+    @Test
+    void createBlankNoteIsStoredAsNull() {
+        stubSave();
+
+        service.createSingleBooking(player, requestWithNote("   "), NOW);
+
+        ArgumentCaptor<Booking> saved = ArgumentCaptor.forClass(Booking.class);
+        verify(bookings).save(saved.capture());
+        assertThat(saved.getValue().getNote()).isNull();
+    }
+
+    @Test
+    void createRechecksSlotAndSavesNothingWhenTaken() {
+        problem(SlotProblem.TAKEN);
+
+        assertThatThrownBy(() -> service.createSingleBooking(player, request(), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> assertThat(e.getMessage()).contains("MSG28"));
+        verifyNoInteractions(bookings, bookingSlots, codes);
+    }
+
+    @Test
+    void createWithVoucherOrPointsIsNotSupportedYet() {
+        assertThatThrownBy(() -> service.createSingleBooking(player, requestWithPoints("SUMMER", 0), NOW))
+                .isInstanceOfSatisfying(AppException.class,
+                        e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_IMPLEMENTED));
+        assertThatThrownBy(() -> service.createSingleBooking(player, requestWithPoints(null, 10), NOW))
+                .isInstanceOfSatisfying(AppException.class,
+                        e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_IMPLEMENTED));
+        verifyNoInteractions(bookings, bookingSlots);
+    }
+
+    private void stubSave() {
+        when(codes.next()).thenReturn("BK261030-ABCDEF");
+        when(bookings.save(any(Booking.class))).thenAnswer(inv -> {
+            Booking b = inv.getArgument(0);
+            b.setId(100L);
+            return b;
+        });
+    }
+
+    private static BookingRequest requestWithNote(String note) {
+        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, null, null, 0, note);
+    }
+
     private void assertNotBookable(BookingRequest request) {
         assertThatThrownBy(() -> service.previewSummary(player, request, NOW))
                 .isInstanceOfSatisfying(AppException.class, e -> {
@@ -276,14 +378,14 @@ class BookingServiceTests {
     }
 
     private static BookingRequest requestWithVoucher(String code, Long grantId) {
-        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, code, grantId, 0);
+        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, code, grantId, 0, null);
     }
 
     private static BookingRequest requestWithPoints(String voucherCode, Integer pointsToUse) {
-        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, voucherCode, null, pointsToUse);
+        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, voucherCode, null, pointsToUse, null);
     }
 
     private static BookingRequest requestOn(LocalDate date, int startMinute) {
-        return new BookingRequest(COURT, date, startMinute, startMinute + 60, null, null, 0);
+        return new BookingRequest(COURT, date, startMinute, startMinute + 60, null, null, 0, null);
     }
 }

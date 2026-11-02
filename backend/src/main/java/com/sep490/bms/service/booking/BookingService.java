@@ -3,6 +3,7 @@ package com.sep490.bms.service.booking;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.sep490.bms.common.MinuteTime;
+import com.sep490.bms.dto.booking.BookingResponse;
 import com.sep490.bms.dto.booking.BookingSummaryResponse;
 import com.sep490.bms.dto.booking.BookingSummaryResponse.SlotPrice;
 import com.sep490.bms.dto.promotion.VoucherCheckRequest;
@@ -19,9 +21,15 @@ import com.sep490.bms.dto.promotion.VoucherSelection;
 import com.sep490.bms.dto.request.BookingRequest;
 import com.sep490.bms.entity.Account;
 import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingSlot;
+import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.booking.BookingRepository;
+import com.sep490.bms.repository.booking.BookingSlotRepository;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.SlotAvailabilityService.SlotProblem;
@@ -39,6 +47,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class BookingService {
 
+    /** Thời gian giữ chỗ (BR03, P02): cố định, Owner không cài (D154). */
+    static final int HOLD_MINUTES = 5;
+
     private final CourtRepository courtRepository;
     private final LocationQueryService locationQueryService;
     private final SlotAvailabilityService slotAvailabilityService;
@@ -46,6 +57,9 @@ public class BookingService {
     private final VoucherService voucherService;
     private final LoyaltyPointService loyaltyPointService;
     private final AccountRepository accountRepository;
+    private final BookingRepository bookingRepository;
+    private final BookingSlotRepository bookingSlotRepository;
+    private final BookingCodeGenerator bookingCodeGenerator;
 
     /** UC14 #1–5: tính màn tóm tắt để Player xem lại trước khi bấm Xác nhận. Không tạo booking, không giữ chỗ (D128). */
     @Transactional(readOnly = true)
@@ -85,6 +99,58 @@ public class BookingService {
                 .pointDiscount(pointDiscount)
                 .finalAmount(afterVoucher.subtract(pointDiscount))
                 .build();
+    }
+
+    /**
+     * UC14 #6–8: Player bấm Xác nhận ở màn tóm tắt. Tạo booking Đang giữ chỗ, lưu từng slot 30 phút,
+     * giữ chỗ 5 phút tính từ lúc bấm (D128, BR03). Tất cả trong một giao dịch: lỗi ở bước nào thì không lưu gì.
+     */
+    @Transactional
+    public BookingResponse createSingleBooking(UserPrincipal player, BookingRequest request) {
+        return createSingleBooking(player, request, LocalDateTime.now());
+    }
+
+    BookingResponse createSingleBooking(UserPrincipal player, BookingRequest request, LocalDateTime now) {
+        // Tạm thời ở 5.1: chưa trừ voucher, điểm (làm ở 5.4). Chặn lại để không lưu booking có giảm giá
+        // mà lượt voucher, số điểm chưa bị trừ. Bỏ đoạn này ở 5.4.
+        if (voucherSelection(request) != null || (request.pointsToUse() != null && request.pointsToUse() > 0)) {
+            throw new AppException("Chưa hỗ trợ dùng voucher hoặc điểm khi tạo booking", HttpStatus.NOT_IMPLEMENTED);
+        }
+        // Chạy lại toàn bộ kiểm tra và cách tính của màn tóm tắt: slot có thể vừa bị người khác giữ (FR39).
+        BookingSummaryResponse summary = previewSummary(player, request, now);
+        // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 5 phút.
+        LocalDateTime createdAt = now.truncatedTo(ChronoUnit.SECONDS);
+
+        Booking booking = bookingRepository.save(Booking.builder()
+                .bookingCode(bookingCodeGenerator.next())
+                .bookingType(BookingType.SINGLE)
+                .locationId(summary.getLocationId())
+                .courtId(summary.getCourtId())
+                .playerId(player.getId())
+                .playDate(request.date())
+                .startMinute(request.startMinute())
+                .endMinute(request.endMinute())
+                .note(StringUtils.hasText(request.note()) ? request.note().trim() : null)
+                .listAmount(summary.getListAmount())
+                .voucherDiscount(summary.getVoucherDiscount())
+                .pointDiscount(summary.getPointDiscount())
+                .finalAmount(summary.getFinalAmount())
+                .status(BookingStatus.HOLDING)
+                .holdExpiresAt(createdAt.plusMinutes(HOLD_MINUTES))
+                .createdAt(createdAt)
+                .build());
+
+        // Mỗi slot 30 phút một dòng, kèm giá niêm yết lúc đặt (D88). Unique ux_slot_active chặn hai người cùng giữ.
+        bookingSlotRepository.saveAllAndFlush(summary.getSlots().stream()
+                .map(slot -> BookingSlot.builder()
+                        .bookingId(booking.getId())
+                        .courtId(booking.getCourtId())
+                        .slotDate(booking.getPlayDate())
+                        .slotStartMinute(slot.getStartMinute())
+                        .price(slot.getPrice())
+                        .build())
+                .toList());
+        return BookingResponse.from(booking);
     }
 
     /**
