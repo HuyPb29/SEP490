@@ -7,6 +7,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +53,8 @@ public class BookingService {
     static final int HOLD_MINUTES = 5;
     /** Số booking đang chờ thanh toán tối đa của một Player (BR35, P08): cố định (D154). */
     static final int MAX_PENDING_PAYMENTS = 2;
+    /** Unique có điều kiện trên booking_slot (court_id, slot_date, slot_start_minute) WHERE is_active = 1. */
+    static final String SLOT_UNIQUE_INDEX = "ux_slot_active";
 
     private final CourtRepository courtRepository;
     private final LocationQueryService locationQueryService;
@@ -145,17 +148,33 @@ public class BookingService {
                 .createdAt(createdAt)
                 .build());
 
-        // Mỗi slot 30 phút một dòng, kèm giá niêm yết lúc đặt (D88). Unique ux_slot_active chặn hai người cùng giữ.
-        bookingSlotRepository.saveAllAndFlush(summary.getSlots().stream()
-                .map(slot -> BookingSlot.builder()
-                        .bookingId(booking.getId())
-                        .courtId(booking.getCourtId())
-                        .slotDate(booking.getPlayDate())
-                        .slotStartMinute(slot.getStartMinute())
-                        .price(slot.getPrice())
-                        .build())
-                .toList());
+        saveSlots(booking, summary.getSlots());
         return BookingResponse.from(booking);
+    }
+
+    /**
+     * Mỗi slot 30 phút một dòng, kèm giá niêm yết lúc đặt (D88).
+     * Hai người cùng qua bước kiểm tra lại rồi cùng ghi: unique ux_slot_active chặn người sau (NFR04).
+     * Lỗi đó đổi thành MSG28 như khi bước kiểm tra lại phát hiện; cả giao dịch hủy nên booking vừa lưu cũng mất.
+     */
+    private void saveSlots(Booking booking, List<SlotPrice> slots) {
+        try {
+            bookingSlotRepository.saveAllAndFlush(slots.stream()
+                    .map(slot -> BookingSlot.builder()
+                            .bookingId(booking.getId())
+                            .courtId(booking.getCourtId())
+                            .slotDate(booking.getPlayDate())
+                            .slotStartMinute(slot.getStartMinute())
+                            .price(slot.getPrice())
+                            .build())
+                    .toList());
+        } catch (DataIntegrityViolationException e) {
+            String cause = e.getMostSpecificCause().getMessage();
+            if (cause == null || !cause.contains(SLOT_UNIQUE_INDEX)) {
+                throw e;
+            }
+            throw slotTaken();
+        }
     }
 
     /**
@@ -233,12 +252,16 @@ public class BookingService {
         SlotProblem problem = slotAvailabilityService.findProblem(location.getId(), request.courtId(), date,
                 request.startMinute(), request.endMinute()).orElse(null);
         if (problem == SlotProblem.TAKEN) {
-            throw new AppException("Slot vừa có người giữ hoặc đặt. Vui lòng chọn slot khác. (MSG28)",
-                    HttpStatus.CONFLICT);
+            throw slotTaken();
         }
         if (problem != null) {
             throw notBookable(advanceDays);
         }
+    }
+
+    private static AppException slotTaken() {
+        return new AppException("Slot vừa có người giữ hoặc đặt. Vui lòng chọn slot khác. (MSG28)",
+                HttpStatus.CONFLICT);
     }
 
     private static AppException notBookable(int advanceDays) {

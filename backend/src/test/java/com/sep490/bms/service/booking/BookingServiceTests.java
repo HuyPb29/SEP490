@@ -15,6 +15,7 @@ import static org.mockito.Mockito.never;
 import org.mockito.InOrder;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -25,6 +26,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
 import com.sep490.bms.dto.booking.BookingSummaryResponse;
@@ -354,6 +356,33 @@ class BookingServiceTests {
                 .isInstanceOfSatisfying(AppException.class,
                         e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_IMPLEMENTED));
         verifyNoInteractions(bookings, bookingSlots);
+    }
+
+    // ---- Trùng slot khi hai người cùng ghi: unique ux_slot_active (5.3) ----
+
+    @Test
+    void slotUniqueViolationBecomesMsg28() {
+        stubSave();
+        when(bookingSlots.saveAllAndFlush(any())).thenThrow(new DataIntegrityViolationException("could not execute",
+                new SQLException("Cannot insert duplicate key row in object 'dbo.booking_slot' "
+                        + "with unique index 'ux_slot_active'. The duplicate key value is (5, 2026-11-02, 1080).")));
+
+        assertThatThrownBy(() -> service.createSingleBooking(player, request(), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(e.getMessage()).contains("MSG28");
+                });
+        verifyNoInteractions(vouchers, points);
+    }
+
+    @Test
+    void otherIntegrityViolationIsNotHidden() {
+        stubSave();
+        DataIntegrityViolationException other = new DataIntegrityViolationException("could not execute",
+                new SQLException("The INSERT statement conflicted with the FOREIGN KEY constraint 'fk_slot_court'."));
+        when(bookingSlots.saveAllAndFlush(any())).thenThrow(other);
+
+        assertThatThrownBy(() -> service.createSingleBooking(player, request(), NOW)).isSameAs(other);
     }
 
     private void stubSave() {
