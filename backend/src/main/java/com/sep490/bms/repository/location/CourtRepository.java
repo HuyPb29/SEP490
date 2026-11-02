@@ -11,6 +11,10 @@ import com.sep490.bms.entity.location.Court;
 @Repository
 public interface CourtRepository extends JpaRepository<Court, Long> {
 
+    /** Sân đang bật của một địa điểm; xếp theo id để "Sân 10" không đứng trước "Sân 2". */
+    List<Court> findAllByLocationIdAndActiveTrueOrderById(Long locationId);
+
+    Optional<Court> findByIdAndActiveTrue(Long id);
     /**
      * F2 - UC07: sân của một địa điểm.
      * Dùng index của ux_court_name (location_id, name) nên không phát sinh sort.

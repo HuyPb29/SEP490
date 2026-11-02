@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import lombok.extern.slf4j.Slf4j;
+import com.sep490.bms.exception.AppException;
+import org.springframework.http.HttpStatus;
 
 @Service
 @Slf4j
@@ -30,7 +32,7 @@ public class EmailService {
                 + "Mã này có hiệu lực trong vòng 10 phút. Vui lòng không chia sẻ mã này với bất kỳ ai.\n\n"
                 + "Trân trọng,\n"
                 + "Đội ngũ quản trị BMS";
-        sendEmail(toEmail, subject, content, otpCode);
+        sendEmail(toEmail, subject, content);
     }
 
     public void sendPasswordResetOtp(String toEmail, String otpCode) {
@@ -41,31 +43,24 @@ public class EmailService {
                 + "Mã này có hiệu lực trong vòng 10 phút. Nếu bạn không yêu cầu hành động này, vui lòng bỏ qua email.\n\n"
                 + "Trân trọng,\n"
                 + "Đội ngũ quản trị BMS";
-        sendEmail(toEmail, subject, content, otpCode);
+        sendEmail(toEmail, subject, content);
     }
 
-    private void sendEmail(String toEmail, String subject, String content, String otpCode) {
-        // Luôn ghi log mã OTP ra console để phục vụ môi trường Dev/Test thuận tiện
-        log.info("==================================================================");
-        log.info("[OTP SERVICE] To: {}", toEmail);
-        log.info("[OTP SERVICE] Subject: {}", subject);
-        log.info("[OTP SERVICE] OTP Code: {}", otpCode);
-        log.info("==================================================================");
-
-        if (mailEnabled && mailSender != null && StringUtils.hasText(fromEmail)) {
-            try {
-                SimpleMailMessage message = new SimpleMailMessage();
-                message.setFrom(fromEmail);
-                message.setTo(toEmail);
-                message.setSubject(subject);
-                message.setText(content);
-                mailSender.send(message);
-                log.info("[EMAIL SERVICE] Đã gửi email thành công tới {}", toEmail);
-            } catch (Exception e) {
-                log.error("[EMAIL SERVICE] Lỗi khi gửi email qua SMTP tới {}: {}", toEmail, e.getMessage());
-            }
-        } else {
-            log.info("[EMAIL SERVICE] Gửi email qua SMTP đang tắt (app.mail.enabled=false hoặc chưa cấu hình mail). Dùng mã OTP trong log để kiểm thử.");
+    private void sendEmail(String toEmail, String subject, String content) {
+        if (!mailEnabled || mailSender == null || !StringUtils.hasText(fromEmail)) {
+            throw new AppException("Dịch vụ gửi email chưa sẵn sàng. Vui lòng thử lại sau", HttpStatus.SERVICE_UNAVAILABLE);
+        }
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(toEmail);
+            message.setSubject(subject);
+            message.setText(content);
+            mailSender.send(message);
+        } catch (Exception ex) {
+            // Do not log the message body or provider exception, which may include the OTP.
+            log.error("SMTP delivery failed ({})", ex.getClass().getSimpleName());
+            throw new AppException("Không thể gửi email xác thực. Vui lòng thử lại sau", HttpStatus.SERVICE_UNAVAILABLE);
         }
     }
 }

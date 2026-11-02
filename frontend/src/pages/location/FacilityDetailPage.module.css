@@ -1,0 +1,507 @@
+.pageWrapper {
+  min-height: 100vh;
+  background-color: #f8fafb;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #0f172a;
+}
+
+.loadingScreen {
+  padding: 60px;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Navbar */
+.navbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  height: 68px;
+  display: flex;
+  align-items: center;
+}
+
+.navContainer {
+  max-width: 1240px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.brandIcon {
+  background: #0d8a52;
+  color: #fff;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.navLinks {
+  display: flex;
+  gap: 28px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.navLinks a {
+  text-decoration: none;
+  color: #334155;
+}
+
+.activeLink {
+  color: #0d8a52 !important;
+  font-weight: 600;
+}
+
+.userArea {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.bellBtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.userProfile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #e6f4ed;
+  color: #0d8a52;
+  font-weight: 700;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.userName {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Main Container */
+.mainContainer {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 20px 24px 60px;
+}
+
+.breadcrumb {
+  font-size: 13.5px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.breadcrumbLink {
+  color: #0d8a52;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.breadcrumbSep,
+.breadcrumbCurrent {
+  color: #64748b;
+}
+
+/* Hero Facility Info (UC12) */
+.heroGrid {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 22px;
+  margin-bottom: 24px;
+}
+
+.courtVisualCard {
+  background: linear-gradient(135deg, #165b6e 0%, #1d6d68 100%);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  min-height: 220px;
+}
+
+.courtSvg {
+  width: 88%;
+  max-height: 190px;
+}
+
+.facilityInfoCard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 26px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.facilityTitle {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0 0 10px;
+}
+
+.ratingRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14.5px;
+  margin-bottom: 12px;
+}
+
+.starIcon {
+  color: #f59e0b;
+}
+
+.reviewCount {
+  color: #64748b;
+}
+
+.infoLine {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #334155;
+}
+
+.scrollScheduleBtn {
+  margin-top: 12px;
+  align-self: flex-start;
+  background: #0d8a52;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Schedule Card (UC13) */
+.scheduleCard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 24px 26px;
+  margin-bottom: 24px;
+}
+
+.scheduleHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.sectionTitle {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.dateControls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.navArrowBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.dateDisplay {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 0 6px;
+}
+
+.dateInput {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+/* Legend */
+.legendRow {
+  display: flex;
+  gap: 20px;
+  font-size: 12.5px;
+  color: #475569;
+  margin-bottom: 18px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legendBox {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.boxAvailable {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+}
+
+.boxSelected {
+  background: #0d8a52;
+}
+
+.boxHolding {
+  background: #fde047;
+}
+
+.boxBooked {
+  background: #cbd5e1;
+}
+
+.boxMaintenance {
+  background: #475569;
+}
+
+/* Schedule Grid Table */
+.tableWrapper {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  overflow-x: auto;
+  margin-bottom: 18px;
+}
+
+.scheduleTable {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+}
+
+.scheduleTable th {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+  padding: 12px 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.courtColHeader {
+  text-align: left;
+  padding-left: 16px !important;
+  width: 90px;
+}
+
+.scheduleTable td {
+  padding: 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.courtNameCell {
+  text-align: left;
+  padding-left: 16px !important;
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.slotBtn {
+  width: 100%;
+  min-width: 96px;
+  height: 40px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.slotAvailable {
+  background: #ffffff;
+  border: 1px solid #dbe2ea;
+  color: #0f172a;
+}
+
+.slotAvailable:hover {
+  border-color: #0d8a52;
+  background: #f0fdf4;
+}
+
+.slotSelected {
+  background: #0d8a52;
+  border: 1px solid #0d8a52;
+  color: #ffffff;
+}
+
+.slotHolding {
+  background: #fde68a;
+  border: 1px solid #fde68a;
+  color: #78350f;
+  cursor: not-allowed;
+}
+
+.slotBooked {
+  background: #cbd5e1;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  cursor: not-allowed;
+}
+
+.slotMaintenance {
+  background: #475569;
+  border: 1px solid #475569;
+  color: #ffffff;
+  cursor: not-allowed;
+}
+
+/* Summary Bar */
+.summaryBar {
+  background: #e9f5ee;
+  border-radius: 14px;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.summaryMainText {
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.summarySubText {
+  font-size: 12.5px;
+  color: #475569;
+}
+
+.continueBookingBtn {
+  background: #0d8a52;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.continueBookingBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Bottom Grid: Price Table & Reviews */
+.bottomGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+}
+
+.bottomCard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 22px 26px;
+}
+
+.priceTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 13.5px;
+}
+
+.priceTable th {
+  text-align: left;
+  color: #64748b;
+  font-weight: 600;
+  padding: 10px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.priceTable td {
+  padding: 13px 0;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+}
+
+.reviewList {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reviewItem {
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 14px;
+}
+
+.reviewItem:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.reviewerHeader {
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.stars {
+  color: #d97706;
+}
+
+.reviewComment {
+  font-size: 13.5px;
+  color: #334155;
+  margin: 0 0 8px;
+}
+
+.ownerReplyBox {
+  background: #e9f5ee;
+  color: #0d8a52;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 8px;
+}

@@ -99,6 +99,12 @@ public class Voucher {
     @Column(name = "disabled_by")
     private Long disabledBy;
 
+    @Column(name="allow_points",nullable=false)
+    private boolean allowPoints;
+
+    @Column(name="max_point_percent")
+    private Integer maxPointPercent;
+
     @Version
     @Column(nullable = false)
     private int version;

@@ -1,54 +1,32 @@
 package com.sep490.bms.controller.promotion;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-/**
- * Feature: F6 – Ưu đãi
- * Owner: Huy
- * UC: UC25 – Tích điểm và dùng điểm
- */
-@RestController
+import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import com.sep490.bms.common.*;
+import com.sep490.bms.dto.promotion.*;
+import com.sep490.bms.security.UserPrincipal;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import com.sep490.bms.entity.enums.PointTransactionType;
+import com.sep490.bms.service.promotion.LoyaltyPointService;
+import org.springframework.http.*;
+@RestController @RequiredArgsConstructor
+@io.swagger.v3.oas.annotations.tags.Tag(name="F6 - UC25 Points (SRS UC20)")
 public class LoyaltyPointController {
-
-    /**
-     * UC25 – Tích điểm và dùng điểm
-     * Feature: F6 – Ưu đãi
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
-    @GetMapping("/api/me/loyalty-balances")
-    public ResponseEntity<Void> getMeLoyaltyBalances() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-
-    /**
-     * UC25 – Tích điểm và dùng điểm
-     * Feature: F6 – Ưu đãi
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
-    @GetMapping("/api/me/loyalty-transactions")
-    public ResponseEntity<Void> getMeLoyaltyTransactions() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-
-
-    /**
-     * UC25 – Tích điểm và dùng điểm
-     * Feature: F6 – Ưu đãi
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
-    @PostMapping("/api/owner/loyalty-adjustments")
-    public ResponseEntity<Void> postOwnerLoyaltyAdjustments() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
+ private final LoyaltyPointService service;
+ @GetMapping("/api/me/loyalty-balances") @PreAuthorize("hasRole('PLAYER')")
+ public ApiResponse<PageResponse<LoyaltyBalanceResponse>> balances(@AuthenticationPrincipal UserPrincipal user,
+  @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+  return ApiResponse.success(service.balances(user,page,size));
+ }
+ @GetMapping("/api/me/loyalty-transactions") @PreAuthorize("hasRole('PLAYER')")
+ public ApiResponse<PageResponse<PointTransactionResponse>> history(@AuthenticationPrincipal UserPrincipal user,
+  @RequestParam(required=false) Long locationId,@RequestParam(required=false) PointTransactionType type,
+  @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+  return ApiResponse.success(service.history(user,locationId,type,page,size));
+ }
+ @PostMapping("/api/owner/loyalty-adjustments") @PreAuthorize("hasRole('OWNER')")
+ public ResponseEntity<ApiResponse<PointTransactionResponse>> adjust(@AuthenticationPrincipal UserPrincipal user,@Valid @RequestBody LoyaltyAdjustmentRequest request) {
+  return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(service.adjust(user,request)));
+ }
 }

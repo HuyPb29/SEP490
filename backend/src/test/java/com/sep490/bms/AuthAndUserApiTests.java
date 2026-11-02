@@ -5,6 +5,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -45,6 +46,9 @@ import com.sep490.bms.security.JwtTokenProvider;
 @SpringBootTest
 @Transactional
 class AuthAndUserApiTests {
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.sep490.bms.service.EmailService emailService;
 
     private MockMvc mockMvc;
 
@@ -193,8 +197,11 @@ class AuthAndUserApiTests {
         playerToken = reLoginNode.get("data").get("token").asText();
 
         // 7. POST /api/auth/logout
-        mockMvc.perform(post("/api/auth/logout"))
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + playerToken))
                 .andExpect(status().isOk());
+        mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + playerToken))
+                .andExpect(status().isUnauthorized());
+        playerToken = jwtTokenProvider.generateToken(accountRepository.findByEmail(testEmail).orElseThrow());
 
         // 8. GET /api/users/me
         mockMvc.perform(get("/api/users/me")
@@ -301,6 +308,14 @@ class AuthAndUserApiTests {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/admin/accounts?sortBy=missing").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/admin/accounts?role=invalid").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/admin/accounts?status=invalid").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(patch("/api/owner/staff-members/" + createdStaffId + "/status")
+                .header("Authorization", "Bearer " + ownerToken).header("X-Location-Id", location.getId())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isForbidden());
         var secondAdmin = fixtureAccount("admin2_" + uniqueSuffix, Role.ADMIN);
         mockMvc.perform(patch("/api/admin/accounts/" + secondAdmin.getId() + "/status")
                 .header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON)
@@ -313,6 +328,9 @@ class AuthAndUserApiTests {
         mockMvc.perform(post("/api/users/me/password").header("Authorization", "Bearer " + playerToken)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"currentPassword\":\"NewPassword123@\",\"newPassword\":\"Changed123\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.message").value("Đổi mật khẩu thành công (MSG114)"));
+        mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + playerToken))
+                .andExpect(status().isUnauthorized());
+        playerToken = jwtTokenProvider.generateToken(accountRepository.findByEmail(testEmail).orElseThrow());
         mockMvc.perform(patch("/api/users/me").header("Authorization", "Bearer " + playerToken)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"phone\":\"0123456789\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.phone").value(testPhone));
@@ -342,15 +360,18 @@ class AuthAndUserApiTests {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/owner/staff-members").header("Authorization", "Bearer " + ownerToken)
                 .header("X-Location-Id", location.getId())).andExpect(status().isForbidden());
-        mockMvc.perform(get("/api/owner/exports").header("Authorization", "Bearer " + ownerToken)
-                .header("X-Location-Id", location.getId())).andExpect(status().isNotImplemented());
+        mockMvc.perform(get("/api/owner/booking-exports").header("Authorization", "Bearer " + ownerToken)
+                .header("X-Location-Id", location.getId())).andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"));
     }
 
     @Test
     void publicReadsAndSwaggerAreAccessibleButWritesRequireAuthentication() throws Exception {
-        for (String path : java.util.List.of("/api/locations", "/api/courts/1", "/api/courts/1/reviews")) {
-            mockMvc.perform(get(path)).andExpect(status().isNotImplemented());
-        }
+        mockMvc.perform(get("/api/locations")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+        mockMvc.perform(get("/api/locations/abc")).andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/courts/9223372036854775807")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/courts/9223372036854775807/reviews")).andExpect(status().isNotFound());
         mockMvc.perform(get("/api/matches")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content").isArray());
         mockMvc.perform(get("/api/matches/9223372036854775807")).andExpect(status().isNotFound());
@@ -380,7 +401,7 @@ class AuthAndUserApiTests {
     @Test
     void mergedEntitiesCanReadTheExistingSchema() {
         var entities = entityManager.getMetamodel().getEntities();
-        assertThat(entities).hasSize(35);
+        assertThat(entities).hasSize(37);
         for (var entity : entities) {
             entityManager.createQuery("select e from " + entity.getName() + " e", entity.getJavaType())
                     .setMaxResults(1).getResultList();

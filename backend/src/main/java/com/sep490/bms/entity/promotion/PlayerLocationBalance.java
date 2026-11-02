@@ -42,6 +42,9 @@ public class PlayerLocationBalance {
     @Builder.Default
     private BigDecimal totalPaid = BigDecimal.ZERO;
 
+    @Column(name="loyalty_sessions",nullable=false)
+    private int loyaltySessions;
+
     @Version
     @Column(nullable = false)
     private int version;

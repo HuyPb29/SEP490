@@ -1,0 +1,459 @@
+.pageWrapper {
+  min-height: 100vh;
+  background-color: #f8fafb;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #0f172a;
+}
+
+/* Navbar */
+.navbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  height: 68px;
+  display: flex;
+  align-items: center;
+}
+
+.navContainer {
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.brandIcon {
+  background: #0d8a52;
+  color: #ffffff;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.navLinks {
+  display: flex;
+  gap: 28px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.navLinks a {
+  text-decoration: none;
+  color: #334155;
+}
+
+.activeLink {
+  color: #0d8a52 !important;
+  font-weight: 600;
+}
+
+.userProfile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #e6f4ed;
+  color: #0d8a52;
+  font-weight: 700;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.userName {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Main Content */
+.mainContainer {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 28px 24px 64px;
+}
+
+/* Banners: Hold Countdown / Expired / Confirmed */
+.holdBanner {
+  background-color: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 16px;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #78350f;
+  margin-bottom: 24px;
+}
+
+.holdBannerLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.clockIcon {
+  font-size: 18px;
+}
+
+.countdownText {
+  font-size: 26px;
+  font-weight: 800;
+  color: #78350f;
+  font-variant-numeric: tabular-nums;
+}
+
+.expiredBanner {
+  background-color: #fef2f2;
+  border: 1px solid #ef4444;
+  border-radius: 16px;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #991b1b;
+  font-size: 14.5px;
+  margin-bottom: 24px;
+}
+
+.confirmedBanner {
+  background-color: #e6f4ed;
+  border: 1px solid #0d8a52;
+  border-radius: 16px;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #065f46;
+  font-size: 14.5px;
+  margin-bottom: 24px;
+}
+
+.backHomeBtn {
+  background: #0d8a52;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pageTitle {
+  font-size: 30px;
+  font-weight: 800;
+  margin: 0 0 22px;
+  letter-spacing: -0.02em;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+/* Cột trái: QR Card */
+.qrCard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  padding: 28px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.amountLabel {
+  font-size: 14px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.amountValue {
+  font-size: 36px;
+  font-weight: 800;
+  color: #0d8a52;
+  margin-bottom: 18px;
+  letter-spacing: -0.02em;
+}
+
+.qrBox {
+  width: 220px;
+  height: 220px;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  margin-bottom: 14px;
+}
+
+.qrSvg {
+  width: 100%;
+  height: 100%;
+}
+
+.saveQrBtn {
+  background: none;
+  border: none;
+  color: #0d8a52;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.saveQrBtn:hover {
+  text-decoration: underline;
+}
+
+.divider {
+  width: 100%;
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 18px 0;
+}
+
+.bankInfoList {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bankRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14.5px;
+  gap: 12px;
+}
+
+.bankLabel {
+  color: #64748b;
+}
+
+.bankValue {
+  font-weight: 700;
+  color: #0f172a;
+  text-align: right;
+}
+
+/* Cột phải: Upload Receipt Card */
+.uploadCard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  padding: 28px 30px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cardTitle {
+  font-size: 18.5px;
+  font-weight: 800;
+  margin: 0 0 18px;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.dropzone {
+  background-color: #effaf3;
+  border: 1.5px dashed #0d8a52;
+  border-radius: 18px;
+  padding: 36px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  margin-bottom: 18px;
+}
+
+.dropzone:hover,
+.dropzoneDragging {
+  background-color: #e0f5e9;
+  border-color: #0a7143;
+}
+
+.uploadIcon {
+  color: #0d8a52;
+  font-size: 24px;
+  font-weight: 800;
+  margin-bottom: 10px;
+  border-bottom: 2.5px solid #0d8a52;
+  line-height: 1;
+  padding-bottom: 2px;
+}
+
+.dropzoneTitle {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+
+.dropzoneSub {
+  font-size: 13px;
+  color: #64748b;
+}
+
+/* Selected File Item */
+.fileItemCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.fileItemLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.fileIconBox {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background-color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.fileMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fileName {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fileSize {
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.removeFileBtn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #fecaca;
+  background: #ffffff;
+  color: #dc2626;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.removeFileBtn:hover {
+  background: #fef2f2;
+}
+
+.errorText {
+  color: #dc2626;
+  font-size: 13.5px;
+  font-weight: 500;
+  margin: 0 0 16px;
+}
+
+/* Khối lưu ý Sau khi gửi (BR34 / P06) */
+.afterSubmitBox {
+  background-color: #f8fafc;
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+.afterSubmitTitle {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+
+.afterSubmitDesc {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.submitProofBtn {
+  width: 100%;
+  height: 50px;
+  border: none;
+  border-radius: 14px;
+  background-color: #0d8a52;
+  color: #ffffff;
+  font-size: 15.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.submitProofBtn:hover {
+  background-color: #0a7143;
+}
+
+.submitProofBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+}

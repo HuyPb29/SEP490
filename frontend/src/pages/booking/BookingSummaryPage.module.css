@@ -1,0 +1,436 @@
+.pageWrapper {
+  min-height: 100vh;
+  background-color: #f8fafb;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #0f172a;
+}
+
+/* Navbar */
+.navbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  height: 68px;
+  display: flex;
+  align-items: center;
+}
+
+.navContainer {
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.brandIcon {
+  background: #0d8a52;
+  color: #ffffff;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.navLinks {
+  display: flex;
+  gap: 28px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.navLinks a {
+  text-decoration: none;
+  color: #334155;
+}
+
+.activeLink {
+  color: #0d8a52 !important;
+  font-weight: 600;
+}
+
+.userProfile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #e6f4ed;
+  color: #0d8a52;
+  font-weight: 700;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.userName {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Main Content */
+.mainContainer {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 24px 24px 64px;
+}
+
+.backLink {
+  display: inline-block;
+  color: #0d8a52;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  margin-bottom: 10px;
+}
+
+.pageTitle {
+  font-size: 30px;
+  font-weight: 800;
+  margin: 0 0 22px;
+  letter-spacing: -0.02em;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: 1.65fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.leftColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 24px 28px;
+}
+
+.cardTitle {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0 0 16px;
+}
+
+/* Đặt cho (Team Pills) */
+.teamPillGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.teamPill {
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.teamPillActive {
+  background: #e6f4ed;
+  border: 1.5px solid #0d8a52;
+  color: #0d8a52;
+  font-weight: 700;
+}
+
+.helperText {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+/* Thông tin booking */
+.infoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  row-gap: 16px;
+  column-gap: 24px;
+  margin-bottom: 20px;
+}
+
+.infoItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.infoLabel {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.infoValue {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.noteGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.noteLabel {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 8px;
+}
+
+.noteTextarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #0f172a;
+  resize: vertical;
+  outline: none;
+}
+
+.noteTextarea:focus {
+  border-color: #0d8a52;
+}
+
+/* Ưu đãi: Voucher & Điểm */
+.voucherRow {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.voucherInput {
+  flex: 1;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  outline: none;
+}
+
+.voucherInput:disabled {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.voucherBtn {
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid #0d8a52;
+  background: #ffffff;
+  color: #0d8a52;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.voucherSuccessBanner {
+  background: #e9f5ee;
+  color: #0d8a52;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-bottom: 18px;
+}
+
+.pointsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 6px;
+}
+
+.pointsInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pointsTitle {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.pointsSub {
+  font-size: 13px;
+  color: #64748b;
+}
+
+/* Toggle Switch */
+.switchToggle {
+  width: 50px;
+  height: 28px;
+  border-radius: 999px;
+  border: none;
+  background: #cbd5e1;
+  padding: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.switchOn {
+  background: #0d8a52;
+}
+
+.switchThumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.2s ease;
+}
+
+.switchOn .switchThumb {
+  transform: translateX(22px);
+}
+
+/* Cột phải: Card Thanh toán */
+.paymentCard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 24px 26px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.03);
+}
+
+.priceLine {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 14.5px;
+}
+
+.priceLabel {
+  color: #475569;
+}
+
+.priceValue {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.discountValue {
+  font-weight: 700;
+  color: #0d8a52;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 16px 0;
+}
+
+.totalLine {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 18px;
+}
+
+.totalLabel {
+  font-size: 17px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.totalValue {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.confirmBtn {
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-radius: 12px;
+  background: #0d8a52;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: background-color 0.15s ease;
+}
+
+.confirmBtn:hover {
+  background: #0a7143;
+}
+
+.confirmBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.holdNotice {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.errorText {
+  color: #dc2626;
+  font-size: 13px;
+  margin: 4px 0 12px;
+}
+
+.holdingSuccessBox {
+  margin-top: 16px;
+  background: #e9f5ee;
+  border: 1px solid #b7e1cd;
+  color: #0d8a52;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+@media (max-width: 900px) {
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+}
