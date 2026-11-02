@@ -7,6 +7,8 @@ import FacilityDetailPage from './pages/location/FacilityDetailPage'
 import AuthPage from './pages/auth/AuthPage'
 import BookingSummaryPage from './pages/booking/BookingSummaryPage'
 import BookingPaymentPage from './pages/booking/BookingPaymentPage'
+import TeamsPage from './pages/team/TeamsPage'
+import MatchesPage from './pages/team/MatchesPage'
 
 export default function App() {
   const [status, setStatus] = useState('checking...')
@@ -40,6 +42,10 @@ export default function App() {
 
         {/* UC18: Thanh toán chuyển khoản & Gửi chứng từ (POST /api/v1/bookings/:id/payment-proof) */}
         <Route path="/booking/payment" element={<BookingPaymentPage />} />
+
+        {/* F7: UC27-28 Đội, UC29-30 Kèo */}
+        <Route path="/teams" element={<TeamsPage />} />
+        <Route path="/matches" element={<MatchesPage />} />
       </Routes>
     </BrowserRouter>
   )
