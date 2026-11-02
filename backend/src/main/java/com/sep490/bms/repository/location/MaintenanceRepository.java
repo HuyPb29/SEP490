@@ -37,4 +37,12 @@ public interface MaintenanceRepository extends JpaRepository<Maintenance, Long> 
             @Param("statuses") Collection<ApprovalStatus> statuses,
             @Param("startAt") LocalDateTime startAt,
             @Param("endAt") LocalDateTime endAt);
+
+    /**
+     * F2 - UC10, dùng cho F3 (lịch trống): yêu cầu bảo trì theo trạng thái của nhiều sân,
+     * trùng khoảng [startAt, endAt). Tham số {@code endAt} đứng trước vì nó gắn với
+     * {@code StartAtLessThan}, {@code startAt} gắn với {@code EndAtGreaterThan}.
+     */
+    List<Maintenance> findByCourtIdInAndStatusAndStartAtLessThanAndEndAtGreaterThan(
+            Collection<Long> courtIds, ApprovalStatus status, LocalDateTime endAt, LocalDateTime startAt);
 }
