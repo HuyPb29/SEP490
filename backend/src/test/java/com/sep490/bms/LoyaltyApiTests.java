@@ -231,19 +231,17 @@ class LoyaltyApiTests {
         seed(20); Booking b=booking(10000);
         Voucher v=vouchers.saveAndFlush(Voucher.builder().locationId(location.getId()).name("Policy test").source(VoucherSource.CAMPAIGN)
                 .targetGroup(VoucherTargetGroup.ALL_PLAYERS).code("STACK").status(VoucherStatus.PUBLISHED).discountType(DiscountType.AMOUNT)
-                .discountValue(BigDecimal.valueOf(2000)).allowPoints(true).maxPointPercent(25).build());
+                .discountValue(BigDecimal.valueOf(2000)).build());
         tx.executeWithoutResult(s -> {
             Booking target=em.find(Booking.class,b.getId()); target.setVoucherDiscount(BigDecimal.valueOf(2000)); target.setFinalAmount(BigDecimal.valueOf(8000));
             em.persist(VoucherUsage.builder().voucherId(v.getId()).playerId(player.getId()).bookingId(b.getId()).discountAmount(BigDecimal.valueOf(2000)).build());
         });
-        assertThatThrownBy(() -> tx.execute(s -> points.redeemForBooking(b.getId(),5))).hasMessageContaining("MSG38");
+        // Sau voucher còn 8.000 đồng: tối đa 4.000 đồng = 8 điểm (BR41, D161).
+        assertThatThrownBy(() -> tx.execute(s -> points.redeemForBooking(b.getId(),9))).hasMessageContaining("MSG38");
         assertThatThrownBy(() -> tx.execute(s -> points.redeemForBooking(b.getId(),1))).hasMessageContaining("MSG37");
-        tx.executeWithoutResult(s -> points.redeemForBooking(b.getId(),4));
-        assertThat(balance().getPointBalance()).isEqualTo(16);
-        assertThat(tx.<BigDecimal>execute(s -> em.find(Booking.class,b.getId()).getFinalAmount())).isEqualByComparingTo("6000");
-        Voucher blocked=vouchers.saveAndFlush(Voucher.builder().locationId(location.getId()).name("No stack").source(VoucherSource.LOYALTY)
-                .targetGroup(VoucherTargetGroup.SPECIFIED).status(VoucherStatus.PUBLISHED).discountType(DiscountType.AMOUNT).discountValue(BigDecimal.valueOf(1000)).build());
-        assertThatThrownBy(() -> points.preview(player.getId(),location.getId(),BigDecimal.valueOf(8000),blocked.getId(),2)).hasMessageContaining("MSG38");
+        tx.executeWithoutResult(s -> points.redeemForBooking(b.getId(),8));
+        assertThat(balance().getPointBalance()).isEqualTo(12);
+        assertThat(tx.<BigDecimal>execute(s -> em.find(Booking.class,b.getId()).getFinalAmount())).isEqualByComparingTo("4000");
     }
     @Test void packageRedeemAndFailedReturnAreIdempotent() {
         seed(10); Booking one=booking(10000),two=booking(10000);
