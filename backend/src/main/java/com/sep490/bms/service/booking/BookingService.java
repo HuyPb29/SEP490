@@ -118,17 +118,14 @@ public class BookingService {
     }
 
     BookingResponse createSingleBooking(UserPrincipal player, BookingRequest request, LocalDateTime now) {
-        // Tạm thời ở 5.1: chưa trừ voucher, điểm (làm ở 5.4). Chặn lại để không lưu booking có giảm giá
-        // mà lượt voucher, số điểm chưa bị trừ. Bỏ đoạn này ở 5.4.
-        if (voucherSelection(request) != null || (request.pointsToUse() != null && request.pointsToUse() > 0)) {
-            throw new AppException("Chưa hỗ trợ dùng voucher hoặc điểm khi tạo booking", HttpStatus.NOT_IMPLEMENTED);
-        }
         requirePendingPaymentLimit(player.getId(), now);
-        // Chạy lại toàn bộ kiểm tra và cách tính của màn tóm tắt: slot có thể vừa bị người khác giữ (FR39).
-        BookingSummaryResponse summary = previewSummary(player, request, now);
+        // Kiểm tra lại slot và tính lại giá niêm yết như màn tóm tắt: slot có thể vừa bị người khác giữ (FR39).
+        // Voucher, điểm không kiểm tra ở bước này: lúc trừ sẽ kiểm tra lại dưới khóa dòng, lỗi báo MSG108.
+        BookingSummaryResponse summary = previewSummary(player, withoutDiscounts(request), now);
         // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 5 phút.
         LocalDateTime createdAt = now.truncatedTo(ChronoUnit.SECONDS);
 
+        // Lưu với giá niêm yết; consumeForBooking, redeemForBooking tự ghi số giảm và finalAmount vào booking.
         Booking booking = bookingRepository.save(Booking.builder()
                 .bookingCode(bookingCodeGenerator.next())
                 .bookingType(BookingType.SINGLE)
@@ -140,15 +137,16 @@ public class BookingService {
                 .endMinute(request.endMinute())
                 .note(StringUtils.hasText(request.note()) ? request.note().trim() : null)
                 .listAmount(summary.getListAmount())
-                .voucherDiscount(summary.getVoucherDiscount())
-                .pointDiscount(summary.getPointDiscount())
-                .finalAmount(summary.getFinalAmount())
+                .finalAmount(summary.getListAmount())
                 .status(BookingStatus.HOLDING)
                 .holdExpiresAt(createdAt.plusMinutes(HOLD_MINUTES))
                 .createdAt(createdAt)
                 .build());
 
         saveSlots(booking, summary.getSlots());
+        // Voucher trước, điểm sau: trần điểm tính trên số tiền còn lại sau voucher (BR41).
+        useVoucher(booking.getId(), request);
+        usePoints(booking.getId(), request);
         return BookingResponse.from(booking);
     }
 
@@ -175,6 +173,54 @@ public class BookingService {
             }
             throw slotTaken();
         }
+    }
+
+    /** UC14 #4, FR74: trừ lượt và ngân sách voucher khi tạo booking. VoucherService kiểm tra lại dưới khóa dòng. */
+    private void useVoucher(Long bookingId, BookingRequest request) {
+        VoucherSelection selection = voucherSelection(request);
+        if (selection == null) {
+            return;
+        }
+        try {
+            voucherService.consumeForBooking(bookingId, selection);
+        } catch (AppException e) {
+            throw noLongerUsable("Mã giảm giá", e);
+        }
+    }
+
+    /** UC14 #5, FR75: trừ điểm khi tạo booking. LoyaltyPointService kiểm tra lại số dư và trần 50% (BR41). */
+    private void usePoints(Long bookingId, BookingRequest request) {
+        Integer points = request.pointsToUse();
+        if (points == null || points == 0) {
+            return;
+        }
+        try {
+            loyaltyPointService.redeemForBooking(bookingId, points);
+        } catch (AppException e) {
+            throw noLongerUsable("Số điểm", e);
+        }
+    }
+
+    /**
+     * Voucher hoặc điểm đã áp ở màn tóm tắt nhưng lúc bấm Xác nhận không còn dùng được: MSG108 kèm lý do.
+     * Lỗi không phải 400 (ví dụ 409 dữ liệu không nhất quán) giữ nguyên.
+     */
+    private static AppException noLongerUsable(String what, AppException e) {
+        if (e.getStatus() != HttpStatus.BAD_REQUEST) {
+            return e;
+        }
+        // Bỏ mã MSG và dấu chấm cuối trong câu gốc để câu MSG108 không bị lặp mã, lặp dấu chấm.
+        String reason = e.getMessage()
+                .replaceFirst("^MSG\\d+:\\s*", "")
+                .replaceFirst("\\s*\\(MSG\\d+\\)\\s*$", "")
+                .replaceFirst("[.\\s]+$", "");
+        return new AppException(what + " không còn dùng được: " + reason + ". Vui lòng kiểm tra lại. (MSG108)");
+    }
+
+    /** Request chỉ còn sân, ngày, giờ, ghi chú: dùng để kiểm tra lại slot và tính giá niêm yết lúc Xác nhận. */
+    private static BookingRequest withoutDiscounts(BookingRequest request) {
+        return new BookingRequest(request.courtId(), request.date(), request.startMinute(), request.endMinute(),
+                null, null, null, request.note());
     }
 
     /**

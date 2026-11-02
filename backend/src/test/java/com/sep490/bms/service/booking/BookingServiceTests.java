@@ -347,17 +347,6 @@ class BookingServiceTests {
         verifyNoInteractions(bookingSlots, codes);
     }
 
-    @Test
-    void createWithVoucherOrPointsIsNotSupportedYet() {
-        assertThatThrownBy(() -> service.createSingleBooking(player, requestWithPoints("SUMMER", 0), NOW))
-                .isInstanceOfSatisfying(AppException.class,
-                        e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_IMPLEMENTED));
-        assertThatThrownBy(() -> service.createSingleBooking(player, requestWithPoints(null, 10), NOW))
-                .isInstanceOfSatisfying(AppException.class,
-                        e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_IMPLEMENTED));
-        verifyNoInteractions(bookings, bookingSlots);
-    }
-
     // ---- Trùng slot khi hai người cùng ghi: unique ux_slot_active (5.3) ----
 
     @Test
@@ -383,6 +372,92 @@ class BookingServiceTests {
         when(bookingSlots.saveAllAndFlush(any())).thenThrow(other);
 
         assertThatThrownBy(() -> service.createSingleBooking(player, request(), NOW)).isSameAs(other);
+    }
+
+    // ---- Trừ voucher và điểm khi tạo booking (5.4) ----
+
+    @Test
+    void createConsumesVoucherThenPointsAfterSavingSlots() {
+        stubSave();
+
+        service.createSingleBooking(player, requestWithPoints("SUMMER", 40), NOW);
+
+        InOrder order = inOrder(bookings, bookingSlots, vouchers, points);
+        order.verify(bookings).save(any(Booking.class));
+        order.verify(bookingSlots).saveAllAndFlush(any());
+        order.verify(vouchers).consumeForBooking(100L, new VoucherSelection("SUMMER", null));
+        order.verify(points).redeemForBooking(100L, 40);
+    }
+
+    @Test
+    void createSavesListPriceAndLetsDiscountsBeWrittenByPromotionServices() {
+        stubSave();
+
+        service.createSingleBooking(player, requestWithPoints("SUMMER", 40), NOW);
+
+        ArgumentCaptor<Booking> saved = ArgumentCaptor.forClass(Booking.class);
+        verify(bookings).save(saved.capture());
+        assertThat(saved.getValue().getListAmount()).isEqualByComparingTo("130000");
+        assertThat(saved.getValue().getVoucherDiscount()).isEqualByComparingTo("0");
+        assertThat(saved.getValue().getPointDiscount()).isEqualByComparingTo("0");
+        // Bước kiểm tra lại lúc Xác nhận không dùng hàm xem trước của màn tóm tắt cho voucher, điểm.
+        verify(vouchers, never()).check(any(), any());
+        verify(points, never()).preview(any(), any(), any(), anyInt());
+    }
+
+    @Test
+    void grantedVoucherIsConsumedByGrantId() {
+        stubSave();
+
+        service.createSingleBooking(player, requestWithVoucher(null, 9L), NOW);
+
+        verify(vouchers).consumeForBooking(100L, new VoucherSelection(null, 9L));
+        verifyNoInteractions(points);
+    }
+
+    @Test
+    void noVoucherNoPointsTouchesNeither() {
+        stubSave();
+
+        service.createSingleBooking(player, request(), NOW);
+
+        verifyNoInteractions(vouchers, points);
+    }
+
+    @Test
+    void voucherNoLongerUsableIsMsg108AndPointsAreNotUsed() {
+        stubSave();
+        when(vouchers.consumeForBooking(any(), any())).thenThrow(new AppException("Voucher hết lượt"));
+
+        assertThatThrownBy(() -> service.createSingleBooking(player, requestWithPoints("SUMMER", 40), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(e.getMessage()).isEqualTo(
+                            "Mã giảm giá không còn dùng được: Voucher hết lượt. Vui lòng kiểm tra lại. (MSG108)");
+                });
+        verifyNoInteractions(points);
+    }
+
+    @Test
+    void pointsNoLongerUsableIsMsg108WithoutOldCode() {
+        stubSave();
+        when(points.redeemForBooking(any(), anyInt())).thenThrow(
+                new AppException("Bạn được dùng tối đa 50 điểm cho khoản thanh toán này. (MSG38)"));
+
+        assertThatThrownBy(() -> service.createSingleBooking(player, requestWithPoints(null, 60), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> assertThat(e.getMessage()).isEqualTo(
+                        "Số điểm không còn dùng được: Bạn được dùng tối đa 50 điểm cho khoản thanh toán này. "
+                                + "Vui lòng kiểm tra lại. (MSG108)"));
+    }
+
+    @Test
+    void promotionConflictIsKeptAsIs() {
+        stubSave();
+        AppException conflict = new AppException("Booking đã có lịch sử voucher", HttpStatus.CONFLICT);
+        when(vouchers.consumeForBooking(any(), any())).thenThrow(conflict);
+
+        assertThatThrownBy(() -> service.createSingleBooking(player, requestWithVoucher("SUMMER", null), NOW))
+                .isSameAs(conflict);
     }
 
     private void stubSave() {
