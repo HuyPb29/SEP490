@@ -9,6 +9,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+
+import org.mockito.InOrder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -39,6 +43,7 @@ import com.sep490.bms.entity.booking.BookingSlot;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.booking.BookingPackageRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.booking.BookingSlotRepository;
 import com.sep490.bms.repository.location.CourtRepository;
@@ -71,8 +76,9 @@ class BookingServiceTests {
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final BookingSlotRepository bookingSlots = mock(BookingSlotRepository.class);
     private final BookingCodeGenerator codes = mock(BookingCodeGenerator.class);
+    private final BookingPackageRepository packages = mock(BookingPackageRepository.class);
     private final BookingService service = new BookingService(courts, locations, availability, prices, vouchers,
-            points, accounts, bookings, bookingSlots, codes);
+            points, accounts, bookings, bookingSlots, codes, packages);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 
@@ -82,8 +88,9 @@ class BookingServiceTests {
                 Court.builder().id(COURT).locationId(LOCATION).name("Sân 1").build()));
         when(locations.findActive(LOCATION)).thenReturn(
                 Location.builder().id(LOCATION).name("Cầu lông Sunrise").advanceBookingDays((short) 30).build());
-        when(accounts.findById(PLAYER)).thenReturn(Optional.of(
-                Account.builder().id(PLAYER).fullName("Nguyễn An").phone("0912345678").build()));
+        Account account = Account.builder().id(PLAYER).fullName("Nguyễn An").phone("0912345678").build();
+        when(accounts.findById(PLAYER)).thenReturn(Optional.of(account));
+        when(accounts.findByIdForUpdate(PLAYER)).thenReturn(Optional.of(account));
         Map<Integer, BigDecimal> slotPrices = new LinkedHashMap<>();
         slotPrices.put(1080, new BigDecimal("60000"));
         slotPrices.put(1110, new BigDecimal("70000"));
@@ -334,7 +341,8 @@ class BookingServiceTests {
 
         assertThatThrownBy(() -> service.createSingleBooking(player, request(), NOW))
                 .isInstanceOfSatisfying(AppException.class, e -> assertThat(e.getMessage()).contains("MSG28"));
-        verifyNoInteractions(bookings, bookingSlots, codes);
+        verify(bookings, never()).save(any());
+        verifyNoInteractions(bookingSlots, codes);
     }
 
     @Test
@@ -355,6 +363,52 @@ class BookingServiceTests {
             b.setId(100L);
             return b;
         });
+    }
+
+    // ---- BR35: tối đa 2 booking đang chờ thanh toán (5.2) ----
+
+    @Test
+    void thirdPendingSingleBookingIsRejectedMsg29() {
+        when(bookings.countPendingPayment(PLAYER, NOW)).thenReturn(2L);
+
+        assertThatThrownBy(() -> service.createSingleBooking(player, request(), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(e.getMessage()).contains("MSG29").contains("Bạn đang có 2 booking");
+                });
+        verifyNoInteractions(bookingSlots, codes);
+        verify(bookings, never()).save(any());
+    }
+
+    @Test
+    void packageCountsTowardsTheLimit() {
+        when(bookings.countPendingPayment(PLAYER, NOW)).thenReturn(1L);
+        when(packages.countPendingPayment(PLAYER, NOW)).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.createSingleBooking(player, request(), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> assertThat(e.getMessage()).contains("MSG29"));
+    }
+
+    @Test
+    void onePendingBookingStillAllowsAnother() {
+        when(bookings.countPendingPayment(PLAYER, NOW)).thenReturn(1L);
+        stubSave();
+
+        BookingResponse created = service.createSingleBooking(player, request(), NOW);
+
+        assertThat(created.getStatus()).isEqualTo(BookingStatus.HOLDING);
+    }
+
+    @Test
+    void accountIsLockedBeforeCounting() {
+        stubSave();
+
+        service.createSingleBooking(player, request(), NOW);
+
+        InOrder order = inOrder(accounts, bookings, packages);
+        order.verify(accounts).findByIdForUpdate(PLAYER);
+        order.verify(bookings).countPendingPayment(PLAYER, NOW);
+        order.verify(packages).countPendingPayment(PLAYER, NOW);
     }
 
     private static BookingRequest requestWithNote(String note) {

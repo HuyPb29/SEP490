@@ -28,6 +28,7 @@ import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.booking.BookingPackageRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.booking.BookingSlotRepository;
 import com.sep490.bms.repository.location.CourtRepository;
@@ -49,6 +50,8 @@ public class BookingService {
 
     /** Thời gian giữ chỗ (BR03, P02): cố định, Owner không cài (D154). */
     static final int HOLD_MINUTES = 5;
+    /** Số booking đang chờ thanh toán tối đa của một Player (BR35, P08): cố định (D154). */
+    static final int MAX_PENDING_PAYMENTS = 2;
 
     private final CourtRepository courtRepository;
     private final LocationQueryService locationQueryService;
@@ -60,6 +63,7 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final BookingSlotRepository bookingSlotRepository;
     private final BookingCodeGenerator bookingCodeGenerator;
+    private final BookingPackageRepository bookingPackageRepository;
 
     /** UC14 #1–5: tính màn tóm tắt để Player xem lại trước khi bấm Xác nhận. Không tạo booking, không giữ chỗ (D128). */
     @Transactional(readOnly = true)
@@ -116,6 +120,7 @@ public class BookingService {
         if (voucherSelection(request) != null || (request.pointsToUse() != null && request.pointsToUse() > 0)) {
             throw new AppException("Chưa hỗ trợ dùng voucher hoặc điểm khi tạo booking", HttpStatus.NOT_IMPLEMENTED);
         }
+        requirePendingPaymentLimit(player.getId(), now);
         // Chạy lại toàn bộ kiểm tra và cách tính của màn tóm tắt: slot có thể vừa bị người khác giữ (FR39).
         BookingSummaryResponse summary = previewSummary(player, request, now);
         // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 5 phút.
@@ -151,6 +156,23 @@ public class BookingService {
                         .build())
                 .toList());
         return BookingResponse.from(booking);
+    }
+
+    /**
+     * BR35: đã có 2 booking đang chờ thanh toán (booking lẻ + gói, mỗi gói tính một) thì không tạo thêm (MSG29).
+     * Khóa dòng account của Player trước khi đếm: hai request của cùng Player gửi cùng lúc phải chạy lần lượt,
+     * nếu không cả hai cùng đếm được 1 rồi cùng tạo, thành 3 booking chờ.
+     */
+    private void requirePendingPaymentLimit(Long playerId, LocalDateTime now) {
+        accountRepository.findByIdForUpdate(playerId)
+                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản", HttpStatus.NOT_FOUND));
+        long pending = bookingRepository.countPendingPayment(playerId, now)
+                + bookingPackageRepository.countPendingPayment(playerId, now);
+        if (pending >= MAX_PENDING_PAYMENTS) {
+            throw new AppException("Bạn đang có " + pending
+                    + " booking chờ thanh toán. Vui lòng hoàn tất các booking đó trước khi đặt thêm. (MSG29)",
+                    HttpStatus.CONFLICT);
+        }
     }
 
     /**
