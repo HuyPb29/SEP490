@@ -26,6 +26,7 @@ import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.SlotAvailabilityService.SlotProblem;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.promotion.LoyaltyPointService;
 import com.sep490.bms.service.promotion.VoucherService;
 
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,7 @@ public class BookingService {
     private final SlotAvailabilityService slotAvailabilityService;
     private final PriceCalculator priceCalculator;
     private final VoucherService voucherService;
+    private final LoyaltyPointService loyaltyPointService;
     private final AccountRepository accountRepository;
 
     /** UC14 #1–5: tính màn tóm tắt để Player xem lại trước khi bấm Xác nhận. Không tạo booking, không giữ chỗ (D128). */
@@ -64,7 +66,8 @@ public class BookingService {
                 court.getId(), request.date(), request.startMinute(), request.endMinute());
         BigDecimal listAmount = prices.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal voucherDiscount = voucherDiscount(player, location.getId(), listAmount, request);
-        // TODO 4.4: áp điểm qua LoyaltyPointService.preview sau khi chốt với Huy lỗi allowPoints (BR41, FR82).
+        BigDecimal afterVoucher = listAmount.subtract(voucherDiscount);
+        BigDecimal pointDiscount = pointDiscount(player, location.getId(), afterVoucher, request);
 
         return BookingSummaryResponse.builder()
                 .locationId(location.getId())
@@ -79,8 +82,8 @@ public class BookingService {
                 .slots(toSlots(prices))
                 .listAmount(listAmount)
                 .voucherDiscount(voucherDiscount)
-                .pointDiscount(BigDecimal.ZERO)
-                .finalAmount(listAmount.subtract(voucherDiscount))
+                .pointDiscount(pointDiscount)
+                .finalAmount(afterVoucher.subtract(pointDiscount))
                 .build();
     }
 
@@ -103,6 +106,19 @@ public class BookingService {
             }
             throw new AppException("Mã giảm giá không dùng được: " + e.getMessage() + " (MSG34)");
         }
+    }
+
+    /**
+     * UC14 #5: chỉ kiểm tra và tính số giảm, chưa trừ điểm (FR75). Điểm bị trừ khi tạo booking.
+     * Tính sau voucher vì trần 50% lấy trên số tiền còn lại sau voucher (BR41).
+     */
+    private BigDecimal pointDiscount(UserPrincipal player, Long locationId, BigDecimal afterVoucher,
+            BookingRequest request) {
+        Integer points = request.pointsToUse();
+        if (points == null || points == 0) {
+            return BigDecimal.ZERO;
+        }
+        return loyaltyPointService.preview(player.getId(), locationId, afterVoucher, points);
     }
 
     /** Voucher công khai chọn bằng mã, voucher được tặng chọn bằng grantId; cả hai đều trống là không dùng voucher. */

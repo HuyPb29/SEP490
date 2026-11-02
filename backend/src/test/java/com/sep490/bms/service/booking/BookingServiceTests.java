@@ -38,6 +38,7 @@ import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.SlotAvailabilityService.SlotProblem;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.promotion.LoyaltyPointService;
 import com.sep490.bms.service.promotion.VoucherService;
 
 class BookingServiceTests {
@@ -58,9 +59,10 @@ class BookingServiceTests {
     private final SlotAvailabilityService availability = mock(SlotAvailabilityService.class);
     private final PriceCalculator prices = mock(PriceCalculator.class);
     private final VoucherService vouchers = mock(VoucherService.class);
+    private final LoyaltyPointService points = mock(LoyaltyPointService.class);
     private final AccountRepository accounts = mock(AccountRepository.class);
     private final BookingService service =
-            new BookingService(courts, locations, availability, prices, vouchers, accounts);
+            new BookingService(courts, locations, availability, prices, vouchers, points, accounts);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 
@@ -215,6 +217,48 @@ class BookingServiceTests {
                 });
     }
 
+    @Test
+    void noPointsDoesNotCallPointService() {
+        service.previewSummary(player, requestWithPoints(null, null), NOW);
+        service.previewSummary(player, requestWithPoints(null, 0), NOW);
+
+        verifyNoInteractions(points);
+    }
+
+    @Test
+    void pointsWithoutVoucherAreCheckedOnListAmount() {
+        when(points.preview(PLAYER, LOCATION, LIST_AMOUNT, 40)).thenReturn(new BigDecimal("20000"));
+
+        BookingSummaryResponse summary = service.previewSummary(player, requestWithPoints(null, 40), NOW);
+
+        assertThat(summary.getPointDiscount()).isEqualByComparingTo("20000");
+        assertThat(summary.getFinalAmount()).isEqualByComparingTo("110000");
+    }
+
+    @Test
+    void pointsAreCheckedOnAmountAfterVoucher() {
+        when(vouchers.check(any(), any())).thenReturn(
+                new VoucherCheckResponse(9L, null, LIST_AMOUNT, new BigDecimal("30000"), new BigDecimal("100000")));
+        when(points.preview(PLAYER, LOCATION, new BigDecimal("100000"), 40)).thenReturn(new BigDecimal("20000"));
+
+        BookingSummaryResponse summary = service.previewSummary(player, requestWithPoints("SUMMER", 40), NOW);
+
+        assertThat(summary.getVoucherDiscount()).isEqualByComparingTo("30000");
+        assertThat(summary.getPointDiscount()).isEqualByComparingTo("20000");
+        assertThat(summary.getFinalAmount()).isEqualByComparingTo("80000");
+    }
+
+    @Test
+    void pointErrorKeepsItsOwnMessage() {
+        when(points.preview(any(), any(), any(), anyInt())).thenThrow(new AppException("Vượt trần (MSG38)"));
+
+        assertThatThrownBy(() -> service.previewSummary(player, requestWithPoints(null, 999), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> {
+                    assertThat(e.getMessage()).isEqualTo("Vượt trần (MSG38)");
+                    assertThat(e.getMessage()).doesNotContain("MSG34");
+                });
+    }
+
     private void assertNotBookable(BookingRequest request) {
         assertThatThrownBy(() -> service.previewSummary(player, request, NOW))
                 .isInstanceOfSatisfying(AppException.class, e -> {
@@ -233,6 +277,10 @@ class BookingServiceTests {
 
     private static BookingRequest requestWithVoucher(String code, Long grantId) {
         return new BookingRequest(COURT, PLAY_DATE, START, START + 60, code, grantId, 0);
+    }
+
+    private static BookingRequest requestWithPoints(String voucherCode, Integer pointsToUse) {
+        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, voucherCode, null, pointsToUse);
     }
 
     private static BookingRequest requestOn(LocalDate date, int startMinute) {
