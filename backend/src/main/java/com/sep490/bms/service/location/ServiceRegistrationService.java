@@ -2,6 +2,7 @@ package com.sep490.bms.service.location;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -18,11 +19,13 @@ import com.sep490.bms.entity.Account;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.enums.ApprovalStatus;
+import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.location.ServiceRegistration;
 import com.sep490.bms.entity.location.ServiceTerm;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.AccountRepository;
 import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.location.ServiceRegistrationRepository;
 import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.security.UserPrincipal;
@@ -34,8 +37,9 @@ import lombok.RequiredArgsConstructor;
  * Owner: Minh Anh
  * UC05 - Đăng ký sử dụng dịch vụ (FR13).
  *
- * Luồng: Owner gửi đơn (PENDING) -> Admin duyệt thì hệ thống mới tạo địa điểm thật
- * và mở một kỳ hạn sử dụng dịch vụ 12 tháng; Admin từ chối thì bắt buộc ghi lý do.
+ * Luồng: Owner gửi đơn (PENDING) -> Admin duyệt thì hệ thống mới tạo địa điểm thật,
+ * sinh đủ số sân mà đơn khai báo ("Sân 1".."Sân N") và mở một kỳ hạn sử dụng dịch vụ 12 tháng;
+ * Admin từ chối thì bắt buộc ghi lý do.
  * Đơn đã xử lý không được xử lý lại (tránh tạo trùng địa điểm).
  */
 @Service
@@ -45,9 +49,16 @@ public class ServiceRegistrationService {
     private static final int SERVICE_TERM_MONTHS = 12;
     private static final String STATUS_ACTIVE = "ACTIVE";
 
+    /**
+     * Trần số sân của một đơn đăng ký. Số sân được dùng để sinh sân thật khi duyệt đơn,
+     * nên phải chặn trần để một đơn sai không tạo ra hàng nghìn dòng trong bảng court.
+     */
+    private static final int MAX_COURT_COUNT = 50;
+
     private final ServiceRegistrationRepository serviceRegistrationRepository;
     private final ServiceTermRepository serviceTermRepository;
     private final LocationRepository locationRepository;
+    private final CourtRepository courtRepository;
     private final AccountRepository accountRepository;
 
     /** UC05 - Owner gửi đơn đăng ký địa điểm mới. */
@@ -60,13 +71,15 @@ public class ServiceRegistrationService {
             throw new AppException("Chỉ Owner mới được đăng ký sử dụng dịch vụ", HttpStatus.FORBIDDEN);
         }
 
+        int courtCount = validateCourtCount(request.getCourtCount());
+
         ServiceRegistration entity = ServiceRegistration.builder()
                 .requesterId(user.getId())
                 .locationName(requireText(request.getLocationName(), "Tên địa điểm", 100))
                 .address(requireText(request.getAddress(), "Địa chỉ", 255))
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
-                .courtCount(request.getCourtCount())
+                .courtCount(courtCount)
                 .contactName(trimToNull(request.getContactName()))
                 .contactPhone(trimToNull(request.getContactPhone()))
                 .contactEmail(trimToNull(request.getContactEmail()))
@@ -102,7 +115,11 @@ public class ServiceRegistrationService {
     }
 
     /**
-     * UC05 - Admin duyệt đơn: tạo địa điểm thật cho owner gửi đơn và mở kỳ hạn dịch vụ 12 tháng.
+     * UC05 - Admin duyệt đơn: tạo địa điểm thật cho owner gửi đơn, sinh đủ số sân mà đơn
+     * đã khai báo và mở kỳ hạn dịch vụ 12 tháng.
+     *
+     * Số sân sinh ra đặt tên mặc định "Sân 1".."Sân N" và bật hoạt động ngay, để Owner
+     * đăng nhập là bán được sân; Owner đổi tên/mô tả sau bằng UC07.
      */
     @Transactional
     public ServiceRegistrationDto approve(UserPrincipal admin, Long registrationId) {
@@ -114,6 +131,7 @@ public class ServiceRegistrationService {
         if (isBlank(entity.getContactPhone())) {
             throw new AppException("Đơn thiếu số điện thoại liên hệ, không thể duyệt");
         }
+        int courtCount = validateCourtCount(entity.getCourtCount());
 
         LocalDateTime now = LocalDateTime.now();
         Location location = locationRepository.save(Location.builder()
@@ -126,6 +144,8 @@ public class ServiceRegistrationService {
                 .status(STATUS_ACTIVE)
                 .createdAt(now)
                 .build());
+
+        courtRepository.saveAll(defaultCourts(location.getId(), courtCount));
 
         LocalDate startDate = LocalDate.now();
         serviceTermRepository.save(ServiceTerm.builder()
@@ -162,6 +182,33 @@ public class ServiceRegistrationService {
     }
 
     // --------------------------------------------------------------- helpers
+
+    /** Sinh danh sách sân mặc định cho địa điểm mới: "Sân 1".."Sân N", bật hoạt động. */
+    private List<Court> defaultCourts(Long locationId, int courtCount) {
+        List<Court> courts = new ArrayList<>(courtCount);
+        for (int index = 1; index <= courtCount; index++) {
+            courts.add(Court.builder()
+                    .locationId(locationId)
+                    .name("Sân " + index)
+                    .active(true)
+                    .build());
+        }
+        return courts;
+    }
+
+    /** Số sân phải trong khoảng 1..MAX_COURT_COUNT (ck_sreg_courts chỉ chặn điều kiện lớn hơn 0). */
+    private int validateCourtCount(Integer courtCount) {
+        if (courtCount == null) {
+            throw new AppException("Số sân không được để trống");
+        }
+        if (courtCount < 1) {
+            throw new AppException("Số sân phải lớn hơn 0");
+        }
+        if (courtCount > MAX_COURT_COUNT) {
+            throw new AppException("Số sân tối đa là " + MAX_COURT_COUNT);
+        }
+        return courtCount;
+    }
 
     /** Đơn phải đang PENDING: đã duyệt/từ chối rồi thì trả 409 để tránh tạo trùng địa điểm. */
     private ServiceRegistration requirePending(Long registrationId) {
