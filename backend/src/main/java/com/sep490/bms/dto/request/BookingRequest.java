@@ -14,7 +14,9 @@ public record BookingRequest(
         @Positive Long voucherGrantId,
         @Min(0) Integer pointsToUse,
         /** Ghi chú cho chủ sân, không bắt buộc (FR35, DR20). Chỉ lưu khi tạo booking. */
-        @Size(max = 200, message = "Ghi chú tối đa 200 ký tự (MSG109)") String note) {
+        @Size(max = 200, message = "Ghi chú tối đa 200 ký tự (MSG109)") String note,
+        /** Đội mình làm chủ, không bắt buộc; để trống là booking cá nhân (FR37, BR09). */
+        @Positive Long teamId) {
     @AssertTrue(message = "Chỉ chọn voucherCode hoặc voucherGrantId")
     public boolean isVoucherSelectionValid() {
         return voucherCode == null || voucherCode.isBlank() || voucherGrantId == null;

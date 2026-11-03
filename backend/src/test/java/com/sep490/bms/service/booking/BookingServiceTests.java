@@ -54,12 +54,14 @@ import com.sep490.bms.service.booking.SlotAvailabilityService.SlotProblem;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
 import com.sep490.bms.service.promotion.VoucherService;
+import com.sep490.bms.service.team.TeamService;
 
 class BookingServiceTests {
 
     private static final Long LOCATION = 1L;
     private static final Long COURT = 5L;
     private static final Long PLAYER = 7L;
+    private static final Long TEAM = 1L;
     private static final LocalDate TODAY = LocalDate.of(2026, 10, 30);
     /** Hôm nay 12:10, giữa slot 12:00. */
     private static final LocalDateTime NOW = TODAY.atTime(12, 10);
@@ -79,8 +81,9 @@ class BookingServiceTests {
     private final BookingSlotRepository bookingSlots = mock(BookingSlotRepository.class);
     private final BookingCodeGenerator codes = mock(BookingCodeGenerator.class);
     private final BookingPackageRepository packages = mock(BookingPackageRepository.class);
+    private final TeamService teams = mock(TeamService.class);
     private final BookingService service = new BookingService(courts, locations, availability, prices, vouchers,
-            points, accounts, bookings, bookingSlots, codes, packages);
+            points, accounts, bookings, bookingSlots, codes, packages, teams);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 
@@ -515,8 +518,60 @@ class BookingServiceTests {
         order.verify(packages).countPendingPayment(PLAYER, NOW);
     }
 
+    // ---- FR37, BR09, DR03: đặt cho cá nhân hoặc cho đội mình làm chủ (5.5) ----
+
+    @Test
+    void personalBookingDoesNotCheckTeam() {
+        stubSave();
+
+        service.createSingleBooking(player, request(), NOW);
+
+        verifyNoInteractions(teams);
+        ArgumentCaptor<Booking> saved = ArgumentCaptor.forClass(Booking.class);
+        verify(bookings).save(saved.capture());
+        assertThat(saved.getValue().getTeamId()).isNull();
+    }
+
+    @Test
+    void bookingForOwnTeamStoresTeamId() {
+        when(teams.isCaptain(TEAM, PLAYER)).thenReturn(true);
+        stubSave();
+
+        service.createSingleBooking(player, requestForTeam(TEAM), NOW);
+
+        ArgumentCaptor<Booking> saved = ArgumentCaptor.forClass(Booking.class);
+        verify(bookings).save(saved.capture());
+        assertThat(saved.getValue().getTeamId()).isEqualTo(TEAM);
+    }
+
+    @Test
+    void summaryForTeamNotLedByPlayerIsForbidden() {
+        when(teams.isCaptain(TEAM, PLAYER)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.previewSummary(player, requestForTeam(TEAM), NOW))
+                .isInstanceOfSatisfying(AppException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                    assertThat(e.getMessage()).contains("đội mình làm chủ");
+                });
+    }
+
+    @Test
+    void createForTeamNotLedByPlayerSavesNothing() {
+        when(teams.isCaptain(TEAM, PLAYER)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.createSingleBooking(player, requestForTeam(TEAM), NOW))
+                .isInstanceOfSatisfying(AppException.class,
+                        e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+        verify(bookings, never()).save(any());
+        verifyNoInteractions(bookingSlots, codes, vouchers, points);
+    }
+
+    private static BookingRequest requestForTeam(Long teamId) {
+        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, null, null, 0, null, teamId);
+    }
+
     private static BookingRequest requestWithNote(String note) {
-        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, null, null, 0, note);
+        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, null, null, 0, note, null);
     }
 
     private void assertNotBookable(BookingRequest request) {
@@ -536,14 +591,14 @@ class BookingServiceTests {
     }
 
     private static BookingRequest requestWithVoucher(String code, Long grantId) {
-        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, code, grantId, 0, null);
+        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, code, grantId, 0, null, null);
     }
 
     private static BookingRequest requestWithPoints(String voucherCode, Integer pointsToUse) {
-        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, voucherCode, null, pointsToUse, null);
+        return new BookingRequest(COURT, PLAY_DATE, START, START + 60, voucherCode, null, pointsToUse, null, null);
     }
 
     private static BookingRequest requestOn(LocalDate date, int startMinute) {
-        return new BookingRequest(COURT, date, startMinute, startMinute + 60, null, null, 0, null);
+        return new BookingRequest(COURT, date, startMinute, startMinute + 60, null, null, 0, null, null);
     }
 }

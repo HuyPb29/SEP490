@@ -38,6 +38,7 @@ import com.sep490.bms.service.booking.SlotAvailabilityService.SlotProblem;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
 import com.sep490.bms.service.promotion.VoucherService;
+import com.sep490.bms.service.team.TeamService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -67,6 +68,7 @@ public class BookingService {
     private final BookingSlotRepository bookingSlotRepository;
     private final BookingCodeGenerator bookingCodeGenerator;
     private final BookingPackageRepository bookingPackageRepository;
+    private final TeamService teamService;
 
     /** UC14 #1–5: tính màn tóm tắt để Player xem lại trước khi bấm Xác nhận. Không tạo booking, không giữ chỗ (D128). */
     @Transactional(readOnly = true)
@@ -80,6 +82,7 @@ public class BookingService {
                 .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
         Location location = locationQueryService.findActive(court.getLocationId());
         requireBookable(location, request, now);
+        requireOwnTeam(player.getId(), request.teamId());
         Account booker = accountRepository.findById(player.getId())
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản", HttpStatus.NOT_FOUND));
 
@@ -132,6 +135,7 @@ public class BookingService {
                 .locationId(summary.getLocationId())
                 .courtId(summary.getCourtId())
                 .playerId(player.getId())
+                .teamId(request.teamId())
                 .playDate(request.date())
                 .startMinute(request.startMinute())
                 .endMinute(request.endMinute())
@@ -217,10 +221,20 @@ public class BookingService {
         return new AppException(what + " không còn dùng được: " + reason + ". Vui lòng kiểm tra lại. (MSG108)");
     }
 
-    /** Request chỉ còn sân, ngày, giờ, ghi chú: dùng để kiểm tra lại slot và tính giá niêm yết lúc Xác nhận. */
+    /** Request chỉ còn sân, ngày, giờ, ghi chú, đội: dùng để kiểm tra lại slot, đội và tính giá niêm yết lúc Xác nhận. */
     private static BookingRequest withoutDiscounts(BookingRequest request) {
         return new BookingRequest(request.courtId(), request.date(), request.startMinute(), request.endMinute(),
-                null, null, null, request.note());
+                null, null, null, request.note(), request.teamId());
+    }
+
+    /**
+     * UC14 #1, FR37, BR09, DR03: không chọn đội là booking cá nhân; chọn đội thì đội đó phải do người đặt làm chủ.
+     * Kiểm tra cả ở màn tóm tắt và lúc Xác nhận (createSingleBooking gọi lại previewSummary).
+     */
+    private void requireOwnTeam(Long playerId, Long teamId) {
+        if (teamId != null && !teamService.isCaptain(teamId, playerId)) {
+            throw new AppException("Bạn chỉ đặt sân được cho đội mình làm chủ.", HttpStatus.FORBIDDEN);
+        }
     }
 
     /**

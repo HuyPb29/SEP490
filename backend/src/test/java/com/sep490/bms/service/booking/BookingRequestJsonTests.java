@@ -24,5 +24,6 @@ class BookingRequestJsonTests {
         assertThat(request.voucherCode()).isNull();
         assertThat(request.voucherGrantId()).isNull();
         assertThat(request.pointsToUse()).isNull();
+        assertThat(request.teamId()).isNull();
     }
 }
