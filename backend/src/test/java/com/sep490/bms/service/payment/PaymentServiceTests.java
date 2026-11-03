@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -276,6 +277,125 @@ class PaymentServiceTests {
     private void assertNothingSaved() {
         verify(files, never()).storeImage(any(), anyString());
         verifyNoInteractions(payments, proofs);
+        verify(bookings, never()).changeStatus(any(), any());
+    }
+
+    // ---------------------------------------------------------------- Gửi lại chứng từ
+
+    @Test
+    void resubmitAddsNewProofAndGoesBackToAwaitingConfirmation() {
+        Payment payment = resubmitRequested(NOW.plusHours(2));
+
+        PaymentResponse result = service.resubmitProof(player, PAYMENT, proof, NOW);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.AWAITING_CONFIRMATION);
+        assertThat(payment.getSubmittedAt()).isEqualTo(NOW);
+        ArgumentCaptor<PaymentProof> saved = ArgumentCaptor.forClass(PaymentProof.class);
+        verify(proofs).save(saved.capture());
+        assertThat(saved.getValue().getPaymentId()).isEqualTo(PAYMENT);
+        assertThat(saved.getValue().getImagePath()).isEqualTo(PROOF_PATH);
+        verify(proofs, never()).delete(any());
+        assertThat(result.getResubmitsLeft()).isEqualTo(2);
+    }
+
+    @Test
+    void resubmitLocksPaymentThenBookingThenSaves() {
+        resubmitRequested(NOW.plusHours(2));
+
+        service.resubmitProof(player, PAYMENT, proof, NOW);
+
+        InOrder order = inOrder(payments, bookings, files, proofs);
+        order.verify(payments).findByIdForUpdate(PAYMENT);
+        order.verify(bookings).lockForPayment(BOOKING);
+        order.verify(bookings).requireBooker(booking, PLAYER);
+        order.verify(files).storeImage(proof, "payment-proofs");
+        order.verify(proofs).save(any());
+        order.verify(payments).saveAndFlush(any());
+        order.verify(bookings).changeStatus(booking, BookingStatus.AWAITING_CONFIRMATION);
+    }
+
+    @Test
+    void resubmitAfterDeadlineIsMsg52AndSavesNothing() {
+        resubmitRequested(NOW.minusMinutes(1));
+
+        assertThatThrownBy(() -> service.resubmitProof(player, PAYMENT, proof, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("MSG52")
+                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+        assertNothingResubmitted();
+    }
+
+    @Test
+    void resubmitWithoutDeadlineUsesEndOfPlayTime() {
+        resubmitRequested(null);
+        LocalDateTime endOfPlay = LocalDate.of(2026, 11, 5).atTime(19, 0);
+
+        assertThatThrownBy(() -> service.resubmitProof(player, PAYMENT, proof, endOfPlay.plusSeconds(1)))
+                .hasMessageContaining("MSG52");
+        assertNothingResubmitted();
+    }
+
+    @Test
+    void resubmitWhenStaffDidNotAskIsConflict() {
+        Payment payment = resubmitRequested(NOW.plusHours(2));
+        payment.setStatus(PaymentStatus.AWAITING_CONFIRMATION);
+
+        assertThatThrownBy(() -> service.resubmitProof(player, PAYMENT, proof, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("không chờ bổ sung")
+                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+        assertNothingResubmitted();
+    }
+
+    @Test
+    void resubmitForPaymentOfAnotherPlayerSavesNothing() {
+        resubmitRequested(NOW.plusHours(2));
+        doThrow(new AppException("Bạn không có quyền xem booking này", HttpStatus.FORBIDDEN))
+                .when(bookings).requireBooker(booking, PLAYER);
+
+        assertThatThrownBy(() -> service.resubmitProof(player, PAYMENT, proof, NOW))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+        assertNothingResubmitted();
+    }
+
+    @Test
+    void resubmitWithoutImageIsMsg106() {
+        assertThatThrownBy(() -> service.resubmitProof(player, PAYMENT, null, NOW)).hasMessageContaining("MSG106");
+        verifyNoInteractions(payments, bookings, files, proofs);
+    }
+
+    @Test
+    void resubmitForMissingPaymentIsNotFound() {
+        when(payments.findByIdForUpdate(PAYMENT)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.resubmitProof(player, PAYMENT, proof, NOW))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /** Booking đang Chờ bổ sung, Staff đã trừ một lượt vì lỗi do Player. */
+    private Payment resubmitRequested(LocalDateTime deadline) {
+        booking.setStatus(BookingStatus.RESUBMIT_REQUESTED);
+        Payment payment = Payment.builder()
+                .id(PAYMENT)
+                .locationId(LOCATION)
+                .bookingId(BOOKING)
+                .amountDue(new BigDecimal("110000"))
+                .status(PaymentStatus.RESUBMIT_REQUESTED)
+                .resubmitCount(1)
+                .resubmitReason("Ảnh mờ")
+                .resubmitDeadline(deadline)
+                .submittedAt(NOW.minusHours(1))
+                .build();
+        when(payments.findByIdForUpdate(PAYMENT)).thenReturn(Optional.of(payment));
+        return payment;
+    }
+
+    private void assertNothingResubmitted() {
+        verify(files, never()).storeImage(any(), anyString());
+        verifyNoInteractions(proofs);
+        verify(payments, never()).saveAndFlush(any());
         verify(bookings, never()).changeStatus(any(), any());
     }
 }

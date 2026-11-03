@@ -91,6 +91,15 @@ public class Payment {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /**
+     * Player đã gửi lại chứng từ (UC18 #4): chờ Staff xem lại. Tính lại thời điểm gửi để
+     * mốc chậm xác nhận (BR58, P24) bắt đầu từ lần gửi này.
+     */
+    public void resubmitted(LocalDateTime now) {
+        this.status = PaymentStatus.AWAITING_CONFIRMATION;
+        this.submittedAt = now;
+    }
+
     @PrePersist
     public void prePersist() {
         if (this.createdAt == null) {

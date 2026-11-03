@@ -122,12 +122,16 @@ public class PaymentController {
      * UC18 – Thanh toán booking (#4: gửi lại chứng từ khi được yêu cầu bổ sung)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * Ảnh gửi ở phần "proof" của form multipart, như lúc báo đã thanh toán.
      */
     @PostMapping("/api/payments/{id}/resubmit")
-    public ResponseEntity<Void> postPaymentsByIdResubmit(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PaymentResponse>> postPaymentsByIdResubmit(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "proof", required = false) MultipartFile proof,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success("Đã báo thanh toán. Vui lòng chờ nhân viên xác nhận.",
+                paymentService.resubmitProof(currentUser, id, proof)));
     }
 
     /**

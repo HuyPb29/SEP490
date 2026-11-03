@@ -128,6 +128,68 @@ public class PaymentService {
     }
 
     /**
+     * UC18 #4, FR54, BR34: Staff đã yêu cầu bổ sung, Player gửi ảnh chứng từ mới. Ảnh cũ vẫn giữ;
+     * payment và booking quay lại Chờ xác nhận để Staff xem lại.
+     * Lượt gửi lại được đếm lúc Staff yêu cầu bổ sung (chỉ khi lỗi do Player); hết lượt thì Staff
+     * từ chối luôn chứ không yêu cầu bổ sung lần nữa, nên ở đây chỉ cần đúng trạng thái và còn hạn.
+     */
+    @Transactional
+    public PaymentResponse resubmitProof(UserPrincipal player, Long paymentId, MultipartFile proof) {
+        return resubmitProof(player, paymentId, proof, LocalDateTime.now());
+    }
+
+    PaymentResponse resubmitProof(UserPrincipal player, Long paymentId, MultipartFile proof, LocalDateTime now) {
+        requireProofAttached(proof);
+        // Khóa payment trước rồi đến booking, cùng thứ tự với phía Staff, để hai bên không chờ nhau mãi.
+        Payment payment = paymentRepository.findByIdForUpdate(paymentId)
+                .orElseThrow(PaymentService::paymentNotFound);
+        Booking booking = bookingService.lockForPayment(bookingIdOf(payment));
+        bookingService.requireBooker(booking, player.getId());
+        requireResubmitAllowed(payment, booking, now);
+
+        String imagePath = fileStorageService.storeImage(proof, PROOF_FOLDER);
+        LocalDateTime submittedAt = now.truncatedTo(ChronoUnit.SECONDS);
+        paymentProofRepository.save(PaymentProof.builder()
+                .paymentId(payment.getId())
+                .imagePath(imagePath)
+                .uploadedAt(submittedAt)
+                .build());
+        payment.resubmitted(submittedAt);
+        paymentRepository.saveAndFlush(payment);
+        bookingService.changeStatus(booking, BookingStatus.AWAITING_CONFIRMATION);
+        return PaymentResponse.from(payment, booking);
+    }
+
+    /**
+     * Chỉ gửi lại khi đang chờ bổ sung (nút chỉ hiện khi Staff yêu cầu, BR34) và chưa quá hạn.
+     * Hạn là resubmit_deadline Staff đặt (hết giờ chơi, P07); thiếu thì lấy giờ kết thúc booking.
+     */
+    private static void requireResubmitAllowed(Payment payment, Booking booking, LocalDateTime now) {
+        if (payment.getStatus() != PaymentStatus.RESUBMIT_REQUESTED) {
+            throw new AppException("Thanh toán này không chờ bổ sung chứng từ.", HttpStatus.CONFLICT);
+        }
+        LocalDateTime deadline = payment.getResubmitDeadline() != null ? payment.getResubmitDeadline()
+                : booking.getPlayDate().atStartOfDay().plusMinutes(booking.getEndMinute());
+        if (now.isAfter(deadline)) {
+            throw new AppException("Đã hết lượt hoặc hết hạn gửi lại chứng từ. (MSG52)", HttpStatus.CONFLICT);
+        }
+    }
+
+    /**
+     * Payment của gói (UC15) và của khoản trả thêm khi đổi lịch (UC21) chưa làm: tạm coi như không có.
+     */
+    private static Long bookingIdOf(Payment payment) {
+        if (payment.getBookingId() == null) {
+            throw paymentNotFound();
+        }
+        return payment.getBookingId();
+    }
+
+    private static AppException paymentNotFound() {
+        return new AppException("Không tìm thấy thanh toán", HttpStatus.NOT_FOUND);
+    }
+
+    /**
      * Khóa dòng booking đã chặn việc ghi hai lần; unique ux_payment_booking là chốt cuối (FR56).
      * Lỗi trùng đó báo như khi booking đã được báo thanh toán.
      */
