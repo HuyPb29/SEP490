@@ -20,12 +20,14 @@ import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.enums.ApprovalStatus;
 import com.sep490.bms.entity.location.Court;
+import com.sep490.bms.entity.location.OpeningHour;
 import com.sep490.bms.entity.location.ServiceRegistration;
 import com.sep490.bms.entity.location.ServiceTerm;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.AccountRepository;
 import com.sep490.bms.repository.LocationRepository;
 import com.sep490.bms.repository.location.CourtRepository;
+import com.sep490.bms.repository.location.OpeningHourRepository;
 import com.sep490.bms.repository.location.ServiceRegistrationRepository;
 import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.security.UserPrincipal;
@@ -55,10 +57,16 @@ public class ServiceRegistrationService {
      */
     private static final int MAX_COURT_COUNT = 50;
 
+    /** Giờ mở cửa mặc định của địa điểm mới: 06:00 – 24:00, owner chỉnh lại sau bằng UC08. */
+    private static final int DEFAULT_OPEN_MINUTE = 6 * 60;
+    private static final int DEFAULT_CLOSE_MINUTE = 24 * 60;
+    private static final int DAYS_IN_WEEK = 7;
+
     private final ServiceRegistrationRepository serviceRegistrationRepository;
     private final ServiceTermRepository serviceTermRepository;
     private final LocationRepository locationRepository;
     private final CourtRepository courtRepository;
+    private final OpeningHourRepository openingHourRepository;
     private final AccountRepository accountRepository;
 
     /** UC05 - Owner gửi đơn đăng ký địa điểm mới. */
@@ -146,6 +154,7 @@ public class ServiceRegistrationService {
                 .build());
 
         courtRepository.saveAll(defaultCourts(location.getId(), courtCount));
+        openingHourRepository.saveAll(defaultOpeningHours(location.getId()));
 
         LocalDate startDate = LocalDate.now();
         serviceTermRepository.save(ServiceTerm.builder()
@@ -194,6 +203,24 @@ public class ServiceRegistrationService {
                     .build());
         }
         return courts;
+    }
+
+    /**
+     * Giờ mở cửa mặc định 06:00 – 24:00 cho cả 7 ngày, để địa điểm vừa duyệt là bán được ngay.
+     * Đây chỉ là giá trị khởi tạo: mỗi địa điểm tự chỉnh lại giờ riêng bằng UC08
+     * (PUT /api/owner/locations/{id}/opening-hours), kể cả đóng cửa ngày nào đó.
+     */
+    private List<OpeningHour> defaultOpeningHours(Long locationId) {
+        List<OpeningHour> hours = new ArrayList<>(DAYS_IN_WEEK);
+        for (int day = 1; day <= DAYS_IN_WEEK; day++) {
+            hours.add(OpeningHour.builder()
+                    .locationId(locationId)
+                    .dayOfWeek(day)
+                    .openMinute(DEFAULT_OPEN_MINUTE)
+                    .closeMinute(DEFAULT_CLOSE_MINUTE)
+                    .build());
+        }
+        return hours;
     }
 
     /** Số sân phải trong khoảng 1..MAX_COURT_COUNT (ck_sreg_courts chỉ chặn điều kiện lớn hơn 0). */
