@@ -1,63 +1,38 @@
 package com.sep490.bms.controller.reschedule;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
-
+import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.dto.request.ReschedulePreviewRequest;
-
+import com.sep490.bms.entity.reschedule.RescheduleRequest;
+import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.reschedule.RescheduleService;
 import jakarta.validation.Valid;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
 
-/**
- * Feature: F5 – Đổi lịch, hủy và hoàn tiền
- * Owner: Huy
- * UC: UC21 – Đổi lịch booking
- */
 @RestController
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('PLAYER')")
 public class RescheduleRequestController {
-
-    /**
-     * UC21 – Đổi lịch booking
-     * Feature: F5 – Đổi lịch, hủy và hoàn tiền
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
-    @PostMapping("/api/bookings/{id}/reschedule-requests")
-    public ResponseEntity<Void> postBookingsByIdRescheduleRequests(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-
-    /**
-     * UC21 – Đổi lịch booking
-     * Feature: F5 – Đổi lịch, hủy và hoàn tiền
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
-    @GetMapping("/api/bookings/{id}/reschedule-requests")
-    public ResponseEntity<Void> getBookingsByIdRescheduleRequests(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-
-    /**
-     * UC21 – Đổi lịch booking
-     * Feature: F5 – Đổi lịch, hủy và hoàn tiền
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
-    @GetMapping("/api/reschedule-requests/{id}")
-    public ResponseEntity<Void> getRescheduleRequestsById(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-    /** API contract scaffold; business service is not implemented yet. */
+    private final RescheduleService service;
     @PostMapping("/api/bookings/{id}/reschedule-requests/preview")
-    public ResponseEntity<Void> previewReschedule(@PathVariable("id") Long id, @Valid @RequestBody ReschedulePreviewRequest request) {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    public ApiResponse<RescheduleService.Quote> preview(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id,@Valid @RequestBody ReschedulePreviewRequest r) {
+        return ApiResponse.success(service.preview(u,id,r));
+    }
+    @PostMapping("/api/bookings/{id}/reschedule-requests")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<RescheduleRequest> create(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id,@Valid @RequestBody ReschedulePreviewRequest r) {
+        return ApiResponse.success(service.create(u,id,r));
+    }
+    @GetMapping("/api/bookings/{id}/reschedule-requests")
+    public ApiResponse<List<RescheduleRequest>> list(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id) {
+        return ApiResponse.success(service.requests(u,id));
+    }
+    @GetMapping("/api/reschedule-requests/{id}")
+    public ApiResponse<RescheduleRequest> detail(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id) {
+        return ApiResponse.success(service.detail(u,id));
     }
 }
