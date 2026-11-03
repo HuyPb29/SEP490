@@ -374,6 +374,53 @@ class PaymentServiceTests {
                 .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+
+    // ---------------------------------------------------------------- Xem thanh toán
+
+    @Test
+    void playerSeesStatusAndReceiptOfOwnPayment() {
+        Payment payment = Payment.builder()
+                .id(PAYMENT)
+                .bookingId(BOOKING)
+                .amountDue(new BigDecimal("110000"))
+                .receivedAmount(new BigDecimal("110000"))
+                .status(PaymentStatus.CONFIRMED)
+                .confirmedAt(NOW)
+                .receiptNo("RC00000030")
+                .build();
+        when(payments.findById(PAYMENT)).thenReturn(Optional.of(payment));
+
+        PaymentResponse result = service.getPayment(player, PAYMENT);
+
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(result.getReceiptNo()).isEqualTo("RC00000030");
+        assertThat(result.getBookingCode()).isEqualTo("BK000030");
+        assertThat(result.getAmountDue()).isEqualByComparingTo("110000");
+        verify(bookings).getForPlayer(BOOKING, PLAYER);
+        verify(payments, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void paymentOfAnotherPlayerIsForbidden() {
+        when(payments.findById(PAYMENT)).thenReturn(Optional.of(
+                Payment.builder().id(PAYMENT).bookingId(BOOKING).build()));
+        when(bookings.getForPlayer(BOOKING, PLAYER))
+                .thenThrow(new AppException("Bạn không có quyền xem booking này", HttpStatus.FORBIDDEN));
+
+        assertThatThrownBy(() -> service.getPayment(player, PAYMENT))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void missingPaymentIsNotFound() {
+        when(payments.findById(PAYMENT)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getPayment(player, PAYMENT))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     /** Booking đang Chờ bổ sung, Staff đã trừ một lượt vì lỗi do Player. */
     private Payment resubmitRequested(LocalDateTime deadline) {
         booking.setStatus(BookingStatus.RESUBMIT_REQUESTED);

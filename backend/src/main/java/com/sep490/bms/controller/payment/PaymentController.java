@@ -110,12 +110,13 @@ public class PaymentController {
      * UC18 – Thanh toán booking (#5: trạng thái thanh toán, biên nhận)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @GetMapping("/api/payments/{id}")
-    public ResponseEntity<Void> getPaymentsById(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PaymentResponse>> getPaymentsById(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.getPayment(currentUser, id)));
     }
 
     /**

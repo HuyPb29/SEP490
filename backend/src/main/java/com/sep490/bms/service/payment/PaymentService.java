@@ -161,6 +161,17 @@ public class PaymentService {
     }
 
     /**
+     * UC18 #5, FR57: trạng thái thanh toán và biên nhận (số biên nhận có khi Staff đã xác nhận).
+     * Chỉ người đặt booking xem được; người khác 403 (NFR07). Không thay đổi gì.
+     */
+    @Transactional(readOnly = true)
+    public PaymentResponse getPayment(UserPrincipal player, Long paymentId) {
+        Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
+        Booking booking = bookingService.getForPlayer(bookingIdOf(payment), player.getId());
+        return PaymentResponse.from(payment, booking);
+    }
+
+    /**
      * Chỉ gửi lại khi đang chờ bổ sung (nút chỉ hiện khi Staff yêu cầu, BR34) và chưa quá hạn.
      * Hạn là resubmit_deadline Staff đặt (hết giờ chơi, P07); thiếu thì lấy giờ kết thúc booking.
      */
