@@ -111,8 +111,11 @@ public class OperationQueryRepository {
     public List<AmountRow> sumRefunds(Long locationId, LocalDate from, LocalDate to) {
         return jdbc.query("""
                 SELECT refund_date AS d, SUM(refunded_amount) AS amount, COUNT(*) AS cnt
-                FROM refund_request
-                WHERE location_id = ? AND status = 'REFUNDED' AND refund_date BETWEEN ? AND ?
+                FROM refund_request r
+                WHERE r.location_id = ? AND r.status = 'REFUNDED' AND r.refund_date BETWEEN ? AND ?
+                  AND EXISTS (SELECT 1 FROM booking b JOIN payment p
+                    ON (p.booking_id=b.id OR p.package_id=b.package_id)
+                    WHERE b.id=r.booking_id AND p.status='CONFIRMED')
                 GROUP BY refund_date
                 """,
                 (rs, i) -> new AmountRow(rs.getDate("d").toLocalDate(), rs.getBigDecimal("amount"), rs.getLong("cnt")),

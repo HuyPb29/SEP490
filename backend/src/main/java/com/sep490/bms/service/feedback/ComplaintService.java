@@ -73,6 +73,8 @@ public class ComplaintService {
     private final PlayerLocationBalanceRepository balanceRepository;
     private final PointTransactionRepository pointTransactionRepository;
     private final NotificationRepository notificationRepository;
+    private final com.sep490.bms.service.reschedule.BookingChangeSupport bookingChanges;
+    private final jakarta.persistence.EntityManager entityManager;
 
     // ---------------------------------------------------------------- Gửi khiếu nại
 
@@ -233,7 +235,10 @@ public class ComplaintService {
         if (complaint.getBookingId() == null) {
             throw new AppException("Khiếu nại không gắn booking nên không tạo được yêu cầu hoàn tiền");
         }
-        Booking booking = findBooking(complaint.getBookingId());
+        Booking booking = bookingChanges.booking(complaint.getBookingId());
+        Long compensated = entityManager.createQuery("select count(a) from AffectedBooking a where a.bookingId=:b and a.status='RESOLVED' and a.choice='POINTS'", Long.class)
+                .setParameter("b", booking.getId()).getSingleResult();
+        if (compensated > 0) throw new AppException("Booking đã nhận điểm bồi hoàn, không thể chuyển sang hoàn tiền", HttpStatus.CONFLICT);
         BigDecimal suggested = amount != null ? amount : booking.getFinalAmount();
         if (suggested.signum() <= 0 || suggested.compareTo(booking.getFinalAmount()) > 0) {
             throw new AppException("Số tiền hoàn phải lớn hơn 0 và không vượt quá số tiền booking");
