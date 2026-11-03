@@ -71,6 +71,12 @@ public class LocationManagementService {
         if (request.getAddress() != null) {
             location.setAddress(requireText(request.getAddress(), "Địa chỉ", 255));
         }
+        if (request.getLatitude() != null) {
+            location.setLatitude(request.getLatitude());
+        }
+        if (request.getLongitude() != null) {
+            location.setLongitude(request.getLongitude());
+        }
         if (request.getContactPhone() != null) {
             location.setContactPhone(request.getContactPhone().trim());
         }
