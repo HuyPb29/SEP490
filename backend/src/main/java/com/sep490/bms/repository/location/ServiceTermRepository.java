@@ -1,5 +1,6 @@
 package com.sep490.bms.repository.location;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,4 +15,10 @@ public interface ServiceTermRepository extends JpaRepository<ServiceTerm, Long> 
     List<ServiceTerm> findAllByLocationIdOrderByStartDateDescIdDesc(Long locationId);
 
     List<ServiceTerm> findAllByLocationId(Long locationId);
+
+    /**
+     * UC07 - Kỳ hạn của nhiều địa điểm trong một truy vấn.
+     * Dùng cho danh sách địa điểm của Owner để không phải query N lần.
+     */
+    List<ServiceTerm> findAllByLocationIdIn(Collection<Long> locationIds);
 }
