@@ -2,25 +2,43 @@ package com.sep490.bms.service.payment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
 
 import com.sep490.bms.dto.payment.PaymentInstructionResponse;
+import com.sep490.bms.dto.payment.PaymentResponse;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.entity.enums.PaymentStatus;
+import com.sep490.bms.entity.payment.Payment;
+import com.sep490.bms.entity.payment.PaymentProof;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.payment.PaymentProofRepository;
+import com.sep490.bms.repository.payment.PaymentRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
 import com.sep490.bms.service.integration.FileStorageService;
@@ -33,13 +51,18 @@ class PaymentServiceTests {
     private static final Long BOOKING = 30L;
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 11, 3, 12, 0);
     private static final String QR_PATH = "uploads/qr/location_1.png";
+    private static final Long PAYMENT = 50L;
+    private static final String PROOF_PATH = "payment-proofs/2026/11/a.jpg";
 
+    private final PaymentRepository payments = mock(PaymentRepository.class);
+    private final PaymentProofRepository proofs = mock(PaymentProofRepository.class);
     private final BookingService bookings = mock(BookingService.class);
     private final LocationQueryService locations = mock(LocationQueryService.class);
     private final FileStorageService files = mock(FileStorageService.class);
-    private final PaymentService service = new PaymentService(bookings, locations, files);
+    private final PaymentService service = new PaymentService(payments, proofs, bookings, locations, files);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
+    private final MockMultipartFile proof = new MockMultipartFile("proof", "ck.jpg", "image/jpeg", new byte[] { 1, 2 });
     private Booking booking;
 
     @BeforeEach
@@ -58,6 +81,13 @@ class PaymentServiceTests {
                 .holdExpiresAt(NOW.plusMinutes(3))
                 .build();
         when(bookings.getForPlayer(BOOKING, PLAYER)).thenReturn(booking);
+        when(bookings.lockForPayment(BOOKING)).thenReturn(booking);
+        when(files.storeImage(any(), anyString())).thenReturn(PROOF_PATH);
+        when(payments.saveAndFlush(any())).thenAnswer(call -> {
+            Payment payment = call.getArgument(0);
+            payment.setId(PAYMENT);
+            return payment;
+        });
         when(locations.findActive(LOCATION)).thenReturn(Location.builder()
                 .id(LOCATION)
                 .bankName("Vietcombank")
@@ -140,5 +170,112 @@ class PaymentServiceTests {
         assertThatThrownBy(() -> service.loadQrImage(player, BOOKING, NOW))
                 .isInstanceOf(AppException.class)
                 .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    // ---------------------------------------------------------------- Báo đã thanh toán
+
+    @Test
+    void submitCreatesPaymentWithAmountAfterDiscountsAndFirstProof() {
+        PaymentResponse result = service.submitProof(player, BOOKING, proof, NOW);
+
+        ArgumentCaptor<Payment> payment = ArgumentCaptor.forClass(Payment.class);
+        verify(payments).saveAndFlush(payment.capture());
+        assertThat(payment.getValue().getBookingId()).isEqualTo(BOOKING);
+        assertThat(payment.getValue().getLocationId()).isEqualTo(LOCATION);
+        assertThat(payment.getValue().getAmountDue()).isEqualByComparingTo("110000");
+        assertThat(payment.getValue().getStatus()).isEqualTo(PaymentStatus.AWAITING_CONFIRMATION);
+        assertThat(payment.getValue().getSubmittedAt()).isEqualTo(NOW);
+
+        ArgumentCaptor<PaymentProof> saved = ArgumentCaptor.forClass(PaymentProof.class);
+        verify(proofs).save(saved.capture());
+        assertThat(saved.getValue().getPaymentId()).isEqualTo(PAYMENT);
+        assertThat(saved.getValue().getImagePath()).isEqualTo(PROOF_PATH);
+
+        assertThat(result.getId()).isEqualTo(PAYMENT);
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.AWAITING_CONFIRMATION);
+        assertThat(result.getResubmitsLeft()).isEqualTo(3);
+    }
+
+    @Test
+    void submitLocksBookingChecksThenStoresImageThenMovesBookingToAwaitingConfirmation() {
+        service.submitProof(player, BOOKING, proof, NOW);
+
+        InOrder order = inOrder(bookings, files, payments, proofs);
+        order.verify(bookings).lockForPayment(BOOKING);
+        order.verify(bookings).requireBooker(booking, PLAYER);
+        order.verify(files).storeImage(proof, "payment-proofs");
+        order.verify(payments).saveAndFlush(any());
+        order.verify(proofs).save(any());
+        order.verify(bookings).changeStatus(booking, BookingStatus.AWAITING_CONFIRMATION);
+    }
+
+    @Test
+    void submitWithoutImageIsRejectedBeforeAnything() {
+        MockMultipartFile empty = new MockMultipartFile("proof", "ck.jpg", "image/jpeg", new byte[0]);
+
+        assertThatThrownBy(() -> service.submitProof(player, BOOKING, empty, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("MSG106")
+                .extracting("status").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThatThrownBy(() -> service.submitProof(player, BOOKING, null, NOW)).hasMessageContaining("MSG106");
+        verifyNoInteractions(bookings, files, payments, proofs);
+    }
+
+    @Test
+    void submitForBookingOfAnotherPlayerSavesNothing() {
+        doThrow(new AppException("Bạn không có quyền xem booking này", HttpStatus.FORBIDDEN))
+                .when(bookings).requireBooker(booking, PLAYER);
+
+        assertThatThrownBy(() -> service.submitProof(player, BOOKING, proof, NOW))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+        assertNothingSaved();
+    }
+
+    @Test
+    void submitAfterHoldExpiredIsMsg33AndSavesNothing() {
+        booking.setHoldExpiresAt(NOW.minusSeconds(1));
+
+        assertThatThrownBy(() -> service.submitProof(player, BOOKING, proof, NOW)).hasMessageContaining("MSG33");
+        assertNothingSaved();
+    }
+
+    @Test
+    void submitAfterJobExpiredBookingIsMsg33() {
+        booking.setStatus(BookingStatus.EXPIRED);
+
+        assertThatThrownBy(() -> service.submitProof(player, BOOKING, proof, NOW)).hasMessageContaining("MSG33");
+        assertNothingSaved();
+    }
+
+    @Test
+    void secondSubmitForSameBookingIsConflictAndSavesNothing() {
+        booking.setStatus(BookingStatus.AWAITING_CONFIRMATION);
+
+        assertThatThrownBy(() -> service.submitProof(player, BOOKING, proof, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("đã được báo thanh toán")
+                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+        assertNothingSaved();
+    }
+
+    @Test
+    void uniquePaymentPerBookingIsTheLastGuard() {
+        doThrow(new DataIntegrityViolationException("insert",
+                new SQLException("Cannot insert duplicate key row in object 'dbo.payment' with unique index 'ux_payment_booking'.")))
+                .when(payments).saveAndFlush(any());
+
+        assertThatThrownBy(() -> service.submitProof(player, BOOKING, proof, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("đã được báo thanh toán")
+                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+        verify(proofs, never()).save(any());
+        verify(bookings, never()).changeStatus(any(), any());
+    }
+
+    private void assertNothingSaved() {
+        verify(files, never()).storeImage(any(), anyString());
+        verifyNoInteractions(payments, proofs);
+        verify(bookings, never()).changeStatus(any(), any());
     }
 }

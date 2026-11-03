@@ -30,6 +30,9 @@ import lombok.Setter;
 @Builder
 public class Payment {
 
+    /** Số lần gửi lại chứng từ tối đa (BR34, P06): cố định (D154), database chặn bằng ck_payment_resubmit. */
+    public static final int MAX_RESUBMITS = 3;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

@@ -10,10 +10,13 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.dto.payment.PaymentInstructionResponse;
+import com.sep490.bms.dto.payment.PaymentResponse;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.payment.PaymentService;
 
@@ -66,12 +69,17 @@ public class PaymentController {
      * UC18 – Thanh toán booking (#2, #3: multipart ảnh chứng từ; tạo payment + payment_proof)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * Ảnh gửi ở phần "proof" của form multipart. Không gửi ảnh thì service báo MSG106.
      */
     @PostMapping("/api/bookings/{id}/payments")
-    public ResponseEntity<Void> postBookingsByIdPayments(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PaymentResponse>> postBookingsByIdPayments(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "proof", required = false) MultipartFile proof,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Đã báo thanh toán. Vui lòng chờ nhân viên xác nhận.",
+                        paymentService.submitProof(currentUser, id, proof)));
     }
 
     /**

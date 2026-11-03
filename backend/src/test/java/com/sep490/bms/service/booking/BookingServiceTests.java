@@ -609,6 +609,27 @@ class BookingServiceTests {
                 .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    @Test
+    void lockForPaymentReadsWithRowLock() {
+        Booking locked = Booking.builder().id(30L).playerId(PLAYER).build();
+        when(bookings.findByIdForUpdate(30L)).thenReturn(Optional.of(locked));
+
+        assertThat(service.lockForPayment(30L)).isSameAs(locked);
+        verify(bookings, never()).findById(any());
+    }
+
+    @Test
+    void changeStatusWritesImmediately() {
+        Booking booking = Booking.builder().id(30L).status(BookingStatus.HOLDING).build();
+        when(bookings.saveAndFlush(booking)).thenReturn(booking);
+
+        service.changeStatus(booking, BookingStatus.AWAITING_CONFIRMATION);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.AWAITING_CONFIRMATION);
+        assertThat(booking.getUpdatedAt()).isNotNull();
+        verify(bookings).saveAndFlush(booking);
+    }
+
     private void assertNotBookable(BookingRequest request) {
         assertThatThrownBy(() -> service.previewSummary(player, request, NOW))
                 .isInstanceOfSatisfying(AppException.class, e -> {

@@ -172,6 +172,22 @@ public class BookingService {
         }
     }
 
+    /**
+     * UC18, UC19: đọc và khóa dòng booking đến hết giao dịch thanh toán. Request thứ hai cho cùng booking
+     * (bấm Báo đã thanh toán hai lần) phải chờ, rồi thấy trạng thái đã đổi (FR56).
+     * Không kiểm tra người đặt: Staff cũng dùng hàm này; phía Player tự gọi requireBooker.
+     */
+    public Booking lockForPayment(Long bookingId) {
+        return bookingRepository.findByIdForUpdate(bookingId).orElseThrow(BookingService::bookingNotFound);
+    }
+
+    /** Đổi trạng thái booking theo bước thanh toán (UC18, UC19) và ghi ngay xuống database. */
+    public Booking changeStatus(Booking booking, BookingStatus status) {
+        booking.setStatus(status);
+        booking.setUpdatedAt(LocalDateTime.now());
+        return bookingRepository.saveAndFlush(booking);
+    }
+
     private static AppException bookingNotFound() {
         return new AppException("Không tìm thấy booking", HttpStatus.NOT_FOUND);
     }
