@@ -42,6 +42,7 @@ public class OpeningHourService {
 
     private final OpeningHourRepository openingHourRepository;
     private final LocationManagementService locationManagementService;
+    private final com.sep490.bms.service.reschedule.CancellationService cancellations;
 
     /** UC08 - Xem giờ mở cửa của địa điểm. Luôn trả đủ 7 ngày. */
     @Transactional(readOnly = true)
@@ -94,6 +95,7 @@ public class OpeningHourService {
             openingHourRepository.deleteAll(removed);
         }
         openingHourRepository.saveAll(toSave);
+        cancellations.hoursChanged(location.getId(), user.getId());
 
         return buildWeek(hoursOf(location.getId()));
     }

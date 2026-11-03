@@ -1,40 +1,28 @@
 package com.sep490.bms.controller.reschedule;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
-
+import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.dto.request.OwnerCancellationRequest;
-
+import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.reschedule.CancellationService;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
 
-/**
- * Feature: F5 – Đổi lịch, hủy và hoàn tiền
- * Owner: Huy
- * UC: UC22 – Hủy booking và xử lý booking bị ảnh hưởng
- */
 @RestController
+@RequiredArgsConstructor
 public class BookingCancellationController {
-
-    /**
-     * UC22 – Hủy booking và xử lý booking bị ảnh hưởng
-     * Feature: F5 – Đổi lịch, hủy và hoàn tiền
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
+    private final CancellationService service;
     @PreAuthorize("hasRole('PLAYER')")
     @PostMapping("/api/bookings/{id}/cancel")
-    public ResponseEntity<Void> postBookingsByIdCancel(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    public ApiResponse<Booking> cancel(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id) {
+        return ApiResponse.success(service.cancel(u,id));
     }
-    /** API contract scaffold; business service is not implemented yet. */
-    @PostMapping("/api/owner/bookings/{id}/cancel")
-    public ResponseEntity<Void> ownerCancel(@PathVariable("id") Long id, @Valid @RequestBody OwnerCancellationRequest request) {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasAnyRole('OWNER','STAFF')")
+    @PostMapping({"/api/owner/bookings/{id}/cancel","/api/staff/bookings/{id}/cancel"})
+    public ApiResponse<Object> ownerCancel(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id,@Valid @RequestBody OwnerCancellationRequest r) {
+        return ApiResponse.success(service.ownerCancel(u,id,r));
     }
 }

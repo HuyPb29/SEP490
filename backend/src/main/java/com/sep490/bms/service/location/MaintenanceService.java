@@ -59,6 +59,7 @@ public class MaintenanceService {
     private final CourtRepository courtRepository;
     private final AccountRepository accountRepository;
     private final LocationAccessService locationAccessService;
+    private final com.sep490.bms.service.reschedule.CancellationService cancellations;
 
     /** UC10 - Danh sách yêu cầu bảo trì của địa điểm đang chọn (Staff và Owner dùng chung). */
     @Transactional(readOnly = true)
@@ -119,6 +120,7 @@ public class MaintenanceService {
         entity.setStatus(ApprovalStatus.APPROVED);
         entity.setApprovedBy(user == null ? null : user.getId());
         entity.setDecidedAt(LocalDateTime.now());
+        cancellations.maintenanceApproved(entity, user.getId());
         return toDto(maintenanceRepository.save(entity));
     }
 
