@@ -574,6 +574,41 @@ class BookingServiceTests {
         return new BookingRequest(COURT, PLAY_DATE, START, START + 60, null, null, 0, note, null);
     }
 
+    @Test
+    void playerReadsOwnBooking() {
+        Booking own = Booking.builder().id(30L).playerId(PLAYER).build();
+        when(bookings.findById(30L)).thenReturn(Optional.of(own));
+
+        assertThat(service.getForPlayer(30L, PLAYER)).isSameAs(own);
+    }
+
+    @Test
+    void bookingOfAnotherPlayerIsForbidden() {
+        when(bookings.findById(30L)).thenReturn(Optional.of(Booking.builder().id(30L).playerId(8L).build()));
+
+        assertThatThrownBy(() -> service.getForPlayer(30L, PLAYER))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void counterBookingWithoutPlayerIsForbidden() {
+        when(bookings.findById(30L)).thenReturn(Optional.of(Booking.builder().id(30L).build()));
+
+        assertThatThrownBy(() -> service.getForPlayer(30L, PLAYER))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void missingBookingIsNotFound() {
+        when(bookings.findById(30L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getForPlayer(30L, PLAYER))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     private void assertNotBookable(BookingRequest request) {
         assertThatThrownBy(() -> service.previewSummary(player, request, NOW))
                 .isInstanceOfSatisfying(AppException.class, e -> {

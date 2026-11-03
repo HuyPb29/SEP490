@@ -1,12 +1,23 @@
 package com.sep490.bms.controller.payment;
 
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.MediaTypeFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.dto.payment.PaymentInstructionResponse;
+import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.payment.PaymentService;
+
+import lombok.RequiredArgsConstructor;
 
 /**
  * Feature: F4 – Thanh toán
@@ -17,18 +28,38 @@ import org.springframework.web.bind.annotation.RestController;
  * không có trạng thái "chờ gửi"), nên bước xem hướng dẫn và gửi chứng từ đi theo id booking/gói.
  */
 @RestController
+@RequiredArgsConstructor
 public class PaymentController {
+
+    private final PaymentService paymentService;
 
     /**
      * UC18 – Thanh toán booking (#1: số tiền, tài khoản, QR, thời gian giữ chỗ còn lại)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @GetMapping("/api/bookings/{id}/payment-instructions")
-    public ResponseEntity<Void> getBookingsByIdPaymentInstructions(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PaymentInstructionResponse>> getBookingsByIdPaymentInstructions(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.getInstructions(currentUser, id)));
+    }
+
+    /**
+     * UC18 – Thanh toán booking (#1: ảnh mã QR để hiện và lưu về máy; chỉ trả qua API có kiểm tra quyền, A03)
+     * Feature: F4 – Thanh toán
+     * Owner: Minh
+     */
+    @GetMapping("/api/bookings/{id}/payment-instructions/qr")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<Resource> getBookingsByIdPaymentInstructionsQr(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        Resource image = paymentService.loadQrImage(currentUser, id);
+        return ResponseEntity.ok()
+                .contentType(MediaTypeFactory.getMediaType(image).orElse(MediaType.APPLICATION_OCTET_STREAM))
+                .body(image);
     }
 
     /**

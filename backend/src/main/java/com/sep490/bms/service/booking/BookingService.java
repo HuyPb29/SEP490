@@ -155,6 +155,28 @@ public class BookingService {
     }
 
     /**
+     * UC18: booking của chính Player đang đăng nhập. Booking của người khác trả 403 (NFR07),
+     * kể cả booking tại quầy (không có player_id).
+     */
+    @Transactional(readOnly = true)
+    public Booking getForPlayer(Long bookingId, Long playerId) {
+        Booking booking = bookingRepository.findById(bookingId).orElseThrow(BookingService::bookingNotFound);
+        requireBooker(booking, playerId);
+        return booking;
+    }
+
+    /** Booking không phải của Player này thì 403. Dùng cả khi xem và khi khóa dòng để thanh toán. */
+    public void requireBooker(Booking booking, Long playerId) {
+        if (!playerId.equals(booking.getPlayerId())) {
+            throw new AppException("Bạn không có quyền xem booking này", HttpStatus.FORBIDDEN);
+        }
+    }
+
+    private static AppException bookingNotFound() {
+        return new AppException("Không tìm thấy booking", HttpStatus.NOT_FOUND);
+    }
+
+    /**
      * Mỗi slot 30 phút một dòng, kèm giá niêm yết lúc đặt (D88).
      * Hai người cùng qua bước kiểm tra lại rồi cùng ghi: unique ux_slot_active chặn người sau (NFR04).
      * Lỗi đó đổi thành MSG28 như khi bước kiểm tra lại phát hiện; cả giao dịch hủy nên booking vừa lưu cũng mất.
