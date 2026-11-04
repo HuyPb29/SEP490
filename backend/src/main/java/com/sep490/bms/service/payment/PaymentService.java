@@ -22,6 +22,7 @@ import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
 import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentInstructionResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
+import com.sep490.bms.dto.payment.ResubmitRequest;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
@@ -59,6 +60,7 @@ public class PaymentService {
     /** Cột notification.content NVARCHAR(500). */
     private static final int NOTIFICATION_CONTENT_MAX = 500;
     private static final DateTimeFormatter RECEIPT_DATE_FORMAT = DateTimeFormatter.ofPattern("yyMMdd");
+    private static final DateTimeFormatter DEADLINE_FORMAT = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
 
     private final PaymentRepository paymentRepository;
     private final PaymentProofRepository paymentProofRepository;
@@ -295,6 +297,38 @@ public class PaymentService {
                     "Khách chuyển thừa " + money(extra) + " cho booking " + booking.getBookingCode()
                             + ". Vui lòng liên hệ trả lại.", payment);
         }
+        return PaymentResponse.from(payment, booking);
+    }
+
+    /**
+     * UC19 #4, FR59, BR34: Staff yêu cầu bổ sung, chọn lý do và lỗi có do Player không. Hạn gửi lại là hết
+     * giờ chơi (P07). Chỉ lỗi do Player mới trừ lượt; đã dùng hết 3 lượt (P06) mà vẫn do Player thì
+     * không yêu cầu bổ sung được nữa, Staff phải từ chối giao dịch.
+     */
+    @Transactional
+    public PaymentResponse requestResubmission(UserPrincipal user, Long paymentId, ResubmitRequest request) {
+        return requestResubmission(user, paymentId, request, LocalDateTime.now());
+    }
+
+    PaymentResponse requestResubmission(UserPrincipal user, Long paymentId, ResubmitRequest request, LocalDateTime now) {
+        Location location = locationAccessService.selectedLocation(user);
+        Payment payment = lockInLocation(location, paymentId);
+        Booking booking = lockBookingOf(payment);
+        requireBeforePlayEnd(booking, now);
+        String reason = request.reason().trim();
+        boolean playerAtFault = Boolean.TRUE.equals(request.playerAtFault());
+
+        if (playerAtFault && payment.noResubmitLeft()) {
+            throw new AppException("Player đã hết lượt gửi lại chứng từ (BR34). Hãy từ chối giao dịch.", HttpStatus.CONFLICT);
+        }
+        payment.requestResubmission(reason, playEnd(booking), playerAtFault);
+        paymentRepository.saveAndFlush(payment);
+        bookingService.changeStatus(booking, BookingStatus.RESUBMIT_REQUESTED);
+        notify(booking.getPlayerId(), "PAYMENT_RESUBMIT_REQUESTED", "Cần bổ sung thanh toán",
+                "Vui lòng bổ sung cho booking " + booking.getBookingCode() + ": " + reason
+                        + ". Hạn: " + payment.getResubmitDeadline().format(DEADLINE_FORMAT)
+                        + ". Còn " + (Payment.MAX_RESUBMITS - payment.getResubmitCount()) + " lượt gửi lại.",
+                payment);
         return PaymentResponse.from(payment, booking);
     }
 

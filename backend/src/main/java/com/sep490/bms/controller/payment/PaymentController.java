@@ -21,6 +21,7 @@ import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
 import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentInstructionResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
+import com.sep490.bms.dto.payment.ResubmitRequest;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.payment.PaymentService;
 
@@ -217,17 +218,20 @@ public class PaymentController {
     }
 
     /**
-     * UC19 – Xác nhận thanh toán (#4)
+     * UC19 – Xác nhận thanh toán (#4: yêu cầu bổ sung, BR34)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @PostMapping("/api/staff/payments/{id}/request-resubmission")
     @PreAuthorize("hasAnyRole('STAFF', 'OWNER')")
-    public ResponseEntity<Void> postStaffPaymentsByIdRequestResubmission(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    public ResponseEntity<ApiResponse<PaymentResponse>> postStaffPaymentsByIdRequestResubmission(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody ResubmitRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success("Đã yêu cầu Player bổ sung.",
+                paymentService.requestResubmission(currentUser, id, request)));
     }
+
     /** Payment for the positive difference on a reschedule request; service pending. */
     @GetMapping("/api/reschedule-requests/{id}/payment-instructions")
     public ResponseEntity<Void> rescheduleInstructions(@PathVariable("id") Long id) {

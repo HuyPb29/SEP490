@@ -112,6 +112,24 @@ public class Payment {
         this.confirmedAt = now;
     }
 
+    /**
+     * Staff yêu cầu bổ sung (UC19 #4, BR34). Chỉ trừ lượt khi thông tin Player gửi bị sai;
+     * lỗi thiết bị tại quầy hoặc tiền về chậm thì không trừ.
+     */
+    public void requestResubmission(String reason, LocalDateTime deadline, boolean playerAtFault) {
+        this.status = PaymentStatus.RESUBMIT_REQUESTED;
+        this.resubmitReason = reason;
+        this.resubmitDeadline = deadline;
+        if (playerAtFault) {
+            this.resubmitCount++;
+        }
+    }
+
+    /** Hết lượt gửi lại: lỗi do Player mà đã dùng đủ P06 lượt thì không yêu cầu bổ sung được nữa (BR34). */
+    public boolean noResubmitLeft() {
+        return resubmitCount >= MAX_RESUBMITS;
+    }
+
     @PrePersist
     public void prePersist() {
         if (this.createdAt == null) {

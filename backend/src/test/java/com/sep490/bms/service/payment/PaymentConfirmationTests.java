@@ -32,6 +32,7 @@ import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
 import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
+import com.sep490.bms.dto.payment.ResubmitRequest;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
@@ -292,6 +293,59 @@ class PaymentConfirmationTests {
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
         assertThat(payment.getConfirmedBy()).isEqualTo(OWNER);
     }
+
+    // ---------- #4: yêu cầu bổ sung ----------
+
+    @Test
+    void resubmissionByPlayerFaultUsesOneTryAndSetsDeadlineToEndOfPlay() {
+        PaymentResponse result = service.requestResubmission(staff, PAYMENT, new ResubmitRequest(" Ảnh mờ ", true), NOW);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.RESUBMIT_REQUESTED);
+        assertThat(payment.getResubmitReason()).isEqualTo("Ảnh mờ");
+        assertThat(payment.getResubmitDeadline()).isEqualTo(PLAY_END);
+        assertThat(payment.getResubmitCount()).isEqualTo(1);
+        assertThat(result.getResubmitsLeft()).isEqualTo(2);
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.RESUBMIT_REQUESTED);
+        assertThat(notificationsSent()).singleElement().satisfies(n -> assertThat(n.getContent())
+                .isEqualTo("Vui lòng bổ sung cho booking BK000030: Ảnh mờ. Hạn: 19:00 05/11/2026. Còn 2 lượt gửi lại."));
+    }
+
+    @Test
+    void resubmissionNotCausedByPlayerUsesNoTry() {
+        service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Tiền chưa về, chờ ngân hàng", false), NOW);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.RESUBMIT_REQUESTED);
+        assertThat(payment.getResubmitCount()).isZero();
+    }
+
+    @Test
+    void fourthResubmissionByPlayerFaultIsRefused() {
+        payment.setResubmitCount(3);
+
+        assertThatThrownBy(() -> service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Ảnh không đúng", true), NOW))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+        assertNothingDecided();
+    }
+
+    @Test
+    void noTryLeftButNotPlayerFaultStillAsksForResubmission() {
+        payment.setResubmitCount(3);
+
+        service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Thiết bị tại quầy lỗi", false), NOW);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.RESUBMIT_REQUESTED);
+    }
+
+    @Test
+    void resubmissionAfterPlayTimeEndedIsRefused() {
+        assertThatThrownBy(() -> service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Ảnh mờ", true), PLAY_END))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+        assertNothingDecided();
+    }
+
+    // ---------- #5: từ chối ----------
 
     @Test
     void bookingNoLongerAwaitingIsMsg54() {
