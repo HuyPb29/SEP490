@@ -22,6 +22,7 @@ import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
 import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentInstructionResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
+import com.sep490.bms.dto.payment.RejectPaymentRequest;
 import com.sep490.bms.dto.payment.ResubmitRequest;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
@@ -303,7 +304,7 @@ public class PaymentService {
     /**
      * UC19 #4, FR59, BR34: Staff yêu cầu bổ sung, chọn lý do và lỗi có do Player không. Hạn gửi lại là hết
      * giờ chơi (P07). Chỉ lỗi do Player mới trừ lượt; đã dùng hết 3 lượt (P06) mà vẫn do Player thì
-     * không yêu cầu bổ sung được nữa, Staff phải từ chối giao dịch.
+     * giao dịch bị từ chối luôn và slot được nhả, như khi Staff bấm Từ chối.
      */
     @Transactional
     public PaymentResponse requestResubmission(UserPrincipal user, Long paymentId, ResubmitRequest request) {
@@ -319,7 +320,8 @@ public class PaymentService {
         boolean playerAtFault = Boolean.TRUE.equals(request.playerAtFault());
 
         if (playerAtFault && payment.noResubmitLeft()) {
-            throw new AppException("Player đã hết lượt gửi lại chứng từ (BR34). Hãy từ chối giao dịch.", HttpStatus.CONFLICT);
+            rejectLocked(payment, booking, "Hết lượt gửi lại chứng từ. " + reason);
+            return PaymentResponse.from(payment, booking);
         }
         payment.requestResubmission(reason, playEnd(booking), playerAtFault);
         paymentRepository.saveAndFlush(payment);
@@ -330,6 +332,33 @@ public class PaymentService {
                         + ". Còn " + (Payment.MAX_RESUBMITS - payment.getResubmitCount()) + " lượt gửi lại.",
                 payment);
         return PaymentResponse.from(payment, booking);
+    }
+
+    /**
+     * UC19 #5, FR59: Staff từ chối giao dịch (tiền không về). Được từ chối cả khi đã hết giờ chơi:
+     * kết quả giống việc hệ thống tự từ chối lúc hết giờ chơi (BR03).
+     */
+    @Transactional
+    public PaymentResponse reject(UserPrincipal user, Long paymentId, RejectPaymentRequest request) {
+        Location location = locationAccessService.selectedLocation(user);
+        Payment payment = lockInLocation(location, paymentId);
+        Booking booking = lockBookingOf(payment);
+        rejectLocked(payment, booking, request.reason().trim());
+        return PaymentResponse.from(payment, booking);
+    }
+
+    /**
+     * Từ chối một giao dịch đã khóa dòng: payment Bị từ chối, booking Bị từ chối thanh toán, nhả slot,
+     * báo Player (MSG51). Player đã chuyển tiền thì khiếu nại (UC33).
+     */
+    private void rejectLocked(Payment payment, Booking booking, String reason) {
+        payment.reject(reason);
+        paymentRepository.saveAndFlush(payment);
+        bookingService.changeStatus(booking, BookingStatus.PAYMENT_REJECTED);
+        bookingService.releaseSlots(booking.getId());
+        notify(booking.getPlayerId(), "PAYMENT_REJECTED", "Thanh toán bị từ chối",
+                "Thanh toán booking " + booking.getBookingCode() + " bị từ chối. Lý do: " + reason
+                        + ". Nếu bạn đã chuyển tiền, hãy gửi khiếu nại.", payment);
     }
 
     /**

@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -32,6 +34,7 @@ import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
 import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
+import com.sep490.bms.dto.payment.RejectPaymentRequest;
 import com.sep490.bms.dto.payment.ResubmitRequest;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
@@ -308,6 +311,7 @@ class PaymentConfirmationTests {
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.RESUBMIT_REQUESTED);
         assertThat(notificationsSent()).singleElement().satisfies(n -> assertThat(n.getContent())
                 .isEqualTo("Vui lòng bổ sung cho booking BK000030: Ảnh mờ. Hạn: 19:00 05/11/2026. Còn 2 lượt gửi lại."));
+        verify(bookings, never()).releaseSlots(any());
     }
 
     @Test
@@ -319,13 +323,16 @@ class PaymentConfirmationTests {
     }
 
     @Test
-    void fourthResubmissionByPlayerFaultIsRefused() {
+    void fourthResubmissionByPlayerFaultRejectsAndReleasesSlots() {
         payment.setResubmitCount(3);
 
-        assertThatThrownBy(() -> service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Ảnh không đúng", true), NOW))
-                .isInstanceOf(AppException.class)
-                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
-        assertNothingDecided();
+        PaymentResponse result = service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Ảnh không đúng", true), NOW);
+
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.REJECTED);
+        assertThat(payment.getResubmitCount()).isEqualTo(3);
+        assertThat(payment.getRejectReason()).isEqualTo("Hết lượt gửi lại chứng từ. Ảnh không đúng");
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_REJECTED);
+        verify(bookings).releaseSlots(BOOKING);
     }
 
     @Test
@@ -335,6 +342,7 @@ class PaymentConfirmationTests {
         service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Thiết bị tại quầy lỗi", false), NOW);
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.RESUBMIT_REQUESTED);
+        verify(bookings, never()).releaseSlots(any());
     }
 
     @Test
@@ -346,6 +354,39 @@ class PaymentConfirmationTests {
     }
 
     // ---------- #5: từ chối ----------
+
+    @Test
+    void rejectFreesSlotsAndTellsPlayer() {
+        PaymentResponse result = service.reject(staff, PAYMENT, new RejectPaymentRequest(" Không thấy tiền về "));
+
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.REJECTED);
+        assertThat(payment.getRejectReason()).isEqualTo("Không thấy tiền về");
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_REJECTED);
+        assertThat(notificationsSent()).singleElement().satisfies(n -> assertThat(n.getContent()).isEqualTo(
+                "Thanh toán booking BK000030 bị từ chối. Lý do: Không thấy tiền về. Nếu bạn đã chuyển tiền, hãy gửi khiếu nại."));
+    }
+
+    @Test
+    void rejectChangesBookingStatusThenReleasesSlots() {
+        service.reject(staff, PAYMENT, new RejectPaymentRequest("Không thấy tiền về"));
+
+        InOrder order = inOrder(payments, bookings);
+        order.verify(payments).findByIdForUpdate(PAYMENT);
+        order.verify(bookings).lockForPayment(BOOKING);
+        order.verify(payments).saveAndFlush(payment);
+        order.verify(bookings).changeStatus(booking, BookingStatus.PAYMENT_REJECTED);
+        order.verify(bookings).releaseSlots(BOOKING);
+    }
+
+    @Test
+    void rejectTwiceIsMsg54AndReleasesOnce() {
+        service.reject(staff, PAYMENT, new RejectPaymentRequest("Không thấy tiền về"));
+
+        assertThatThrownBy(() -> service.reject(staff, PAYMENT, new RejectPaymentRequest("Bấm lại")))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("MSG54");
+        verify(bookings, times(1)).releaseSlots(BOOKING);
+    }
 
     @Test
     void bookingNoLongerAwaitingIsMsg54() {
@@ -372,5 +413,6 @@ class PaymentConfirmationTests {
         verify(payments, never()).saveAndFlush(any());
         verify(bookings, never()).changeStatus(any(), any());
         verifyNoInteractions(notifications);
+        verify(bookings, never()).releaseSlots(eq(BOOKING));
     }
 }

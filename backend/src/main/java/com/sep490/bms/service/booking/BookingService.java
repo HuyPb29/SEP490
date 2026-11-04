@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -222,6 +223,15 @@ public class BookingService {
     @Transactional(readOnly = true)
     public String getCourtName(Booking booking) {
         return courtRepository.findById(booking.getCourtId()).map(Court::getName).orElse(null);
+    }
+
+    /**
+     * UC19 #5, BR34: nhả các slot của booking bị từ chối thanh toán để người khác đặt được.
+     * Phải chạy trong giao dịch của bên gọi, sau khi booking đã đổi trạng thái.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int releaseSlots(Long bookingId) {
+        return bookingSlotRepository.deactivateByBookingId(bookingId);
     }
 
     /** Người đặt của một booking, để hiện cho Staff. */

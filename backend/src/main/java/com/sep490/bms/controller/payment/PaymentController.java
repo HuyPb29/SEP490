@@ -21,7 +21,9 @@ import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
 import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentInstructionResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
+import com.sep490.bms.dto.payment.RejectPaymentRequest;
 import com.sep490.bms.dto.payment.ResubmitRequest;
+import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.payment.PaymentService;
 
@@ -205,20 +207,22 @@ public class PaymentController {
     }
 
     /**
-     * UC19 – Xác nhận thanh toán (#5)
+     * UC19 – Xác nhận thanh toán (#5: từ chối, nhả slot, trả voucher và điểm)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @PostMapping("/api/staff/payments/{id}/reject")
     @PreAuthorize("hasAnyRole('STAFF', 'OWNER')")
-    public ResponseEntity<Void> postStaffPaymentsByIdReject(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    public ResponseEntity<ApiResponse<PaymentResponse>> postStaffPaymentsByIdReject(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody RejectPaymentRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success("Đã từ chối giao dịch.",
+                paymentService.reject(currentUser, id, request)));
     }
 
     /**
-     * UC19 – Xác nhận thanh toán (#4: yêu cầu bổ sung, BR34)
+     * UC19 – Xác nhận thanh toán (#4: yêu cầu bổ sung; lỗi do Player mà hết lượt thì từ chối luôn, BR34)
      * Feature: F4 – Thanh toán
      * Owner: Minh
      */
@@ -228,8 +232,11 @@ public class PaymentController {
             @PathVariable("id") Long id,
             @Valid @RequestBody ResubmitRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.ok(ApiResponse.success("Đã yêu cầu Player bổ sung.",
-                paymentService.requestResubmission(currentUser, id, request)));
+        PaymentResponse result = paymentService.requestResubmission(currentUser, id, request);
+        String message = result.getStatus() == PaymentStatus.REJECTED
+                ? "Player đã hết lượt gửi lại chứng từ; giao dịch bị từ chối."
+                : "Đã yêu cầu Player bổ sung.";
+        return ResponseEntity.ok(ApiResponse.success(message, result));
     }
 
     /** Payment for the positive difference on a reschedule request; service pending. */

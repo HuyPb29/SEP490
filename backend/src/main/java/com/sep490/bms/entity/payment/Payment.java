@@ -125,6 +125,12 @@ public class Payment {
         }
     }
 
+    /** Thanh toán bị từ chối (UC19 #5), hoặc hết lượt gửi lại chứng từ (BR34). */
+    public void reject(String reason) {
+        this.status = PaymentStatus.REJECTED;
+        this.rejectReason = reason;
+    }
+
     /** Hết lượt gửi lại: lỗi do Player mà đã dùng đủ P06 lượt thì không yêu cầu bổ sung được nữa (BR34). */
     public boolean noResubmitLeft() {
         return resubmitCount >= MAX_RESUBMITS;
