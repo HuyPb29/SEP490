@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -19,6 +20,8 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageImpl;
@@ -26,6 +29,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 
 import com.sep490.bms.common.PageResponse;
+import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
 import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
 import com.sep490.bms.entity.Location;
@@ -33,9 +37,11 @@ import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.PaymentStatus;
+import com.sep490.bms.entity.notification.Notification;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.payment.PaymentProof;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.notification.NotificationRepository;
 import com.sep490.bms.repository.payment.PaymentProofRepository;
 import com.sep490.bms.repository.payment.PaymentRepository;
 import com.sep490.bms.security.LocationAccessService;
@@ -44,29 +50,33 @@ import com.sep490.bms.service.booking.BookingService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
 
-/** UC19: Staff (hoặc Owner thay Staff) xem giao dịch chờ xác nhận. */
+/** UC19: Staff (hoặc Owner thay Staff) xem, xác nhận, yêu cầu bổ sung, từ chối thanh toán. */
 class PaymentConfirmationTests {
 
     private static final Long LOCATION = 1L;
     private static final Long OTHER_LOCATION = 2L;
+    private static final Long OWNER = 3L;
     private static final Long STAFF = 5L;
     private static final Long PLAYER = 7L;
     private static final Long BOOKING = 30L;
     private static final Long PAYMENT = 50L;
     /** Booking chơi 18:00–19:00 ngày 05/11; NOW sớm hơn giờ chơi. */
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 11, 4, 12, 0, 30);
+    private static final LocalDateTime PLAY_END = LocalDateTime.of(2026, 11, 5, 19, 0);
 
     private final PaymentRepository payments = mock(PaymentRepository.class);
     private final PaymentProofRepository proofs = mock(PaymentProofRepository.class);
     private final BookingService bookings = mock(BookingService.class);
     private final FileStorageService files = mock(FileStorageService.class);
     private final LocationAccessService access = mock(LocationAccessService.class);
+    private final NotificationRepository notifications = mock(NotificationRepository.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings,
-            mock(LocationQueryService.class), files, access);
+            mock(LocationQueryService.class), files, access, notifications);
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
+    private final UserPrincipal owner = UserPrincipal.builder().id(OWNER).role(Role.OWNER).build();
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
-    private final Location location = Location.builder().id(LOCATION).status("ACTIVE").build();
+    private final Location location = Location.builder().id(LOCATION).ownerId(OWNER).status("ACTIVE").build();
     private Booking booking;
     private Payment payment;
 
@@ -195,5 +205,118 @@ class PaymentConfirmationTests {
                 .isInstanceOf(AppException.class)
                 .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
         verifyNoInteractions(files);
+    }
+
+    // ---------- #3, #6, #7: xác nhận ----------
+
+    @Test
+    void confirmMakesPaymentAndBookingConfirmedWithReceipt() {
+        PaymentResponse result = service.confirm(staff, PAYMENT, null, NOW);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(payment.getConfirmedBy()).isEqualTo(STAFF);
+        assertThat(payment.getConfirmedAt()).isEqualTo(NOW.withNano(0));
+        assertThat(payment.getReceivedAmount()).isEqualByComparingTo("110000");
+        assertThat(payment.getReceiptNo()).isEqualTo("BN261104000050");
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(result.getReceiptNo()).isEqualTo("BN261104000050");
+        assertThat(notificationsSent()).singleElement().satisfies(n -> {
+            assertThat(n.getRecipientId()).isEqualTo(PLAYER);
+            assertThat(n.getContent()).isEqualTo("Thanh toán booking BK000030 đã được xác nhận. Xem biên nhận.");
+        });
+    }
+
+    @Test
+    void confirmLocksPaymentThenBookingThenSaves() {
+        service.confirm(staff, PAYMENT, null, NOW);
+
+        InOrder order = inOrder(payments, bookings);
+        order.verify(payments).findByIdForUpdate(PAYMENT);
+        order.verify(bookings).lockForPayment(BOOKING);
+        order.verify(payments).saveAndFlush(payment);
+        order.verify(bookings).changeStatus(booking, BookingStatus.CONFIRMED);
+    }
+
+    @Test
+    void overpaymentRecordsReceivedAmountAndTellsOwner() {
+        service.confirm(staff, PAYMENT, new ConfirmPaymentRequest(new BigDecimal("150000")), NOW);
+
+        assertThat(payment.getReceivedAmount()).isEqualByComparingTo("150000");
+        assertThat(payment.getAmountDue()).isEqualByComparingTo("110000");
+        assertThat(notificationsSent()).filteredOn(n -> OWNER.equals(n.getRecipientId())).singleElement()
+                .satisfies(n -> assertThat(n.getContent())
+                        .isEqualTo("Khách chuyển thừa 40.000 đồng cho booking BK000030. Vui lòng liên hệ trả lại."));
+    }
+
+    @Test
+    void underpaymentCannotBeConfirmed() {
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, new ConfirmPaymentRequest(new BigDecimal("100000")), NOW))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertNothingDecided();
+    }
+
+    @Test
+    void paymentAlreadyHandledByAnotherPersonIsMsg54() {
+        payment.setStatus(PaymentStatus.CONFIRMED);
+
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("MSG54")
+                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+        assertNothingDecided();
+    }
+
+    @Test
+    void confirmForAnotherLocationIsForbiddenAndChangesNothing() {
+        payment.setLocationId(OTHER_LOCATION);
+
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+        assertNothingDecided();
+    }
+
+    @Test
+    void confirmAfterPlayTimeEndedIsRefused() {
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, PLAY_END))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+        assertNothingDecided();
+    }
+
+    @Test
+    void ownerConfirmsInsteadOfStaff() {
+        service.confirm(owner, PAYMENT, null, NOW);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(payment.getConfirmedBy()).isEqualTo(OWNER);
+    }
+
+    @Test
+    void bookingNoLongerAwaitingIsMsg54() {
+        booking.setStatus(BookingStatus.PAYMENT_REJECTED);
+
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("MSG54");
+        verify(payments, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void receiptNumberHasDateAndPaymentId() {
+        assertThat(PaymentService.receiptNo(Payment.builder().id(1234567L).build(), NOW)).isEqualTo("BN2611041234567");
+    }
+
+    private List<Notification> notificationsSent() {
+        ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
+        verify(notifications, org.mockito.Mockito.atLeast(0)).save(captor.capture());
+        return captor.getAllValues();
+    }
+
+    private void assertNothingDecided() {
+        verify(payments, never()).saveAndFlush(any());
+        verify(bookings, never()).changeStatus(any(), any());
+        verifyNoInteractions(notifications);
     }
 }

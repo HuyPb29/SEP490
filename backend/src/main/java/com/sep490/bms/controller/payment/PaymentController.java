@@ -10,18 +10,21 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.common.PageResponse;
+import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
 import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentInstructionResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.payment.PaymentService;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -184,16 +187,20 @@ public class PaymentController {
     }
 
     /**
-     * UC19 – Xác nhận thanh toán (#3, #6, #7: nhập số tiền thực nhận khi chuyển thừa)
+     * UC19 – Xác nhận thanh toán (#3, #6, #7: xác nhận, sinh biên nhận; nhập số tiền thực nhận khi chuyển thừa)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * Body không bắt buộc: không gửi receivedAmount nghĩa là nhận đúng số phải trả.
      */
     @PostMapping("/api/staff/payments/{id}/confirm")
     @PreAuthorize("hasAnyRole('STAFF', 'OWNER')")
-    public ResponseEntity<Void> postStaffPaymentsByIdConfirm(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    public ResponseEntity<ApiResponse<PaymentResponse>> postStaffPaymentsByIdConfirm(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody(required = false) ConfirmPaymentRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        PaymentResponse result = paymentService.confirm(currentUser, id, request);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Đã xác nhận thanh toán booking " + result.getBookingCode() + ".", result));
     }
 
     /**

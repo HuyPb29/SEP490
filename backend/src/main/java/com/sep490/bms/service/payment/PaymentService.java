@@ -1,7 +1,10 @@
 package com.sep490.bms.service.payment;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.core.io.Resource;
@@ -15,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.common.PageResponse;
+import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
 import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentInstructionResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
@@ -23,9 +27,11 @@ import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.PaymentStatus;
+import com.sep490.bms.entity.notification.Notification;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.payment.PaymentProof;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.notification.NotificationRepository;
 import com.sep490.bms.repository.payment.PaymentProofRepository;
 import com.sep490.bms.repository.payment.PaymentRepository;
 import com.sep490.bms.security.LocationAccessService;
@@ -50,6 +56,9 @@ public class PaymentService {
     /** Unique có điều kiện: mỗi booking chỉ có một dòng payment (FR56). */
     static final String PAYMENT_BOOKING_UNIQUE_INDEX = "ux_payment_booking";
     private static final int MAX_PAGE_SIZE = 100;
+    /** Cột notification.content NVARCHAR(500). */
+    private static final int NOTIFICATION_CONTENT_MAX = 500;
+    private static final DateTimeFormatter RECEIPT_DATE_FORMAT = DateTimeFormatter.ofPattern("yyMMdd");
 
     private final PaymentRepository paymentRepository;
     private final PaymentProofRepository paymentProofRepository;
@@ -57,6 +66,7 @@ public class PaymentService {
     private final LocationQueryService locationQueryService;
     private final FileStorageService fileStorageService;
     private final LocationAccessService locationAccessService;
+    private final NotificationRepository notificationRepository;
 
     /** UC18 #1, FR55: số tiền, tài khoản nhận, mã QR và giờ hết giữ chỗ. Không thay đổi gì. */
     @Transactional(readOnly = true)
@@ -249,10 +259,114 @@ public class PaymentService {
         return fileStorageService.load(proof.getImagePath());
     }
 
+    /**
+     * UC19 #3, #6, #7, FR57, FR59, FR60: Staff thấy tiền đã về đủ (BR33) thì xác nhận. Payment và booking
+     * sang Đã xác nhận, sinh biên nhận, báo Player (MSG49). Khách chuyển thừa: Staff nhập
+     * số thực nhận, doanh thu vẫn là số phải trả, báo Owner (BR37, BR51, MSG55). Chuyển thiếu thì không
+     * xác nhận được, phải yêu cầu bổ sung (BR05).
+     */
+    @Transactional
+    public PaymentResponse confirm(UserPrincipal user, Long paymentId, ConfirmPaymentRequest request) {
+        return confirm(user, paymentId, request, LocalDateTime.now());
+    }
+
+    PaymentResponse confirm(UserPrincipal user, Long paymentId, ConfirmPaymentRequest request, LocalDateTime now) {
+        Location location = locationAccessService.selectedLocation(user);
+        Payment payment = lockInLocation(location, paymentId);
+        BigDecimal received = request == null || request.receivedAmount() == null
+                ? payment.getAmountDue() : request.receivedAmount();
+        if (received.compareTo(payment.getAmountDue()) < 0) {
+            throw new AppException("Số tiền thực nhận ít hơn số phải trả (" + money(payment.getAmountDue())
+                    + "). Không xác nhận được; hãy yêu cầu khách chuyển thêm phần còn thiếu.");
+        }
+        Booking booking = lockBookingOf(payment);
+        requireBeforePlayEnd(booking, now);
+
+        LocalDateTime confirmedAt = now.truncatedTo(ChronoUnit.SECONDS);
+        payment.confirm(user.getId(), received, receiptNo(payment, confirmedAt), confirmedAt);
+        paymentRepository.saveAndFlush(payment);
+        bookingService.changeStatus(booking, BookingStatus.CONFIRMED);
+
+        notify(booking.getPlayerId(), "PAYMENT_CONFIRMED", "Thanh toán đã được xác nhận",
+                "Thanh toán booking " + booking.getBookingCode() + " đã được xác nhận. Xem biên nhận.", payment);
+        BigDecimal extra = received.subtract(payment.getAmountDue());
+        if (extra.signum() > 0) {
+            notify(location.getOwnerId(), "PAYMENT_OVERPAID", "Khách chuyển thừa tiền",
+                    "Khách chuyển thừa " + money(extra) + " cho booking " + booking.getBookingCode()
+                            + ". Vui lòng liên hệ trả lại.", payment);
+        }
+        return PaymentResponse.from(payment, booking);
+    }
+
+    /**
+     * Khóa dòng payment rồi mới kiểm tra (FR56): hai người cùng bấm thì người sau chờ, rồi thấy giao dịch
+     * đã được xử lý (MSG54). Giao dịch của địa điểm khác trả 403 (NFR07).
+     */
+    private Payment lockInLocation(Location location, Long paymentId) {
+        Payment payment = paymentRepository.findByIdForUpdate(paymentId).orElseThrow(PaymentService::paymentNotFound);
+        requireSameLocation(payment, location);
+        if (payment.getStatus() != PaymentStatus.AWAITING_CONFIRMATION) {
+            throw new AppException("Giao dịch này đã được xử lý. (MSG54)", HttpStatus.CONFLICT);
+        }
+        return payment;
+    }
+
+    /** Khóa booking của giao dịch, sau payment (cùng thứ tự với phía Player gửi lại chứng từ). */
+    private Booking lockBookingOf(Payment payment) {
+        Booking booking = bookingService.lockForPayment(bookingIdOf(payment));
+        if (booking.getStatus() != BookingStatus.AWAITING_CONFIRMATION) {
+            throw new AppException("Giao dịch này đã được xử lý. (MSG54)", HttpStatus.CONFLICT);
+        }
+        return booking;
+    }
+
     private static void requireSameLocation(Payment payment, Location location) {
         if (!location.getId().equals(payment.getLocationId())) {
             throw new AppException("Giao dịch không thuộc địa điểm của bạn", HttpStatus.FORBIDDEN);
         }
+    }
+
+    /**
+     * Hết giờ chơi mà vẫn chờ Staff thì hệ thống chuyển sang Bị từ chối thanh toán (BR03, UC37), nên không
+     * xác nhận hay yêu cầu bổ sung được nữa, kể cả khi job chưa kịp chạy. Player đã chuyển tiền thì khiếu nại.
+     */
+    private static void requireBeforePlayEnd(Booking booking, LocalDateTime now) {
+        if (!now.isBefore(playEnd(booking))) {
+            throw new AppException("Booking đã hết giờ chơi nên không xử lý giao dịch này được nữa. "
+                    + "Khách đã chuyển tiền thì gửi khiếu nại cho chủ sân.", HttpStatus.CONFLICT);
+        }
+    }
+
+    /** Giờ kết thúc của booking: cũng là hạn gửi lại chứng từ (P07). */
+    private static LocalDateTime playEnd(Booking booking) {
+        return booking.getPlayDate().atStartOfDay().plusMinutes(booking.getEndMinute());
+    }
+
+    /**
+     * FR57: số biên nhận = BN + ngày xác nhận + id payment. Không trùng vì id không trùng;
+     * ux_payment_receipt trong database là chốt cuối.
+     */
+    static String receiptNo(Payment payment, LocalDateTime confirmedAt) {
+        return "BN" + confirmedAt.format(RECEIPT_DATE_FORMAT) + String.format("%06d", payment.getId());
+    }
+
+    /** FR124: thông báo trong ứng dụng. Đổi sang NotificationService khi nhánh UC37 được gộp vào main. */
+    private void notify(Long recipientId, String type, String title, String content, Payment payment) {
+        if (recipientId == null) {
+            return;
+        }
+        notificationRepository.save(Notification.builder()
+                .recipientId(recipientId)
+                .type(type)
+                .title(title)
+                .content(content.length() > NOTIFICATION_CONTENT_MAX ? content.substring(0, NOTIFICATION_CONTENT_MAX) : content)
+                .refType("PAYMENT")
+                .refId(payment.getId())
+                .build());
+    }
+
+    private static String money(BigDecimal amount) {
+        return String.format(Locale.forLanguageTag("vi-VN"), "%,d đồng", amount.longValueExact());
     }
 
     /**

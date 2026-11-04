@@ -100,6 +100,18 @@ public class Payment {
         this.submittedAt = now;
     }
 
+    /**
+     * Staff (hoặc Owner) xác nhận tiền đã về đủ (UC19 #3, #6, #7). Doanh thu vẫn là amountDue (BR37);
+     * receivedAmount chỉ khác amountDue khi khách chuyển thừa (BR51).
+     */
+    public void confirm(Long staffId, BigDecimal receivedAmount, String receiptNo, LocalDateTime now) {
+        this.status = PaymentStatus.CONFIRMED;
+        this.confirmedBy = staffId;
+        this.receivedAmount = receivedAmount;
+        this.receiptNo = receiptNo;
+        this.confirmedAt = now;
+    }
+
     @PrePersist
     public void prePersist() {
         if (this.createdAt == null) {
