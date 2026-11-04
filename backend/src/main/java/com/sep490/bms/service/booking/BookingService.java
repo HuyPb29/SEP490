@@ -4,8 +4,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -186,6 +189,43 @@ public class BookingService {
         booking.setStatus(status);
         booking.setUpdatedAt(LocalDateTime.now());
         return bookingRepository.saveAndFlush(booking);
+    }
+
+    /** UC19 #2: booking của một giao dịch, cho Staff xem. Quyền theo địa điểm do phía thanh toán kiểm tra. */
+    @Transactional(readOnly = true)
+    public Booking getById(Long bookingId) {
+        return bookingRepository.findById(bookingId).orElseThrow(BookingService::bookingNotFound);
+    }
+
+    /** UC19 #1: đọc một lần các booking của một trang giao dịch chờ xác nhận, thay vì đọc từng dòng. */
+    @Transactional(readOnly = true)
+    public Map<Long, Booking> getByIds(Collection<Long> bookingIds) {
+        return bookingRepository.findAllById(bookingIds).stream()
+                .collect(Collectors.toMap(Booking::getId, Function.identity()));
+    }
+
+    /**
+     * UC19 #2: tên và số điện thoại người đặt để Staff đối chiếu chuyển khoản (BR57).
+     * Booking online lấy từ tài khoản Player; booking tại quầy lấy từ thông tin Staff đã nhập (BR43).
+     */
+    @Transactional(readOnly = true)
+    public Customer getCustomer(Booking booking) {
+        if (booking.getPlayerId() == null) {
+            return new Customer(booking.getCustomerName(), booking.getCustomerPhone());
+        }
+        return accountRepository.findById(booking.getPlayerId())
+                .map(account -> new Customer(account.getFullName(), account.getPhone()))
+                .orElse(new Customer(null, null));
+    }
+
+    /** UC19 #2: tên sân của booking. */
+    @Transactional(readOnly = true)
+    public String getCourtName(Booking booking) {
+        return courtRepository.findById(booking.getCourtId()).map(Court::getName).orElse(null);
+    }
+
+    /** Người đặt của một booking, để hiện cho Staff. */
+    public record Customer(String name, String phone) {
     }
 
     private static AppException bookingNotFound() {

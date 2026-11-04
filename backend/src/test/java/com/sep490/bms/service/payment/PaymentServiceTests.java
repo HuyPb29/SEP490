@@ -40,6 +40,7 @@ import com.sep490.bms.entity.payment.PaymentProof;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.payment.PaymentProofRepository;
 import com.sep490.bms.repository.payment.PaymentRepository;
+import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
 import com.sep490.bms.service.integration.FileStorageService;
@@ -60,7 +61,8 @@ class PaymentServiceTests {
     private final BookingService bookings = mock(BookingService.class);
     private final LocationQueryService locations = mock(LocationQueryService.class);
     private final FileStorageService files = mock(FileStorageService.class);
-    private final PaymentService service = new PaymentService(payments, proofs, bookings, locations, files);
+    private final PaymentService service = new PaymentService(payments, proofs, bookings, locations, files,
+            mock(LocationAccessService.class));
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
     private final MockMultipartFile proof = new MockMultipartFile("proof", "ck.jpg", "image/jpeg", new byte[] { 1, 2 });

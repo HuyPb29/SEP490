@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.common.PageResponse;
+import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentInstructionResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
 import com.sep490.bms.security.UserPrincipal;
@@ -136,29 +138,49 @@ public class PaymentController {
     }
 
     /**
-     * UC19 – Xác nhận thanh toán
+     * UC18, UC19 – Ảnh chứng từ của một giao dịch (A03: không có thư mục ảnh công khai)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * Player đặt booking, Staff của địa điểm, Owner của địa điểm đang chọn (X-Location-Id) xem được; người khác 403.
      */
-    @GetMapping("/api/staff/payments")
-    @PreAuthorize("hasAnyRole('STAFF', 'OWNER')")
-    public ResponseEntity<Void> getStaffPayments() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @GetMapping("/api/payments/{id}/proofs/{proofId}/image")
+    @PreAuthorize("hasAnyRole('PLAYER', 'STAFF', 'OWNER')")
+    public ResponseEntity<Resource> getPaymentsByIdProofsByProofIdImage(
+            @PathVariable("id") Long id,
+            @PathVariable("proofId") Long proofId,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        Resource image = paymentService.loadProofImage(currentUser, id, proofId);
+        return ResponseEntity.ok()
+                .contentType(MediaTypeFactory.getMediaType(image).orElse(MediaType.APPLICATION_OCTET_STREAM))
+                .body(image);
     }
 
     /**
-     * UC19 – Xác nhận thanh toán
+     * UC19 – Xác nhận thanh toán (#1: danh sách giao dịch chờ xác nhận, gửi sớm nhất lên đầu)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * Staff xem địa điểm của mình; Owner làm thay Staff (BR58) gửi header X-Location-Id.
+     */
+    @GetMapping("/api/staff/payments")
+    @PreAuthorize("hasAnyRole('STAFF', 'OWNER')")
+    public ResponseEntity<ApiResponse<PageResponse<PaymentResponse>>> getStaffPayments(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.listPending(currentUser, page, size)));
+    }
+
+    /**
+     * UC19 – Xác nhận thanh toán (#2: chi tiết giao dịch, chứng từ, ghi chú cho chủ sân)
+     * Feature: F4 – Thanh toán
+     * Owner: Minh
      */
     @GetMapping("/api/staff/payments/{id}")
     @PreAuthorize("hasAnyRole('STAFF', 'OWNER')")
-    public ResponseEntity<Void> getStaffPaymentsById(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    public ResponseEntity<ApiResponse<PaymentDetailResponse>> getStaffPaymentsById(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.getPendingDetail(currentUser, id)));
     }
 
     /**

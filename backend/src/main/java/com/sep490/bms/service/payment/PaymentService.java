@@ -2,17 +2,24 @@ package com.sep490.bms.service.payment;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 
 import org.springframework.core.io.Resource;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.sep490.bms.common.MinuteTime;
+import com.sep490.bms.common.PageResponse;
+import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentInstructionResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
 import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.PaymentStatus;
@@ -21,6 +28,7 @@ import com.sep490.bms.entity.payment.PaymentProof;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.payment.PaymentProofRepository;
 import com.sep490.bms.repository.payment.PaymentRepository;
+import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
 import com.sep490.bms.service.integration.FileStorageService;
@@ -29,8 +37,9 @@ import com.sep490.bms.service.location.LocationQueryService;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Thanh toán booking lẻ (UC18). Hệ thống không nối ngân hàng: Player tự chuyển khoản theo thông tin
- * của địa điểm rồi báo kèm ảnh chứng từ; Staff đối chiếu tiền thực về (BR33, UC19).
+ * Thanh toán booking lẻ (UC18) và xác nhận thanh toán (UC19). Hệ thống không nối ngân hàng: Player tự
+ * chuyển khoản theo thông tin của địa điểm rồi báo kèm ảnh chứng từ; Staff (hoặc Owner thay Staff, BR58)
+ * đối chiếu tiền thực về rồi xác nhận, yêu cầu bổ sung hoặc từ chối (BR33).
  */
 @Service
 @RequiredArgsConstructor
@@ -40,12 +49,14 @@ public class PaymentService {
     static final String PROOF_FOLDER = "payment-proofs";
     /** Unique có điều kiện: mỗi booking chỉ có một dòng payment (FR56). */
     static final String PAYMENT_BOOKING_UNIQUE_INDEX = "ux_payment_booking";
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final PaymentRepository paymentRepository;
     private final PaymentProofRepository paymentProofRepository;
     private final BookingService bookingService;
     private final LocationQueryService locationQueryService;
     private final FileStorageService fileStorageService;
+    private final LocationAccessService locationAccessService;
 
     /** UC18 #1, FR55: số tiền, tài khoản nhận, mã QR và giờ hết giữ chỗ. Không thay đổi gì. */
     @Transactional(readOnly = true)
@@ -169,6 +180,79 @@ public class PaymentService {
         Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
         Booking booking = bookingService.getForPlayer(bookingIdOf(payment), player.getId());
         return PaymentResponse.from(payment, booking);
+    }
+
+    // ===================== UC19: Staff (hoặc Owner thay Staff, BR58) xử lý giao dịch =====================
+
+    /**
+     * UC19 #1, FR58: giao dịch chờ xác nhận của địa điểm đang làm việc, gửi sớm nhất lên đầu.
+     * Staff chỉ thấy địa điểm của mình; Owner chọn địa điểm bằng header X-Location-Id (NFR07, BR60).
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<PaymentResponse> listPending(UserPrincipal user, int page, int size) {
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new AppException("Phân trang không hợp lệ");
+        }
+        Location location = locationAccessService.selectedLocation(user);
+        Page<Payment> result = paymentRepository.findByLocationIdAndStatusAndBookingIdIsNotNullOrderBySubmittedAtAscIdAsc(
+                location.getId(), PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(page, size));
+        Map<Long, Booking> bookings = bookingService.getByIds(result.map(Payment::getBookingId).toList());
+        return PageResponse.from(result.map(payment -> PaymentResponse.from(payment, bookings.get(payment.getBookingId()))));
+    }
+
+    /**
+     * UC19 #2, FR35, FR58: chi tiết một giao dịch của địa điểm: người đặt, giờ chơi, ghi chú cho chủ sân
+     * và các ảnh chứng từ. Không thay đổi gì. Giao dịch của địa điểm khác trả 403 (NFR07).
+     */
+    @Transactional(readOnly = true)
+    public PaymentDetailResponse getPendingDetail(UserPrincipal user, Long paymentId) {
+        Location location = locationAccessService.selectedLocation(user);
+        Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
+        requireSameLocation(payment, location);
+        Booking booking = bookingService.getById(bookingIdOf(payment));
+        BookingService.Customer customer = bookingService.getCustomer(booking);
+
+        return PaymentDetailResponse.builder()
+                .payment(PaymentResponse.from(payment, booking))
+                .courtName(bookingService.getCourtName(booking))
+                .playDate(booking.getPlayDate())
+                .startTime(MinuteTime.format(booking.getStartMinute()))
+                .endTime(MinuteTime.format(booking.getEndMinute()))
+                .customerName(customer.name())
+                .customerPhone(customer.phone())
+                .note(booking.getNote())
+                .proofs(paymentProofRepository.findByPaymentIdOrderByUploadedAtDescIdDesc(payment.getId()).stream()
+                        .map(proof -> PaymentDetailResponse.Proof.builder()
+                                .id(proof.getId())
+                                .uploadedAt(proof.getUploadedAt())
+                                .imageUrl("/api/payments/" + payment.getId() + "/proofs/" + proof.getId() + "/image")
+                                .build())
+                        .toList())
+                .build();
+    }
+
+    /**
+     * Ảnh chứng từ không nằm ở thư mục công khai; chỉ trả qua API này (A03). Xem được: Player đặt booking,
+     * Staff của địa điểm, Owner của địa điểm đang chọn. Người khác 403 (NFR07).
+     */
+    @Transactional(readOnly = true)
+    public Resource loadProofImage(UserPrincipal user, Long paymentId, Long proofId) {
+        Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
+        if (user.getRole() == Role.PLAYER) {
+            bookingService.getForPlayer(bookingIdOf(payment), user.getId());
+        } else {
+            requireSameLocation(payment, locationAccessService.selectedLocation(user));
+        }
+        PaymentProof proof = paymentProofRepository.findById(proofId)
+                .filter(found -> found.getPaymentId().equals(payment.getId()))
+                .orElseThrow(() -> new AppException("Không tìm thấy ảnh chứng từ", HttpStatus.NOT_FOUND));
+        return fileStorageService.load(proof.getImagePath());
+    }
+
+    private static void requireSameLocation(Payment payment, Location location) {
+        if (!location.getId().equals(payment.getLocationId())) {
+            throw new AppException("Giao dịch không thuộc địa điểm của bạn", HttpStatus.FORBIDDEN);
+        }
     }
 
     /**
