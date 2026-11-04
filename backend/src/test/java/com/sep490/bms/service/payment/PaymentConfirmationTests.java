@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -53,6 +54,8 @@ import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.promotion.LoyaltyPointService;
+import com.sep490.bms.service.promotion.VoucherService;
 
 /** UC19: Staff (hoặc Owner thay Staff) xem, xác nhận, yêu cầu bổ sung, từ chối thanh toán. */
 class PaymentConfirmationTests {
@@ -73,9 +76,11 @@ class PaymentConfirmationTests {
     private final BookingService bookings = mock(BookingService.class);
     private final FileStorageService files = mock(FileStorageService.class);
     private final LocationAccessService access = mock(LocationAccessService.class);
+    private final VoucherService vouchers = mock(VoucherService.class);
+    private final LoyaltyPointService points = mock(LoyaltyPointService.class);
     private final NotificationRepository notifications = mock(NotificationRepository.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings,
-            mock(LocationQueryService.class), files, access, notifications);
+            mock(LocationQueryService.class), files, access, vouchers, points, notifications);
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
     private final UserPrincipal owner = UserPrincipal.builder().id(OWNER).role(Role.OWNER).build();
@@ -231,14 +236,15 @@ class PaymentConfirmationTests {
     }
 
     @Test
-    void confirmLocksPaymentThenBookingThenSaves() {
+    void confirmLocksPaymentThenBookingSavesThenEarnsPoints() {
         service.confirm(staff, PAYMENT, null, NOW);
 
-        InOrder order = inOrder(payments, bookings);
+        InOrder order = inOrder(payments, bookings, points);
         order.verify(payments).findByIdForUpdate(PAYMENT);
         order.verify(bookings).lockForPayment(BOOKING);
         order.verify(payments).saveAndFlush(payment);
         order.verify(bookings).changeStatus(booking, BookingStatus.CONFIRMED);
+        order.verify(points).accrueForConfirmedPayment(PAYMENT);
     }
 
     @Test
@@ -297,6 +303,15 @@ class PaymentConfirmationTests {
         assertThat(payment.getConfirmedBy()).isEqualTo(OWNER);
     }
 
+    @Test
+    void pointErrorStopsConfirmation() {
+        doThrow(new AppException("Booking chưa xác nhận")).when(points).accrueForConfirmedPayment(PAYMENT);
+
+        // Lỗi đi ra khỏi hàm @Transactional nên cả giao dịch xác nhận bị hủy.
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW)).isInstanceOf(AppException.class);
+        verifyNoInteractions(notifications);
+    }
+
     // ---------- #4: yêu cầu bổ sung ----------
 
     @Test
@@ -333,6 +348,8 @@ class PaymentConfirmationTests {
         assertThat(payment.getRejectReason()).isEqualTo("Hết lượt gửi lại chứng từ. Ảnh không đúng");
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_REJECTED);
         verify(bookings).releaseSlots(BOOKING);
+        verify(vouchers).restoreForFailedBooking(BOOKING);
+        verify(points).restoreForFailedBooking(BOOKING);
     }
 
     @Test
@@ -367,25 +384,30 @@ class PaymentConfirmationTests {
     }
 
     @Test
-    void rejectChangesBookingStatusThenReleasesSlots() {
+    void rejectChangesBookingStatusBeforeReturningVoucherAndPoints() {
         service.reject(staff, PAYMENT, new RejectPaymentRequest("Không thấy tiền về"));
 
-        InOrder order = inOrder(payments, bookings);
+        // VoucherService, LoyaltyPointService chỉ trả lại cho booking đã ở trạng thái thất bại.
+        InOrder order = inOrder(payments, bookings, vouchers, points);
         order.verify(payments).findByIdForUpdate(PAYMENT);
         order.verify(bookings).lockForPayment(BOOKING);
         order.verify(payments).saveAndFlush(payment);
         order.verify(bookings).changeStatus(booking, BookingStatus.PAYMENT_REJECTED);
         order.verify(bookings).releaseSlots(BOOKING);
+        order.verify(vouchers).restoreForFailedBooking(BOOKING);
+        order.verify(points).restoreForFailedBooking(BOOKING);
     }
 
     @Test
-    void rejectTwiceIsMsg54AndReleasesOnce() {
+    void rejectTwiceIsMsg54AndReturnsNothingTwice() {
         service.reject(staff, PAYMENT, new RejectPaymentRequest("Không thấy tiền về"));
 
         assertThatThrownBy(() -> service.reject(staff, PAYMENT, new RejectPaymentRequest("Bấm lại")))
                 .isInstanceOf(AppException.class)
                 .hasMessageContaining("MSG54");
         verify(bookings, times(1)).releaseSlots(BOOKING);
+        verify(vouchers, times(1)).restoreForFailedBooking(BOOKING);
+        verify(points, times(1)).restoreForFailedBooking(BOOKING);
     }
 
     @Test
@@ -412,7 +434,7 @@ class PaymentConfirmationTests {
     private void assertNothingDecided() {
         verify(payments, never()).saveAndFlush(any());
         verify(bookings, never()).changeStatus(any(), any());
-        verifyNoInteractions(notifications);
+        verifyNoInteractions(points, vouchers, notifications);
         verify(bookings, never()).releaseSlots(eq(BOOKING));
     }
 }

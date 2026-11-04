@@ -46,6 +46,8 @@ import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.promotion.LoyaltyPointService;
+import com.sep490.bms.service.promotion.VoucherService;
 
 class PaymentServiceTests {
 
@@ -63,7 +65,8 @@ class PaymentServiceTests {
     private final LocationQueryService locations = mock(LocationQueryService.class);
     private final FileStorageService files = mock(FileStorageService.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings, locations, files,
-            mock(LocationAccessService.class), mock(NotificationRepository.class));
+            mock(LocationAccessService.class), mock(VoucherService.class), mock(LoyaltyPointService.class),
+            mock(NotificationRepository.class));
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
     private final MockMultipartFile proof = new MockMultipartFile("proof", "ck.jpg", "image/jpeg", new byte[] { 1, 2 });

@@ -41,6 +41,8 @@ import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.promotion.LoyaltyPointService;
+import com.sep490.bms.service.promotion.VoucherService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -69,6 +71,8 @@ public class PaymentService {
     private final LocationQueryService locationQueryService;
     private final FileStorageService fileStorageService;
     private final LocationAccessService locationAccessService;
+    private final VoucherService voucherService;
+    private final LoyaltyPointService loyaltyPointService;
     private final NotificationRepository notificationRepository;
 
     /** UC18 #1, FR55: số tiền, tài khoản nhận, mã QR và giờ hết giữ chỗ. Không thay đổi gì. */
@@ -264,7 +268,7 @@ public class PaymentService {
 
     /**
      * UC19 #3, #6, #7, FR57, FR59, FR60: Staff thấy tiền đã về đủ (BR33) thì xác nhận. Payment và booking
-     * sang Đã xác nhận, sinh biên nhận, báo Player (MSG49). Khách chuyển thừa: Staff nhập
+     * sang Đã xác nhận, sinh biên nhận, cộng điểm (FR76), báo Player (MSG49). Khách chuyển thừa: Staff nhập
      * số thực nhận, doanh thu vẫn là số phải trả, báo Owner (BR37, BR51, MSG55). Chuyển thiếu thì không
      * xác nhận được, phải yêu cầu bổ sung (BR05).
      */
@@ -289,6 +293,8 @@ public class PaymentService {
         payment.confirm(user.getId(), received, receiptNo(payment, confirmedAt), confirmedAt);
         paymentRepository.saveAndFlush(payment);
         bookingService.changeStatus(booking, BookingStatus.CONFIRMED);
+        // Cộng điểm, tổng tiền tích lũy và tặng voucher mốc trong cùng giao dịch: lỗi thì không xác nhận gì (BR38, BR12).
+        loyaltyPointService.accrueForConfirmedPayment(payment.getId());
 
         notify(booking.getPlayerId(), "PAYMENT_CONFIRMED", "Thanh toán đã được xác nhận",
                 "Thanh toán booking " + booking.getBookingCode() + " đã được xác nhận. Xem biên nhận.", payment);
@@ -349,13 +355,16 @@ public class PaymentService {
 
     /**
      * Từ chối một giao dịch đã khóa dòng: payment Bị từ chối, booking Bị từ chối thanh toán, nhả slot,
-     * báo Player (MSG51). Player đã chuyển tiền thì khiếu nại (UC33).
+     * trả lại voucher và điểm đã dùng (BR40, BR45), báo Player (MSG51). Phải đổi trạng thái booking trước
+     * vì hai hàm trả lại chỉ nhận booking đã ở trạng thái thất bại. Player đã chuyển tiền thì khiếu nại (UC33).
      */
     private void rejectLocked(Payment payment, Booking booking, String reason) {
         payment.reject(reason);
         paymentRepository.saveAndFlush(payment);
         bookingService.changeStatus(booking, BookingStatus.PAYMENT_REJECTED);
         bookingService.releaseSlots(booking.getId());
+        voucherService.restoreForFailedBooking(booking.getId());
+        loyaltyPointService.restoreForFailedBooking(booking.getId());
         notify(booking.getPlayerId(), "PAYMENT_REJECTED", "Thanh toán bị từ chối",
                 "Thanh toán booking " + booking.getBookingCode() + " bị từ chối. Lý do: " + reason
                         + ". Nếu bạn đã chuyển tiền, hãy gửi khiếu nại.", payment);
