@@ -139,21 +139,29 @@ class BookingChangeApiTests {
         Long id=create(660);assertThat(active(booking.getPlayDate())).isEqualTo(2);assertThat(active(LocalDate.now().plusDays(3))).isEqualTo(2);
         mvc.perform(post("/api/reschedule-requests/"+id+"/payments").header("Authorization",token(player))).andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("AWAITING_CONFIRMATION"));
         Long pay=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);
-        mvc.perform(get("/api/staff/payments?status=AWAITING_CONFIRMATION").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+        // UC18–19 retain Minh's booking contract; UC21 uses its own routes and payment type.
+        Long originalPay=jdbc.queryForObject("select id from payment where booking_id=?",Long.class,booking.getId());
+        mvc.perform(get("/api/payments/"+originalPay).header("Authorization",token(player)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(originalPay));
+        mvc.perform(get("/api/payments/"+pay).header("Authorization",token(player))).andExpect(status().isNotFound());
+        mvc.perform(get("/api/reschedule-payments/"+originalPay).header("Authorization",token(player))).andExpect(status().isNotFound());
+        mvc.perform(get("/api/reschedule-payments/"+pay).header("Authorization",token(player)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.payment.id").value(pay));
+        mvc.perform(get("/api/staff/reschedule-payments?status=AWAITING_CONFIRMATION").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].id").value(pay));
-        mvc.perform(get("/api/staff/payments/"+pay).header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+        mvc.perform(get("/api/staff/reschedule-payments/"+pay).header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.payment.amountDue").value(20000));
-        mvc.perform(get("/api/payments/"+pay).header("Authorization",token(other))).andExpect(status().isForbidden());
-        mvc.perform(post("/api/staff/payments/"+pay+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+        mvc.perform(get("/api/reschedule-payments/"+pay).header("Authorization",token(other))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/staff/reschedule-payments/"+pay+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("APPROVED"));
         assertThat(active(booking.getPlayDate())).isZero();
         assertThat(jdbc.queryForObject("select point_balance from player_location_balance where location_id=?",Integer.class,location.getId())).isEqualTo(2);
-        mvc.perform(post("/api/staff/payments/"+pay+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId())).andExpect(status().isConflict());
+        mvc.perform(post("/api/staff/reschedule-payments/"+pay+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId())).andExpect(status().isConflict());
     }
     @Test void rejectionReleasesOnlyNewSlots() throws Exception {
         Long id=create(660);mvc.perform(post("/api/reschedule-requests/"+id+"/payments").header("Authorization",token(player))).andExpect(status().isOk());
         Long pay=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);
-        mvc.perform(post("/api/staff/payments/"+pay+"/reject").header("Authorization",token(owner)).header("X-Location-Id",location.getId())
+        mvc.perform(post("/api/staff/reschedule-payments/"+pay+"/reject").header("Authorization",token(owner)).header("X-Location-Id",location.getId())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Money not received\"}")).andExpect(status().isOk());
         assertThat(active(booking.getPlayDate())).isEqualTo(2);assertThat(active(LocalDate.now().plusDays(3))).isZero();
         assertThat(bookingStatus()).isEqualTo("CONFIRMED");
@@ -198,7 +206,7 @@ class BookingChangeApiTests {
         Long request=create(660);
         mvc.perform(post("/api/reschedule-requests/"+request+"/payments").header("Authorization",token(player))).andExpect(status().isOk());
         Long payment=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,request);
-        mvc.perform(post("/api/staff/payments/"+payment+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId())).andExpect(status().isOk());
+        mvc.perform(post("/api/staff/reschedule-payments/"+payment+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId())).andExpect(status().isOk());
         Long id=mark();choice(id,"POINTS");
         assertThat(jdbc.queryForObject("select compensation_points from affected_booking where id=?",Integer.class,id)).isEqualTo(220);
         mvc.perform(post("/api/affected-bookings/"+id+"/submit-choice").header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON).content("{\"choice\":\"POINTS\"}")).andExpect(status().isConflict());
@@ -264,7 +272,7 @@ class BookingChangeApiTests {
         tx.executeWithoutResult(s->em.persist(Maintenance.builder().courtId(court).startAt(LocalDate.now().plusDays(3).atTime(10,0))
                 .endAt(LocalDate.now().plusDays(3).atTime(11,0)).reason("New maintenance").status(ApprovalStatus.APPROVED).requestedBy(owner.getId()).build()));
         Long payment=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);
-        mvc.perform(post("/api/staff/payments/"+payment+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+        mvc.perform(post("/api/staff/reschedule-payments/"+payment+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("REJECTED"));
         assertThat(active(booking.getPlayDate())).isEqualTo(2);assertThat(active(LocalDate.now().plusDays(3))).isZero();
     }

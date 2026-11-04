@@ -60,7 +60,7 @@ public class RescheduleService {
     public PaymentView payment(UserPrincipal u,Long id) {
         Payment p=em.find(Payment.class,id);
         if(p==null) throw new AppException("Không tìm thấy thanh toán",HttpStatus.NOT_FOUND);
-        if(p.getRescheduleRequestId()==null) throw new AppException("Thanh toán booking/gói chưa triển khai",HttpStatus.NOT_IMPLEMENTED);
+        if(p.getRescheduleRequestId()==null) throw new AppException("Không tìm thấy thanh toán phụ thu đổi lịch",HttpStatus.NOT_FOUND);
         RescheduleRequest r=find(p.getRescheduleRequestId());Booking b=support.booking(r.getBookingId());
         if(u.getRole()==Role.PLAYER) support.player(u,b);
         else if(!access.selectedLocation(u).getId().equals(b.getLocationId())) throw new AppException("Sai địa điểm",HttpStatus.FORBIDDEN);
@@ -129,7 +129,9 @@ public class RescheduleService {
                 throw new AppException("Slot mới ngoài thời hạn gói");
         } else if (slot.date().isAfter(LocalDate.now().plusDays(l.getAdvanceBookingDays())))
             throw new AppException("Slot mới vượt hạn đặt trước");
-        if (!availability.isAvailable(l.getId(),c.getId(),slot.date(),slot.startMinute(),slot.endMinute()))
+        // Minh's shared slot API reports a problem instead of returning an availability boolean.
+        // Preserve UC21's rejection rule for closed, occupied or maintenance-blocked target slots.
+        if (availability.findProblem(l.getId(),c.getId(),slot.date(),slot.startMinute(),slot.endMinute()).isPresent())
             throw new AppException("Slot mới không còn trống hoặc ngoài giờ mở cửa",HttpStatus.CONFLICT);
         BigDecimal newPrice = prices.totalPrice(c.getId(),slot.date(),slot.startMinute(),slot.endMinute());
         BigDecimal extra = free ? BigDecimal.ZERO : newPrice.subtract(b.getListAmount()).max(BigDecimal.ZERO);
@@ -199,11 +201,11 @@ public class RescheduleService {
         if(proof!=null && !proof.isEmpty()) em.persist(PaymentProof.builder().paymentId(p.getId()).imagePath(storage.storeImage(proof,"payment-proofs")).build());
         r.setStatus(RescheduleStatus.AWAITING_CONFIRMATION); return r;
     }
-    /** Existing UC19 endpoints delegate here for reschedule payments; other F4 targets remain outside this feature. */
+    /** UC21 reschedule-payment endpoints delegate here; booking payments use Minh's PaymentService. */
     public RescheduleRequest decidePayment(UserPrincipal u,Long paymentId,boolean confirm,ReschedulePaymentDecision input) {
         Payment observed=em.find(Payment.class,paymentId);
         if(observed==null) throw new AppException("Không tìm thấy thanh toán",HttpStatus.NOT_FOUND);
-        if(observed.getRescheduleRequestId()==null) throw new AppException("Thanh toán booking/gói chưa triển khai",HttpStatus.NOT_IMPLEMENTED);
+        if(observed.getRescheduleRequestId()==null) throw new AppException("Không tìm thấy thanh toán phụ thu đổi lịch",HttpStatus.NOT_FOUND);
         RescheduleRequest r=find(observed.getRescheduleRequestId()); Booking b=support.booking(r.getBookingId());
         if(!access.selectedLocation(u).getId().equals(b.getLocationId())) throw new AppException("Sai địa điểm",HttpStatus.FORBIDDEN);
         em.refresh(r,LockModeType.PESSIMISTIC_WRITE); Payment p=support.lock(Payment.class,paymentId);

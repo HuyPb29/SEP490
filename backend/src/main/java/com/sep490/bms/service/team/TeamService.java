@@ -221,6 +221,17 @@ public class TeamService {
         return request;
     }
 
+    /**
+     * Dùng cho đặt sân (BR09, DR03): booking chỉ gắn được với đội do người đặt làm chủ.
+     * Đội không tồn tại cũng trả false, để người gọi báo cùng một lỗi.
+     */
+    @Transactional(readOnly = true)
+    public boolean isCaptain(Long teamId, Long playerId) {
+        return teamRepository.findById(teamId)
+                .map(team -> team.getCaptainId().equals(playerId))
+                .orElse(false);
+    }
+
     private Team findTeam(Long teamId) {
         return teamRepository.findById(teamId)
                 .orElseThrow(() -> new AppException("Không tìm thấy đội", HttpStatus.NOT_FOUND));

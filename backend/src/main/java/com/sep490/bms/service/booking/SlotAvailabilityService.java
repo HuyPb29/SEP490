@@ -40,6 +40,11 @@ public class SlotAvailabilityService {
     private final BookingSlotRepository bookingSlotRepository;
     private final MaintenanceRepository maintenanceRepository;
 
+    /** Vì sao một khoảng slot không đặt được: ngoài giờ mở cửa, đã có người giữ/đặt, trùng bảo trì. */
+    public enum SlotProblem {
+        CLOSED, TAKEN, MAINTENANCE
+    }
+
     /** Giờ mở cửa của một ngày, tính bằng số phút [openMinute, closeMinute). */
     public record OpeningWindow(int openMinute, int closeMinute) {
 
@@ -123,21 +128,28 @@ public class SlotAvailabilityService {
         return result;
     }
 
-    /** Mọi slot của khoảng [startMinute, endMinute) trên một sân đều còn trống. */
+    /**
+     * Lý do khoảng [startMinute, endMinute) trên một sân không đặt được; rỗng là mọi slot đều trống.
+     * Trả về lý do thay vì true/false vì mỗi lý do báo một thông báo khác nhau (MSG28, MSG31).
+     */
     @Transactional(readOnly = true)
-    public boolean isAvailable(Long locationId, Long courtId, LocalDate date, int startMinute, int endMinute) {
+    public Optional<SlotProblem> findProblem(Long locationId, Long courtId, LocalDate date,
+            int startMinute, int endMinute) {
         Optional<OpeningWindow> window = openingWindow(locationId, date);
         if (window.isEmpty() || !window.get().covers(startMinute, endMinute)) {
-            return false;
+            return Optional.of(SlotProblem.CLOSED);
         }
         Set<Integer> booked = bookedStarts(List.of(courtId), date).getOrDefault(courtId, Set.of());
         Set<Integer> maintenance = maintenanceStarts(List.of(courtId), date).getOrDefault(courtId, Set.of());
         for (int s = startMinute; s < endMinute; s += MinuteTime.SLOT_MINUTES) {
-            if (booked.contains(s) || maintenance.contains(s)) {
-                return false;
+            if (booked.contains(s)) {
+                return Optional.of(SlotProblem.TAKEN);
+            }
+            if (maintenance.contains(s)) {
+                return Optional.of(SlotProblem.MAINTENANCE);
             }
         }
-        return true;
+        return Optional.empty();
     }
 
     private static int toMinute(LocalDateTime dayStart, LocalDateTime time) {
