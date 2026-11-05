@@ -71,7 +71,7 @@ public class BatchOfferService {
         LocalDate endDate = requireDate(request.getEndDate(), "Ngày kết thúc");
         ensureDateRange(startDate, endDate);
         BigDecimal minAmount = requireAmount(request.getMinPackageAmount());
-        Voucher voucher = requireVoucher(location.getId(), request.getVoucherId());
+        Voucher voucher = requireVoucher(location.getId(), request.getVoucherId(), startDate, endDate);
 
         BatchOffer entity = BatchOffer.builder()
                 .locationId(location.getId())
@@ -106,10 +106,15 @@ public class BatchOfferService {
 
         Voucher voucher;
         if (request.getVoucherId() != null && !request.getVoucherId().equals(entity.getVoucherId())) {
-            voucher = requireVoucher(location.getId(), request.getVoucherId());
+            voucher = requireVoucher(location.getId(), request.getVoucherId(), startDate, endDate);
             entity.setVoucherId(voucher.getId());
         } else {
             voucher = voucherRepository.findById(entity.getVoucherId()).orElse(null);
+            // Đổi khoảng chạy của ưu đãi cũng phải kiểm lại: kéo dài end_date quá hạn voucher là
+            // khách đạt ngưỡng nhưng nhận voucher đã hết hiệu lực.
+            if (voucher != null && (request.getStartDate() != null || request.getEndDate() != null)) {
+                ensureVoucherCovers(voucher, startDate, endDate);
+            }
         }
 
         return BatchOfferDto.fromEntity(batchOfferRepository.save(entity), voucher);
@@ -152,8 +157,11 @@ public class BatchOfferService {
                 .collect(Collectors.toMap(Voucher::getId, Function.identity()));
     }
 
-    /** Voucher phải tồn tại, thuộc đúng địa điểm và đã phát hành thì mới gắn vào ưu đãi được. */
-    private Voucher requireVoucher(Long locationId, Long voucherId) {
+    /**
+     * Voucher phải tồn tại, thuộc đúng địa điểm, đã phát hành và còn hiệu lực suốt khoảng chạy
+     * của ưu đãi thì mới gắn vào được.
+     */
+    private Voucher requireVoucher(Long locationId, Long voucherId, LocalDate startDate, LocalDate endDate) {
         if (voucherId == null || voucherId <= 0) {
             throw new AppException("Voucher áp dụng không hợp lệ");
         }
@@ -165,7 +173,25 @@ public class BatchOfferService {
         if (voucher.getStatus() != VoucherStatus.PUBLISHED) {
             throw new AppException("Voucher phải ở trạng thái PUBLISHED trước khi gắn vào ưu đãi");
         }
+        ensureVoucherCovers(voucher, startDate, endDate);
         return voucher;
+    }
+
+    /**
+     * Khoảng hiệu lực của voucher phải phủ hết khoảng chạy của ưu đãi. Voucher không khai
+     * valid_from / valid_to (NULL) được coi là không giới hạn, giống cách hệ thống tính hạn dùng.
+     */
+    private void ensureVoucherCovers(Voucher voucher, LocalDate startDate, LocalDate endDate) {
+        LocalDate validFrom = voucher.getValidFrom();
+        if (validFrom != null && validFrom.isAfter(startDate)) {
+            throw new AppException("Voucher chỉ có hiệu lực từ " + validFrom
+                    + ", muộn hơn ngày bắt đầu ưu đãi " + startDate);
+        }
+        LocalDate validTo = voucher.getValidTo();
+        if (validTo != null && validTo.isBefore(endDate)) {
+            throw new AppException("Voucher hết hiệu lực ngày " + validTo
+                    + ", trước ngày kết thúc ưu đãi " + endDate);
+        }
     }
 
     private void requireActiveLocation(Location location, String action) {

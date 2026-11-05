@@ -1,8 +1,11 @@
 package com.sep490.bms.service.location;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -13,9 +16,11 @@ import com.sep490.bms.dto.location.LocationDetailDto;
 import com.sep490.bms.dto.location.UpdateLocationRequest;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.location.ServiceTerm;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.LocationRepository;
 import com.sep490.bms.repository.location.CourtRepository;
+import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.security.UserPrincipal;
 
 import lombok.RequiredArgsConstructor;
@@ -36,14 +41,19 @@ public class LocationManagementService {
 
     private final LocationRepository locationRepository;
     private final CourtRepository courtRepository;
+    private final ServiceTermRepository serviceTermRepository;
 
     /** UC07 - Owner xem các địa điểm mình sở hữu, gồm cả địa điểm đang bị khoá. */
     @Transactional(readOnly = true)
     public List<LocationDetailDto> listOwned(UserPrincipal user) {
         requireOwner(user);
-        return locationRepository.findAllByOwnerId(user.getId()).stream()
+        List<Location> locations = locationRepository.findAllByOwnerId(user.getId()).stream()
                 .sorted(Comparator.comparing(Location::getName, String.CASE_INSENSITIVE_ORDER))
-                .map(location -> LocationDetailDto.fromEntity(location, null))
+                .toList();
+        Map<Long, LocalDate> termEnds = latestTermEnds(
+                locations.stream().map(Location::getId).toList());
+        return locations.stream()
+                .map(location -> LocationDetailDto.fromEntity(location, null, termEnds.get(location.getId())))
                 .toList();
     }
 
@@ -60,6 +70,12 @@ public class LocationManagementService {
         }
         if (request.getAddress() != null) {
             location.setAddress(requireText(request.getAddress(), "Địa chỉ", 255));
+        }
+        if (request.getLatitude() != null) {
+            location.setLatitude(request.getLatitude());
+        }
+        if (request.getLongitude() != null) {
+            location.setLongitude(request.getLongitude());
         }
         if (request.getContactPhone() != null) {
             location.setContactPhone(request.getContactPhone().trim());
@@ -88,10 +104,35 @@ public class LocationManagementService {
         List<CourtDto> courts = courtRepository.findAllByLocationIdOrderByNameAsc(saved.getId()).stream()
                 .map(CourtDto::fromEntity)
                 .toList();
-        return LocationDetailDto.fromEntity(saved, courts);
+        return LocationDetailDto.fromEntity(saved, courts, latestTermEnd(saved.getId()));
     }
 
     // --------------------------------------------------------------- helpers
+
+    /** Ngày hết hạn kỳ hạn dịch vụ gần nhất của một địa điểm; null nếu chưa có kỳ hạn. */
+    private LocalDate latestTermEnd(Long locationId) {
+        return serviceTermRepository.findAllByLocationId(locationId).stream()
+                .map(ServiceTerm::getEndDate)
+                .filter(endDate -> endDate != null)
+                .max(LocalDate::compareTo)
+                .orElse(null);
+    }
+
+    /** Như {@link #latestTermEnd(Long)} nhưng cho nhiều địa điểm, gom trong một truy vấn. */
+    private Map<Long, LocalDate> latestTermEnds(List<Long> locationIds) {
+        if (locationIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, LocalDate> termEnds = new HashMap<>();
+        for (ServiceTerm term : serviceTermRepository.findAllByLocationIdIn(locationIds)) {
+            if (term.getEndDate() == null) {
+                continue;
+            }
+            termEnds.merge(term.getLocationId(), term.getEndDate(),
+                    (current, candidate) -> candidate.isAfter(current) ? candidate : current);
+        }
+        return termEnds;
+    }
 
     /** Địa điểm theo id, đồng thời kiểm tra địa điểm thuộc Owner đang đăng nhập. */
     public Location ownedLocation(UserPrincipal user, Long id) {
