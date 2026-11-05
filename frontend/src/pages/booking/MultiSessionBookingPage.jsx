@@ -161,7 +161,7 @@ export default function MultiSessionBookingPage() {
           </button>
           <nav className={styles.navLinks} aria-label="Main navigation">
             <Link to="/" className={styles.activeLink}>Find Courts</Link>
-            <a href="#matches">Open Matches</a>
+            <Link to="/open-matches">Open Matches</Link>
             <Link to="/my-bookings">My Bookings</Link>
           </nav>
           <div className={styles.userProfile}>

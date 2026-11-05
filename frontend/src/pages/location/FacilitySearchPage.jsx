@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { searchFacilities } from '../../api/facilityApi';
 import styles from './FacilitySearchPage.module.css';
 
@@ -116,7 +116,7 @@ export default function FacilitySearchPage() {
           </div>
           <nav className={styles.navLinks}>
             <a href="#search" className={styles.activeLink}>Find Court</a>
-            <a href="#matches">Open Matches</a>
+            <Link to="/open-matches">Open Matches</Link>
             <a href="#register-service">Register Service</a>
           </nav>
           <div className={styles.authActions}>

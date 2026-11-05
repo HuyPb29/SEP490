@@ -240,7 +240,7 @@ export default function BookingPaymentPage() {
 
           <nav className={styles.navLinks}>
             <Link to="/">Find Courts</Link>
-            <a href="#matches">Open Matches</a>
+            <Link to="/open-matches">Open Matches</Link>
             <Link to="/my-bookings" className={styles.activeLink}>
               My Bookings
             </Link>

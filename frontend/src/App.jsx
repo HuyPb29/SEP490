@@ -9,6 +9,7 @@ import BookingSummaryPage from './pages/booking/BookingSummaryPage'
 import BookingPaymentPage from './pages/booking/BookingPaymentPage'
 import MyBookingsPage from './pages/booking/MyBookingsPage'
 import MultiSessionBookingPage from './pages/booking/MultiSessionBookingPage'
+import OpenMatchesPage from './pages/matches/OpenMatchesPage'
 
 export default function App() {
   return (
@@ -22,22 +23,21 @@ function AppContent() {
   const location = useLocation()
   const isMultiSessionBooking =
     location.pathname === '/booking/multi' || location.pathname.endsWith('/package-booking')
-  const [status, setStatus] = useState(() =>
-    isMultiSessionBooking ? 'mock preview' : 'checking...'
-  )
+  const isFrontendMockPage = isMultiSessionBooking || location.pathname === '/open-matches'
+  const [status, setStatus] = useState(() => (isFrontendMockPage ? 'mock preview' : 'checking...'))
 
   useEffect(() => {
-    if (isMultiSessionBooking) return
+    if (isFrontendMockPage) return
     api
       .get('/health')
       .then((res) => setStatus(res.data.status))
       .catch(() => setStatus('backend offline'))
-  }, [isMultiSessionBooking])
-  const displayedStatus = isMultiSessionBooking ? 'mock preview' : status
+  }, [isFrontendMockPage])
+  const displayedStatus = isFrontendMockPage ? 'mock preview' : status
 
   return (
     <>
-      {!isMultiSessionBooking && (
+      {!isFrontendMockPage && (
         <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
           BE: {displayedStatus}
         </div>
@@ -51,6 +51,8 @@ function AppContent() {
         <Route path="/facilities/:id" element={<FacilityDetailPage />} />
         {/* UC15: Đặt nhiều buổi */}
         <Route path="/facilities/:id/package-booking" element={<MultiSessionBookingPage />} />
+        {/* UC29-30: Open matches */}
+        <Route path="/open-matches" element={<OpenMatchesPage />} />
 
         {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
         <Route path="/login" element={<AuthPage />} />

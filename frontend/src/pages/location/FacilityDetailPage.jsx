@@ -169,7 +169,7 @@ export default function FacilityDetailPage() {
           </div>
           <nav className={styles.navLinks}>
             <Link to="/" className={styles.activeLink}>Find Court</Link>
-            <a href="#matches">Open Matches</a>
+            <Link to="/open-matches">Open Matches</Link>
             <Link to="/my-bookings">My Bookings</Link>
           </nav>
           <div className={styles.userArea}>
