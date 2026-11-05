@@ -13,14 +13,18 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
+import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.payment.ReconciliationRequest;
 import com.sep490.bms.dto.payment.ReconciliationResponse;
 import com.sep490.bms.dto.payment.ReconciliationSummaryResponse;
@@ -54,6 +58,7 @@ class ReconciliationServiceTests {
     private final ReconciliationService service = new ReconciliationService(payments, reconciliations, accounts, access);
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
+    private final UserPrincipal owner = UserPrincipal.builder().id(OWNER).role(Role.OWNER).build();
     private final Location location = Location.builder().id(LOCATION).ownerId(OWNER).status("ACTIVE").build();
 
     @BeforeEach
@@ -262,6 +267,51 @@ class ReconciliationServiceTests {
                 .satisfies(e -> assertThat(statusOf(e)).isEqualTo(HttpStatus.FORBIDDEN));
         assertThatThrownBy(() -> service.getById(staff, 99L))
                 .satisfies(e -> assertThat(statusOf(e)).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    // ---------- #5: Owner xem kết quả đối soát ----------
+
+    @Test
+    void ownerListsResultsOfSelectedLocationNewestFirstWithStaffNames() {
+        Reconciliation today = savedOn(TODAY, LOCATION);
+        Reconciliation yesterday = savedOn(TODAY.minusDays(1), LOCATION);
+        yesterday.setId(39L);
+        yesterday.setActualAmount(new BigDecimal("330000"));
+        yesterday.setReason(null);
+        LocalDate from = TODAY.minusDays(7);
+        when(reconciliations.findForLocation(LOCATION, from, TODAY, PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<>(List.of(today, yesterday), PageRequest.of(0, 20), 2));
+        when(accounts.findAllById(any())).thenReturn(List.of(Account.builder().id(STAFF).fullName("Lê Văn Staff").build()));
+
+        PageResponse<ReconciliationResponse> result = service.listForOwner(owner, from, TODAY, 0, 20);
+
+        assertThat(result.getTotalElements()).isEqualTo(2);
+        assertThat(result.getContent()).extracting(ReconciliationResponse::getDate)
+                .containsExactly(TODAY, TODAY.minusDays(1));
+        assertThat(result.getContent()).extracting(ReconciliationResponse::getStaffName)
+                .containsOnly("Lê Văn Staff");
+        assertThat(result.getContent().get(0).getDifference()).isEqualByComparingTo("50000");
+        assertThat(result.getContent().get(1).getDifference()).isEqualByComparingTo("0");
+        verify(access).selectedLocation(owner);
+    }
+
+    @Test
+    void ownerListWithoutDatesIsNotLimited() {
+        when(reconciliations.findForLocation(LOCATION, null, null, PageRequest.of(1, 10)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(1, 10), 0));
+
+        assertThat(service.listForOwner(owner, null, null, 1, 10).getContent()).isEmpty();
+    }
+
+    @Test
+    void ownerListRejectsBadRangeAndPaging() {
+        assertThatThrownBy(() -> service.listForOwner(owner, TODAY, TODAY.minusDays(1), 0, 20))
+                .hasMessageContaining("Ngày bắt đầu");
+        assertThatThrownBy(() -> service.listForOwner(owner, null, null, -1, 20))
+                .hasMessage("Phân trang không hợp lệ");
+        assertThatThrownBy(() -> service.listForOwner(owner, null, null, 0, 101))
+                .hasMessage("Phân trang không hợp lệ");
+        verifyNoInteractions(reconciliations);
     }
 
     @Test

@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.payment.ReconciliationRequest;
 import com.sep490.bms.dto.payment.ReconciliationResponse;
 import com.sep490.bms.dto.payment.ReconciliationSummaryResponse;
@@ -85,11 +86,17 @@ public class ReconciliationController {
      * UC20 – Đối soát doanh thu cuối ngày (#5: Owner xem kết quả đối soát)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * Địa điểm theo header X-Location-Id. from, to (yyyy-MM-dd) không bắt buộc; ngày mới nhất lên đầu.
      */
     @GetMapping("/api/owner/reconciliations")
-    public ResponseEntity<Void> getOwnerReconciliations() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<ApiResponse<PageResponse<ReconciliationResponse>>> getOwnerReconciliations(
+            @RequestParam(value = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(value = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(
+                reconciliationService.listForOwner(currentUser, from, to, page, size)));
     }
 }

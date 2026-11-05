@@ -3,13 +3,19 @@ package com.sep490.bms.service.payment;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.payment.ReconciliationRequest;
 import com.sep490.bms.dto.payment.ReconciliationResponse;
 import com.sep490.bms.dto.payment.ReconciliationSummaryResponse;
@@ -39,6 +45,7 @@ public class ReconciliationService {
     /** Unique (location_id, recon_date): mỗi địa điểm đối soát mỗi ngày một lần. */
     static final String RECON_DAY_UNIQUE_INDEX = "ux_recon_day";
     private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final PaymentRepository paymentRepository;
     private final ReconciliationRepository reconciliationRepository;
@@ -129,6 +136,26 @@ public class ReconciliationService {
         return toResponse(reconciliation);
     }
 
+    /**
+     * UC20 #5, FR61: Owner xem kết quả đối soát của địa điểm đang chọn (X-Location-Id), ngày mới nhất lên đầu,
+     * lọc theo khoảng ngày nếu có. Không thay đổi gì.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ReconciliationResponse> listForOwner(UserPrincipal owner, LocalDate from, LocalDate to,
+            int page, int size) {
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new AppException("Phân trang không hợp lệ");
+        }
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new AppException("Ngày bắt đầu phải trước hoặc bằng ngày kết thúc");
+        }
+        Location location = locationAccessService.selectedLocation(owner);
+        Page<Reconciliation> result = reconciliationRepository.findForLocation(location.getId(), from, to,
+                PageRequest.of(page, size));
+        Map<Long, String> staffNames = staffNames(result.map(Reconciliation::getStaffId).toSet());
+        return PageResponse.from(result.map(item -> ReconciliationResponse.from(item, staffNames.get(item.getStaffId()))));
+    }
+
     private ConfirmedPaymentTotal confirmedTotal(Long locationId, LocalDate day) {
         return paymentRepository.sumByConfirmedAt(locationId, PaymentStatus.CONFIRMED,
                 day.atStartOfDay(), day.plusDays(1).atStartOfDay());
@@ -139,6 +166,13 @@ public class ReconciliationService {
                 .map(Account::getFullName)
                 .orElse(null);
         return ReconciliationResponse.from(reconciliation, staffName);
+    }
+
+    /** Tên Staff đã đối soát, đọc một lần cho cả trang. */
+    private Map<Long, String> staffNames(Collection<Long> staffIds) {
+        Map<Long, String> names = new HashMap<>();
+        accountRepository.findAllById(staffIds).forEach(account -> names.put(account.getId(), account.getFullName()));
+        return names;
     }
 
     /** Ngày chưa đến thì chưa có gì để đối soát. */
