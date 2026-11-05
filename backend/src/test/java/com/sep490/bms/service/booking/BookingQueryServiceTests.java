@@ -26,16 +26,22 @@ import org.springframework.http.HttpStatus;
 import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.booking.BookingDetailResponse;
 import com.sep490.bms.dto.booking.BookingListItem;
+import com.sep490.bms.dto.booking.PackageDetailResponse;
+import com.sep490.bms.dto.booking.PackageListItem;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.BookingType;
+import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.booking.BookingPackageRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
+import com.sep490.bms.repository.booking.BookingRepository.PackageSessionCount;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.LocationQueryService;
@@ -50,12 +56,13 @@ class BookingQueryServiceTests {
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 11, 5, 18, 0);
 
     private final BookingRepository bookings = mock(BookingRepository.class);
+    private final BookingPackageRepository packages = mock(BookingPackageRepository.class);
     private final CourtRepository courts = mock(CourtRepository.class);
     private final LocationQueryService locations = mock(LocationQueryService.class);
     private final BookingService bookingService = mock(BookingService.class);
     private final PaymentService payments = mock(PaymentService.class);
     private final BookingQueryService service =
-            new BookingQueryService(bookings, courts, locations, bookingService, payments);
+            new BookingQueryService(bookings, packages, courts, locations, bookingService, payments);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 
@@ -67,6 +74,7 @@ class BookingQueryServiceTests {
         when(courts.findAllById(any())).thenReturn(List.of(Court.builder().id(COURT).name("Sân 1").build()));
         when(bookingService.getCourtName(any())).thenReturn("Sân 1");
         when(payments.findForBooking(any())).thenReturn(Optional.empty());
+        when(payments.findForPackage(any())).thenReturn(Optional.empty());
     }
 
     private static Booking booking(Long id, BookingStatus status, LocalDateTime holdExpiresAt) {
@@ -254,5 +262,148 @@ class BookingQueryServiceTests {
                 .isInstanceOf(AppException.class)
                 .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
         verify(payments, never()).findForBooking(any());
+    }
+
+    // ---------------------------------------------------------------- Gói đặt nhiều buổi
+
+    private static BookingPackage pkg(Long id, Long playerId, BookingStatus status, LocalDateTime holdExpiresAt) {
+        return BookingPackage.builder()
+                .id(id)
+                .locationId(LOCATION)
+                .playerId(playerId)
+                .packageType(PackageType.RECURRING)
+                .startDate(LocalDate.of(2026, 11, 10))
+                .endDate(LocalDate.of(2026, 12, 8))
+                .listAmount(new BigDecimal("600000"))
+                .finalAmount(new BigDecimal("600000"))
+                .status(status)
+                .holdExpiresAt(holdExpiresAt)
+                .createdAt(NOW.minusMinutes(1))
+                .build();
+    }
+
+    private static Booking session(Long id, Long packageId, LocalDate day, BookingStatus status) {
+        Booking session = booking(id, status, null);
+        session.setBookingType(BookingType.SESSION);
+        session.setPackageId(packageId);
+        session.setPlayDate(day);
+        return session;
+    }
+
+    private static PackageSessionCount count(Long packageId, long sessions) {
+        return new PackageSessionCount() {
+            @Override
+            public Long getPackageId() {
+                return packageId;
+            }
+
+            @Override
+            public long getSessionCount() {
+                return sessions;
+            }
+        };
+    }
+
+    @Test
+    void listMyPackages_mapsSessionCountAndCountdown() {
+        when(packages.findPlayerPackages(eq(PLAYER), any(), any(), any())).thenReturn(new PageImpl<>(List.of(
+                pkg(30L, PLAYER, BookingStatus.HOLDING, NOW.plusMinutes(10)),
+                pkg(31L, PLAYER, BookingStatus.CONFIRMED, NOW.minusDays(3))), PageRequest.of(0, 20), 2));
+        when(bookings.countSessionsByPackageIds(any())).thenReturn(List.of(count(30L, 4), count(31L, 8)));
+
+        List<PackageListItem> items = service.listMyPackages(player, null, 0, 20, NOW).getContent();
+
+        assertThat(items.get(0).getSessionCount()).isEqualTo(4);
+        assertThat(items.get(0).getStatus()).isEqualTo(BookingStatus.HOLDING);
+        assertThat(items.get(0).getHoldExpiresAt()).isEqualTo(NOW.plusMinutes(10));
+        assertThat(items.get(0).getLocationName()).isEqualTo("Sân Linh Đàm");
+        assertThat(items.get(1).getSessionCount()).isEqualTo(8);
+        assertThat(items.get(1).getHoldExpiresAt()).isNull();
+    }
+
+    @Test
+    void listMyPackages_passesFilterAndSkipsCountWhenEmpty() {
+        when(packages.findPlayerPackages(eq(PLAYER), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+        PageResponse<PackageListItem> page = service.listMyPackages(player, BookingStatus.EXPIRED, 0, 20, NOW);
+
+        assertThat(page.getContent()).isEmpty();
+        verify(packages).findPlayerPackages(PLAYER, BookingStatus.EXPIRED, NOW, PageRequest.of(0, 20));
+        verify(bookings, never()).countSessionsByPackageIds(any());
+    }
+
+    @Test
+    void listMyPackages_invalidPaging_rejected() {
+        assertThatThrownBy(() -> service.listMyPackages(player, null, 0, 101, NOW))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.BAD_REQUEST);
+        verifyNoInteractions(packages);
+    }
+
+    @Test
+    void getMyPackage_resubmitRequested_givesPaymentIdAndSessions() {
+        when(packages.findById(30L)).thenReturn(Optional.of(pkg(30L, PLAYER, BookingStatus.RESUBMIT_REQUESTED, NOW.minusHours(1))));
+        when(bookings.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(30L)).thenReturn(List.of(
+                session(101L, 30L, LocalDate.of(2026, 11, 10), BookingStatus.RESUBMIT_REQUESTED),
+                session(102L, 30L, LocalDate.of(2026, 11, 17), BookingStatus.RESUBMIT_REQUESTED)));
+        when(payments.findForPackage(30L)).thenReturn(Optional.of(Payment.builder()
+                .id(95L).status(PaymentStatus.RESUBMIT_REQUESTED).resubmitReason("Chuyển thiếu 50.000 đồng").build()));
+
+        PackageDetailResponse detail = service.getMyPackage(player, 30L, NOW);
+
+        assertThat(detail.getStatus()).isEqualTo(BookingStatus.RESUBMIT_REQUESTED);
+        assertThat(detail.getPaymentId()).isEqualTo(95L);
+        assertThat(detail.getResubmitReason()).isEqualTo("Chuyển thiếu 50.000 đồng");
+        assertThat(detail.getSessions()).extracting(BookingListItem::getId).containsExactly(101L, 102L);
+        assertThat(detail.getSessions().get(0).getCourtName()).isEqualTo("Sân 1");
+        assertThat(detail.getSessions().get(0).getLocationName()).isEqualTo("Sân Linh Đàm");
+    }
+
+    @Test
+    void getMyPackage_holding_sessionsUsePackageCountdown() {
+        when(packages.findById(30L)).thenReturn(Optional.of(pkg(30L, PLAYER, BookingStatus.HOLDING, NOW.plusMinutes(10))));
+        when(bookings.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(30L)).thenReturn(List.of(
+                session(101L, 30L, LocalDate.of(2026, 11, 10), BookingStatus.HOLDING)));
+
+        PackageDetailResponse detail = service.getMyPackage(player, 30L, NOW);
+
+        assertThat(detail.getStatus()).isEqualTo(BookingStatus.HOLDING);
+        assertThat(detail.getHoldExpiresAt()).isEqualTo(NOW.plusMinutes(10));
+        assertThat(detail.getSessions().get(0).getStatus()).isEqualTo(BookingStatus.HOLDING);
+        assertThat(detail.getSessions().get(0).getHoldExpiresAt()).isEqualTo(NOW.plusMinutes(10));
+    }
+
+    @Test
+    void getMyPackage_holdingPastDeadline_packageAndSessionsShowExpired() {
+        when(packages.findById(30L)).thenReturn(Optional.of(pkg(30L, PLAYER, BookingStatus.HOLDING, NOW)));
+        when(bookings.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(30L)).thenReturn(List.of(
+                session(101L, 30L, LocalDate.of(2026, 11, 10), BookingStatus.HOLDING)));
+
+        PackageDetailResponse detail = service.getMyPackage(player, 30L, NOW);
+
+        assertThat(detail.getStatus()).isEqualTo(BookingStatus.EXPIRED);
+        assertThat(detail.getHoldExpiresAt()).isNull();
+        assertThat(detail.getSessions().get(0).getStatus()).isEqualTo(BookingStatus.EXPIRED);
+    }
+
+    @Test
+    void getMyPackage_otherPlayersPackage_forbidden() {
+        when(packages.findById(30L)).thenReturn(Optional.of(pkg(30L, 99L, BookingStatus.CONFIRMED, null)));
+
+        assertThatThrownBy(() -> service.getMyPackage(player, 30L, NOW))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+        verify(bookings, never()).findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(any());
+        verify(payments, never()).findForPackage(any());
+    }
+
+    @Test
+    void getMyPackage_notFound() {
+        when(packages.findById(30L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getMyPackage(player, 30L, NOW))
+                .isInstanceOf(AppException.class)
+                .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
     }
 }

@@ -209,6 +209,12 @@ public class PaymentService {
         return paymentRepository.findByBookingId(bookingId);
     }
 
+    /** UC17: payment của gói đặt nhiều buổi (cả gói thanh toán một lần). Bên gọi đã kiểm tra quyền. */
+    @Transactional(readOnly = true)
+    public Optional<Payment> findForPackage(Long packageId) {
+        return paymentRepository.findByPackageId(packageId);
+    }
+
     // ===================== UC19: Staff (hoặc Owner thay Staff, BR58) xử lý giao dịch =====================
 
     /**

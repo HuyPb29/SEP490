@@ -1,6 +1,8 @@
 package com.sep490.bms.repository.booking;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -74,4 +76,22 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             """)
     Page<Booking> findPlayerBookings(@Param("playerId") Long playerId, @Param("status") BookingStatus status,
             @Param("now") LocalDateTime now, Pageable pageable);
+
+    /** UC17: các buổi của một gói, theo ngày giờ chơi. */
+    List<Booking> findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(Long packageId);
+
+    /** UC17 #1: số buổi của từng gói trong một trang danh sách gói, đọc một lần. */
+    @Query("""
+            SELECT b.packageId AS packageId, COUNT(b) AS sessionCount FROM Booking b
+            WHERE b.packageId IN :packageIds
+            GROUP BY b.packageId
+            """)
+    List<PackageSessionCount> countSessionsByPackageIds(@Param("packageIds") Collection<Long> packageIds);
+
+    /** Kết quả của countSessionsByPackageIds. */
+    interface PackageSessionCount {
+        Long getPackageId();
+
+        long getSessionCount();
+    }
 }
