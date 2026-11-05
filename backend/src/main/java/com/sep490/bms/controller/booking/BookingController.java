@@ -9,12 +9,17 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import jakarta.validation.Valid;
 import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.common.PageResponse;
+import com.sep490.bms.dto.booking.BookingListItem;
 import com.sep490.bms.dto.booking.BookingResponse;
 import com.sep490.bms.dto.booking.BookingSummaryResponse;
 import com.sep490.bms.dto.request.BookingRequest;
+import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.booking.BookingQueryService;
 import com.sep490.bms.service.booking.BookingService;
 
 import lombok.RequiredArgsConstructor;
@@ -29,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final BookingQueryService bookingQueryService;
 
     /**
      * UC14 – Đặt sân lẻ (#1–5: màn tóm tắt, áp voucher và điểm; không lưu gì)
@@ -107,14 +113,18 @@ public class BookingController {
     }
 
     /**
-     * UC17 – Xem lịch sử booking
+     * UC17 – Xem lịch sử booking (#1–2: booking lẻ của tôi, booking chờ thanh toán xếp đầu, lọc theo trạng thái)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * Gói đặt nhiều buổi xem ở GET /api/me/booking-packages. Không gửi status thì lấy mọi trạng thái.
      */
     @GetMapping("/api/me/bookings")
-    public ResponseEntity<Void> getMeBookings() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PageResponse<BookingListItem>>> getMeBookings(
+            @RequestParam(value = "status", required = false) BookingStatus status,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(bookingQueryService.listMyBookings(currentUser, status, page, size)));
     }
 }
