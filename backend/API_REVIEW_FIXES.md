@@ -56,8 +56,8 @@ Các route dưới đây là **hợp đồng khung**, vẫn trả **501** vì ch
 - F5/F6 đã có entity/repository sau merge nhánh Minh; chưa có service nghiệp vụ: tính hạn đổi lịch/chênh lệch, xử lý hủy/hoàn tiền, validate/redeem voucher/điểm, cộng/trả điểm và tặng voucher tự động. Thêm route không thực hiện những nghiệp vụ này.
 - DTO phản hồi và các DTO request còn thiếu của khung feature cần được hoàn thiện khi xác định hợp đồng nghiệp vụ; chưa coi G4 đã xong toàn bộ.
 - F2: chốt trường chính sách/chuyển khoản và nơi lưu/upload ảnh QR; controller địa điểm vẫn là khung.
-- F7: đã có PATCH/cancel kèo; cách phối hợp giữ/hủy kèo khi đổi lịch vẫn cần thống nhất giữa chủ feature.
-- F9: chưa có service sinh workbook ba sheet hoặc tính báo cáo.
+- F7: đã có PATCH/cancel kèo; job `MatchStatusScheduler` (mặc định 5 phút, tắt bằng `bms.scheduler.match-sweep.enabled=false`) chuyển kèo OPEN quá giờ chơi sang EXPIRED, hủy kèo khi booking gốc bị hủy/hết hạn/bị từ chối thanh toán và hủy yêu cầu tham gia còn chờ. Cách giữ kèo khi đổi lịch vẫn cần thống nhất giữa chủ feature.
+- F8/F9: đã có service cho đánh giá (Owner/Admin ẩn, Owner phản hồi), khiếu nại, bảng điều hành Staff, báo cáo booking/doanh thu/lấp đầy/hủy/đổi lịch/voucher và tải CSV `booking-exports`, `revenue-exports`. Chưa gộp thành `/api/owner/exports` một file Excel ba sheet.
 - FR124/UC37: phân công thông báo và job tự động theo nhóm; chưa tự gán người phụ trách.
 - Không có Baseline 2, Report-4 hoặc `tracking/BMS_Theo_doi_API.xlsx` trong checkout này; chưa đối chiếu bản gốc, sửa hình sequence hoặc đánh dấu “Đã chốt”.
 

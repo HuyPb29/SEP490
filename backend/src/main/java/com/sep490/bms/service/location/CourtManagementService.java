@@ -34,6 +34,7 @@ public class CourtManagementService {
 
     private final CourtRepository courtRepository;
     private final LocationManagementService locationManagementService;
+    private final com.sep490.bms.service.reschedule.CancellationService cancellations;
 
     /** UC07 - Owner xem toàn bộ sân của địa điểm mình sở hữu, gồm cả sân đang tạm ngưng. */
     @Transactional(readOnly = true)
@@ -91,7 +92,9 @@ public class CourtManagementService {
             court.setDescription(trimToNull(request.getDescription()));
         }
         if (request.getIsActive() != null) {
+            boolean wasActive = court.isActive();
             court.setActive(request.getIsActive());
+            if (wasActive && !court.isActive()) cancellations.courtDisabled(court.getId(), user.getId());
         }
         court.setUpdatedAt(LocalDateTime.now());
 

@@ -121,6 +121,25 @@ public class ReviewService {
         return toResponses(List.of(review)).get(0);
     }
 
+    /** Owner ẩn hoặc hiện lại đánh giá thuộc địa điểm đang chọn của mình. */
+    @Transactional
+    public ReviewResponse setOwnerHidden(UserPrincipal owner, Long reviewId, HideReviewRequest request) {
+        Review review = findReview(reviewId);
+        Location location = findOwnerLocation(owner);
+        if (!location.getId().equals(review.getLocationId())) {
+            throw new AppException("Đánh giá này không thuộc địa điểm của bạn", HttpStatus.FORBIDDEN);
+        }
+        boolean hide = request.getHidden();
+        if (!hide && review.isHidden() && review.getHiddenBy() != null
+                && !review.getHiddenBy().equals(owner.getId())) {
+            throw new AppException("Đánh giá này do quản trị viên ẩn, bạn không thể hiện lại", HttpStatus.FORBIDDEN);
+        }
+        review.setHidden(hide);
+        review.setHiddenBy(hide ? owner.getId() : null);
+        reviewRepository.save(review);
+        return toResponses(List.of(review)).get(0);
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<ReviewResponse> listAdminReviews(Long locationId, Integer rating, Boolean hidden,
             int page, int size) {

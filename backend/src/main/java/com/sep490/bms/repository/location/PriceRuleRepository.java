@@ -23,4 +23,17 @@ public interface PriceRuleRepository extends JpaRepository<PriceRule, Long> {
     @Query("SELECT p FROM PriceRule p WHERE p.courtId = :courtId AND (p.validTo IS NULL OR p.validTo >= :date) "
             + "ORDER BY p.validFrom, p.startMinute")
     List<PriceRule> findNotExpired(@Param("courtId") Long courtId, @Param("date") LocalDate date);
+
+    /**
+     * F2 - UC09: toàn bộ bảng giá của một sân, sắp theo phút bắt đầu.
+     * PriceRuleService dùng danh sách này để quản lý và kiểm tra trùng khung giờ
+     * trước khi thêm/sửa; không lọc ngày hiệu lực ngay tại repository.
+     *
+     * Khi gộp AnhVM, hai nhánh có cùng chữ ký hàm, chỉ khác phần chú thích:
+     * giữ một khai báo và bổ sung mục đích sử dụng, không thay hành vi query.
+     * Giữ cả findValidOn cho PriceCalculator (giá hiệu lực vào ngày được chọn)
+     * và findNotExpired cho CourtQueryService (gồm giá sắp có hiệu lực).
+     * Không thay hai query đọc F3 đó bằng query quản lý F2 này vì phạm vi lọc khác nhau.
+     */
+    List<PriceRule> findAllByCourtIdOrderByStartMinuteAsc(Long courtId);
 }

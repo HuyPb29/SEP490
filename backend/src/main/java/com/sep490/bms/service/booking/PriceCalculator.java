@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -44,20 +45,27 @@ public class PriceCalculator {
         return result;
     }
 
-    /** Tổng giá niêm yết của khoảng [startMinute, endMinute) trên một sân. */
+    /** Giá niêm yết từng slot của khoảng [startMinute, endMinute) trên một sân, theo thứ tự giờ. */
     @Transactional(readOnly = true)
-    public BigDecimal totalPrice(Long courtId, LocalDate date, int startMinute, int endMinute) {
+    public Map<Integer, BigDecimal> rangePrices(Long courtId, LocalDate date, int startMinute, int endMinute) {
         Map<Integer, BigDecimal> prices = slotPrices(List.of(courtId), date).getOrDefault(courtId, Map.of());
-        BigDecimal total = BigDecimal.ZERO;
+        Map<Integer, BigDecimal> result = new LinkedHashMap<>();
         for (int s = startMinute; s < endMinute; s += MinuteTime.SLOT_MINUTES) {
             BigDecimal price = prices.get(s);
             if (price == null) {
                 // Không xảy ra nếu Owner đã cài giá phủ kín giờ mở cửa (DR18, MSG42); gặp thì là lỗi dữ liệu.
                 throw new AppException("Slot " + MinuteTime.format(s) + " chưa có giá", HttpStatus.CONFLICT);
             }
-            total = total.add(price);
+            result.put(s, price);
         }
-        return total;
+        return result;
+    }
+
+    /** Tổng giá niêm yết của khoảng [startMinute, endMinute) trên một sân. */
+    @Transactional(readOnly = true)
+    public BigDecimal totalPrice(Long courtId, LocalDate date, int startMinute, int endMinute) {
+        return rangePrices(courtId, date, startMinute, endMinute).values().stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /** apply_days: ký tự thứ 1 là thứ Hai … ký tự thứ 7 là Chủ nhật; '1' = áp dụng. */

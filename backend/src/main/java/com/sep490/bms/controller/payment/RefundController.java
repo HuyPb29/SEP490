@@ -1,53 +1,31 @@
 package com.sep490.bms.controller.payment;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RestController;
+import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.dto.request.RecordRefundRequest;
+import com.sep490.bms.entity.enums.RefundStatus;
+import com.sep490.bms.entity.reschedule.RefundRequest;
+import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.reschedule.RefundService;
+import jakarta.validation.Valid;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
 
-/**
- * Feature: F5 – Đổi lịch, hủy và hoàn tiền
- * Owner: Huy
- * UC: UC23 – Ghi nhận hoàn tiền
- */
 @RestController
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('OWNER')")
 public class RefundController {
-
-    /**
-     * UC23 – Ghi nhận hoàn tiền
-     * Feature: F5 – Đổi lịch, hủy và hoàn tiền
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
+    private final RefundService service;
     @GetMapping("/api/owner/refunds")
-    public ResponseEntity<Void> getStaffRefunds() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    public ApiResponse<List<RefundRequest>> list(@AuthenticationPrincipal UserPrincipal u,@RequestParam(required=false) RefundStatus status) {
+        return ApiResponse.success(service.list(u,status));
     }
-
-    /**
-     * UC23 – Ghi nhận hoàn tiền
-     * Feature: F5 – Đổi lịch, hủy và hoàn tiền
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
     @GetMapping("/api/owner/refunds/{id}")
-    public ResponseEntity<Void> getStaffRefundsById(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-
-    /**
-     * UC23 – Ghi nhận hoàn tiền
-     * Feature: F5 – Đổi lịch, hủy và hoàn tiền
-     * Owner: Huy
-     * Status: NOT_IMPLEMENTED
-     */
+    public ApiResponse<RefundRequest> detail(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id) { return ApiResponse.success(service.detail(u,id)); }
     @PostMapping("/api/owner/refunds/{id}/record")
-    public ResponseEntity<Void> postStaffRefundsByIdRecord(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    public ApiResponse<RefundRequest> record(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id,@Valid @RequestBody RecordRefundRequest r) {
+        return ApiResponse.success(service.record(u,id,r));
     }
 }

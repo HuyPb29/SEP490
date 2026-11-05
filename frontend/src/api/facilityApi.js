@@ -2,6 +2,8 @@ import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
 export const USE_MOCK_DATA = true;
+// UC11 đã nối Backend thật; UC12, UC13 vẫn dùng USE_MOCK_DATA
+export const USE_MOCK_SEARCH = false;
 
 const MOCK_FACILITIES = [
   {
@@ -103,8 +105,20 @@ function calcHaversineKm(lat1, lon1, lat2, lon2) {
   return Number((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1));
 }
 
+// Đổi LocationSummaryResponse của Backend về cấu trúc màn hình UC11 đang dùng
+function mapLocationSummary(location) {
+  return {
+    facility_id: location.id,
+    facility_name: location.name,
+    address: location.address,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    distance_km: location.distanceKm ?? null,
+  };
+}
+
 export async function searchFacilities({ keyword = '', userLat = null, userLng = null, page = 1, limit = 20 }) {
-  if (USE_MOCK_DATA) {
+  if (USE_MOCK_SEARCH) {
     await new Promise((r) => setTimeout(r, 250));
     const kw = keyword.trim().toLowerCase();
 
@@ -146,7 +160,10 @@ export async function searchFacilities({ keyword = '', userLat = null, userLng =
     params.lng = userLng;
   }
   const response = await axios.get('/api/locations', { params });
-  return response.data;
+  return {
+    success: response.data.success,
+    data: { items: (response.data.data || []).map(mapLocationSummary) },
+  };
 }
 
 // Mock data & API cho UC12 & UC13

@@ -477,6 +477,7 @@ CREATE TABLE refund_request (
 );
 CREATE INDEX ix_refund_location ON refund_request (location_id, status);
 CREATE INDEX ix_refund_booking ON refund_request (booking_id);
+CREATE UNIQUE INDEX ux_refund_complaint ON refund_request (complaint_id) WHERE complaint_id IS NOT NULL;
 
 -- voucher: Đợt voucher của một địa điểm, gồm cả voucher hệ thống tặng (UC24).
 CREATE TABLE voucher (
@@ -886,10 +887,10 @@ ALTER TABLE complaint ADD CONSTRAINT fkc_complaint_payment_location FOREIGN KEY 
 
 COMMIT TRANSACTION;
 GO
--- Kiểm tra: phải ra 36 bảng, 90 khóa ngoại một cột, 9 khóa ngoại kép.
-SELECT COUNT(*) AS so_bang_BMS FROM sys.tables WHERE name IN ('account', 'otp_request', 'service_registration', 'location', 'service_term', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'loyalty_accrual', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
+-- Kiểm tra: phải ra 37 bảng, 90 khóa ngoại một cột, 9 khóa ngoại kép.
+SELECT COUNT(*) AS so_bang_BMS FROM sys.tables WHERE name IN ('account', 'account_audit', 'otp_request', 'service_registration', 'location', 'service_term', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'loyalty_accrual', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
 SELECT COUNT(*) AS so_khoa_ngoai_BMS FROM sys.foreign_keys WHERE name LIKE 'fk[_]%' COLLATE Latin1_General_CS_AS;
 SELECT COUNT(*) AS so_khoa_ngoai_kep FROM sys.foreign_keys WHERE name LIKE 'fkc[_]%' COLLATE Latin1_General_CS_AS;
 -- Database mới được sao từ database hệ thống model. Nếu model có bảng thì các bảng đó hiện ở đây: không thuộc BMS, nên xóa.
-SELECT name AS bang_khong_thuoc_BMS FROM sys.tables WHERE name NOT IN ('account', 'otp_request', 'service_registration', 'location', 'service_term', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'loyalty_accrual', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
+SELECT name AS bang_khong_thuoc_BMS FROM sys.tables WHERE name NOT IN ('account', 'account_audit', 'otp_request', 'service_registration', 'location', 'service_term', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'loyalty_accrual', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
 GO

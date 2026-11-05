@@ -30,6 +30,9 @@ import lombok.Setter;
 @Builder
 public class Payment {
 
+    /** Số lần gửi lại chứng từ tối đa (BR34, P06): cố định (D154), database chặn bằng ck_payment_resubmit. */
+    public static final int MAX_RESUBMITS = 3;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -87,6 +90,51 @@ public class Payment {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * Player đã gửi lại chứng từ (UC18 #4): chờ Staff xem lại. Tính lại thời điểm gửi để
+     * mốc chậm xác nhận (BR58, P24) bắt đầu từ lần gửi này.
+     */
+    public void resubmitted(LocalDateTime now) {
+        this.status = PaymentStatus.AWAITING_CONFIRMATION;
+        this.submittedAt = now;
+    }
+
+    /**
+     * Staff (hoặc Owner) xác nhận tiền đã về đủ (UC19 #3, #6, #7). Doanh thu vẫn là amountDue (BR37);
+     * receivedAmount chỉ khác amountDue khi khách chuyển thừa (BR51).
+     */
+    public void confirm(Long staffId, BigDecimal receivedAmount, String receiptNo, LocalDateTime now) {
+        this.status = PaymentStatus.CONFIRMED;
+        this.confirmedBy = staffId;
+        this.receivedAmount = receivedAmount;
+        this.receiptNo = receiptNo;
+        this.confirmedAt = now;
+    }
+
+    /**
+     * Staff yêu cầu bổ sung (UC19 #4, BR34). Chỉ trừ lượt khi thông tin Player gửi bị sai;
+     * lỗi thiết bị tại quầy hoặc tiền về chậm thì không trừ.
+     */
+    public void requestResubmission(String reason, LocalDateTime deadline, boolean playerAtFault) {
+        this.status = PaymentStatus.RESUBMIT_REQUESTED;
+        this.resubmitReason = reason;
+        this.resubmitDeadline = deadline;
+        if (playerAtFault) {
+            this.resubmitCount++;
+        }
+    }
+
+    /** Thanh toán bị từ chối (UC19 #5), hoặc hết lượt gửi lại chứng từ (BR34). */
+    public void reject(String reason) {
+        this.status = PaymentStatus.REJECTED;
+        this.rejectReason = reason;
+    }
+
+    /** Hết lượt gửi lại: lỗi do Player mà đã dùng đủ P06 lượt thì không yêu cầu bổ sung được nữa (BR34). */
+    public boolean noResubmitLeft() {
+        return resubmitCount >= MAX_RESUBMITS;
+    }
 
     @PrePersist
     public void prePersist() {
