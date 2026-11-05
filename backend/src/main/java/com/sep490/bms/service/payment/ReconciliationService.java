@@ -1,16 +1,27 @@
 package com.sep490.bms.service.payment;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sep490.bms.dto.payment.ReconciliationRequest;
+import com.sep490.bms.dto.payment.ReconciliationResponse;
 import com.sep490.bms.dto.payment.ReconciliationSummaryResponse;
+import com.sep490.bms.entity.Account;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.enums.PaymentStatus;
+import com.sep490.bms.entity.payment.Reconciliation;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.AccountRepository;
 import com.sep490.bms.repository.payment.ConfirmedPaymentTotal;
 import com.sep490.bms.repository.payment.PaymentRepository;
+import com.sep490.bms.repository.payment.ReconciliationRepository;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 
@@ -25,12 +36,18 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ReconciliationService {
 
+    /** Unique (location_id, recon_date): mỗi địa điểm đối soát mỗi ngày một lần. */
+    static final String RECON_DAY_UNIQUE_INDEX = "ux_recon_day";
+    private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
     private final PaymentRepository paymentRepository;
+    private final ReconciliationRepository reconciliationRepository;
+    private final AccountRepository accountRepository;
     private final LocationAccessService locationAccessService;
 
     /**
-     * UC20 #1: tổng giao dịch đã xác nhận trong ngày của địa điểm Staff làm việc. Không gửi ngày thì lấy
-     * hôm nay. Không thay đổi gì.
+     * UC20 #1: tổng giao dịch đã xác nhận trong ngày của địa điểm Staff làm việc, kèm kết quả đã lưu nếu
+     * ngày đó đã đối soát. Không gửi ngày thì lấy hôm nay. Không thay đổi gì.
      */
     @Transactional(readOnly = true)
     public ReconciliationSummaryResponse getDaySummary(UserPrincipal staff, LocalDate date) {
@@ -49,7 +66,67 @@ public class ReconciliationService {
                 .confirmedCount(total.count())
                 .systemAmount(total.amountDue())
                 .overpaidAmount(total.receivedAmount().subtract(total.amountDue()))
+                .reconciliation(reconciliationRepository.findByLocationIdAndReconDate(location.getId(), day)
+                        .map(this::toResponse)
+                        .orElse(null))
                 .build();
+    }
+
+    /**
+     * UC20 #2–#4, FR61: lưu kết quả đối soát của một ngày (MSG60). Số hệ thống tính lại lúc lưu, không lấy
+     * từ màn hình. Lệch mà chưa có lý do thì báo MSG59. Mỗi ngày chỉ lưu một lần, không sửa (DR16):
+     * ngày đã đối soát thì 409, kể cả khi hai Staff cùng bấm (unique ux_recon_day).
+     */
+    @Transactional
+    public ReconciliationResponse submit(UserPrincipal staff, ReconciliationRequest request) {
+        return submit(staff, request, LocalDate.now());
+    }
+
+    ReconciliationResponse submit(UserPrincipal staff, ReconciliationRequest request, LocalDate today) {
+        LocalDate day = request.date();
+        requireNotFuture(day, today);
+        Location location = locationAccessService.selectedLocation(staff);
+        if (reconciliationRepository.existsByLocationIdAndReconDate(location.getId(), day)) {
+            throw alreadyReconciled(day);
+        }
+
+        BigDecimal systemAmount = confirmedTotal(location.getId(), day).amountDue();
+        BigDecimal difference = request.actualAmount().subtract(systemAmount);
+        String reason = trimToNull(request.reason());
+        if (difference.signum() != 0 && reason == null) {
+            throw new AppException("Số tiền lệch " + signedMoney(difference) + ". Vui lòng nhập lý do. (MSG59)");
+        }
+
+        Reconciliation saved;
+        try {
+            saved = reconciliationRepository.saveAndFlush(Reconciliation.builder()
+                    .locationId(location.getId())
+                    .reconDate(day)
+                    .systemAmount(systemAmount)
+                    .actualAmount(request.actualAmount())
+                    .reason(reason)
+                    .staffId(staff.getId())
+                    .build());
+        } catch (DataIntegrityViolationException e) {
+            String cause = e.getMostSpecificCause().getMessage();
+            if (cause == null || !cause.contains(RECON_DAY_UNIQUE_INDEX)) {
+                throw e;
+            }
+            throw alreadyReconciled(day);
+        }
+        return toResponse(saved);
+    }
+
+    /** UC20 #4: xem lại một kết quả đối soát của địa điểm. Kết quả của địa điểm khác trả 403 (NFR07). */
+    @Transactional(readOnly = true)
+    public ReconciliationResponse getById(UserPrincipal user, Long id) {
+        Location location = locationAccessService.selectedLocation(user);
+        Reconciliation reconciliation = reconciliationRepository.findById(id)
+                .orElseThrow(() -> new AppException("Không tìm thấy kết quả đối soát", HttpStatus.NOT_FOUND));
+        if (!location.getId().equals(reconciliation.getLocationId())) {
+            throw new AppException("Kết quả đối soát không thuộc địa điểm của bạn", HttpStatus.FORBIDDEN);
+        }
+        return toResponse(reconciliation);
     }
 
     private ConfirmedPaymentTotal confirmedTotal(Long locationId, LocalDate day) {
@@ -57,10 +134,34 @@ public class ReconciliationService {
                 day.atStartOfDay(), day.plusDays(1).atStartOfDay());
     }
 
+    private ReconciliationResponse toResponse(Reconciliation reconciliation) {
+        String staffName = accountRepository.findById(reconciliation.getStaffId())
+                .map(Account::getFullName)
+                .orElse(null);
+        return ReconciliationResponse.from(reconciliation, staffName);
+    }
+
     /** Ngày chưa đến thì chưa có gì để đối soát. */
     private static void requireNotFuture(LocalDate day, LocalDate today) {
         if (day.isAfter(today)) {
             throw new AppException("Không đối soát được ngày chưa đến");
         }
+    }
+
+    private static AppException alreadyReconciled(LocalDate day) {
+        return new AppException("Ngày " + DAY_FORMAT.format(day) + " đã được đối soát.", HttpStatus.CONFLICT);
+    }
+
+    private static String trimToNull(String text) {
+        if (text == null) {
+            return null;
+        }
+        String trimmed = text.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /** 50000 → "+50.000 đồng", -20000 → "-20.000 đồng". */
+    private static String signedMoney(BigDecimal amount) {
+        return String.format(Locale.forLanguageTag("vi-VN"), "%+,d đồng", amount.longValueExact());
     }
 }

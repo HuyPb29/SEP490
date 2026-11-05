@@ -30,4 +30,6 @@ public class ReconciliationSummaryResponse {
      * sao kê, nên hiện riêng để Staff biết một phần chênh lệch đến từ đâu.
      */
     private BigDecimal overpaidAmount;
+    /** Kết quả đã lưu nếu ngày này đã đối soát (mỗi ngày một lần); chưa đối soát thì trống. */
+    private ReconciliationResponse reconciliation;
 }
