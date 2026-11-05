@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import api from './api'
 
 import FacilitySearchPage from './pages/location/FacilitySearchPage'
@@ -11,21 +11,37 @@ import MyBookingsPage from './pages/booking/MyBookingsPage'
 import MultiSessionBookingPage from './pages/booking/MultiSessionBookingPage'
 
 export default function App() {
-  const [status, setStatus] = useState('checking...')
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
+  )
+}
+
+function AppContent() {
+  const location = useLocation()
+  const isMultiSessionBooking =
+    location.pathname === '/booking/multi' || location.pathname.endsWith('/package-booking')
+  const [status, setStatus] = useState(() =>
+    isMultiSessionBooking ? 'mock preview' : 'checking...'
+  )
 
   useEffect(() => {
+    if (isMultiSessionBooking) return
     api
       .get('/health')
       .then((res) => setStatus(res.data.status))
       .catch(() => setStatus('backend offline'))
-  }, [])
+  }, [isMultiSessionBooking])
+  const displayedStatus = isMultiSessionBooking ? 'mock preview' : status
 
   return (
-    <BrowserRouter>
-      {/* Backend Health Check Badge */}
-      <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
-        BE: {status}
-      </div>
+    <>
+      {!isMultiSessionBooking && (
+        <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
+          BE: {displayedStatus}
+        </div>
+      )}
 
       <Routes>
         {/* UC11: Tìm kiếm địa điểm (GET /api/v1/facilities/search) */}
@@ -33,6 +49,8 @@ export default function App() {
 
         {/* UC12-13: Thông tin & Lịch sân (GET /api/v1/facilities/:id & /court-schedule) */}
         <Route path="/facilities/:id" element={<FacilityDetailPage />} />
+        {/* UC15: Đặt nhiều buổi */}
+        <Route path="/facilities/:id/package-booking" element={<MultiSessionBookingPage />} />
 
         {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
         <Route path="/login" element={<AuthPage />} />
@@ -49,6 +67,6 @@ export default function App() {
         {/* UC17: Lịch sử booking của Player (GET /api/v1/players/me/bookings & POST /api/v1/bookings/:id/cancel) */}
         <Route path="/my-bookings" element={<MyBookingsPage />} />
       </Routes>
-    </BrowserRouter>
+    </>
   )
 }

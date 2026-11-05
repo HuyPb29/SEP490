@@ -218,16 +218,36 @@
 }
 
 .scrollScheduleBtn {
-  margin-top: 12px;
-  align-self: flex-start;
   background: #0d8a52;
   color: #ffffff;
-  border: none;
+  border: 1px solid #0d8a52;
+}
+
+.bookingActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.scrollScheduleBtn,
+.packageBookingBtn {
+  align-self: flex-start;
   border-radius: 12px;
   padding: 12px 20px;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.packageBookingBtn {
+  background: #ffffff;
+  border: 1px solid #0d8a52;
+  color: #0d8a52;
+}
+
+.packageBookingBtn:hover {
+  background: #f0fdf4;
 }
 
 /* Schedule Card (UC13) */

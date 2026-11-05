@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_BOOKING = false;
+export const USE_MOCK_BOOKING = true;
 
 // DR03, BR09: Danh sách Đội do Player làm chủ
 const MOCK_OWNED_TEAMS = [

@@ -165,7 +165,7 @@ export default function FacilityDetailPage() {
         <div className={styles.navContainer}>
           <div className={styles.brand} onClick={() => navigate('/')}>
             <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>BMS</span>
+            <span className={styles.brandText}>Courtly</span>
           </div>
           <nav className={styles.navLinks}>
             <Link to="/" className={styles.activeLink}>Find Court</Link>
@@ -221,13 +221,26 @@ export default function FacilityDetailPage() {
             </p>
             <p className={styles.infoLine}>Contact: {facility.contact_phone}</p>
 
-            <button
-              type="button"
-              className={styles.scrollScheduleBtn}
-              onClick={() => scheduleRef.current?.scrollIntoView({ behavior: 'smooth' })}
-            >
-              View schedule & book
-            </button>
+            <div className={styles.bookingActions}>
+              <button
+                type="button"
+                className={styles.scrollScheduleBtn}
+                onClick={() => scheduleRef.current?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                View schedule &amp; book
+              </button>
+              <button
+                type="button"
+                className={styles.packageBookingBtn}
+                onClick={() =>
+                  navigate(`/facilities/${id}/package-booking`, {
+                    state: { facilityName: facility.facility_name },
+                  })
+                }
+              >
+                Multi-Session Booking
+              </button>
+            </div>
           </div>
         </section>
 

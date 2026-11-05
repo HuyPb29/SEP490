@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_DATA = false;
+export const USE_MOCK_DATA = true;
 
 const MOCK_FACILITIES = [
   {

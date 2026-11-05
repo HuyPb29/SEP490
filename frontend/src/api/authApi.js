@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_AUTH = false;
+export const USE_MOCK_AUTH = true;
 
 // In-memory DB giả lập
 const mockUsers = [

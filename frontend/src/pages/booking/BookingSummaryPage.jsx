@@ -283,12 +283,12 @@ export default function BookingSummaryPage() {
 
   return (
     <div className={styles.pageWrapper}>
-      {/* Top Navbar (Thương hiệu BMS) */}
+      {/* Top Navbar */}
       <header className={styles.navbar}>
         <div className={styles.navContainer}>
           <div className={styles.brand} onClick={() => navigate('/')}>
             <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>BMS</span>
+            <span className={styles.brandText}>Courtly</span>
           </div>
 
           <nav className={styles.navLinks}>

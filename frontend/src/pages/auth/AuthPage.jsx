@@ -224,7 +224,7 @@ export default function AuthPage() {
       <aside className={styles.leftPanel}>
         <div className={styles.brandHeader} onClick={() => navigate('/')}>
           <span className={styles.brandIcon}>⚡</span>
-          <span className={styles.brandName}>BMS</span>
+          <span className={styles.brandName}>Courtly</span>
         </div>
         <div className={styles.heroCopy}>
           <h1 className={styles.heroHeading}>Book badminton courts with ease</h1>
