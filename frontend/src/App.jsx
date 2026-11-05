@@ -10,6 +10,7 @@ import BookingPaymentPage from './pages/booking/BookingPaymentPage'
 import MyBookingsPage from './pages/booking/MyBookingsPage'
 import MultiSessionBookingPage from './pages/booking/MultiSessionBookingPage'
 import OpenMatchesPage from './pages/matches/OpenMatchesPage'
+import StaffDashboardPage from './pages/staff/StaffDashboardPage'
 
 export default function App() {
   return (
@@ -23,7 +24,8 @@ function AppContent() {
   const location = useLocation()
   const isMultiSessionBooking =
     location.pathname === '/booking/multi' || location.pathname.endsWith('/package-booking')
-  const isFrontendMockPage = isMultiSessionBooking || location.pathname === '/open-matches'
+  const isFrontendMockPage =
+    isMultiSessionBooking || location.pathname === '/open-matches' || location.pathname === '/staff/dashboard'
   const [status, setStatus] = useState(() => (isFrontendMockPage ? 'mock preview' : 'checking...'))
 
   useEffect(() => {
@@ -53,6 +55,9 @@ function AppContent() {
         <Route path="/facilities/:id/package-booking" element={<MultiSessionBookingPage />} />
         {/* UC29-30: Open matches */}
         <Route path="/open-matches" element={<OpenMatchesPage />} />
+
+        {/* UC34: Staff dashboard mock preview */}
+        <Route path="/staff/dashboard" element={<StaffDashboardPage />} />
 
         {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
         <Route path="/login" element={<AuthPage />} />
