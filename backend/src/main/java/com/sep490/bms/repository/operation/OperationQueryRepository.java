@@ -93,11 +93,11 @@ public class OperationQueryRepository {
                 locationId, java.sql.Date.valueOf(from), java.sql.Date.valueOf(to));
     }
 
-    /** Doanh thu theo ngày xác nhận của các khoản thanh toán đã xác nhận. */
+    /** Doanh thu theo ngày xác nhận, tính theo số tiền phải trả, không tính tiền chuyển thừa (BR37, BR51). */
     public List<AmountRow> sumConfirmedPayments(Long locationId, LocalDate from, LocalDate to) {
         return jdbc.query("""
                 SELECT CAST(confirmed_at AS DATE) AS d,
-                       SUM(COALESCE(received_amount, amount_due)) AS amount, COUNT(*) AS cnt
+                       SUM(amount_due) AS amount, COUNT(*) AS cnt
                 FROM payment
                 WHERE location_id = ? AND status = 'CONFIRMED'
                   AND confirmed_at >= ? AND confirmed_at < ?
