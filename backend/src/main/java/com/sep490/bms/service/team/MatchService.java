@@ -114,6 +114,7 @@ public class MatchService {
         match.setStatus(MatchStatus.CLOSED);
         match.setClosedAt(LocalDateTime.now());
         matchRepository.saveAndFlush(match);
+        cancelPendingRequests(matchId);
         return getMatch(userId, matchId);
     }
 
@@ -128,13 +129,7 @@ public class MatchService {
         match.setClosedAt(LocalDateTime.now());
         matchRepository.saveAndFlush(match);
 
-        // Các yêu cầu chưa được duyệt không còn ý nghĩa nữa.
-        List<MatchJoinRequest> pending = matchJoinRequestRepository.findByMatchIdAndStatus(matchId, JoinRequestStatus.PENDING);
-        pending.forEach(r -> {
-            r.setStatus(JoinRequestStatus.CANCELLED);
-            r.setDecidedAt(LocalDateTime.now());
-        });
-        matchJoinRequestRepository.saveAll(pending);
+        cancelPendingRequests(matchId);
         return getMatch(userId, matchId);
     }
 
@@ -164,12 +159,17 @@ public class MatchService {
         match.setCurrentPlayers(match.getCurrentPlayers() + 1);
         match.setNeededPlayers(match.getNeededPlayers() - 1);
         // Người cuối cùng được duyệt thì kèo đầy và tự đóng.
-        if (match.getNeededPlayers() == 0) {
+        boolean full = match.getNeededPlayers() == 0;
+        if (full) {
             match.setStatus(MatchStatus.CLOSED);
             match.setClosedAt(LocalDateTime.now());
         }
         matchRepository.save(match);
-        return decide(request, JoinRequestStatus.APPROVED);
+        JoinRequestResponse approved = decide(request, JoinRequestStatus.APPROVED);
+        if (full) {
+            cancelPendingRequests(match.getId());
+        }
+        return approved;
     }
 
     @Transactional
@@ -257,18 +257,29 @@ public class MatchService {
     // ---------------------------------------------------------------- Job định kỳ
 
     /**
-     * Đóng các kèo đã kết thúc: hết hạn khi tới giờ chơi, hủy khi booking gốc không còn hiệu lực,
-     * rồi hủy các yêu cầu tham gia còn chờ của những kèo đó.
+     * UC37 bước 8, JOB10, FR101: kèo của booking bị hủy thì hết hạn; kèo còn tuyển khi tới giờ chơi thì tự đóng;
+     * sau đó hủy các yêu cầu tham gia còn chờ của những kèo đã kết thúc (FR102).
+     * Booking đổi lịch không làm kèo thay đổi: chủ kèo tự quyết giữ hay hủy (FR90).
      */
     @Transactional
     public int sweepEndedMatches() {
-        int cancelled = matchQueryRepository.cancelMatchesOfInvalidBookings();
-        int expired = matchQueryRepository.expireStartedMatches();
+        int expired = matchQueryRepository.expireMatchesOfCancelledBookings();
+        int closed = matchQueryRepository.closeStartedMatches();
         matchQueryRepository.cancelPendingRequestsOfEndedMatches();
-        return cancelled + expired;
+        return expired + closed;
     }
 
     // ---------------------------------------------------------------- Helper
+
+    /** FR102: kèo đóng hoặc bị hủy thì các yêu cầu còn chờ duyệt bị hủy theo. */
+    private void cancelPendingRequests(Long matchId) {
+        List<MatchJoinRequest> pending = matchJoinRequestRepository.findByMatchIdAndStatus(matchId, JoinRequestStatus.PENDING);
+        pending.forEach(r -> {
+            r.setStatus(JoinRequestStatus.CANCELLED);
+            r.setDecidedAt(LocalDateTime.now());
+        });
+        matchJoinRequestRepository.saveAll(pending);
+    }
 
     private MatchResponse enrich(MatchResponse match, Long userId) {
         boolean isHost = match.getHostId().equals(userId);
