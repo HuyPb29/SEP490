@@ -18,9 +18,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sep490.bms.dto.operation.BookingReportResponse;
+import com.sep490.bms.dto.operation.CancellationReportResponse;
 import com.sep490.bms.dto.operation.OccupancyReportResponse;
+import com.sep490.bms.dto.operation.RescheduleReportResponse;
 import com.sep490.bms.dto.operation.RevenueReportResponse;
 import com.sep490.bms.dto.operation.StaffDashboardResponse;
+import com.sep490.bms.dto.operation.VoucherReportResponse;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.LocationRepository;
@@ -29,9 +32,12 @@ import com.sep490.bms.repository.operation.OperationQueryRepository;
 import com.sep490.bms.repository.operation.OperationQueryRepository.AmountRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.BookingCountRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.BookingDetailRow;
+import com.sep490.bms.repository.operation.OperationQueryRepository.CancellationRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.CourtRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.OpeningRow;
+import com.sep490.bms.repository.operation.OperationQueryRepository.RescheduleRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.SlotRow;
+import com.sep490.bms.repository.operation.OperationQueryRepository.VoucherUsageRow;
 import com.sep490.bms.security.UserPrincipal;
 
 import lombok.RequiredArgsConstructor;
@@ -107,6 +113,119 @@ public class OperationService {
         Location location = findOwnerLocation(owner);
         LocalDate[] range = resolveRange(from, to);
         return buildOccupancyReport(location.getId(), range[0], range[1]);
+    }
+
+    public CancellationReportResponse getCancellationReport(UserPrincipal owner, LocalDate from, LocalDate to) {
+        Location location = findOwnerLocation(owner);
+        LocalDate[] range = resolveRange(from, to);
+        Map<LocalDate, long[]> byDay = new HashMap<>();
+        long byPlayer = 0;
+        long byFacility = 0;
+        BigDecimal amount = BigDecimal.ZERO;
+        for (CancellationRow r : queryRepository.countCancellations(location.getId(), range[0], range[1])) {
+            long[] day = byDay.computeIfAbsent(r.getPlayDate(), d -> new long[2]);
+            if ("CANCELLED_BY_PLAYER".equals(r.getStatus())) {
+                day[0] += r.getCount();
+                byPlayer += r.getCount();
+            } else {
+                day[1] += r.getCount();
+                byFacility += r.getCount();
+            }
+            amount = amount.add(r.getAmount() == null ? BigDecimal.ZERO : r.getAmount());
+        }
+        List<CancellationReportResponse.DayItem> daily = new ArrayList<>();
+        for (LocalDate d = range[0]; !d.isAfter(range[1]); d = d.plusDays(1)) {
+            long[] c = byDay.getOrDefault(d, new long[2]);
+            daily.add(CancellationReportResponse.DayItem.builder()
+                    .date(d).cancelledByPlayer(c[0]).cancelledByFacility(c[1]).build());
+        }
+        AmountRow refunds = queryRepository.sumRefundRequests(location.getId(), range[0], range[1]);
+        return CancellationReportResponse.builder()
+                .from(range[0]).to(range[1])
+                .totalCancelled(byPlayer + byFacility)
+                .cancelledByPlayer(byPlayer)
+                .cancelledByFacility(byFacility)
+                .cancelledAmount(amount)
+                .refundRequests(refunds.getCount())
+                .refundedAmount(refunds.getAmount())
+                .daily(daily)
+                .build();
+    }
+
+    public RescheduleReportResponse getRescheduleReport(UserPrincipal owner, LocalDate from, LocalDate to) {
+        Location location = findOwnerLocation(owner);
+        LocalDate[] range = resolveRange(from, to);
+        Map<String, Long> byStatus = new TreeMap<>();
+        Map<LocalDate, long[]> byDay = new HashMap<>();
+        long total = 0;
+        long approved = 0;
+        long free = 0;
+        long paid = 0;
+        BigDecimal extra = BigDecimal.ZERO;
+        for (RescheduleRow r : queryRepository.countReschedules(location.getId(), range[0], range[1])) {
+            boolean isApproved = "APPROVED".equals(r.getStatus());
+            total += r.getCount();
+            if (r.isFree()) {
+                free += r.getCount();
+            } else {
+                paid += r.getCount();
+            }
+            if (isApproved) {
+                approved += r.getCount();
+                extra = extra.add(r.getExtraAmount() == null ? BigDecimal.ZERO : r.getExtraAmount());
+            }
+            byStatus.merge(r.getStatus(), r.getCount(), Long::sum);
+            long[] day = byDay.computeIfAbsent(r.getDate(), d -> new long[2]);
+            day[0] += r.getCount();
+            day[1] += isApproved ? r.getCount() : 0;
+        }
+        List<RescheduleReportResponse.DayItem> daily = new ArrayList<>();
+        for (LocalDate d = range[0]; !d.isAfter(range[1]); d = d.plusDays(1)) {
+            long[] c = byDay.getOrDefault(d, new long[2]);
+            daily.add(RescheduleReportResponse.DayItem.builder().date(d).requests(c[0]).approved(c[1]).build());
+        }
+        return RescheduleReportResponse.builder()
+                .from(range[0]).to(range[1])
+                .totalRequests(total)
+                .approved(approved)
+                .freeRequests(free)
+                .paidRequests(paid)
+                .extraAmount(extra)
+                .byStatus(byStatus)
+                .daily(daily)
+                .build();
+    }
+
+    public VoucherReportResponse getVoucherReport(UserPrincipal owner, LocalDate from, LocalDate to) {
+        Location location = findOwnerLocation(owner);
+        LocalDate[] range = resolveRange(from, to);
+        Map<Long, VoucherReportResponse.VoucherItem> items = new LinkedHashMap<>();
+        long used = 0;
+        long returned = 0;
+        BigDecimal discount = BigDecimal.ZERO;
+        for (VoucherUsageRow r : queryRepository.countVoucherUsages(location.getId(), range[0], range[1])) {
+            VoucherReportResponse.VoucherItem item = items.computeIfAbsent(r.getVoucherId(),
+                    id -> VoucherReportResponse.VoucherItem.builder()
+                            .voucherId(id).name(r.getName()).code(r.getCode()).source(r.getSource())
+                            .totalDiscount(BigDecimal.ZERO).build());
+            if ("USED".equals(r.getStatus())) {
+                BigDecimal amount = r.getDiscount() == null ? BigDecimal.ZERO : r.getDiscount();
+                item.setUsedCount(item.getUsedCount() + r.getCount());
+                item.setTotalDiscount(item.getTotalDiscount().add(amount));
+                used += r.getCount();
+                discount = discount.add(amount);
+            } else {
+                item.setReturnedCount(item.getReturnedCount() + r.getCount());
+                returned += r.getCount();
+            }
+        }
+        return VoucherReportResponse.builder()
+                .from(range[0]).to(range[1])
+                .usedCount(used)
+                .returnedCount(returned)
+                .totalDiscount(discount)
+                .vouchers(new ArrayList<>(items.values()))
+                .build();
     }
 
     private BookingReportResponse buildBookingReport(Long locationId, LocalDate from, LocalDate to) {

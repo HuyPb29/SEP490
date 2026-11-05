@@ -103,9 +103,15 @@ public class ReviewController {
         return ResponseEntity.ok(ApiResponse.success("Đã cập nhật đánh giá",
                 reviewService.setHidden(currentUser.getId(), id, request)));
     }
-    /** API contract scaffold; business service is not implemented yet. */
+
+    /** UC32 – Owner ẩn hoặc hiện lại đánh giá của địa điểm mình. */
     @PatchMapping("/api/owner/reviews/{id}")
-    public ResponseEntity<Void> hideOwnerReview(@PathVariable("id") Long id) {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<ApiResponse<ReviewResponse>> hideOwnerReview(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @PathVariable("id") Long id,
+            @Valid @RequestBody HideReviewRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật đánh giá",
+                reviewService.setOwnerHidden(currentUser, id, request)));
     }
 }
