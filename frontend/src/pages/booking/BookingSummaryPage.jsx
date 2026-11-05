@@ -288,7 +288,7 @@ export default function BookingSummaryPage() {
               Find Courts
             </Link>
             <a href="#matches">Open Matches</a>
-            <a href="#my-bookings">My Bookings</a>
+            <Link to="/my-bookings">My Bookings</Link>
           </nav>
 
           <div className={styles.userProfile}>

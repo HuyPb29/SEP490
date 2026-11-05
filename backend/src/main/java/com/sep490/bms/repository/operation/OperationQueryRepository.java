@@ -97,7 +97,7 @@ public class OperationQueryRepository {
     public List<AmountRow> sumConfirmedPayments(Long locationId, LocalDate from, LocalDate to) {
         return jdbc.query("""
                 SELECT CAST(confirmed_at AS DATE) AS d,
-                       SUM(COALESCE(received_amount, amount_due)) AS amount, COUNT(*) AS cnt
+                       SUM(amount_due) AS amount, COUNT(*) AS cnt
                 FROM payment
                 WHERE location_id = ? AND status = 'CONFIRMED'
                   AND confirmed_at >= ? AND confirmed_at < ?
@@ -111,8 +111,11 @@ public class OperationQueryRepository {
     public List<AmountRow> sumRefunds(Long locationId, LocalDate from, LocalDate to) {
         return jdbc.query("""
                 SELECT refund_date AS d, SUM(refunded_amount) AS amount, COUNT(*) AS cnt
-                FROM refund_request
-                WHERE location_id = ? AND status = 'REFUNDED' AND refund_date BETWEEN ? AND ?
+                FROM refund_request r
+                WHERE r.location_id = ? AND r.status = 'REFUNDED' AND r.refund_date BETWEEN ? AND ?
+                  AND EXISTS (SELECT 1 FROM booking b JOIN payment p
+                    ON (p.booking_id=b.id OR p.package_id=b.package_id)
+                    WHERE b.id=r.booking_id AND p.status='CONFIRMED')
                 GROUP BY refund_date
                 """,
                 (rs, i) -> new AmountRow(rs.getDate("d").toLocalDate(), rs.getBigDecimal("amount"), rs.getLong("cnt")),
@@ -176,6 +179,92 @@ public class OperationQueryRepository {
                         rs.getBigDecimal("list_amount"), rs.getBigDecimal("voucher_discount"),
                         rs.getBigDecimal("point_discount"), rs.getBigDecimal("final_amount")),
                 locationId, java.sql.Date.valueOf(from), java.sql.Date.valueOf(to));
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class CancellationRow {
+        private final LocalDate playDate;
+        private final String status;
+        private final long count;
+        private final BigDecimal amount;
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class RescheduleRow {
+        private final LocalDate date;
+        private final String status;
+        private final boolean free;
+        private final long count;
+        private final BigDecimal extraAmount;
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class VoucherUsageRow {
+        private final Long voucherId;
+        private final String name;
+        private final String code;
+        private final String source;
+        private final String status;
+        private final long count;
+        private final BigDecimal discount;
+    }
+
+    /** Booking đã hủy theo ngày chơi và bên hủy. */
+    public List<CancellationRow> countCancellations(Long locationId, LocalDate from, LocalDate to) {
+        return jdbc.query("""
+                SELECT play_date, status, COUNT(*) AS cnt, SUM(final_amount) AS amount
+                FROM booking
+                WHERE location_id = ? AND play_date BETWEEN ? AND ?
+                  AND status IN ('CANCELLED_BY_PLAYER','CANCELLED_BY_FACILITY')
+                GROUP BY play_date, status
+                """,
+                (rs, i) -> new CancellationRow(rs.getDate("play_date").toLocalDate(), rs.getString("status"),
+                        rs.getLong("cnt"), rs.getBigDecimal("amount")),
+                locationId, java.sql.Date.valueOf(from), java.sql.Date.valueOf(to));
+    }
+
+    /** Số yêu cầu hoàn tiền tạo trong kỳ và tổng tiền đã hoàn (nếu có) của chúng. */
+    public AmountRow sumRefundRequests(Long locationId, LocalDate from, LocalDate to) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*) AS cnt, COALESCE(SUM(refunded_amount), 0) AS amount
+                FROM refund_request
+                WHERE location_id = ? AND created_at >= ? AND created_at < ?
+                """,
+                (rs, i) -> new AmountRow(null, rs.getBigDecimal("amount"), rs.getLong("cnt")),
+                locationId, Timestamp.valueOf(from.atStartOfDay()), Timestamp.valueOf(to.plusDays(1).atStartOfDay()));
+    }
+
+    /** Yêu cầu đổi lịch tạo trong kỳ, theo ngày tạo, trạng thái và miễn phí hay không. */
+    public List<RescheduleRow> countReschedules(Long locationId, LocalDate from, LocalDate to) {
+        return jdbc.query("""
+                SELECT CAST(r.created_at AS DATE) AS d, r.status, r.is_free,
+                       COUNT(*) AS cnt, SUM(r.extra_amount) AS extra
+                FROM reschedule_request r JOIN booking b ON b.id = r.booking_id
+                WHERE b.location_id = ? AND r.created_at >= ? AND r.created_at < ?
+                GROUP BY CAST(r.created_at AS DATE), r.status, r.is_free
+                """,
+                (rs, i) -> new RescheduleRow(rs.getDate("d").toLocalDate(), rs.getString("status"),
+                        rs.getBoolean("is_free"), rs.getLong("cnt"), rs.getBigDecimal("extra")),
+                locationId, Timestamp.valueOf(from.atStartOfDay()), Timestamp.valueOf(to.plusDays(1).atStartOfDay()));
+    }
+
+    /** Lượt dùng voucher của địa điểm trong kỳ, theo từng voucher và trạng thái lượt dùng. */
+    public List<VoucherUsageRow> countVoucherUsages(Long locationId, LocalDate from, LocalDate to) {
+        return jdbc.query("""
+                SELECT v.id, v.name, v.code, v.source, u.status, COUNT(*) AS cnt,
+                       SUM(u.discount_amount) AS discount
+                FROM voucher_usage u JOIN voucher v ON v.id = u.voucher_id
+                WHERE v.location_id = ? AND u.used_at >= ? AND u.used_at < ?
+                GROUP BY v.id, v.name, v.code, v.source, u.status
+                ORDER BY v.name
+                """,
+                (rs, i) -> new VoucherUsageRow(rs.getLong("id"), rs.getString("name"), rs.getString("code"),
+                        rs.getString("source"), rs.getString("status"), rs.getLong("cnt"),
+                        rs.getBigDecimal("discount")),
+                locationId, Timestamp.valueOf(from.atStartOfDay()), Timestamp.valueOf(to.plusDays(1).atStartOfDay()));
     }
 
     public long countPaymentsAwaitingConfirmation(Long locationId) {

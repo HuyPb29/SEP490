@@ -33,6 +33,7 @@ public class OpeningExceptionService {
 
     private final OpeningExceptionRepository openingExceptionRepository;
     private final LocationManagementService locationManagementService;
+    private final com.sep490.bms.service.reschedule.CancellationService cancellations;
 
     /** UC08 - Danh sách ngoại lệ của địa điểm, lọc tuỳ chọn theo khoảng ngày. */
     @Transactional(readOnly = true)
@@ -71,7 +72,9 @@ public class OpeningExceptionService {
                 .closeMinute(close)
                 .note(trimToNull(request.getNote()))
                 .build();
-        return OpeningExceptionDto.fromEntity(openingExceptionRepository.save(entity));
+        openingExceptionRepository.save(entity);
+        cancellations.hoursChanged(location.getId(), user.getId());
+        return OpeningExceptionDto.fromEntity(entity);
     }
 
     /** UC08 - Sửa ngoại lệ. Trường null nghĩa là giữ nguyên. */
@@ -100,7 +103,9 @@ public class OpeningExceptionService {
         if (request.getNote() != null) {
             entity.setNote(trimToNull(request.getNote()));
         }
-        return OpeningExceptionDto.fromEntity(openingExceptionRepository.save(entity));
+        openingExceptionRepository.save(entity);
+        cancellations.hoursChanged(entity.getLocationId(), user.getId());
+        return OpeningExceptionDto.fromEntity(entity);
     }
 
     /** UC08 - Xoá ngoại lệ, ngày đó quay lại dùng giờ mở cửa thường. */
@@ -109,6 +114,7 @@ public class OpeningExceptionService {
         OpeningException entity = requireException(exceptionId);
         locationManagementService.ownedLocation(user, entity.getLocationId());
         openingExceptionRepository.delete(entity);
+        cancellations.hoursChanged(entity.getLocationId(), user.getId());
     }
 
     // --------------------------------------------------------------- helpers

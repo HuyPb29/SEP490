@@ -28,11 +28,12 @@ import lombok.RequiredArgsConstructor;
 public class LoyaltyPointService {
     public static final int POINT_VALUE=500;
     public static final int EARNING_RATE=10000;
+    /** BR41, D161: mọi booking và gói, có hay không có voucher. */
+    public static final int MAX_POINT_PERCENT=50;
     private final PlayerLocationBalanceRepository balances;
     private final PointTransactionRepository transactions;
     private final LoyaltyAccrualRepository accruals;
     private final VoucherUsageRepository usages;
-    private final VoucherRepository vouchers;
     private final LoyaltyMilestoneService milestones;
     private final LocationAccessService scope;
     private final EntityManager em;
@@ -96,20 +97,12 @@ public class LoyaltyPointService {
                 :transactions.findFirstByPackageIdAndTypeOrderByIdAsc(pkg,type);
     }
     /** Preview is pure: no balance creation or reservation. F3 calls redeem only after confirmation. */
-    public BigDecimal preview(Long player,Long location,BigDecimal afterVoucher,Long voucherId,int points) {
-        if(points<2) throw new AppException("MSG37: Dùng tối thiểu 2 điểm (1.000đ)");
+    public BigDecimal preview(Long player,Long location,BigDecimal afterVoucher,int points) {
         int available=balances.findByPlayerIdAndLocationId(player,location).map(PlayerLocationBalance::getPointBalance).orElse(0);
-        if(points>available) throw new AppException("MSG37: Điểm vượt số dư");
+        if(points<2 || points>available) throw new AppException("Mỗi lần dùng điểm phải giảm ít nhất 1.000 đồng và không vượt số dư. (MSG37)");
         BigDecimal discount=BigDecimal.valueOf(points).multiply(BigDecimal.valueOf(POINT_VALUE));
-        // Existing schema requires a strictly positive cash amount; preserve until the payment module supports zero.
-        if(afterVoucher==null || discount.compareTo(afterVoucher)>=0) throw new AppException("Giảm điểm phải nhỏ hơn số tiền còn lại");
-        if(voucherId!=null) {
-            Voucher v=vouchers.findById(voucherId).orElseThrow(() -> new AppException("Không tìm thấy voucher"));
-            if(!location.equals(v.getLocationId())) throw new AppException("Voucher khác địa điểm");
-            BigDecimal max=v.isAllowPoints() && v.getMaxPointPercent()!=null
-                    ? afterVoucher.multiply(BigDecimal.valueOf(v.getMaxPointPercent())).divide(BigDecimal.valueOf(100),0,RoundingMode.DOWN):BigDecimal.ZERO;
-            if(discount.compareTo(max)>0) throw new AppException("MSG38: Tối đa "+max.divideToIntegralValue(BigDecimal.valueOf(POINT_VALUE))+" điểm khi kết hợp voucher");
-        }
+        BigDecimal max=afterVoucher.multiply(BigDecimal.valueOf(MAX_POINT_PERCENT)).divide(BigDecimal.valueOf(100),0,RoundingMode.DOWN);
+        if(discount.compareTo(max)>0) throw new AppException("Bạn được dùng tối đa "+max.divideToIntegralValue(BigDecimal.valueOf(POINT_VALUE)).toBigInteger()+" điểm cho khoản thanh toán này. (MSG38)");
         return discount;
     }
     @Transactional(propagation=Propagation.MANDATORY)
@@ -142,7 +135,7 @@ public class LoyaltyPointService {
         }
         var usage=booking!=null ? usages.findByBookingId(booking):usages.findByPackageId(pkg);
         if(voucherDiscount.signum()>0 && usage.isEmpty()) throw new AppException("Thiếu lịch sử voucher",HttpStatus.CONFLICT);
-        BigDecimal discount=preview(player,location,amount,usage.map(VoucherUsage::getVoucherId).orElse(null),points);
+        BigDecimal discount=preview(player,location,amount,points);
         change(b,booking,pkg,PointTransactionType.REDEEM,-points,null,"Dùng điểm khi xác nhận đặt sân",player);
         return discount;
     }

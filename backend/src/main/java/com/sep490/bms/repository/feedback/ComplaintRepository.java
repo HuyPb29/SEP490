@@ -1,5 +1,9 @@
 package com.sep490.bms.repository.feedback;
 
+import java.util.Optional;
+
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +16,11 @@ import com.sep490.bms.entity.feedback.Complaint;
 
 @Repository
 public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
+
+    /** Serialize decisions and their refund/point side effects in the service transaction. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM Complaint c WHERE c.id = :id")
+    Optional<Complaint> findByIdForUpdate(@Param("id") Long id);
 
     Page<Complaint> findByCreatedBy(Long createdBy, Pageable pageable);
 

@@ -254,6 +254,20 @@ public class MatchService {
         return decide(request, JoinRequestStatus.CANCELLED);
     }
 
+    // ---------------------------------------------------------------- Job định kỳ
+
+    /**
+     * Đóng các kèo đã kết thúc: hết hạn khi tới giờ chơi, hủy khi booking gốc không còn hiệu lực,
+     * rồi hủy các yêu cầu tham gia còn chờ của những kèo đó.
+     */
+    @Transactional
+    public int sweepEndedMatches() {
+        int cancelled = matchQueryRepository.cancelMatchesOfInvalidBookings();
+        int expired = matchQueryRepository.expireStartedMatches();
+        matchQueryRepository.cancelPendingRequestsOfEndedMatches();
+        return cancelled + expired;
+    }
+
     // ---------------------------------------------------------------- Helper
 
     private MatchResponse enrich(MatchResponse match, Long userId) {
