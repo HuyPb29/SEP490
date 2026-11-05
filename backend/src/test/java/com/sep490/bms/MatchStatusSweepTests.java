@@ -48,13 +48,14 @@ class MatchStatusSweepTests {
     }
 
     @Test
-    void openMatchPastStartTimeExpiresAndPendingRequestsAreCancelled() {
+    void openMatchPastStartTimeClosesAndPendingRequestsAreCancelled() {
         long match = match(booking("CONFIRMED", LocalDate.now().minusDays(1)), "OPEN");
         long request = joinRequest(match);
 
         matches.sweepEndedMatches();
 
-        assertThat(status("[match]", match)).isEqualTo("EXPIRED");
+        // JOB10, UC28 A5
+        assertThat(status("[match]", match)).isEqualTo("CLOSED");
         assertThat(status("match_join_request", request)).isEqualTo("CANCELLED");
     }
 
@@ -70,14 +71,15 @@ class MatchStatusSweepTests {
     }
 
     @Test
-    void matchOfCancelledBookingIsCancelledEvenWhenClosed() {
+    void matchOfCancelledBookingExpiresEvenWhenClosed() {
         long open = match(booking("CANCELLED_BY_PLAYER", LocalDate.now().plusDays(2)), "OPEN");
         long closed = match(booking("CANCELLED_BY_FACILITY", LocalDate.now().plusDays(3)), "CLOSED");
 
         matches.sweepEndedMatches();
 
-        assertThat(status("[match]", open)).isEqualTo("CANCELLED");
-        assertThat(status("[match]", closed)).isEqualTo("CANCELLED");
+        // FR101, UC28 A3
+        assertThat(status("[match]", open)).isEqualTo("EXPIRED");
+        assertThat(status("[match]", closed)).isEqualTo("EXPIRED");
     }
 
     @Test
@@ -87,6 +89,19 @@ class MatchStatusSweepTests {
         matches.sweepEndedMatches();
 
         assertThat(status("[match]", match)).isEqualTo("CLOSED");
+    }
+
+    @Test
+    void rescheduledBookingKeepsItsMatchForTheHostToDecide() {
+        long match = match(booking("CONFIRMED", LocalDate.now().plusDays(5)), "OPEN");
+        jdbc.update("UPDATE booking SET play_date = ?, reschedule_count = 1 WHERE id = "
+                + "(SELECT booking_id FROM [match] WHERE id = ?)", java.sql.Date.valueOf(LocalDate.now().plusDays(6)),
+                match);
+
+        matches.sweepEndedMatches();
+
+        // FR90: hệ thống không tự đổi kèo khi đổi lịch, chủ kèo quyết định giữ hay hủy.
+        assertThat(status("[match]", match)).isEqualTo("OPEN");
     }
 
     // ---------------------------------------------------------------- fixtures
