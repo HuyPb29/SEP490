@@ -27,6 +27,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @Query("SELECT p FROM Payment p WHERE p.id = :id")
     Optional<Payment> findByIdForUpdate(@Param("id") Long id);
 
+    /** Payment của một booking; mỗi booking có nhiều nhất một dòng (ux_payment_booking). */
+    Optional<Payment> findByBookingId(Long bookingId);
+
     /**
      * UC19 #1, FR58: giao dịch của booking lẻ tại một địa điểm theo trạng thái, gửi sớm nhất lên đầu
      * để Staff xử lý theo thứ tự. Thanh toán gói (UC15) và khoản trả thêm khi đổi lịch (UC21) chưa làm

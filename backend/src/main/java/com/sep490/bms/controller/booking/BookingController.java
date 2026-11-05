@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import jakarta.validation.Valid;
 import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.common.PageResponse;
+import com.sep490.bms.dto.booking.BookingDetailResponse;
 import com.sep490.bms.dto.booking.BookingListItem;
 import com.sep490.bms.dto.booking.BookingResponse;
 import com.sep490.bms.dto.booking.BookingSummaryResponse;
@@ -65,15 +66,16 @@ public class BookingController {
 
     /**
      * UC14 – Đặt sân lẻ
-     * UC17 – Xem lịch sử booking
+     * UC17 – Xem lịch sử booking (#3–5: chi tiết booking, đếm ngược giữ chỗ, paymentId cho nút Gửi lại chứng từ)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @GetMapping("/api/bookings/{id}")
-    public ResponseEntity<Void> getBookingsById(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<BookingDetailResponse>> getBookingsById(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(bookingQueryService.getMyBooking(currentUser, id)));
     }
 
     /**

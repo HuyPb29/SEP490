@@ -6,6 +6,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.core.io.Resource;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -197,6 +198,15 @@ public class PaymentService {
         Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
         Booking booking = bookingService.getForPlayer(bookingIdOf(payment), player.getId());
         return PaymentResponse.from(payment, booking);
+    }
+
+    /**
+     * UC17 #3, #5: payment của booking để chi tiết booking hiện trạng thái thanh toán và paymentId cho nút
+     * Gửi lại chứng từ. Không kiểm tra quyền: bên gọi đã kiểm tra booking là của Player.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Payment> findForBooking(Long bookingId) {
+        return paymentRepository.findByBookingId(bookingId);
     }
 
     // ===================== UC19: Staff (hoặc Owner thay Staff, BR58) xử lý giao dịch =====================
