@@ -168,7 +168,7 @@ public class ComplaintService {
 
     @Transactional
     public ComplaintResponse forward(UserPrincipal staff, Long id, ForwardComplaintRequest request) {
-        Complaint complaint = findComplaint(id);
+        Complaint complaint = findComplaintForUpdate(id);
         if (!complaint.getLocationId().equals(staff.getLocationId())) {
             throw new AppException("Khiếu nại không thuộc địa điểm của bạn", HttpStatus.FORBIDDEN);
         }
@@ -295,13 +295,13 @@ public class ComplaintService {
     }
 
     private Complaint findPendingForOwner(UserPrincipal owner, Long id) {
-        Complaint complaint = findComplaint(id);
+        Complaint complaint = findComplaintForUpdate(id);
         Location location = findOwnerLocation(owner);
         if (!location.getId().equals(complaint.getLocationId())) {
             throw new AppException("Khiếu nại không thuộc địa điểm của bạn", HttpStatus.FORBIDDEN);
         }
         if (complaint.getStatus() != ComplaintStatus.PENDING_OWNER) {
-            throw new AppException("Chỉ xử lý được khiếu nại đang chờ chủ sân");
+            throw new AppException("Chỉ xử lý được khiếu nại đang chờ chủ sân", HttpStatus.CONFLICT);
         }
         return complaint;
     }
@@ -324,6 +324,11 @@ public class ComplaintService {
 
     private Complaint findComplaint(Long id) {
         return complaintRepository.findById(id)
+                .orElseThrow(() -> new AppException("Không tìm thấy khiếu nại", HttpStatus.NOT_FOUND));
+    }
+
+    private Complaint findComplaintForUpdate(Long id) {
+        return complaintRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new AppException("Không tìm thấy khiếu nại", HttpStatus.NOT_FOUND));
     }
 
