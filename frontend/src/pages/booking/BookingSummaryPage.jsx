@@ -78,13 +78,9 @@ export default function BookingSummaryPage() {
   // State Ghi chú cho chủ sân (DR20: tối đa 200 ký tự)
   const [guestNote, setGuestNote] = useState('');
 
-  // State Voucher (DR08) - Khởi tạo sẵn mã DISC20K để khớp giao diện mẫu, bấm "Remove" được ngay
-  const [voucherInput, setVoucherInput] = useState('DISC20K');
-  const [appliedVoucher, setAppliedVoucher] = useState({
-    voucher_code: 'DISC20K',
-    discount_amount: 20000,
-    description: '20,000 VND off for orders from 100,000 VND.',
-  });
+  // Sửa lại thành chuỗi rỗng và null
+  const [voucherInput, setVoucherInput] = useState('');
+  const [appliedVoucher, setAppliedVoucher] = useState(null);
   const [voucherError, setVoucherError] = useState('');
   const [voucherLoading, setVoucherLoading] = useState(false);
 
@@ -211,7 +207,12 @@ export default function BookingSummaryPage() {
         setAppliedVoucher(res.data);
       }
     } catch (err) {
-      setVoucherError(err.response?.data?.message || err.message);
+      const message = err.response?.data?.message;
+      setVoucherError(
+        message && message !== 'No message available'
+          ? message
+          : 'Mã giảm giá không đủ điều kiện hoặc có lỗi xảy ra. Vui lòng kiểm tra lại.'
+      );
     } finally {
       setVoucherLoading(false);
     }
@@ -263,11 +264,18 @@ export default function BookingSummaryPage() {
         navigate('/booking/payment');
       }
     } catch (err) {
-      setSubmitError(
-        err.response?.data?.message ||
-          err.message ||
-          'Slot is currently held or booked. Please choose another slot (MSG28).'
-      );
+      const message = err.response?.data?.message;
+      if (message?.includes('MSG37')) {
+        setSubmitError(
+          'Điểm thưởng của bạn không đủ để thực hiện giao dịch này. Vui lòng tải lại trang để cập nhật số điểm.'
+        );
+      } else {
+        setSubmitError(
+          message && message !== 'No message available'
+            ? message
+            : 'Không thể xác nhận đặt sân. Vui lòng kiểm tra lại thông tin và thử lại.'
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -318,9 +326,8 @@ export default function BookingSummaryPage() {
               <div className={styles.teamPillGroup}>
                 <button
                   type="button"
-                  className={`${styles.teamPill} ${
-                    selectedTeamId === null ? styles.teamPillActive : ''
-                  }`}
+                  className={`${styles.teamPill} ${selectedTeamId === null ? styles.teamPillActive : ''
+                    }`}
                   onClick={() => setSelectedTeamId(null)}
                 >
                   Personal
@@ -329,9 +336,8 @@ export default function BookingSummaryPage() {
                   <button
                     key={team.team_id}
                     type="button"
-                    className={`${styles.teamPill} ${
-                      selectedTeamId === team.team_id ? styles.teamPillActive : ''
-                    }`}
+                    className={`${styles.teamPill} ${selectedTeamId === team.team_id ? styles.teamPillActive : ''
+                      }`}
                     onClick={() => setSelectedTeamId(team.team_id)}
                   >
                     {team.team_name}
@@ -491,7 +497,24 @@ export default function BookingSummaryPage() {
                 </strong>
               </div>
 
-              {submitError && <p className={styles.errorText}>{submitError}</p>}
+              {submitError && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  borderLeft: '4px solid #ef4444',
+                  padding: '12px 16px',
+                  borderRadius: '6px',
+                  color: '#991b1b',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span>⚠️</span>
+                  <span>{submitError}</span>
+                </div>
+              )}
 
               <button
                 type="button"

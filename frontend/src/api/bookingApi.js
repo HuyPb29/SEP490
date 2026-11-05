@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_BOOKING = true;
+export const USE_MOCK_BOOKING = false;
 
 // DR03, BR09: Danh sách Đội do Player làm chủ
 const MOCK_OWNED_TEAMS = [
@@ -55,7 +55,7 @@ const MOCK_MY_BOOKINGS = [
     voucher_discount_amount: 20000,
     points_discount_amount: 60000,
     final_amount: 80000,
-    hold_expires_at: new Date(Date.now() + 4 * 60 * 1000 + 12 * 1000).toISOString(), // 04:12
+    hold_expires_at: new Date(Date.now() + 4 * 60 * 1000 + 12 * 1000).toISOString(),
     resubmit_attempts_left: 3,
     resubmit_deadline: null,
     can_reschedule: false,
@@ -92,7 +92,7 @@ const MOCK_MY_BOOKINGS = [
     points_discount_amount: 0,
     final_amount: 150000,
     hold_expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-    resubmit_attempts_left: 2, // P06 / BR34: Còn 2 lần gửi lại
+    resubmit_attempts_left: 2,
     resubmit_reason: 'Receipt image is blurry, 2 attempts left',
     resubmit_deadline: '2026-10-25T08:30:00',
     can_reschedule: false,
@@ -179,15 +179,15 @@ const MOCK_MY_BOOKINGS = [
     end_time: '22:00:00',
     time_range: '20:00 – 22:00',
     booker_label: 'FPT Badminton',
-    sub_note: 'Reschedule deadline: 14:00 30/10', // BR25: Giờ chơi - min(6h, 50% * T)
+    sub_note: 'Reschedule deadline: 14:00 30/10',
     total_slots: 4,
     total_list_price: 320000,
     voucher_discount_amount: 0,
     points_discount_amount: 0,
     final_amount: 320000,
     can_open_match: true,
-    can_reschedule: true, // BR25 & BR29 (P04 = tối đa 1 lần)
-    can_cancel: true, // BR07: Chỉ cho hủy khi ở trạng thái confirmed trước giờ chơi
+    can_reschedule: true,
+    can_cancel: true,
     can_review: false,
     can_complain: false,
     created_at: '2026-10-22T11:20:00',
@@ -215,8 +215,8 @@ const MOCK_MY_BOOKINGS = [
     final_amount: 100000,
     can_reschedule: false,
     can_cancel: false,
-    can_review: true, // DR13 / BR21: Đánh giá 1 lần duy nhất khi completed
-    can_complain: true, // BR49 / P23: Khiếu nại trong vòng 24h
+    can_review: true,
+    can_complain: true,
     created_at: '2026-10-19T14:00:00',
   },
   {
@@ -234,7 +234,7 @@ const MOCK_MY_BOOKINGS = [
     end_time: '20:00:00',
     time_range: '19:00 – 20:00',
     booker_label: null,
-    sub_note: 'Unpaid within holding time', // MSG33: Quá 5 phút giữ chỗ không báo thanh toán
+    sub_note: 'Unpaid within holding time',
     total_slots: 2,
     total_list_price: 80000,
     voucher_discount_amount: 0,
@@ -264,7 +264,11 @@ export async function getMyPointsAtFacility(facilityId = 1) {
     };
   }
 
-  const res = await axios.get(`/api/v1/facilities/${facilityId}/my-points`);
+  const res = await axios.get(`/api/v1/facilities/${facilityId}/my-points`, {
+    headers: {
+      Authorization: 'Bearer ' + localStorage.getItem('token'),
+    },
+  });
   return res.data;
 }
 
@@ -321,11 +325,15 @@ export async function applyVoucherApi({ facility_id, total_list_price, voucher_c
     facility_id,
     total_list_price,
     voucher_code,
+  }, {
+    headers: {
+      Authorization: 'Bearer ' + localStorage.getItem('token'),
+    },
   });
   return res.data;
 }
 
-// UC14: Tạo Booking / Chốt đơn (POST /api/v1/bookings)
+// UC14: Tạo Booking lẻ / Chốt đơn (POST /api/bookings)
 export async function createBookingApi(payload) {
   if (USE_MOCK_BOOKING) {
     await new Promise((r) => setTimeout(r, 350));
@@ -370,7 +378,146 @@ export async function createBookingApi(payload) {
     };
   }
 
-  const res = await axios.post('/api/v1/bookings', payload);
+  // 1. Dịch giờ (String "HH:mm") sang tổng số phút (Integer) cho Backend
+  const parseToMinutes = (timeStr) => {
+    if (!timeStr) return 0;
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+
+  // 2. Chuyển đổi (Map) Payload Frontend sang BookingRequest DTO của Backend
+  const backendPayload = {
+    courtId: payload.court_id,
+    date: payload.booking_date, // "2026-11-04"
+    startMinute: parseToMinutes(payload.slots?.[0]?.start_time),
+    endMinute: parseToMinutes(payload.slots?.[payload.slots.length - 1]?.end_time),
+    voucherCode: payload.voucher_code || null,
+    voucherGrantId: null,
+    pointsToUse: payload.points_used || 0,
+  };
+
+  try {
+    // 3. Lấy token từ localStorage và gửi kèm payload lên Backend
+    const token = localStorage.getItem('token');
+    const res = await axios.post('/api/bookings', backendPayload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return res.data;
+  } catch (error) {
+    console.error('Lỗi đặt sân Backend:', error.response?.data);
+    throw error;
+  }
+}
+
+// UC15: Kiểm tra lịch & buổi trùng trước khi chốt gói (POST /api/booking-packages/preview)
+export async function previewBookingPackageApi(payload) {
+  if (USE_MOCK_BOOKING) {
+    await new Promise((r) => setTimeout(r, 200));
+    return {
+      success: true,
+      code: 200,
+      data: payload,
+    };
+  }
+
+  const res = await axios.post('/api/booking-packages/preview', payload);
+  return res.data;
+}
+
+// UC15: Xác nhận tạo gói đặt nhiều buổi & giữ chỗ 15 phút (POST /api/booking-packages)
+export async function createBookingPackageApi(payload) {
+  if (USE_MOCK_BOOKING) {
+    await new Promise((r) => setTimeout(r, 350));
+
+    const validSessions = payload.sessions?.filter((s) => !s.is_conflicted) || [];
+    const conflictedSessions = payload.sessions?.filter((s) => s.is_conflicted) || [];
+
+    // BR50 / MSG44: Chặn nếu vẫn còn buổi bị trùng chưa chọn slot bù hoặc chưa bấm bỏ
+    if (conflictedSessions.length > 0) {
+      const conflictList = conflictedSessions
+        .map((s) => `${s.display_date} (${s.time_label}, ${s.court_name})`)
+        .join(', ');
+      const msg = `MSG44: You have ${conflictedSessions.length} conflicted session(s): ${conflictList}. Please choose a compensation slot or remove conflicted sessions.`;
+      const err = new Error(msg);
+      err.response = { data: { code: 'MSG44', message: msg } };
+      throw err;
+    }
+
+    // BR27 / MSG92: Sau khi xử lý buổi trùng, gói bắt buộc phải còn ít nhất 2 buổi
+    if (validSessions.length < 2) {
+      const msg =
+        'MSG92: Package must have at least 2 sessions remaining. Please choose a compensation slot instead of removing.';
+      const err = new Error(msg);
+      err.response = { data: { code: 'MSG92', message: msg } };
+      throw err;
+    }
+
+    // BR53 / P27: Giữ chỗ gói cố định 15 phút
+    const holdExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const packageCode = 'PK-26113';
+    const totalAmount = payload.total_amount || validSessions.length * 4 * 80000;
+
+    const newPackageRecord = {
+      booking_id: 1099,
+      booking_code: packageCode,
+      booking_type: 'recurring',
+      status: 'holding',
+      status_name: 'Holding',
+      facility_id: payload.facility_id || 1,
+      facility_name: `Multi-Session Package · ${payload.facility_name || 'Smash Arena'}`,
+      court_id: 103,
+      court_name: payload.court_name || 'Court 3',
+      booking_date: validSessions[0]?.date || '2026-11-03',
+      start_time: `${payload.start_time || '19:00'}:00`,
+      end_time: `${payload.end_time || '21:00'}:00`,
+      time_range: `${payload.start_time || '19:00'} – ${payload.end_time || '21:00'} · ${validSessions.length} sessions`,
+      booker_label: payload.booker_label || 'Cau Giay Smashers',
+      total_slots: validSessions.length * (payload.slots_per_session || 4),
+      total_list_price: totalAmount,
+      voucher_discount_amount: 0,
+      points_discount_amount: 0,
+      final_amount: totalAmount,
+      hold_expires_at: holdExpires,
+      resubmit_attempts_left: 3,
+      bank_info: {
+        bank_name: 'Vietcombank',
+        bank_account_number: '0011 0023 4567',
+        bank_account_holder: 'NGUYEN VAN HUNG',
+        qr_image_url: null,
+        transfer_content: `${packageCode} 0987654321`,
+      },
+      created_at: new Date().toISOString(),
+    };
+
+    // Đẩy gói vừa tạo lên đầu danh sách UC17
+    MOCK_MY_BOOKINGS.unshift(newPackageRecord);
+
+    return {
+      success: true,
+      code: 201,
+      message:
+        'Package schedule confirmed. Your slots are held for 15 minutes (P27).',
+      data: {
+        booking_id: newPackageRecord.booking_id,
+        booking_code: packageCode,
+        status: 'holding',
+        hold_expires_at: holdExpires,
+        resubmit_attempts_left: 3,
+        pricing_summary: {
+          total_list_price: totalAmount,
+          voucher_discount_amount: 0,
+          points_discount_amount: 0,
+          final_amount: totalAmount,
+          points_used: 0,
+        },
+        bank_info: newPackageRecord.bank_info,
+      },
+    };
+  }
+
+  const res = await axios.post('/api/booking-packages', payload);
   return res.data;
 }
 
@@ -395,7 +542,6 @@ export async function uploadPaymentProofApi({ bookingId, file, note = '', resubm
       throw err;
     }
 
-    // Cập nhật luôn bản ghi tương ứng trong MOCK_MY_BOOKINGS sang awaiting_confirmation
     const target = MOCK_MY_BOOKINGS.find((b) => b.booking_id === bookingId);
     if (target) {
       target.status = 'awaiting_confirmation';
@@ -403,7 +549,6 @@ export async function uploadPaymentProofApi({ bookingId, file, note = '', resubm
       target.sub_note = 'Receipt submitted just now';
     }
 
-    // MSG48 / BR03 / OI02: Chuyển trạng thái sang awaiting_confirmation (không tự hủy sau 5 phút nữa)
     return {
       success: true,
       code: 200,
@@ -424,7 +569,10 @@ export async function uploadPaymentProofApi({ bookingId, file, note = '', resubm
   }
 
   const res = await axios.post(`/api/v1/bookings/${bookingId}/payment-proof`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      Authorization: 'Bearer ' + localStorage.getItem('token'),
+    },
   });
   return res.data;
 }
@@ -434,7 +582,6 @@ export async function getMyBookingsApi({ tab = 'all', status = '', page = 1, lim
   if (USE_MOCK_BOOKING) {
     await new Promise((r) => setTimeout(r, 200));
 
-    // Đồng bộ mốc hold_expires_at hoặc trạng thái từ sessionStorage (nếu vừa thao tác ở UC14/UC18)
     try {
       const savedActive = sessionStorage.getItem('active_holding_booking');
       if (savedActive) {
@@ -463,7 +610,6 @@ export async function getMyBookingsApi({ tab = 'all', status = '', page = 1, lim
       'payment_rejected',
     ];
 
-    // Quy tắc sắp xếp UC17: Các booking chờ thanh toán bắt buộc luôn xếp lên đầu, sau đó theo created_at DESC
     const sorted = [...MOCK_MY_BOOKINGS].sort((a, b) => {
       const aPending = pendingStatuses.includes(a.status) ? 1 : 0;
       const bPending = pendingStatuses.includes(b.status) ? 1 : 0;
@@ -511,7 +657,7 @@ export async function getMyBookingsApi({ tab = 'all', status = '', page = 1, lim
   return res.data;
 }
 
-// UC17 / BR07 / MSG66: Player tự hủy booking ở trạng thái confirmed (Không hoàn tiền, điểm & voucher)
+// UC17 / BR07 / MSG66: Player tự hủy booking ở trạng thái confirmed
 export async function cancelBookingApi(bookingId) {
   if (USE_MOCK_BOOKING) {
     await new Promise((r) => setTimeout(r, 250));

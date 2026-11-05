@@ -212,8 +212,11 @@ export default function BookingPaymentPage() {
         );
       }
     } catch (err) {
+      const message = err.response?.data?.message;
       setErrorMessage(
-        err.response?.data?.message || err.message || 'Failed to upload payment receipt.'
+        message && message !== 'No message available'
+          ? message
+          : 'Không thể tải ảnh lên. Vui lòng kiểm tra lại.'
       );
     } finally {
       setSubmitting(false);

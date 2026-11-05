@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_DATA = true;
+export const USE_MOCK_DATA = false;
 
 const MOCK_FACILITIES = [
   {
@@ -139,13 +139,13 @@ export async function searchFacilities({ keyword = '', userLat = null, userLng =
     };
   }
 
-  const params = { page, limit };
-  if (keyword.trim()) params.keyword = keyword.trim();
+  const params = {};
+  if (keyword.trim()) params.q = keyword.trim();
   if (userLat != null && userLng != null) {
-    params.user_lat = userLat;
-    params.user_lng = userLng;
+    params.lat = userLat;
+    params.lng = userLng;
   }
-  const response = await axios.get('/api/v1/facilities/search', { params });
+  const response = await axios.get('/api/locations', { params });
   return response.data;
 }
 
@@ -273,36 +273,69 @@ export async function getFacilityDetailAndSchedule(facilityId = 1, playDate = '2
     };
   }
 
-  // Tích hợp API thật theo chuẩn tài liệu V18 (Đã vá lỗi thiếu time_headers)
+  // Backend returns ApiResponse<LocationDetailResponse> and ApiResponse<ScheduleResponse>.
   try {
     const [detailRes, scheduleRes] = await Promise.all([
-      axios.get(`/api/v1/facilities/${facilityId}`),
-      axios.get(`/api/v1/facilities/${facilityId}/court-schedule`, {
+      axios.get(`/api/locations/${facilityId}`),
+      axios.get(`/api/locations/${facilityId}/schedules`, {
         params: { date: playDate },
       }),
     ]);
 
-    const mappedCourts = scheduleRes.data.data.schedule_grid.map(court => ({
-      court_id: court.court_id,
-      court_name: court.court_name,
-      slots: court.slots.map(slot => ({
-        time: slot.slot_time.substring(0, 5),
-        status: slot.status,
-        price: slot.price_per_slot,
-        bookingInfo: slot.booking_info // BR57: Sẽ là null với Guest/Player
-      }))
+    const detail = detailRes.data?.data;
+    const schedule = scheduleRes.data?.data;
+    if (!detail || !Array.isArray(schedule?.courts)) {
+      throw new Error('Unexpected facility detail or schedule response.');
+    }
+
+    const mappedCourts = schedule.courts.map((court) => ({
+      court_id: court.courtId,
+      court_name: court.name,
+      slots: (court.slots || []).map((slot) => ({
+        time: slot.time,
+        status: String(slot.status || '').toLowerCase(),
+        price: slot.price ?? 0,
+        bookingInfo: slot.bookerName
+          ? {
+              name: slot.bookerName,
+              phone: slot.bookerPhone,
+              note: slot.note,
+            }
+          : null,
+      })),
     }));
+
+    const openingHours = detail.openingHours || [];
+    const mappedFacility = {
+      ...detail,
+      facility_id: detail.id,
+      facility_name: detail.name,
+      contact_phone: detail.contactPhone,
+      open_hours: openingHours
+        .map((hours) => `${hours.openTime}–${hours.closeTime}`)
+        .join(', '),
+      courts_count: mappedCourts.length,
+      rating: detail.rating ?? null,
+      review_count: detail.reviewCount ?? 0,
+      price_table: detail.price_table || [],
+      reviews: detail.reviews || [],
+    };
 
     return {
       success: true,
       data: {
-        facility: detailRes.data.data,
-        time_headers: mappedCourts[0]?.slots.map(s => s.time) || TIME_HEADERS,
+        facility: mappedFacility,
+        play_date: schedule.date || playDate,
+        time_headers: mappedCourts[0]?.slots.map((slot) => slot.time) || [],
         courts: mappedCourts,
       },
     };
   } catch (error) {
     console.error("Error loading facility data:", error);
-    return { success: false, data: null };
+    return {
+      success: false,
+      data: null,
+      error: error.response?.data?.message || error.message || 'Could not load facility details.',
+    };
   }
 }

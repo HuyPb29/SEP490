@@ -11,6 +11,24 @@
   font-weight: 600;
 }
 
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  background: #e6f4ed;
+  color: #0d8a52;
+  border: 1px solid #b7dfc9;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.loadingScreen .backButton {
+  margin-top: 12px;
+}
+
 /* Navbar */
 .navbar {
   background: #ffffff;
@@ -113,6 +131,10 @@
   max-width: 1240px;
   margin: 0 auto;
   padding: 20px 24px 60px;
+}
+
+.mainContainer > .backButton {
+  margin-bottom: 16px;
 }
 
 .breadcrumb {

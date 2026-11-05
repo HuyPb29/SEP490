@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_AUTH = true;
+export const USE_MOCK_AUTH = false;
 
 // In-memory DB giả lập
 const mockUsers = [
@@ -59,7 +59,7 @@ function ensureOtpSession(email) {
   return mockOtpState[key];
 }
 
-// UC02: Đăng nhập (POST /api/v1/auth/login)
+// UC02: Đăng nhập (POST /api/auth/login)
 export async function loginApi({ username_or_email, password }) {
   if (USE_MOCK_AUTH) {
     await new Promise((r) => setTimeout(r, 300));
@@ -119,8 +119,32 @@ export async function loginApi({ username_or_email, password }) {
     };
   }
 
-  const res = await axios.post('/api/v1/auth/login', { username_or_email, password });
-  return res.data;
+  const res = await axios.post('/api/auth/login', {
+    email: username_or_email,
+    password,
+  });
+  const { data: loginData, ...response } = res.data;
+  const accessToken = loginData.token;
+  const user = loginData.user;
+
+  localStorage.setItem('token', accessToken);
+  localStorage.setItem('user', JSON.stringify(user));
+
+  return {
+    ...response,
+    data: {
+      access_token: accessToken,
+      user_info: {
+        user_id: user.id,
+        username: user.username,
+        full_name: user.fullName,
+        email: user.email,
+        phone_number: user.phone,
+        role_code: user.role?.toLowerCase(),
+        facility_id: user.locationId,
+      },
+    },
+  };
 }
 
 // UC01: Đăng ký Player (POST /api/v1/auth/register/player)

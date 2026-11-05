@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { getFacilityDetailAndSchedule } from '../../api/facilityApi';
 import styles from './FacilityDetailPage.module.css';
 
 export default function FacilityDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const scheduleRef = useRef(null);
 
-  const [playDate, setPlayDate] = useState('2026-10-24');
+  const [playDate, setPlayDate] = useState(
+    () => location.state?.playDate || new Date().toISOString().split('T')[0]
+  );
   const [facility, setFacility] = useState(null);
+  const [loadError, setLoadError] = useState('');
   const [timeHeaders, setTimeHeaders] = useState([]);
   const [courts, setCourts] = useState([]);
 
@@ -23,6 +27,7 @@ export default function FacilityDetailPage() {
     const loadData = async () => {
       const res = await getFacilityDetailAndSchedule(Number(id) || 1, playDate);
       if (res?.success) {
+        setLoadError('');
         setFacility(res.data.facility);
         setTimeHeaders(res.data.time_headers);
         setCourts(res.data.courts);
@@ -43,6 +48,9 @@ export default function FacilityDetailPage() {
           });
         });
         setSelectedSlots(initialSelected);
+      } else {
+        setFacility(null);
+        setLoadError(res?.error || 'Could not load facility details.');
       }
     };
     loadData();
@@ -138,6 +146,16 @@ export default function FacilityDetailPage() {
   };
 
   if (!facility) {
+    if (loadError) {
+      return (
+        <div className={styles.loadingScreen}>
+          <p>Failed to load facility details: {loadError}</p>
+          <button type="button" className={styles.backButton} onClick={() => navigate('/')}>
+            Back to search
+          </button>
+        </div>
+      );
+    }
     return <div className={styles.loadingScreen}>Loading facility details...</div>;
   }
 
@@ -165,6 +183,9 @@ export default function FacilityDetailPage() {
       </header>
 
       <main className={styles.mainContainer}>
+        <button type="button" className={styles.backButton} onClick={() => navigate('/')}>
+          ← Back
+        </button>
         <div className={styles.breadcrumb}>
           <Link to="/" className={styles.breadcrumbLink}>Find Court</Link>
           <span className={styles.breadcrumbSep}>/</span>
@@ -187,11 +208,13 @@ export default function FacilityDetailPage() {
 
           <div className={styles.facilityInfoCard}>
             <h1 className={styles.facilityTitle}>{facility.facility_name}</h1>
-            <div className={styles.ratingRow}>
-              <span className={styles.starIcon}>★</span>
-              <strong>{String(facility.rating).replace(',', '.')}</strong>
-              <span className={styles.reviewCount}>({facility.review_count} reviews)</span>
-            </div>
+            {facility.rating != null && (
+              <div className={styles.ratingRow}>
+                <span className={styles.starIcon}>★</span>
+                <strong>{String(facility.rating).replace(',', '.')}</strong>
+                <span className={styles.reviewCount}>({facility.review_count} reviews)</span>
+              </div>
+            )}
             <p className={styles.infoLine}>{facility.address}</p>
             <p className={styles.infoLine}>
               Open hours: {facility.open_hours} · {facility.courts_count} courts
