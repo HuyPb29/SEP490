@@ -48,6 +48,7 @@ public class MatchService {
     private final MatchQueryRepository matchQueryRepository;
     private final TeamRepository teamRepository;
     private final AccountRepository accountRepository;
+    private final MatchNotifier matchNotifier;
 
     // ---------------------------------------------------------------- UC28 – Quản lý kèo
 
@@ -111,10 +112,7 @@ public class MatchService {
         if (match.getStatus() != MatchStatus.OPEN) {
             throw new AppException("Chỉ đóng được kèo đang mở");
         }
-        match.setStatus(MatchStatus.CLOSED);
-        match.setClosedAt(LocalDateTime.now());
-        matchRepository.saveAndFlush(match);
-        cancelPendingRequests(matchId);
+        endMatch(match, MatchStatus.CLOSED, true);
         return getMatch(userId, matchId);
     }
 
@@ -125,11 +123,7 @@ public class MatchService {
         if (match.getStatus() != MatchStatus.OPEN && match.getStatus() != MatchStatus.CLOSED) {
             throw new AppException("Kèo này đã kết thúc, không thể hủy");
         }
-        match.setStatus(MatchStatus.CANCELLED);
-        match.setClosedAt(LocalDateTime.now());
-        matchRepository.saveAndFlush(match);
-
-        cancelPendingRequests(matchId);
+        endMatch(match, MatchStatus.CANCELLED, true);
         return getMatch(userId, matchId);
     }
 
@@ -158,16 +152,12 @@ public class MatchService {
         }
         match.setCurrentPlayers(match.getCurrentPlayers() + 1);
         match.setNeededPlayers(match.getNeededPlayers() - 1);
-        // Người cuối cùng được duyệt thì kèo đầy và tự đóng.
-        boolean full = match.getNeededPlayers() == 0;
-        if (full) {
-            match.setStatus(MatchStatus.CLOSED);
-            match.setClosedAt(LocalDateTime.now());
-        }
-        matchRepository.save(match);
+        matchRepository.saveAndFlush(match);
         JoinRequestResponse approved = decide(request, JoinRequestStatus.APPROVED);
-        if (full) {
-            cancelPendingRequests(match.getId());
+        matchNotifier.requestDecided(view(match.getId()), request.getPlayerId(), true);
+        // UC28 N2 bước 4: người cuối cùng được duyệt thì kèo đủ người và tự đóng; chỉ báo người có yêu cầu bị hủy.
+        if (match.getNeededPlayers() == 0) {
+            endMatch(match, MatchStatus.CLOSED, false);
         }
         return approved;
     }
@@ -176,7 +166,9 @@ public class MatchService {
     public JoinRequestResponse rejectJoinRequest(Long userId, Long requestId) {
         MatchJoinRequest request = findPendingRequest(requestId);
         requireHost(userId, request.getMatchId());
-        return decide(request, JoinRequestStatus.REJECTED);
+        JoinRequestResponse rejected = decide(request, JoinRequestStatus.REJECTED);
+        matchNotifier.requestDecided(view(request.getMatchId()), request.getPlayerId(), false);
+        return rejected;
     }
 
     // ---------------------------------------------------------------- UC29 – Xem thông tin kèo
@@ -263,22 +255,59 @@ public class MatchService {
      */
     @Transactional
     public int sweepEndedMatches() {
-        int expired = matchQueryRepository.expireMatchesOfCancelledBookings();
-        int closed = matchQueryRepository.closeStartedMatches();
-        matchQueryRepository.cancelPendingRequestsOfEndedMatches();
-        return expired + closed;
+        // Xét booking bị hủy trước: kèo của booking bị hủy là hết hạn, kể cả khi đã tới giờ chơi.
+        List<Long> expired = matchQueryRepository.findActiveMatchIdsOfCancelledBookings();
+        expired.forEach(id -> endMatch(findMatch(id), MatchStatus.EXPIRED, true));
+        List<Long> closed = matchQueryRepository.findStartedOpenMatchIds();
+        closed.forEach(id -> endMatch(findMatch(id), MatchStatus.CLOSED, false));
+        return expired.size() + closed.size();
+    }
+
+    /**
+     * FR90, UC28 A4 – gọi sau khi booking có kèo được đổi sang slot mới (đổi lịch UC21,
+     * hoặc chuyển slot miễn phí khi bị ảnh hưởng UC22). Kèo giữ nguyên trạng thái và tự hiển thị giờ mới;
+     * chủ kèo được nhắc quyết định giữ hay hủy, người chơi liên quan nhận MSG76.
+     */
+    @Transactional
+    public void onBookingRescheduled(Long bookingId) {
+        matchRepository.findFirstByBookingIdAndStatusIn(bookingId, Set.of(MatchStatus.OPEN, MatchStatus.CLOSED))
+                .ifPresent(match -> matchNotifier.matchRescheduled(view(match.getId()),
+                        playerIds(match.getId(), JoinRequestStatus.APPROVED),
+                        playerIds(match.getId(), JoinRequestStatus.PENDING)));
     }
 
     // ---------------------------------------------------------------- Helper
 
-    /** FR102: kèo đóng hoặc bị hủy thì các yêu cầu còn chờ duyệt bị hủy theo. */
-    private void cancelPendingRequests(Long matchId) {
-        List<MatchJoinRequest> pending = matchJoinRequestRepository.findByMatchIdAndStatus(matchId, JoinRequestStatus.PENDING);
+    /**
+     * Chuyển kèo sang trạng thái kết thúc, hủy các yêu cầu còn chờ (FR102) và gửi MSG76.
+     * notifyApproved: báo cả thành viên đã duyệt (chủ kèo đóng/hủy, booking bị hủy), không báo khi kèo tự đóng.
+     */
+    private void endMatch(Match match, MatchStatus status, boolean notifyApproved) {
+        match.setStatus(status);
+        match.setClosedAt(LocalDateTime.now());
+        matchRepository.saveAndFlush(match);
+
+        List<MatchJoinRequest> pending = matchJoinRequestRepository.findByMatchIdAndStatus(match.getId(),
+                JoinRequestStatus.PENDING);
         pending.forEach(r -> {
             r.setStatus(JoinRequestStatus.CANCELLED);
             r.setDecidedAt(LocalDateTime.now());
         });
-        matchJoinRequestRepository.saveAll(pending);
+        matchJoinRequestRepository.saveAllAndFlush(pending);
+
+        List<Long> approved = notifyApproved ? playerIds(match.getId(), JoinRequestStatus.APPROVED) : List.of();
+        matchNotifier.matchEnded(view(match.getId()), status, approved,
+                pending.stream().map(MatchJoinRequest::getPlayerId).toList());
+    }
+
+    private List<Long> playerIds(Long matchId, JoinRequestStatus status) {
+        return matchJoinRequestRepository.findByMatchIdAndStatus(matchId, status).stream()
+                .map(MatchJoinRequest::getPlayerId).toList();
+    }
+
+    private MatchResponse view(Long matchId) {
+        return matchQueryRepository.findMatch(matchId)
+                .orElseThrow(() -> new AppException("Không tìm thấy kèo", HttpStatus.NOT_FOUND));
     }
 
     private MatchResponse enrich(MatchResponse match, Long userId) {
