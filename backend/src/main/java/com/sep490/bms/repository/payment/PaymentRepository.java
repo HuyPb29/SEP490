@@ -1,5 +1,6 @@
 package com.sep490.bms.repository.payment;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -33,4 +34,21 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
      */
     Page<Payment> findByLocationIdAndStatusAndBookingIdIsNotNullOrderBySubmittedAtAscIdAsc(
             Long locationId, PaymentStatus status, Pageable pageable);
+
+    /**
+     * UC20 #1, FR61: tổng các giao dịch có trạng thái status của địa điểm, xác nhận trong [from, to).
+     * Doanh thu ghi vào ngày xác nhận (BR37), nên lọc theo confirmed_at. Lấy mọi loại giao dịch
+     * (booking lẻ, gói, trả thêm khi đổi lịch, tại quầy), vì tiền của loại nào cũng về cùng tài khoản.
+     */
+    @Query("""
+            SELECT new com.sep490.bms.repository.payment.ConfirmedPaymentTotal(
+                COUNT(p), SUM(p.amountDue), SUM(COALESCE(p.receivedAmount, p.amountDue)))
+            FROM Payment p
+            WHERE p.locationId = :locationId AND p.status = :status
+              AND p.confirmedAt >= :from AND p.confirmedAt < :to
+            """)
+    ConfirmedPaymentTotal sumByConfirmedAt(@Param("locationId") Long locationId,
+            @Param("status") PaymentStatus status,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
 }
