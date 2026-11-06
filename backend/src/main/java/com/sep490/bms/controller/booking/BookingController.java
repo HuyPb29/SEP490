@@ -17,11 +17,14 @@ import com.sep490.bms.dto.booking.BookingDetailResponse;
 import com.sep490.bms.dto.booking.BookingListItem;
 import com.sep490.bms.dto.booking.BookingResponse;
 import com.sep490.bms.dto.booking.BookingSummaryResponse;
+import com.sep490.bms.dto.booking.WalkInBookingItem;
+import com.sep490.bms.dto.booking.WalkInBookingRequest;
 import com.sep490.bms.dto.request.BookingRequest;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingQueryService;
 import com.sep490.bms.service.booking.BookingService;
+import com.sep490.bms.service.booking.WalkInBookingService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -36,6 +39,7 @@ public class BookingController {
 
     private final BookingService bookingService;
     private final BookingQueryService bookingQueryService;
+    private final WalkInBookingService walkInBookingService;
 
     /**
      * UC14 – Đặt sân lẻ (#1–5: màn tóm tắt, áp voucher và điểm; không lưu gì)
@@ -79,15 +83,19 @@ public class BookingController {
     }
 
     /**
-     * UC16 – Đặt sân tại quầy
+     * UC16 – Đặt sân tại quầy (#1–2: Staff nhập tên, số điện thoại khách, chọn slot; giữ chỗ 5 phút)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * Địa điểm lấy từ tài khoản Staff, không cần header X-Location-Id.
      */
     @PostMapping("/api/staff/bookings")
-    public ResponseEntity<Void> postStaffBookings() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('STAFF')")
+    public ResponseEntity<ApiResponse<WalkInBookingItem>> postStaffBookings(
+            @Valid @RequestBody WalkInBookingRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
+                "Đã tạo booking, giữ chỗ trong 5 phút. Xác nhận khi đã nhận đủ tiền.",
+                walkInBookingService.create(currentUser, request)));
     }
 
     /**
