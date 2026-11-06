@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -22,6 +23,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.http.HttpStatus;
 
 import com.sep490.bms.dto.booking.BookingSummaryResponse.SlotPrice;
@@ -33,12 +35,14 @@ import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.location.Court;
+import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.payment.PaymentService;
 
 /** UC16: Staff đặt sân tại quầy. */
 class WalkInBookingServiceTests {
@@ -56,8 +60,9 @@ class WalkInBookingServiceTests {
     private final BookingService bookingService = mock(BookingService.class);
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final BookingCodeGenerator codes = mock(BookingCodeGenerator.class);
+    private final PaymentService payments = mock(PaymentService.class);
     private final WalkInBookingService service =
-            new WalkInBookingService(access, locations, courts, prices, bookingService, bookings, codes);
+            new WalkInBookingService(access, locations, courts, prices, bookingService, bookings, codes, payments);
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
     private final Location location = Location.builder().id(LOCATION).advanceBookingDays((short) 30).build();
@@ -174,5 +179,109 @@ class WalkInBookingServiceTests {
 
         assertThatThrownBy(() -> service.create(staff, request(), NOW)).isInstanceOf(AppException.class);
         verify(bookings, never()).save(any());
+    }
+
+    // ---------------------------------------------------------------- UC16 #3: xác nhận
+
+    private Booking held(BookingType type, BookingStatus status, LocalDateTime holdExpiresAt) {
+        Booking booking = Booking.builder()
+                .id(100L)
+                .bookingCode("BK0001")
+                .bookingType(type)
+                .locationId(LOCATION)
+                .courtId(COURT)
+                .staffId(STAFF)
+                .customerName("Nguyễn Văn An")
+                .customerPhone("0912345678")
+                .playDate(DATE)
+                .startMinute(1080)
+                .endMinute(1140)
+                .listAmount(new BigDecimal("140000"))
+                .finalAmount(new BigDecimal("140000"))
+                .status(status)
+                .holdExpiresAt(holdExpiresAt)
+                .createdAt(NOW.minusMinutes(2))
+                .build();
+        when(bookingService.lockForPayment(100L)).thenReturn(booking);
+        when(bookingService.getCourtName(booking)).thenReturn("Sân 1");
+        return booking;
+    }
+
+    private void assertNothingConfirmed() {
+        verify(payments, never()).recordWalkInPayment(any(), any(), any());
+        verify(bookingService, never()).changeStatus(any(), any());
+    }
+
+    @Test
+    void confirm_recordsConfirmedPaymentThenConfirmsBooking() {
+        Booking booking = held(BookingType.WALK_IN, BookingStatus.HOLDING, NOW.plusMinutes(3));
+        Payment payment = Payment.builder().id(50L).receiptNo("BN261106000050").confirmedAt(NOW).build();
+        when(payments.recordWalkInPayment(booking, STAFF, NOW)).thenReturn(payment);
+        when(bookingService.changeStatus(booking, BookingStatus.CONFIRMED)).thenAnswer(inv -> {
+            booking.setStatus(BookingStatus.CONFIRMED);
+            return booking;
+        });
+
+        WalkInBookingItem item = service.confirm(staff, 100L, NOW);
+
+        InOrder order = inOrder(bookingService, payments);
+        order.verify(bookingService).lockForPayment(100L);
+        order.verify(payments).recordWalkInPayment(booking, STAFF, NOW);
+        order.verify(bookingService).changeStatus(booking, BookingStatus.CONFIRMED);
+        assertThat(item.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(item.getHoldExpiresAt()).isNull();
+        assertThat(item.getPaymentId()).isEqualTo(50L);
+        assertThat(item.getReceiptNo()).isEqualTo("BN261106000050");
+        assertThat(item.getConfirmedAt()).isEqualTo(NOW);
+        assertThat(item.getCustomerName()).isEqualTo("Nguyễn Văn An");
+    }
+
+    @Test
+    void confirm_afterHoldExpired_conflictEvenBeforeJobRuns() {
+        held(BookingType.WALK_IN, BookingStatus.HOLDING, NOW);
+
+        assertThatThrownBy(() -> service.confirm(staff, 100L, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("MSG33");
+        assertNothingConfirmed();
+    }
+
+    @Test
+    void confirm_expiredByJob_conflict() {
+        held(BookingType.WALK_IN, BookingStatus.EXPIRED, NOW.minusMinutes(1));
+
+        assertThatThrownBy(() -> service.confirm(staff, 100L, NOW)).hasMessageContaining("MSG33");
+        assertNothingConfirmed();
+    }
+
+    @Test
+    void confirm_twice_secondGetsAlreadyProcessed() {
+        held(BookingType.WALK_IN, BookingStatus.CONFIRMED, NOW.plusMinutes(3));
+
+        assertThatThrownBy(() -> service.confirm(staff, 100L, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("MSG54")
+                .satisfies(e -> assertThat(((AppException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+        assertNothingConfirmed();
+    }
+
+    @Test
+    void confirm_onlineBooking_refused() {
+        held(BookingType.SINGLE, BookingStatus.HOLDING, NOW.plusMinutes(3));
+
+        assertThatThrownBy(() -> service.confirm(staff, 100L, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("không phải booking tại quầy");
+        assertNothingConfirmed();
+    }
+
+    @Test
+    void confirm_bookingOfAnotherLocation_forbidden() {
+        held(BookingType.WALK_IN, BookingStatus.HOLDING, NOW.plusMinutes(3)).setLocationId(2L);
+
+        assertThatThrownBy(() -> service.confirm(staff, 100L, NOW))
+                .isInstanceOf(AppException.class)
+                .satisfies(e -> assertThat(((AppException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+        assertNothingConfirmed();
     }
 }

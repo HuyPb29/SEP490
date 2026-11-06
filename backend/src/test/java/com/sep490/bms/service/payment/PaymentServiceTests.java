@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -34,6 +35,7 @@ import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.payment.PaymentProof;
@@ -425,6 +427,27 @@ class PaymentServiceTests {
         assertThatThrownBy(() -> service.getPayment(player, PAYMENT))
                 .isInstanceOf(AppException.class)
                 .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void walkInPaymentIsConfirmedWithReceiptAndNoProof() {
+        booking.setPlayerId(null);
+        booking.setBookingType(BookingType.WALK_IN);
+        booking.setFinalAmount(new BigDecimal("130000"));
+
+        Payment result = service.recordWalkInPayment(booking, 9L, NOW.plusNanos(700_000_000));
+
+        assertThat(result.getBookingId()).isEqualTo(BOOKING);
+        assertThat(result.getLocationId()).isEqualTo(LOCATION);
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(result.getAmountDue()).isEqualByComparingTo("130000");
+        assertThat(result.getReceivedAmount()).isEqualByComparingTo("130000");
+        assertThat(result.getConfirmedBy()).isEqualTo(9L);
+        assertThat(result.getConfirmedAt()).isEqualTo(NOW);
+        assertThat(result.getReceiptNo()).isEqualTo("BN261103000050");
+        assertThat(result.getSubmittedAt()).isNull();
+        verifyNoInteractions(proofs);
+        verify(payments, times(2)).saveAndFlush(any());
     }
 
     /** Booking đang Chờ bổ sung, Staff đã trừ một lượt vì lỗi do Player. */

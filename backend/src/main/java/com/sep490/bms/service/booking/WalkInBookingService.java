@@ -17,12 +17,14 @@ import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.location.Court;
+import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.payment.PaymentService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -42,6 +44,7 @@ public class WalkInBookingService {
     private final BookingService bookingService;
     private final BookingRepository bookingRepository;
     private final BookingCodeGenerator bookingCodeGenerator;
+    private final PaymentService paymentService;
 
     /**
      * UC16 #1–2, FR47, FR48: kiểm tra slot như đặt sân lẻ (giới hạn đặt trước BR02, giờ mở cửa, bảo trì,
@@ -88,11 +91,56 @@ public class WalkInBookingService {
                 .createdAt(createdAt)
                 .build());
         bookingService.saveSlots(booking, BookingService.toSlots(prices));
-        return toItem(booking, court.getName(), now);
+        return toItem(booking, court.getName(), null, now);
     }
 
-    /** Đang giữ chỗ đã quá hạn hiện là Hết hạn (BR03), như phía Player (UC17). */
-    static WalkInBookingItem toItem(Booking booking, String courtName, LocalDateTime now) {
+    /**
+     * UC16 #3, FR48, BR43: Staff kiểm tra tiền đã về (BR33) rồi bấm Xác nhận. Booking sang Đã xác nhận và
+     * có một payment Đã xác nhận kèm biên nhận, để đối soát cuối ngày cộng được khoản này (UC20, BR37).
+     * Phải xác nhận trước khi hết 5 phút giữ chỗ; hết hạn thì slot được nhả (UC16 #4, FR49).
+     */
+    @Transactional
+    public WalkInBookingItem confirm(UserPrincipal staff, Long bookingId) {
+        return confirm(staff, bookingId, LocalDateTime.now());
+    }
+
+    WalkInBookingItem confirm(UserPrincipal staff, Long bookingId, LocalDateTime now) {
+        Location location = locationAccessService.selectedLocation(staff);
+        // Khóa dòng booking: hai Staff cùng bấm thì người sau chờ, rồi thấy booking đã được xác nhận (MSG54).
+        Booking booking = bookingService.lockForPayment(bookingId);
+        if (!location.getId().equals(booking.getLocationId())) {
+            throw new AppException("Booking không thuộc địa điểm của bạn", HttpStatus.FORBIDDEN);
+        }
+        if (booking.getBookingType() != BookingType.WALK_IN) {
+            throw new AppException("Đây không phải booking tại quầy. Thanh toán online xác nhận ở danh sách "
+                    + "giao dịch chờ xác nhận.", HttpStatus.CONFLICT);
+        }
+        requireHoldingNotExpired(booking, now);
+
+        Payment payment = paymentService.recordWalkInPayment(booking, staff.getId(), now);
+        bookingService.changeStatus(booking, BookingStatus.CONFIRMED);
+        return toItem(booking, bookingService.getCourtName(booking), payment, now);
+    }
+
+    /** Chỉ xác nhận được booking đang giữ chỗ và còn hạn. Quá 5 phút thì coi như hết hạn dù job UC37 chưa chạy. */
+    private static void requireHoldingNotExpired(Booking booking, LocalDateTime now) {
+        switch (booking.getStatus()) {
+            case HOLDING -> {
+                if (!booking.getHoldExpiresAt().isAfter(now)) {
+                    throw holdExpired();
+                }
+            }
+            case EXPIRED -> throw holdExpired();
+            default -> throw new AppException("Booking này đã được xử lý. (MSG54)", HttpStatus.CONFLICT);
+        }
+    }
+
+    private static AppException holdExpired() {
+        return new AppException("Đã hết thời gian giữ chỗ. Slot đã được nhả. (MSG33)", HttpStatus.CONFLICT);
+    }
+
+    /** Đang giữ chỗ đã quá hạn hiện là Hết hạn (BR03), như phía Player (UC17). payment = null khi chưa xác nhận. */
+    static WalkInBookingItem toItem(Booking booking, String courtName, Payment payment, LocalDateTime now) {
         BookingStatus status = BookingQueryService.shownStatus(booking.getStatus(), booking.getHoldExpiresAt(), now);
         return WalkInBookingItem.builder()
                 .id(booking.getId())
@@ -108,6 +156,9 @@ public class WalkInBookingService {
                 .status(status)
                 .holdExpiresAt(status == BookingStatus.HOLDING ? booking.getHoldExpiresAt() : null)
                 .createdAt(booking.getCreatedAt())
+                .paymentId(payment == null ? null : payment.getId())
+                .receiptNo(payment == null ? null : payment.getReceiptNo())
+                .confirmedAt(payment == null ? null : payment.getConfirmedAt())
                 .build();
     }
 }

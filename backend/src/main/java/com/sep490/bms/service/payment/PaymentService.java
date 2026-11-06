@@ -14,6 +14,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -213,6 +214,26 @@ public class PaymentService {
     @Transactional(readOnly = true)
     public Optional<Payment> findForPackage(Long packageId) {
         return paymentRepository.findByPackageId(packageId);
+    }
+
+    /**
+     * UC16 #3, FR48, BR43: Staff thấy tiền của khách tại quầy đã về (BR33) và bấm Xác nhận. Ghi một payment
+     * Đã xác nhận kèm biên nhận, để đối soát cuối ngày (UC20) và doanh thu (BR37) tính được khoản này theo
+     * ngày xác nhận. Không có ảnh chứng từ (BR33), không ghi phương thức thanh toán, không cộng điểm (BR43).
+     * Bên gọi đã khóa dòng booking và kiểm tra trạng thái; chạy trong giao dịch của bên gọi.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Payment recordWalkInPayment(Booking booking, Long staffId, LocalDateTime now) {
+        LocalDateTime confirmedAt = now.truncatedTo(ChronoUnit.SECONDS);
+        Payment payment = insertPayment(Payment.builder()
+                .locationId(booking.getLocationId())
+                .bookingId(booking.getId())
+                .amountDue(booking.getFinalAmount())
+                .status(PaymentStatus.CONFIRMED)
+                .build());
+        // Số biên nhận cần id của payment nên ghi sau khi chèn dòng.
+        payment.confirm(staffId, payment.getAmountDue(), receiptNo(payment, confirmedAt), confirmedAt);
+        return paymentRepository.saveAndFlush(payment);
     }
 
     // ===================== UC19: Staff (hoặc Owner thay Staff, BR58) xử lý giao dịch =====================

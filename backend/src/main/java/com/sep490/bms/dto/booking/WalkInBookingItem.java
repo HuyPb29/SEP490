@@ -39,4 +39,8 @@ public class WalkInBookingItem {
     /** Chỉ có khi đang giữ chỗ: Staff phải xác nhận trước mốc này (MSG45). */
     private LocalDateTime holdExpiresAt;
     private LocalDateTime createdAt;
+    /** Chỉ có khi Staff đã xác nhận: payment Đã xác nhận, số biên nhận và lúc xác nhận (FR48, FR57). */
+    private Long paymentId;
+    private String receiptNo;
+    private LocalDateTime confirmedAt;
 }

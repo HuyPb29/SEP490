@@ -114,12 +114,16 @@ public class BookingController {
      * UC16 – Đặt sân tại quầy (#3: Staff thấy tiền đã về thì xác nhận; không có ảnh chứng từ)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * Tạo payment Đã xác nhận kèm biên nhận để đối soát cuối ngày (UC20) cộng được khoản này.
      */
     @PostMapping("/api/staff/bookings/{id}/confirm")
-    public ResponseEntity<Void> postStaffBookingsByIdConfirm(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('STAFF')")
+    public ResponseEntity<ApiResponse<WalkInBookingItem>> postStaffBookingsByIdConfirm(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        WalkInBookingItem result = walkInBookingService.confirm(currentUser, id);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Đã xác nhận thanh toán booking " + result.getBookingCode() + ".", result));
     }
 
     /**
