@@ -12,6 +12,7 @@ import MultiSessionBookingPage from './pages/booking/MultiSessionBookingPage'
 import OpenMatchesPage from './pages/matches/OpenMatchesPage'
 import StaffDashboardPage from './pages/staff/StaffDashboardPage'
 import StaffConfirmPaymentPage from './pages/staff/StaffConfirmPaymentPage'
+import OwnerReportPage from './pages/owner/OwnerReportPage'
 
 export default function App() {
   return (
@@ -29,7 +30,8 @@ function AppContent() {
     isMultiSessionBooking ||
     location.pathname === '/open-matches' ||
     location.pathname === '/staff/dashboard' ||
-    location.pathname === '/staff/confirm-payments'
+    location.pathname === '/staff/confirm-payments' ||
+    location.pathname === '/owner/reports'
   const [status, setStatus] = useState(() => (isFrontendMockPage ? 'mock preview' : 'checking...'))
 
   useEffect(() => {
@@ -64,6 +66,8 @@ function AppContent() {
         <Route path="/staff/dashboard" element={<StaffDashboardPage />} />
         {/* UC19: Staff payment confirmation mock preview */}
         <Route path="/staff/confirm-payments" element={<StaffConfirmPaymentPage />} />
+        {/* UC35: Owner operational and revenue reports mock preview */}
+        <Route path="/owner/reports" element={<OwnerReportPage />} />
 
         {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
         <Route path="/login" element={<AuthPage />} />
