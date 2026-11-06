@@ -22,6 +22,7 @@ public class RefundService {
     private final EntityManager em;
     private final LocationAccessService access;
     private final BookingChangeSupport support;
+    private final com.sep490.bms.service.promotion.LoyaltyPointService loyalty;
 
     public List<RefundRequest> list(UserPrincipal u,RefundStatus status) {
         Long location=access.selectedLocation(u).getId();
@@ -41,9 +42,7 @@ public class RefundService {
         if(r.getStatus()!=RefundStatus.PENDING_REFUND) throw new AppException("Đã ghi nhận hoàn tiền",HttpStatus.CONFLICT);
         BigDecimal refunded=em.createQuery("select coalesce(sum(r.refundedAmount),0) from RefundRequest r where r.bookingId=:b and r.status=:s",BigDecimal.class)
                 .setParameter("b",b.getId()).setParameter("s",RefundStatus.REFUNDED).getSingleResult();
-        BigDecimal collected=support.basePayments(b).stream().map(p->p.getReceivedAmount()!=null?p.getReceivedAmount():
-                p.getStatus()==PaymentStatus.CONFIRMED?p.getAmountDue():BigDecimal.ZERO).reduce(BigDecimal.ZERO,BigDecimal::add);
-        BigDecimal cap=support.paidAmount(b).subtract(b.getFinalAmount()).add(b.getFinalAmount().min(collected));
+        BigDecimal cap=support.refundableAmount(b);
         if(input.amount().compareTo(cap.subtract(refunded))>0) throw new AppException("Số tiền hoàn vượt số tiền đã thu còn lại");
         String reason=input.reason()==null?null:input.reason().trim();
         if(input.amount().compareTo(r.getSuggestedAmount())!=0 && (reason==null || reason.isBlank()))
@@ -51,6 +50,7 @@ public class RefundService {
         if(input.refundDate().isBefore(r.getOriginalPaymentDate())) throw new AppException("Ngày hoàn không được trước ngày thanh toán");
         r.setRefundedAmount(input.amount());r.setRefundDate(input.refundDate());r.setReason(reason==null || reason.isBlank()?r.getReason():reason);
         r.setNote(input.note()==null?null:input.note().trim());r.setStatus(RefundStatus.REFUNDED);r.setRecordedBy(u.getId());r.setRecordedAt(LocalDateTime.now());
+        em.flush(); loyalty.settleRefund(r.getId(),input.amount());
         support.notify(b.getPlayerId(),"REFUND_RECORDED","Chủ sân đã ghi nhận hoàn "+input.amount()+" đồng cho "+b.getBookingCode(),b.getId());
         return r;
     }

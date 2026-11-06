@@ -32,6 +32,33 @@ import org.springframework.transaction.support.TransactionTemplate;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AccountSecurityAuditTests {
+    @Autowired com.sep490.bms.service.AccountMaintenanceService maintenance;
+
+    @Test void failedLoginCounterCommitsAndOnlyTemporaryLocksAreAutomaticallyReleased() throws Exception {
+        String old=token(player);
+        String wrong=json.writeValueAsString(Map.of("email",player.getUsername(),"password","Wrong123"));
+        for(int i=1;i<=5;i++) {
+            assertThat(call("POST","/api/auth/login",null,wrong,null).statusCode()).isEqualTo(401);
+            assertThat(fresh(player).getFailedLoginCount()).isEqualTo(i);
+        }
+        assertThat(fresh(player).getStatus()).isEqualTo(AccountStatus.LOCKED);assertThat(fresh(player).getLockedUntil()).isNotNull();
+        assertThat(getMe(old).statusCode()).isEqualTo(401);
+        assertThat(call("PATCH","/api/admin/accounts/"+owner.getId()+"/status",token(admin),"{\"status\":\"LOCKED\"}",null).statusCode()).isEqualTo(200);
+        jdbc.update("update account set locked_until=? where id=?",java.sql.Timestamp.valueOf(java.time.LocalDateTime.now().minusMinutes(1)),player.getId());
+        maintenance.unlockExpired(java.time.LocalDateTime.now());
+        assertThat(fresh(player).getStatus()).isEqualTo(AccountStatus.ACTIVE);assertThat(fresh(owner).getStatus()).isEqualTo(AccountStatus.LOCKED);
+        assertThat(getMe(old).statusCode()).isEqualTo(401);
+    }
+    @Test void successfulLoginResetsFailuresAndAdminCanReadLastSignIn() throws Exception {
+        String wrong=json.writeValueAsString(Map.of("email",player.getUsername(),"password","Wrong123"));
+        assertThat(call("POST","/api/auth/login",null,wrong,null).statusCode()).isEqualTo(401);
+        String correct=json.writeValueAsString(Map.of("email",player.getUsername(),"password","Original123"));
+        assertThat(call("POST","/api/auth/login",null,correct,null).statusCode()).isEqualTo(200);
+        assertThat(fresh(player).getFailedLoginCount()).isZero();assertThat(fresh(player).getLastLoginAt()).isNotNull();
+        var detail=call("GET","/api/admin/accounts/"+player.getId(),token(admin),null,null);
+        assertThat(detail.statusCode()).isEqualTo(200);
+        var lastSignIn=json.readTree(detail.body()).at("/data/lastLoginAt");assertThat(lastSignIn.isMissingNode()).isFalse();assertThat(lastSignIn.isNull()).isFalse();
+    }
     @LocalServerPort int port;
     @Autowired AccountRepository accounts;
     @Autowired AccountAuditRepository audits;
@@ -179,9 +206,12 @@ class AccountSecurityAuditTests {
         String beforeDisable = token(staff);
         assertThat(call("PATCH", base + "/status", ownerToken,
                 "{\"status\":\"DISABLED\",\"reason\":\"Nghỉ việc\"}", location.getId()).statusCode()).isEqualTo(200);
-        assertThat(call("PATCH", base + "/status", ownerToken, "{\"status\":\"ACTIVE\"}", location.getId()).statusCode()).isEqualTo(200);
+        assertThat(call("PATCH", base + "/status", ownerToken, "{\"status\":\"ACTIVE\"}", location.getId()).statusCode()).isEqualTo(400);
+        assertThat(call("PATCH", "/api/admin/accounts/" + staff.getId() + "/status", token(admin),
+                "{\"status\":\"ACTIVE\"}", null).statusCode()).isEqualTo(400);
+        assertThat(fresh(staff).getStatus()).isEqualTo(AccountStatus.DISABLED);
         assertThat(getMe(beforeDisable).statusCode()).isEqualTo(401);
-        assertThat(getMe(token(staff)).statusCode()).isEqualTo(200);
+        assertThat(getMe(token(staff)).statusCode()).isEqualTo(401);
         AccountAudit changed = event(staff, AccountAuditAction.STAFF_STATUS_CHANGED);
         assertThat(changed.getPreviousStatus()).isEqualTo(AccountStatus.ACTIVE);
         assertThat(changed.getNewStatus()).isEqualTo(AccountStatus.DISABLED);
@@ -238,6 +268,44 @@ class AccountSecurityAuditTests {
         assertThat(history(player)).isEmpty();
     }
 
+    @Test void databaseRejectsInvalidNewUsernamesEvenWithLegacyAccountsPresent() {
+        String original=player.getUsername();
+        for (String invalid : List.of("abcde", "a".repeat(33))) {
+            Throwable failure=catchThrowable(()->jdbc.update("UPDATE account SET username=? WHERE id=?",invalid,player.getId()));
+            assertThat(failure).isInstanceOf(org.springframework.dao.DataAccessException.class)
+                    .hasRootCauseInstanceOf(java.sql.SQLException.class);
+            java.sql.SQLException sqlError=(java.sql.SQLException)((org.springframework.dao.DataAccessException)failure).getMostSpecificCause();
+            if (invalid.length()<6) assertThat(sqlError.getErrorCode()).isEqualTo(547); // CHECK constraint
+            else assertThat(sqlError.getErrorCode()).isIn(2628,8152); // SQL Server truncation errors
+            assertThat(fresh(player).getUsername()).isEqualTo(original);
+        }
+    }
+
+    @Test void usernameBoundariesAreEnforcedByBothAccountCreationEndpoints() throws Exception {
+        for (int length : new int[] {5,33}) {
+            String username="a".repeat(length);
+            var fields=Map.of("username",username,"email","boundary@example.com","phone","0987654321",
+                    "fullName","Test Player","password","Original123");
+            assertThat(call("POST","/api/auth/register",null,json.writeValueAsString(fields),null).statusCode()).isEqualTo(400);
+            assertThat(call("POST","/api/owner/staff-members",token(owner),json.writeValueAsString(fields),location.getId()).statusCode()).isEqualTo(400);
+        }
+        for (int length : new int[] {6,32}) {
+            String username="r"+UUID.randomUUID().toString().replace("-","").substring(0,length-1);
+            String email=username+"@example.com";
+            pendingEmails.add(email);
+            String body=json.writeValueAsString(Map.of("username",username,"email",email,"phone",
+                    "0"+String.format("%09d",Math.floorMod(UUID.randomUUID().getMostSignificantBits(),1000000000L)),
+                    "fullName","Test Player","password","Original123"));
+            assertThat(call("POST","/api/auth/register",null,body,null).statusCode()).isEqualTo(201);
+            OtpRequest otp=otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email,OtpPurpose.REGISTER).orElseThrow();
+            otp.setCodeHash(encoder.encode("123456"));otps.saveAndFlush(otp);
+            assertThat(call("POST","/api/auth/verify-email",null,json.writeValueAsString(new VerifyEmailRequest(email,"123456")),null).statusCode()).isEqualTo(200);
+            Account registered=accounts.findByEmail(email).orElseThrow();accountIds.add(registered.getId());
+            assertThat(registered.getUsername()).isEqualTo(username);
+            assertThat(call("POST","/api/auth/login",null,json.writeValueAsString(new LoginRequest(username,"Original123")),null).statusCode()).isEqualTo(200);
+        }
+    }
+
     @Test void verifiedRegistrationHasDurableAuditWithoutStoringPendingCredentials() throws Exception {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 14);
         String email = suffix + "@example.com";
@@ -262,9 +330,9 @@ class AccountSecurityAuditTests {
     }
 
     @Test void staffCreationIsAuditedAndLongReasonIsRejectedBeforeMutation() throws Exception {
-        String username = "a" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
+        String username = "a" + UUID.randomUUID().toString().replace("-", "").substring(0, 31);
         var result = call("POST", "/api/owner/staff-members", token(owner), json.writeValueAsString(
-                Map.of("username", username, "fullName", "Test Staff", "password", "StaffCreate123")), location.getId());
+                Map.of("username", username, "fullName", "Test Staff", "password", "StaffCreate123", "phone", "0"+String.format("%09d",Math.floorMod(UUID.randomUUID().getMostSignificantBits(),1000000000L)))), location.getId());
         assertThat(result.statusCode()).isEqualTo(201);
         Account created = accounts.findByUsername(username).orElseThrow();
         accountIds.add(created.getId());

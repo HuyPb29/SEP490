@@ -52,6 +52,14 @@ public class RefundRequest {
     @Column(name = "refunded_amount", precision = 12, scale = 0)
     private BigDecimal refundedAmount;
 
+    /** Amount already removed from loyalty spend at approval/recording (BR52); never repeat a settlement. */
+    @Column(name = "loyalty_settled_amount", nullable = false, precision = 12, scale = 0)
+    @Builder.Default
+    private BigDecimal loyaltySettledAmount = BigDecimal.ZERO;
+
+    @Column(name = "loyalty_revoked_points", nullable = false)
+    private int loyaltyRevokedPoints;
+
     @Column(name = "refund_date")
     private LocalDate refundDate;
 

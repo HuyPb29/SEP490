@@ -32,6 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 public class BookingStatusJob {
 
     private final BookingRepository bookingRepository;
+    private final com.sep490.bms.repository.reschedule.AffectedBookingRepository affectedBookings;
+    private final jakarta.persistence.EntityManager em;
 
     @Scheduled(
             initialDelayString = "${bms.job.booking-status.initial-delay-ms:35000}",
@@ -53,6 +55,12 @@ public class BookingStatusJob {
         List<Booking> toStart = bookingRepository.findReachedStart(BookingStatus.CONFIRMED, today, minute);
         int started = 0;
         for (Booking booking : toStart) {
+            // Recheck under the same booking lock used by the cancellation workflow.
+            Booking locked=bookingRepository.findByIdForUpdate(booking.getId()).orElse(null);
+            if(locked==null) continue;
+            em.refresh(locked,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if(locked.getStatus()!=BookingStatus.CONFIRMED || affectedBookings.existsByBookingIdAndStatus(locked.getId(),com.sep490.bms.entity.enums.AffectedStatus.PENDING)) continue;
+            booking=locked;
             boolean alreadyEnded = booking.getPlayDate().isBefore(today)
                     || (booking.getPlayDate().isEqual(today) && booking.getEndMinute() <= minute);
             booking.setStatus(alreadyEnded ? BookingStatus.COMPLETED : BookingStatus.IN_USE);

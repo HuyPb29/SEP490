@@ -35,6 +35,11 @@ public class AdminService {
     private final AccountRepository accountRepository;
     private final AccountAuditService audit;
 
+    @Transactional(readOnly=true)
+    public UserDto detail(Long id) {
+        return UserDto.fromEntity(accountRepository.findById(id).orElseThrow(()->new AppException("Không tìm thấy tài khoản",org.springframework.http.HttpStatus.NOT_FOUND)));
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<UserDto> getAccounts(
             int page,
@@ -46,7 +51,7 @@ public class AdminService {
             String sortDirection) {
 
         if (page < 0 || size < 1 || size > 100) throw new AppException("Phân trang không hợp lệ");
-        if (!List.of("id", "username", "email", "phone", "fullName", "role", "status", "createdAt", "updatedAt").contains(sortBy)) {
+        if (!List.of("id", "username", "email", "phone", "fullName", "role", "status", "createdAt", "updatedAt", "lastLoginAt").contains(sortBy)) {
             throw new AppException("Trường sắp xếp không hợp lệ");
         }
         if (!List.of("asc", "desc").contains(sortDirection.toLowerCase())) throw new AppException("Chiều sắp xếp không hợp lệ");
@@ -115,6 +120,9 @@ public class AdminService {
         }
 
         AccountStatus previousStatus = account.getStatus();
+        if (previousStatus == AccountStatus.DISABLED)
+            throw new AppException("Tài khoản đã vô hiệu hóa không thuộc luồng khóa/mở khóa (FR08)");
+        account.setLockedUntil(null);account.setFailedLoginCount(0);
         account.setStatus(newStatus);
         if (newStatus == AccountStatus.LOCKED && previousStatus != newStatus) account.revokeTokens();
         account.setUpdatedAt(LocalDateTime.now());

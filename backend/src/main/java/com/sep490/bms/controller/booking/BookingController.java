@@ -29,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final com.sep490.bms.service.booking.BookingManagementService management;
 
     /**
      * UC14 – Đặt sân lẻ (#1–5: màn tóm tắt, áp voucher và điểm; không lưu gì)
@@ -57,64 +58,39 @@ public class BookingController {
                 .body(ApiResponse.success(bookingService.createSingleBooking(currentUser, request)));
     }
 
-    /**
-     * UC14 – Đặt sân lẻ
-     * UC17 – Xem lịch sử booking
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
     @GetMapping("/api/bookings/{id}")
-    public ResponseEntity<Void> getBookingsById(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasAnyRole('PLAYER','STAFF','OWNER')")
+    public ApiResponse<com.sep490.bms.entity.booking.Booking> detail(@PathVariable Long id,@AuthenticationPrincipal UserPrincipal u) {
+        return ApiResponse.success(management.detail(u,id));
     }
-
-    /**
-     * UC16 – Đặt sân tại quầy
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
     @PostMapping("/api/staff/bookings")
-    public ResponseEntity<Void> postStaffBookings() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('STAFF')")
+    public ResponseEntity<ApiResponse<com.sep490.bms.entity.booking.Booking>> createWalkIn(@AuthenticationPrincipal UserPrincipal u,
+            @Valid @RequestBody com.sep490.bms.dto.request.WalkInBookingRequest r) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(management.createWalkIn(u,r)));
     }
-
-    /**
-     * UC16 – Đặt sân tại quầy
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
-    @GetMapping("/api/staff/bookings")
-    public ResponseEntity<Void> getStaffBookings() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-
-    /**
-     * UC16 – Đặt sân tại quầy (#3: Staff thấy tiền đã về thì xác nhận; không có ảnh chứng từ)
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
     @PostMapping("/api/staff/bookings/{id}/confirm")
-    public ResponseEntity<Void> postStaffBookingsByIdConfirm(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('STAFF')")
+    public ApiResponse<com.sep490.bms.entity.booking.Booking> confirmWalkIn(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id,
+            @Valid @RequestBody(required=false) com.sep490.bms.dto.payment.ConfirmPaymentRequest r) {
+        return ApiResponse.success(management.confirmWalkIn(u,id,r));
     }
-
-    /**
-     * UC17 – Xem lịch sử booking
-     * Feature: F3 – Tìm và đặt sân
-     * Owner: Minh
-     * Status: NOT_IMPLEMENTED
-     */
     @GetMapping("/api/me/bookings")
-    public ResponseEntity<Void> getMeBookings() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ApiResponse<com.sep490.bms.common.PageResponse<com.sep490.bms.entity.booking.Booking>> mine(@AuthenticationPrincipal UserPrincipal u,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) com.sep490.bms.entity.enums.BookingStatus status,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) java.time.LocalDate from,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) java.time.LocalDate to,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue="0") int page,@org.springframework.web.bind.annotation.RequestParam(defaultValue="20") int size) {
+        return ApiResponse.success(management.list(u,false,status,from,to,page,size));
+    }
+    @GetMapping("/api/staff/bookings")
+    @PreAuthorize("hasAnyRole('STAFF','OWNER')")
+    public ApiResponse<com.sep490.bms.common.PageResponse<com.sep490.bms.entity.booking.Booking>> staff(@AuthenticationPrincipal UserPrincipal u,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) com.sep490.bms.entity.enums.BookingStatus status,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) java.time.LocalDate from,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) java.time.LocalDate to,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue="0") int page,@org.springframework.web.bind.annotation.RequestParam(defaultValue="20") int size) {
+        return ApiResponse.success(management.list(u,true,status,from,to,page,size));
     }
 }

@@ -31,6 +31,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
      * để Staff xử lý theo thứ tự. Thanh toán gói (UC15) và khoản trả thêm khi đổi lịch (UC21) chưa làm
      * nên chỉ lấy dòng có booking_id.
      */
-    Page<Payment> findByLocationIdAndStatusAndBookingIdIsNotNullOrderBySubmittedAtAscIdAsc(
+    @Query("select p from Payment p where p.locationId=:locationId and p.status=:status and (p.bookingId is not null or p.packageId is not null) order by p.submittedAt,p.id")
+    Page<Payment> findPendingBookingPayments(
             Long locationId, PaymentStatus status, Pageable pageable);
 }

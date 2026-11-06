@@ -24,6 +24,7 @@ public class StaffService {
     private final LocationAccessService locationAccess;
     private final PasswordEncoder passwordEncoder;
     private final AccountAuditService audit;
+    private final OtpLockService otpLock;
 
     @Transactional(readOnly = true)
     public List<UserDto> getStaffList(UserPrincipal user, String status, String search) {
@@ -45,6 +46,11 @@ public class StaffService {
     @Transactional
     public UserDto createStaff(UserPrincipal user, CreateStaffRequest request) {
         Long locationId = ownerLocation(user);
+        if(request.getUsername()==null || !request.getUsername().matches(ValidationRules.USERNAME))
+            throw new AppException(ValidationRules.USERNAME_MESSAGE);
+        if(request.getPhone()==null || request.getPhone().isBlank()) throw new AppException("Số điện thoại bắt buộc");
+        otpLock.acquire("phone:"+request.getPhone());
+        if(accountRepository.existsByPhone(request.getPhone())) throw new AppException("Số điện thoại đã được sử dụng",HttpStatus.CONFLICT);
         if (accountRepository.existsByUsername(request.getUsername())) throw new AppException("Tên đăng nhập đã tồn tại");
         Account staff = Account.builder().username(request.getUsername()).email(null)
             .phone(request.getPhone()).fullName(request.getFullName().trim())
@@ -59,7 +65,7 @@ public class StaffService {
     public UserDto updateStaffStatus(UserPrincipal user, Long id, UpdateStatusRequest request) {
         Account staff = managedStaff(user, id);
         String status = request.getStatus().trim().toUpperCase();
-        if (!List.of("ACTIVE", "DISABLED").contains(status)) throw new AppException("Chỉ chấp nhận ACTIVE hoặc DISABLED");
+        if (!"DISABLED".equals(status)) throw new AppException("Owner chỉ được vô hiệu hóa tài khoản Staff (FR07)");
         if (staff.getStatus() == AccountStatus.LOCKED) {
             throw new AppException("Chỉ Admin được mở khóa tài khoản đã bị khóa", HttpStatus.FORBIDDEN);
         }

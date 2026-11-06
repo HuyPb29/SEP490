@@ -46,6 +46,7 @@ import lombok.RequiredArgsConstructor;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final com.sep490.bms.service.payment.PackagePaymentService packagePayments;
 
     /**
      * UC18 – Thanh toán booking (#1: số tiền, tài khoản, QR, thời gian giữ chỗ còn lại)
@@ -97,24 +98,31 @@ public class PaymentController {
      * UC18 – Thanh toán booking (gói đặt nhiều buổi, UC15 #7: thanh toán toàn bộ một lần)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @GetMapping("/api/booking-packages/{id}/payment-instructions")
-    public ResponseEntity<Void> getBookingPackagesByIdPaymentInstructions(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ApiResponse<com.sep490.bms.service.payment.PackagePaymentService.Instructions> getBookingPackagesByIdPaymentInstructions(
+            @PathVariable Long id,@AuthenticationPrincipal UserPrincipal user) {
+        return ApiResponse.success(packagePayments.instructions(user,id));
     }
 
     /**
      * UC18 – Thanh toán booking (gói đặt nhiều buổi; multipart ảnh chứng từ)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @PostMapping("/api/booking-packages/{id}/payments")
-    public ResponseEntity<Void> postBookingPackagesByIdPayments(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PaymentResponse>> postBookingPackagesByIdPayments(@PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal user,@RequestParam(value="proof",required=false) MultipartFile proof) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(packagePayments.submit(user,id,proof)));
+    }
+
+    @GetMapping("/api/booking-packages/{id}/payment-instructions/qr")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<Resource> packageQr(@PathVariable Long id,@AuthenticationPrincipal UserPrincipal user) {
+        Resource image=packagePayments.qr(user,id);
+        return ResponseEntity.ok().contentType(MediaTypeFactory.getMediaType(image).orElse(MediaType.APPLICATION_OCTET_STREAM)).body(image);
     }
 
     /**

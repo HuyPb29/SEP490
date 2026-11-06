@@ -52,6 +52,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      * (start_minute là phút tính từ 00:00, ví dụ 600 = 10:00).
      */
     @Query("select b from Booking b where b.status = :status"
+            + " and not exists (select a.id from AffectedBooking a where a.bookingId=b.id and a.status=com.sep490.bms.entity.enums.AffectedStatus.PENDING)"
             + " and (b.playDate < :date or (b.playDate = :date and b.startMinute <= :minute))")
     List<Booking> findReachedStart(@Param("status") BookingStatus status,
             @Param("date") LocalDate date,

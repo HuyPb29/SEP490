@@ -80,7 +80,7 @@ class PaymentConfirmationTests {
     private final LoyaltyPointService points = mock(LoyaltyPointService.class);
     private final NotificationRepository notifications = mock(NotificationRepository.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings,
-            mock(LocationQueryService.class), files, access, vouchers, points, notifications);
+            mock(LocationQueryService.class), files, access, vouchers, points, notifications, mock(com.sep490.bms.repository.reschedule.RescheduleRequestRepository.class), mock(PackagePaymentService.class));
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
     private final UserPrincipal owner = UserPrincipal.builder().id(OWNER).role(Role.OWNER).build();
@@ -130,7 +130,7 @@ class PaymentConfirmationTests {
 
     @Test
     void listShowsPendingPaymentsOfSelectedLocationOldestFirst() {
-        when(payments.findByLocationIdAndStatusAndBookingIdIsNotNullOrderBySubmittedAtAscIdAsc(
+        when(payments.findPendingBookingPayments(
                 LOCATION, PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(0, 20)))
                 .thenReturn(new PageImpl<>(List.of(payment), PageRequest.of(0, 20), 1));
         when(bookings.getByIds(anyCollection())).thenReturn(Map.of(BOOKING, booking));

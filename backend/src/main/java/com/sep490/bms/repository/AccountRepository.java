@@ -32,11 +32,18 @@ public interface AccountRepository extends JpaRepository<Account, Long>, JpaSpec
     @Query("SELECT a FROM Account a WHERE a.email = :identifier OR a.username = :identifier")
     Optional<Account> findByEmailOrUsername(@Param("identifier") String identifier);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Account a WHERE a.email = :identifier OR a.username = :identifier")
+    Optional<Account> findByEmailOrUsernameForUpdate(@Param("identifier") String identifier);
+
+    List<Account> findByStatusAndLockedUntilLessThanEqual(com.sep490.bms.entity.AccountStatus status,java.time.LocalDateTime moment);
+
     boolean existsByEmail(String email);
 
     boolean existsByUsername(String username);
 
     boolean existsByPhoneAndRole(String phone, Role role);
+    boolean existsByPhone(String phone);
 
     List<Account> findByRoleAndLocationId(Role role, Long locationId);
 }

@@ -31,6 +31,7 @@ public class PaymentDetailResponse {
     private String customerPhone;
     private String note;
     private List<Proof> proofs;
+    private List<com.sep490.bms.entity.booking.Booking> sessions;
 
     /** Một lần gửi chứng từ; ảnh lấy qua imageUrl (API có kiểm tra quyền, A03). */
     @Getter

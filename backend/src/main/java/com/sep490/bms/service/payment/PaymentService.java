@@ -74,6 +74,12 @@ public class PaymentService {
     private final VoucherService voucherService;
     private final LoyaltyPointService loyaltyPointService;
     private final NotificationRepository notificationRepository;
+    private final com.sep490.bms.repository.reschedule.RescheduleRequestRepository rescheduleRequests;
+    private final PackagePaymentService packagePayments;
+
+    private boolean packagePayment(Long id) {
+        return paymentRepository.findById(id).filter(p->p.getPackageId()!=null).isPresent();
+    }
 
     /** UC18 #1, FR55: số tiền, tài khoản nhận, mã QR và giờ hết giữ chỗ. Không thay đổi gì. */
     @Transactional(readOnly = true)
@@ -168,6 +174,7 @@ public class PaymentService {
 
     PaymentResponse resubmitProof(UserPrincipal player, Long paymentId, MultipartFile proof, LocalDateTime now) {
         requireProofAttached(proof);
+        if(packagePayment(paymentId)) return packagePayments.resubmit(player,paymentId,proof);
         // Khóa payment trước rồi đến booking, cùng thứ tự với phía Staff, để hai bên không chờ nhau mãi.
         Payment payment = paymentRepository.findByIdForUpdate(paymentId)
                 .orElseThrow(PaymentService::paymentNotFound);
@@ -195,6 +202,7 @@ public class PaymentService {
     @Transactional(readOnly = true)
     public PaymentResponse getPayment(UserPrincipal player, Long paymentId) {
         Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
+        if(payment.getPackageId()!=null) return packagePayments.detail(player,payment);
         Booking booking = bookingService.getForPlayer(bookingIdOf(payment), player.getId());
         return PaymentResponse.from(payment, booking);
     }
@@ -211,10 +219,10 @@ public class PaymentService {
             throw new AppException("Phân trang không hợp lệ");
         }
         Location location = locationAccessService.selectedLocation(user);
-        Page<Payment> result = paymentRepository.findByLocationIdAndStatusAndBookingIdIsNotNullOrderBySubmittedAtAscIdAsc(
+        Page<Payment> result = paymentRepository.findPendingBookingPayments(
                 location.getId(), PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(page, size));
-        Map<Long, Booking> bookings = bookingService.getByIds(result.map(Payment::getBookingId).toList());
-        return PageResponse.from(result.map(payment -> PaymentResponse.from(payment, bookings.get(payment.getBookingId()))));
+        Map<Long, Booking> bookings = bookingService.getByIds(result.stream().map(Payment::getBookingId).filter(java.util.Objects::nonNull).toList());
+        return PageResponse.from(result.map(payment -> payment.getPackageId()!=null?PaymentResponse.fromPackage(payment):PaymentResponse.from(payment, bookings.get(payment.getBookingId()))));
     }
 
     /**
@@ -226,6 +234,7 @@ public class PaymentService {
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
         requireSameLocation(payment, location);
+        if(payment.getPackageId()!=null) return packagePayments.staffDetail(user,payment);
         Booking booking = bookingService.getById(bookingIdOf(payment));
         BookingService.Customer customer = bookingService.getCustomer(booking);
 
@@ -256,7 +265,16 @@ public class PaymentService {
     public Resource loadProofImage(UserPrincipal user, Long paymentId, Long proofId) {
         Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
         if (user.getRole() == Role.PLAYER) {
-            bookingService.getForPlayer(bookingIdOf(payment), user.getId());
+            if(payment.getPackageId()!=null) packagePayments.detail(user,payment);
+            else {
+            Long bookingId=payment.getBookingId();
+            if(bookingId==null && payment.getRescheduleRequestId()!=null) {
+                bookingId=rescheduleRequests.findById(payment.getRescheduleRequestId())
+                        .orElseThrow(PaymentService::paymentNotFound).getBookingId();
+            }
+            if(bookingId==null) throw paymentNotFound();
+            bookingService.getForPlayer(bookingId, user.getId());
+            }
         } else {
             requireSameLocation(payment, locationAccessService.selectedLocation(user));
         }
@@ -278,6 +296,7 @@ public class PaymentService {
     }
 
     PaymentResponse confirm(UserPrincipal user, Long paymentId, ConfirmPaymentRequest request, LocalDateTime now) {
+        if(packagePayment(paymentId)) return packagePayments.confirm(user,paymentId,request);
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
         BigDecimal received = request == null || request.receivedAmount() == null
@@ -318,6 +337,7 @@ public class PaymentService {
     }
 
     PaymentResponse requestResubmission(UserPrincipal user, Long paymentId, ResubmitRequest request, LocalDateTime now) {
+        if(packagePayment(paymentId)) return packagePayments.requestResubmission(user,paymentId,request);
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
         Booking booking = lockBookingOf(payment);
@@ -346,6 +366,7 @@ public class PaymentService {
      */
     @Transactional
     public PaymentResponse reject(UserPrincipal user, Long paymentId, RejectPaymentRequest request) {
+        if(packagePayment(paymentId)) return packagePayments.reject(user,paymentId,request.reason());
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
         Booking booking = lockBookingOf(payment);

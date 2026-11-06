@@ -25,6 +25,7 @@ public class PaymentResponse {
 
     private Long id;
     private Long bookingId;
+    private Long packageId;
     private String bookingCode;
     private BigDecimal amountDue;
     /** Số tiền Staff ghi nhận khi xác nhận; trống khi chưa xác nhận. */
@@ -56,5 +57,11 @@ public class PaymentResponse {
                 .confirmedAt(payment.getConfirmedAt())
                 .receiptNo(payment.getReceiptNo())
                 .build();
+    }
+    public static PaymentResponse fromPackage(Payment p) {
+        return PaymentResponse.builder().id(p.getId()).packageId(p.getPackageId()).bookingCode("PKG"+p.getPackageId())
+                .amountDue(p.getAmountDue()).receivedAmount(p.getReceivedAmount()).status(p.getStatus()).resubmitReason(p.getResubmitReason())
+                .resubmitDeadline(p.getResubmitDeadline()).resubmitsLeft(Payment.MAX_RESUBMITS-p.getResubmitCount()).rejectReason(p.getRejectReason())
+                .submittedAt(p.getSubmittedAt()).confirmedAt(p.getConfirmedAt()).receiptNo(p.getReceiptNo()).build();
     }
 }

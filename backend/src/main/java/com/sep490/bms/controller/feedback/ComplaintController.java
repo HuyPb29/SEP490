@@ -35,6 +35,13 @@ public class ComplaintController {
 
     private final ComplaintService complaintService;
 
+    @PostMapping("/api/staff/complaints")
+    @PreAuthorize("hasRole('STAFF')")
+    public ResponseEntity<ApiResponse<ComplaintResponse>> createForWalkIn(
+            @AuthenticationPrincipal UserPrincipal staff,@Valid @RequestBody CreateComplaintRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(complaintService.createForWalkIn(staff,request)));
+    }
+
     /** Player gửi khiếu nại, gồm cả xác nhận thanh toán trễ (BR49). */
     @PostMapping("/api/complaints")
     @PreAuthorize("hasRole('PLAYER')")

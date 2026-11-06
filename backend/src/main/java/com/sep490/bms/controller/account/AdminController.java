@@ -30,6 +30,11 @@ public class AdminController {
 
     private final AdminService adminService;
 
+    @GetMapping("/accounts/{id}")
+    public ResponseEntity<ApiResponse<UserDto>> detail(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(adminService.detail(id)));
+    }
+
     @GetMapping("/accounts")
     public ResponseEntity<ApiResponse<PageResponse<UserDto>>> getAccounts(
             @RequestParam(defaultValue = "0") int page,

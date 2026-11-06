@@ -66,7 +66,7 @@ class PaymentServiceTests {
     private final FileStorageService files = mock(FileStorageService.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings, locations, files,
             mock(LocationAccessService.class), mock(VoucherService.class), mock(LoyaltyPointService.class),
-            mock(NotificationRepository.class));
+            mock(NotificationRepository.class), mock(com.sep490.bms.repository.reschedule.RescheduleRequestRepository.class), mock(PackagePaymentService.class));
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
     private final MockMultipartFile proof = new MockMultipartFile("proof", "ck.jpg", "image/jpeg", new byte[] { 1, 2 });
