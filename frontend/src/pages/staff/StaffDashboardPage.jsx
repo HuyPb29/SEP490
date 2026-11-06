@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import styles from './StaffDashboardPage.module.css'
 
 const initialTransactions = [
@@ -53,10 +54,10 @@ const initialStats = {
 }
 
 export default function StaffDashboardPage() {
-  const [transactions, setTransactions] = useState(initialTransactions)
-  const [stats, setStats] = useState(initialStats)
-  const [banners, setBanners] = useState({ urgent: true, courtEnding: true })
-  const [selectedTransaction, setSelectedTransaction] = useState(null)
+  const navigate = useNavigate()
+  const [transactions] = useState(initialTransactions)
+  const [stats] = useState(initialStats)
+  const [banners] = useState({ urgent: true, courtEnding: true })
   const [showCounterBooking, setShowCounterBooking] = useState(false)
   const [counterBooking, setCounterBooking] = useState({
     court: 'Court 2',
@@ -65,50 +66,15 @@ export default function StaffDashboardPage() {
     startTime: '19:00',
   })
   const [counterBookingSubmitted, setCounterBookingSubmitted] = useState(false)
-  const [isApproving, setIsApproving] = useState(false)
-  const [errorMessage, setErrorMessage] = useState('')
 
   const openCounterBooking = (court = 'Court 2') => {
-    setSelectedTransaction(null)
-    setErrorMessage('')
     setCounterBooking((current) => ({ ...current, court }))
     setCounterBookingSubmitted(false)
     setShowCounterBooking(true)
   }
 
-  const openTransaction = (transaction) => {
-    setSelectedTransaction(transaction)
-    setErrorMessage('')
-  }
-
-  const approveTransaction = async () => {
-    if (!selectedTransaction || isApproving) return
-
-    setIsApproving(true)
-    setErrorMessage('')
-    try {
-      await Promise.resolve({ success: true })
-      setTransactions((current) =>
-        current.filter((transaction) => transaction.id !== selectedTransaction.id),
-      )
-      setStats((current) => ({
-        ...current,
-        awaitingConfirmation: Math.max(0, current.awaitingConfirmation - 1),
-        overdueTransactions: Math.max(
-          0,
-          current.overdueTransactions - (selectedTransaction.overdue ? 1 : 0),
-        ),
-        confirmedToday: current.confirmedToday + selectedTransaction.amount,
-      }))
-      if (selectedTransaction.id === 'BK-24087') {
-        setBanners((current) => ({ ...current, urgent: false }))
-      }
-      setSelectedTransaction(null)
-    } catch (err) {
-      setErrorMessage(err.response?.data?.message || err.message)
-    } finally {
-      setIsApproving(false)
-    }
+  const openPaymentConfirmation = (bookingId) => {
+    navigate(`/staff/confirm-payments${bookingId ? `?booking=${encodeURIComponent(bookingId)}` : ''}`)
   }
 
   const statCards = [
@@ -148,12 +114,16 @@ export default function StaffDashboardPage() {
         </div>
 
         <nav className={styles.navigation} aria-label="Staff navigation">
-          <button className={`${styles.navItem} ${styles.activeNav}`} type="button">Dashboard</button>
+          <button className={`${styles.navItem} ${styles.activeNav}`} type="button" onClick={() => navigate('/staff/dashboard')}>Dashboard</button>
           <button className={styles.navItem} type="button">Court Schedule</button>
           <button className={styles.navItem} type="button" onClick={() => openCounterBooking()}>
             Counter Booking
           </button>
-          <button className={styles.navItem} type="button" onClick={() => openTransaction(transactions[0])}>
+          <button
+            className={styles.navItem}
+            type="button"
+            onClick={() => openPaymentConfirmation(transactions[0]?.id)}
+          >
             <span>Confirm Payments</span>
             <span className={styles.paymentBadge}>{stats.awaitingConfirmation}</span>
           </button>
@@ -181,7 +151,7 @@ export default function StaffDashboardPage() {
               <button
                 className={styles.handleButton}
                 type="button"
-                onClick={() => openTransaction(transactions.find((transaction) => transaction.id === 'BK-24087'))}
+                onClick={() => openPaymentConfirmation('BK-24087')}
               >
                 Handle now
               </button>
@@ -237,7 +207,7 @@ export default function StaffDashboardPage() {
               <button
                 className={styles.viewAllButton}
                 type="button"
-                onClick={() => transactions[0] && openTransaction(transactions[0])}
+                onClick={() => openPaymentConfirmation(transactions[0]?.id)}
               >
                 View all
               </button>
@@ -248,7 +218,7 @@ export default function StaffDashboardPage() {
                   className={styles.transactionRow}
                   key={transaction.id}
                   type="button"
-                  onClick={() => openTransaction(transaction)}
+                  onClick={() => openPaymentConfirmation(transaction.id)}
                 >
                   <span className={styles.transactionDetails}>
                     <strong>{transaction.id} · {transaction.customer}</strong>
@@ -266,39 +236,6 @@ export default function StaffDashboardPage() {
           </article>
         </section>
       </main>
-
-      {selectedTransaction && (
-        <div className={styles.modalOverlay} role="presentation" onMouseDown={(event) => {
-          if (event.target === event.currentTarget && !isApproving) setSelectedTransaction(null)
-        }}>
-          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="payment-title">
-            <h2 id="payment-title" className={styles.modalTitle}>Confirm payment</h2>
-            <p className={styles.modalDescription}>
-              Approve {selectedTransaction.id} from {selectedTransaction.customer} for{' '}
-              {selectedTransaction.amount.toLocaleString()} VND?
-            </p>
-            {errorMessage && <p className={styles.errorMessage} role="alert">{errorMessage}</p>}
-            <div className={styles.modalActions}>
-              <button
-                className={styles.secondaryButton}
-                type="button"
-                disabled={isApproving}
-                onClick={() => setSelectedTransaction(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className={styles.primaryButton}
-                type="button"
-                disabled={isApproving}
-                onClick={approveTransaction}
-              >
-                {isApproving ? 'Approving...' : 'Approve'}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
 
       {showCounterBooking && (
         <div className={styles.modalOverlay} role="presentation" onMouseDown={(event) => {
