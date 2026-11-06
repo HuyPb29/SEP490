@@ -1,6 +1,8 @@
 package com.sep490.bms.repository.payment;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -29,6 +31,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     /** Payment của một booking; mỗi booking có nhiều nhất một dòng (ux_payment_booking). */
     Optional<Payment> findByBookingId(Long bookingId);
+
+    /** Payment của nhiều booking, đọc một lần cho một trang danh sách (UC16). */
+    List<Payment> findByBookingIdIn(Collection<Long> bookingIds);
 
     /** Payment của một gói; mỗi gói có nhiều nhất một dòng (ux_payment_package). */
     Optional<Payment> findByPackageId(Long packageId);

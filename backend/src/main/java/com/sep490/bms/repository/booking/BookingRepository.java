@@ -1,5 +1,6 @@
 package com.sep490.bms.repository.booking;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -76,6 +77,39 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             """)
     Page<Booking> findPlayerBookings(@Param("playerId") Long playerId, @Param("status") BookingStatus status,
             @Param("now") LocalDateTime now, Pageable pageable);
+
+    /**
+     * UC16, FR47, FR48: booking tại quầy của một địa điểm cho Staff, lọc theo ngày chơi và trạng thái
+     * (null: không lọc). Booking đang giữ chỗ còn hạn xếp đầu để Staff xác nhận kịp; sau đó mới tạo trước.
+     * Đang giữ chỗ đã quá hạn tính là Hết hạn như findPlayerBookings.
+     */
+    @Query(value = """
+            SELECT b FROM Booking b
+            WHERE b.locationId = :locationId
+              AND b.bookingType = com.sep490.bms.entity.enums.BookingType.WALK_IN
+              AND (:date IS NULL OR b.playDate = :date)
+              AND (:status IS NULL
+                   OR (b.status = :status
+                       AND (b.status <> com.sep490.bms.entity.enums.BookingStatus.HOLDING OR b.holdExpiresAt > :now))
+                   OR (:status = com.sep490.bms.entity.enums.BookingStatus.EXPIRED
+                       AND b.status = com.sep490.bms.entity.enums.BookingStatus.HOLDING AND b.holdExpiresAt <= :now))
+            ORDER BY CASE WHEN b.status = com.sep490.bms.entity.enums.BookingStatus.HOLDING AND b.holdExpiresAt > :now
+                          THEN 0 ELSE 1 END,
+                     b.createdAt DESC, b.id DESC
+            """,
+            countQuery = """
+            SELECT COUNT(b) FROM Booking b
+            WHERE b.locationId = :locationId
+              AND b.bookingType = com.sep490.bms.entity.enums.BookingType.WALK_IN
+              AND (:date IS NULL OR b.playDate = :date)
+              AND (:status IS NULL
+                   OR (b.status = :status
+                       AND (b.status <> com.sep490.bms.entity.enums.BookingStatus.HOLDING OR b.holdExpiresAt > :now))
+                   OR (:status = com.sep490.bms.entity.enums.BookingStatus.EXPIRED
+                       AND b.status = com.sep490.bms.entity.enums.BookingStatus.HOLDING AND b.holdExpiresAt <= :now))
+            """)
+    Page<Booking> findLocationWalkIns(@Param("locationId") Long locationId, @Param("date") LocalDate date,
+            @Param("status") BookingStatus status, @Param("now") LocalDateTime now, Pageable pageable);
 
     /** UC17: các buổi của một gói, theo ngày giờ chơi. */
     List<Booking> findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(Long packageId);

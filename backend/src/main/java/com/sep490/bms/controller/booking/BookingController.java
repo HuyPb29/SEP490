@@ -1,5 +1,8 @@
 package com.sep490.bms.controller.booking;
 
+import java.time.LocalDate;
+
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -99,15 +102,21 @@ public class BookingController {
     }
 
     /**
-     * UC16 – Đặt sân tại quầy
+     * UC16 – Đặt sân tại quầy (danh sách booking tại quầy của địa điểm; đang giữ chỗ còn hạn xếp đầu)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * date (yyyy-MM-dd) lọc theo ngày chơi, status lọc theo trạng thái; không gửi thì không lọc.
      */
     @GetMapping("/api/staff/bookings")
-    public ResponseEntity<Void> getStaffBookings() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('STAFF')")
+    public ResponseEntity<ApiResponse<PageResponse<WalkInBookingItem>>> getStaffBookings(
+            @RequestParam(value = "date", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(value = "status", required = false) BookingStatus status,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(
+                walkInBookingService.list(currentUser, date, status, page, size)));
     }
 
     /**

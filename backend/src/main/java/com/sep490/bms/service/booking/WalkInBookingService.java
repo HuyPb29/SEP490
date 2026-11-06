@@ -1,15 +1,20 @@
 package com.sep490.bms.service.booking;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sep490.bms.common.MinuteTime;
+import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.booking.WalkInBookingItem;
 import com.sep490.bms.dto.booking.WalkInBookingRequest;
 import com.sep490.bms.entity.Location;
@@ -36,6 +41,8 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class WalkInBookingService {
+
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final LocationAccessService locationAccessService;
     private final LocationQueryService locationQueryService;
@@ -120,6 +127,32 @@ public class WalkInBookingService {
         Payment payment = paymentService.recordWalkInPayment(booking, staff.getId(), now);
         bookingService.changeStatus(booking, BookingStatus.CONFIRMED);
         return toItem(booking, bookingService.getCourtName(booking), payment, now);
+    }
+
+    /**
+     * UC16: danh sách booking tại quầy của địa điểm Staff, để xác nhận booking đang giữ chỗ và xem lại các
+     * booking đã tạo. Lọc theo ngày chơi và trạng thái (null: không lọc); đang giữ chỗ còn hạn xếp đầu.
+     * Booking online không có ở đây: Staff xem trên lịch sân (UC13) và danh sách giao dịch (UC19).
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<WalkInBookingItem> list(UserPrincipal staff, LocalDate date, BookingStatus status,
+            int page, int size) {
+        return list(staff, date, status, page, size, LocalDateTime.now());
+    }
+
+    PageResponse<WalkInBookingItem> list(UserPrincipal staff, LocalDate date, BookingStatus status,
+            int page, int size, LocalDateTime now) {
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new AppException("Phân trang không hợp lệ");
+        }
+        Location location = locationAccessService.selectedLocation(staff);
+        Page<Booking> result = bookingRepository.findLocationWalkIns(location.getId(), date, status, now,
+                PageRequest.of(page, size));
+        Map<Long, String> courtNames = courtRepository.findAllById(result.map(Booking::getCourtId).toSet()).stream()
+                .collect(Collectors.toMap(Court::getId, Court::getName));
+        Map<Long, Payment> payments = paymentService.findForBookings(result.map(Booking::getId).toList());
+        return PageResponse.from(result.map(booking -> toItem(booking, courtNames.get(booking.getCourtId()),
+                payments.get(booking.getId()), now)));
     }
 
     /** Chỉ xác nhận được booking đang giữ chỗ và còn hạn. Quá 5 phút thì coi như hết hạn dù job UC37 chưa chạy. */

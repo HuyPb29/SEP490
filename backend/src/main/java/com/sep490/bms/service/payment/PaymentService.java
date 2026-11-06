@@ -4,9 +4,12 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.core.io.Resource;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -208,6 +211,16 @@ public class PaymentService {
     @Transactional(readOnly = true)
     public Optional<Payment> findForBooking(Long bookingId) {
         return paymentRepository.findByBookingId(bookingId);
+    }
+
+    /** UC16: payment của các booking trong một trang danh sách, theo mã booking. Bên gọi đã kiểm tra quyền. */
+    @Transactional(readOnly = true)
+    public Map<Long, Payment> findForBookings(Collection<Long> bookingIds) {
+        if (bookingIds.isEmpty()) {
+            return Map.of();
+        }
+        return paymentRepository.findByBookingIdIn(bookingIds).stream()
+                .collect(Collectors.toMap(Payment::getBookingId, Function.identity()));
     }
 
     /** UC17: payment của gói đặt nhiều buổi (cả gói thanh toán một lần). Bên gọi đã kiểm tra quyền. */
