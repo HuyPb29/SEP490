@@ -128,4 +128,25 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
         long getSessionCount();
     }
+
+    // Giữ query UC14/UC18–19 của Minh và bổ sung query UC37 của AnhVM; không thay thế nhau.
+    /** UC37 - Đơn còn HOLDING nhưng đã quá hạn giữ chỗ (hold_expires_at). */
+    List<Booking> findAllByStatusAndHoldExpiresAtBefore(BookingStatus status, LocalDateTime moment);
+
+    /**
+     * UC37 - Đơn đã tới giờ bắt đầu, tính theo play_date + start_minute
+     * (start_minute là phút tính từ 00:00, ví dụ 600 = 10:00).
+     */
+    @Query("select b from Booking b where b.status = :status"
+            + " and (b.playDate < :date or (b.playDate = :date and b.startMinute <= :minute))")
+    List<Booking> findReachedStart(@Param("status") BookingStatus status,
+            @Param("date") LocalDate date,
+            @Param("minute") int minute);
+
+    /** UC37 - Đơn đã qua giờ kết thúc, tính theo play_date + end_minute. */
+    @Query("select b from Booking b where b.status = :status"
+            + " and (b.playDate < :date or (b.playDate = :date and b.endMinute <= :minute))")
+    List<Booking> findReachedEnd(@Param("status") BookingStatus status,
+            @Param("date") LocalDate date,
+            @Param("minute") int minute);
 }

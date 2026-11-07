@@ -3,7 +3,6 @@ package com.sep490.bms.controller.operation;
 import java.time.LocalDate;
 
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -13,8 +12,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.dto.operation.BookingReportResponse;
+import com.sep490.bms.dto.operation.CancellationReportResponse;
 import com.sep490.bms.dto.operation.OccupancyReportResponse;
+import com.sep490.bms.dto.operation.RescheduleReportResponse;
 import com.sep490.bms.dto.operation.RevenueReportResponse;
+import com.sep490.bms.dto.operation.VoucherReportResponse;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.operation.OperationService;
 
@@ -61,19 +63,34 @@ public class ReportController {
         return ResponseEntity.ok(ApiResponse.success(
                 operationService.getOccupancyReport(currentUser, from, to)));
     }
-    /** API contract scaffold; business service is not implemented yet. */
+
     @GetMapping("/api/owner/cancellation-reports")
-    public ResponseEntity<Void> cancellationReport() {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<ApiResponse<CancellationReportResponse>> getOwnerCancellationReports(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(ApiResponse.success(
+                operationService.getCancellationReport(currentUser, from, to)));
     }
-    /** API contract scaffold; business service is not implemented yet. */
+
     @GetMapping("/api/owner/reschedule-reports")
-    public ResponseEntity<Void> rescheduleReport() {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<ApiResponse<RescheduleReportResponse>> getOwnerRescheduleReports(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(ApiResponse.success(
+                operationService.getRescheduleReport(currentUser, from, to)));
     }
-    /** API contract scaffold; business service is not implemented yet. */
+
     @GetMapping("/api/owner/voucher-reports")
-    public ResponseEntity<Void> voucherReport() {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<ApiResponse<VoucherReportResponse>> getOwnerVoucherReports(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(ApiResponse.success(
+                operationService.getVoucherReport(currentUser, from, to)));
     }
 }

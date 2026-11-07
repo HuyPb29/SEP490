@@ -37,6 +37,9 @@ import lombok.RequiredArgsConstructor;
  *
  * Payment chỉ được tạo khi Player gửi chứng từ (bảng payment mặc định AWAITING_CONFIRMATION,
  * không có trạng thái "chờ gửi"), nên bước xem hướng dẫn và gửi chứng từ đi theo id booking/gói.
+ * Sau khi gộp UC21, các handler booking UC18–19 ở đây giữ contract của MinhDD.
+ * Phụ thu đổi lịch nằm trong ReschedulePaymentController với route riêng;
+ * không chuyển payment phụ thu vào PaymentService vì service này xử lý booking lẻ.
  */
 @RestController
 @RequiredArgsConstructor
@@ -239,14 +242,4 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.success(message, result));
     }
 
-    /** Payment for the positive difference on a reschedule request; service pending. */
-    @GetMapping("/api/reschedule-requests/{id}/payment-instructions")
-    public ResponseEntity<Void> rescheduleInstructions(@PathVariable("id") Long id) {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
-
-    @PostMapping("/api/reschedule-requests/{id}/payments")
-    public ResponseEntity<Void> submitReschedulePayment(@PathVariable("id") Long id) {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
-    }
 }

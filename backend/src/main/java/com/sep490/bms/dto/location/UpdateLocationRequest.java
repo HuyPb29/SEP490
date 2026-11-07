@@ -1,5 +1,9 @@
 package com.sep490.bms.dto.location;
 
+import java.math.BigDecimal;
+
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
@@ -27,6 +31,14 @@ public class UpdateLocationRequest {
 
     @Size(max = 255, message = "Địa chỉ tối đa 255 ký tự")
     private String address;
+
+    @DecimalMin(value = "-90", message = "Vĩ độ phải nằm trong khoảng -90 đến 90")
+    @DecimalMax(value = "90", message = "Vĩ độ phải nằm trong khoảng -90 đến 90")
+    private BigDecimal latitude;
+
+    @DecimalMin(value = "-180", message = "Kinh độ phải nằm trong khoảng -180 đến 180")
+    @DecimalMax(value = "180", message = "Kinh độ phải nằm trong khoảng -180 đến 180")
+    private BigDecimal longitude;
 
     @Pattern(regexp = "^0\\d{9}$", message = "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0")
     private String contactPhone;

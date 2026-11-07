@@ -321,7 +321,8 @@ class AccountSecurityAuditTests {
                 assertThat(call("GET", path, ownerToken, null, foreign.getId()).statusCode()).isEqualTo(403);
             }
             for (String path : List.of("/api/owner/booking-reports", "/api/owner/revenue-reports",
-                    "/api/owner/occupancy-reports", "/api/owner/reviews", "/api/owner/complaints")) {
+                    "/api/owner/occupancy-reports", "/api/owner/cancellation-reports", "/api/owner/reschedule-reports",
+                    "/api/owner/voucher-reports", "/api/owner/reviews", "/api/owner/complaints")) {
                 var response = call("GET", path, ownerToken, null, selected);
                 assertThat(response.statusCode()).as(path + ": " + response.body()).isEqualTo(200);
             }

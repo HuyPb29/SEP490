@@ -1,5 +1,6 @@
 package com.sep490.bms.dto.location;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -36,6 +37,12 @@ public class LocationDetailDto {
     private Short advanceBookingDays;
     private Integer pointEarningRate;
 
+    /** Ngày hết hạn kỳ hạn dịch vụ gần nhất; null = địa điểm chưa được ghi nhận kỳ hạn nào. */
+    private LocalDate serviceTermEndDate;
+
+    /** Kỳ hạn còn hiệu lực tại hôm nay hay không (địa điểm chưa có kỳ hạn = false). */
+    private boolean serviceActive;
+
     private String status;
     private LocalDateTime lockedAt;
     private LocalDateTime createdAt;
@@ -43,7 +50,8 @@ public class LocationDetailDto {
 
     private List<CourtDto> courts;
 
-    public static LocationDetailDto fromEntity(Location location, List<CourtDto> courts) {
+    public static LocationDetailDto fromEntity(Location location, List<CourtDto> courts,
+            LocalDate serviceTermEndDate) {
         if (location == null) {
             return null;
         }
@@ -60,6 +68,8 @@ public class LocationDetailDto {
                 .qrImagePath(location.getQrImagePath())
                 .advanceBookingDays(location.getAdvanceBookingDays())
                 .pointEarningRate(location.getPointEarningRate())
+                .serviceTermEndDate(serviceTermEndDate)
+                .serviceActive(serviceTermEndDate != null && !serviceTermEndDate.isBefore(LocalDate.now()))
                 .status(location.getStatus())
                 .lockedAt(location.getLockedAt())
                 .createdAt(location.getCreatedAt())
