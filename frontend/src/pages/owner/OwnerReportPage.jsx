@@ -1,87 +1,79 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import styles from './OwnerReportPage.module.css'
 
-const facilities = [
+const FACILITIES = [
   { id: 'smash-arena', name: 'Smash Arena' },
   { id: 'green-shuttle-club', name: 'Green Shuttle Club' },
 ]
 
-const tabs = ['Revenue', 'Bookings', 'Cancellations', 'Reschedules', 'Vouchers', 'Court Utilization']
-const baseWeeklyRevenue = [38.2, 41.5, 44.9, 19.7]
-const baseCourtUtilization = [82, 76, 71, 64, 58, 31]
+const TABS = ['Revenue', 'Bookings', 'Cancellations', 'Reschedules', 'Vouchers', 'Court Utilization']
 
-function createMockReportData(facilityId, startDate, endDate) {
-  if (!startDate || !endDate) {
-    throw new Error('Please select both a start date and an end date.')
+const FACILITY_REPORTS = {
+  'smash-arena': {
+    grossRevenue: 152_400_000,
+    voucherDeductions: 4_200_000,
+    pointDeductions: 1_980_000,
+    refunds: 1_920_000,
+    confirmedBookings: 1024,
+    weeklyRevenue: [38.2, 41.5, 44.9, 19.7],
+    courtUtilization: [82, 76, 71, 64, 58, 31],
+  },
+  'green-shuttle-club': {
+    grossRevenue: 128_600_000,
+    voucherDeductions: 3_600_000,
+    pointDeductions: 1_540_000,
+    refunds: 2_100_000,
+    confirmedBookings: 876,
+    weeklyRevenue: [32.4, 36.1, 39.8, 15.2],
+    courtUtilization: [74, 69, 63, 59, 52, 38],
+  },
+}
+
+function getDayCount(startDate, endDate) {
+  const [startYear, startMonth, startDay] = startDate.split('-').map(Number)
+  const [endYear, endMonth, endDay] = endDate.split('-').map(Number)
+  const start = new Date(Date.UTC(startYear, startMonth - 1, startDay))
+  const end = new Date(Date.UTC(endYear, endMonth - 1, endDay))
+  const dayCount = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1
+
+  if (!Number.isFinite(dayCount) || dayCount < 1) {
+    throw new Error('The end date must be on or after the start date.')
   }
 
-  const start = new Date(`${startDate}T00:00:00Z`)
-  const end = new Date(`${endDate}T00:00:00Z`)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    throw new Error('Please select valid report dates.')
-  }
-  if (start > end) {
-    throw new Error('The start date must be on or before the end date.')
-  }
+  return dayCount
+}
 
-  const days = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1
-  const facilityFactor = facilityId === 'green-shuttle-club' ? 0.9 : 1
-  const periodFactor = (days / 24) * facilityFactor
-  const scaleAmount = (amount) => Math.round(amount * periodFactor)
-  const grossRevenue = scaleAmount(152400000)
-  const voucherDeductions = scaleAmount(4200000)
-  const pointDeductions = scaleAmount(1980000)
-  const refunds = scaleAmount(1920000)
-  const netRevenue = grossRevenue - voucherDeductions - pointDeductions - refunds
-  const weeklyRevenue = []
-  let dayOffset = 0
+function formatDisplayDate(date) {
+  const [year, month, day] = date.split('-')
+  return `${day}/${month}/${year}`
+}
 
-  while (dayOffset < days) {
-    const weekDays = Math.min(7, days - dayOffset)
-    let value = 0
+function loadReportData(facilityId, startDate, endDate) {
+  const facilityReport = FACILITY_REPORTS[facilityId]
+  if (!facilityReport) throw new Error('The selected facility could not be found.')
 
-    for (let day = dayOffset; day < dayOffset + weekDays; day += 1) {
-      const baseDay = day % 24
-      const baseWeekIndex = baseDay < 7 ? 0 : baseDay < 14 ? 1 : baseDay < 21 ? 2 : 3
-      const baseWeekDays = baseWeekIndex === 3 ? 3 : 7
-      value += baseWeeklyRevenue[baseWeekIndex] / baseWeekDays
-    }
-
-    weeklyRevenue.push({
-      label: `W${weeklyRevenue.length + 1} (${dayOffset + 1}–${dayOffset + weekDays})`,
-      value: Number((value * facilityFactor).toFixed(1)),
-    })
-    dayOffset += weekDays
-  }
-
-  const weeklyTotal = weeklyRevenue.reduce((total, week) => total + week.value, 0)
-  const weeklyScale = weeklyTotal === 0 ? 0 : netRevenue / 1000000 / weeklyTotal
+  const dayCount = getDayCount(startDate, endDate)
+  const periodScale = dayCount / 24
+  const utilizationScale = 0.9 + periodScale * 0.1
 
   return {
-    grossRevenue,
-    voucherDeductions,
-    pointDeductions,
-    refunds,
-    confirmedBookings: Math.round(1024 * periodFactor),
-    refundCount: Math.round(9 * periodFactor),
-    weeklyRevenue: weeklyRevenue.map((week) => ({
-      ...week,
-      value: Number((week.value * weeklyScale).toFixed(1)),
-    })),
-    courtUtilization: baseCourtUtilization.map((utilization, index) => ({
-      name: `Court ${index + 1}`,
-      value:
-        facilityId === 'green-shuttle-club'
-          ? [75, 80, 68, 71, 55, 43][index]
-          : utilization,
-    })),
+    grossRevenue: Math.round(facilityReport.grossRevenue * periodScale),
+    voucherDeductions: Math.round(facilityReport.voucherDeductions * periodScale),
+    pointDeductions: Math.round(facilityReport.pointDeductions * periodScale),
+    refunds: Math.round(facilityReport.refunds * periodScale),
+    confirmedBookings: Math.round(facilityReport.confirmedBookings * periodScale),
+    weeklyRevenue: facilityReport.weeklyRevenue.map((value) =>
+      Number((value * periodScale).toFixed(1)),
+    ),
+    courtUtilization: facilityReport.courtUtilization.map((value) =>
+      Math.min(100, Math.round(value * utilizationScale)),
+    ),
   }
 }
 
-function formatDate(date) {
-  if (!date) return ''
-  const [year, month, day] = date.split('-')
-  return `${day}/${month}/${year}`
+function formatCurrency(value) {
+  return `${value.toLocaleString('en-US')} VND`
 }
 
 export default function OwnerReportPage() {
@@ -90,86 +82,62 @@ export default function OwnerReportPage() {
   const [endDate, setEndDate] = useState('2026-10-24')
   const [activeTab, setActiveTab] = useState('Revenue')
   const [reportData, setReportData] = useState(() =>
-    createMockReportData('smash-arena', '2026-10-01', '2026-10-24'),
+    loadReportData('smash-arena', '2026-10-01', '2026-10-24'),
   )
-  const [errorMessage, setErrorMessage] = useState('')
+  const [reportError, setReportError] = useState('')
 
-  const selectedFacility = facilities.find((facility) => facility.id === selectedFacilityId)
-  const deductions = reportData.voucherDeductions + reportData.pointDeductions
-  const netRevenue = reportData.grossRevenue - deductions - reportData.refunds
+  const selectedFacility = FACILITIES.find((facility) => facility.id === selectedFacilityId)
+  const netRevenue =
+    reportData.grossRevenue -
+    reportData.voucherDeductions -
+    reportData.pointDeductions -
+    reportData.refunds
 
-  const reloadReportData = (facilityId, nextStartDate, nextEndDate) => {
+  const updateReport = (facilityId, nextStartDate, nextEndDate) => {
     try {
-      const nextReportData = createMockReportData(facilityId, nextStartDate, nextEndDate)
+      const nextReportData = loadReportData(facilityId, nextStartDate, nextEndDate)
       setReportData(nextReportData)
-      setErrorMessage('')
+      setReportError('')
     } catch (err) {
-      setErrorMessage(
-        err.response?.data?.message || err.message || 'Unable to load report data.',
-      )
+      setReportError(err.response?.data?.message || err.message)
     }
   }
 
-  const handleFacilityChange = (event) => {
-    const nextFacilityId = event.target.value
-    setSelectedFacilityId(nextFacilityId)
-    reloadReportData(nextFacilityId, startDate, endDate)
-  }
-
-  const handleDateChange = (field, value) => {
-    const nextStartDate = field === 'startDate' ? value : startDate
-    const nextEndDate = field === 'endDate' ? value : endDate
-
-    if (field === 'startDate') setStartDate(value)
-    else setEndDate(value)
-
-    reloadReportData(selectedFacilityId, nextStartDate, nextEndDate)
-  }
-
   const handleExport = () => {
-    let downloadUrl
-
     try {
       const rows = [
         ['Report', 'Operational & Revenue Reports'],
         ['Facility', selectedFacility?.name ?? ''],
         ['Start date', startDate],
         ['End date', endDate],
+        ['Tab', activeTab],
         ['Gross Revenue (VND)', reportData.grossRevenue],
         ['Voucher Deductions (VND)', reportData.voucherDeductions],
         ['Points Deductions (VND)', reportData.pointDeductions],
         ['Refunds (VND)', reportData.refunds],
         ['Net Revenue (VND)', netRevenue],
         ['Confirmed Bookings', reportData.confirmedBookings],
-        [],
-        ['Weekly Net Revenue (million VND)'],
-        ...reportData.weeklyRevenue.map((week) => [week.label, week.value]),
-        [],
-        ['Court', 'Utilization Rate'],
-        ...reportData.courtUtilization.map((court) => [court.name, `${court.value}%`]),
+        ...reportData.weeklyRevenue.map((revenue, index) => [
+          `Week ${index + 1} Net Revenue (million VND)`,
+          revenue,
+        ]),
+        ...reportData.courtUtilization.map((utilization, index) => [
+          `Court ${index + 1} Utilization`,
+          `${utilization}%`,
+        ]),
       ]
-      const csv = rows
-        .map((row) =>
-          row
-            .map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`)
-            .join(','),
-        )
-        .join('\r\n')
-      const file = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-      downloadUrl = window.URL.createObjectURL(file)
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = 'courtly-owner-report.csv'
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(downloadUrl)
-      setErrorMessage('')
+      const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\r\n')
+      const file = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(file)
+      const downloadLink = document.createElement('a')
+      downloadLink.href = url
+      downloadLink.download = 'courtly-owner-report.csv'
+      document.body.appendChild(downloadLink)
+      downloadLink.click()
+      downloadLink.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (err) {
-      if (downloadUrl) window.URL.revokeObjectURL(downloadUrl)
-      setErrorMessage(
-        err.response?.data?.message || err.message || 'Unable to export the report.',
-      )
+      setReportError(err.response?.data?.message || err.message)
     }
   }
 
@@ -177,26 +145,28 @@ export default function OwnerReportPage() {
     <div className={styles.page}>
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
-          <span className={styles.brandIcon} aria-hidden="true">ϟ</span>
+          <span className={styles.brandBolt} aria-hidden="true">⚡</span>
           <span>Courtly</span>
         </div>
 
-        <label className={styles.facilityField}>
-          <span className={styles.facilityLabel}>Facility</span>
-          <select
-            className={styles.facilitySelect}
-            value={selectedFacilityId}
-            onChange={handleFacilityChange}
-            aria-label="Select facility"
-          >
-            {facilities.map((facility) => (
-              <option key={facility.id} value={facility.id}>{facility.name}</option>
-            ))}
-          </select>
-        </label>
+        <label className={styles.facilityLabel} htmlFor="owner-facility">Facility</label>
+        <select
+          className={styles.facilitySelect}
+          id="owner-facility"
+          value={selectedFacilityId}
+          onChange={(event) => {
+            const nextFacilityId = event.target.value
+            setSelectedFacilityId(nextFacilityId)
+            updateReport(nextFacilityId, startDate, endDate)
+          }}
+        >
+          {FACILITIES.map((facility) => (
+            <option key={facility.id} value={facility.id}>{facility.name}</option>
+          ))}
+        </select>
 
         <nav className={styles.navigation} aria-label="Owner navigation">
-          {[
+          {[ 
             'Reports',
             'Courts & Pricing',
             'Opening Hours',
@@ -208,14 +178,25 @@ export default function OwnerReportPage() {
             'Reviews',
             'Facility Settings',
           ].map((item) => (
-            <button
-              className={`${styles.navItem} ${item === 'Reports' ? styles.activeNav : ''}`}
-              key={item}
-              type="button"
-              aria-current={item === 'Reports' ? 'page' : undefined}
-            >
-              {item}
-            </button>
+            item === 'Reports' || item === 'Courts & Pricing' ? (
+              <Link
+                className={`${styles.navItem} ${item === 'Reports' ? styles.navItemActive : ''}`}
+                to={item === 'Reports' ? '/owner/reports' : '/owner/courts-pricing'}
+                key={item}
+                aria-current={item === 'Reports' ? 'page' : undefined}
+              >
+                {item}
+              </Link>
+            ) : (
+              <a
+                className={styles.navItem}
+                href="#"
+                key={item}
+                onClick={(event) => event.preventDefault()}
+              >
+                {item}
+              </a>
+            )
           ))}
         </nav>
       </aside>
@@ -223,29 +204,37 @@ export default function OwnerReportPage() {
       <main className={styles.main}>
         <header className={styles.header}>
           <div className={styles.heading}>
-            <h1 className={styles.pageTitle}>Operational &amp; Revenue Reports</h1>
-            <p className={styles.subtitle}>
-              {selectedFacility?.name} · {formatDate(startDate)} – {formatDate(endDate)}
+            <h1>Operational &amp; Revenue Reports</h1>
+            <p>
+              {selectedFacility?.name} · {formatDisplayDate(startDate)} – {formatDisplayDate(endDate)}
             </p>
           </div>
           <div className={styles.headerActions}>
-            <label className={styles.dateField}>
-              <span className={styles.visuallyHidden}>Start date</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(event) => handleDateChange('startDate', event.target.value)}
-              />
-            </label>
+            <label className={styles.visuallyHidden} htmlFor="report-start-date">Start date</label>
+            <input
+              className={styles.dateInput}
+              id="report-start-date"
+              type="date"
+              value={startDate}
+              onChange={(event) => {
+                const nextStartDate = event.target.value
+                setStartDate(nextStartDate)
+                updateReport(selectedFacilityId, nextStartDate, endDate)
+              }}
+            />
             <span className={styles.dateSeparator} aria-hidden="true">–</span>
-            <label className={styles.dateField}>
-              <span className={styles.visuallyHidden}>End date</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(event) => handleDateChange('endDate', event.target.value)}
-              />
-            </label>
+            <label className={styles.visuallyHidden} htmlFor="report-end-date">End date</label>
+            <input
+              className={styles.dateInput}
+              id="report-end-date"
+              type="date"
+              value={endDate}
+              onChange={(event) => {
+                const nextEndDate = event.target.value
+                setEndDate(nextEndDate)
+                updateReport(selectedFacilityId, startDate, nextEndDate)
+              }}
+            />
             <button className={styles.exportButton} type="button" onClick={handleExport}>
               Export Excel
             </button>
@@ -253,93 +242,95 @@ export default function OwnerReportPage() {
         </header>
 
         <nav className={styles.tabs} aria-label="Report categories">
-          {tabs.map((tab) => (
+          {TABS.map((tab) => (
             <button
-              className={`${styles.tab} ${activeTab === tab ? styles.activeTab : ''}`}
+              className={`${styles.tab} ${activeTab === tab ? styles.tabActive : ''}`}
               type="button"
               key={tab}
-              onClick={() => setActiveTab(tab)}
               aria-current={activeTab === tab ? 'page' : undefined}
+              onClick={() => setActiveTab(tab)}
             >
               {tab}
             </button>
           ))}
         </nav>
 
-        {errorMessage && (
-          <p className={styles.errorMessage} role="alert">{errorMessage}</p>
-        )}
+        {reportError && <p className={styles.errorMessage} role="alert">{reportError}</p>}
 
-        <section className={styles.statsGrid} aria-label="Revenue statistics">
+        <section className={styles.statsGrid} aria-label="Revenue summary">
           <article className={styles.statCard}>
-            <h2 className={styles.statLabel}>Gross Revenue</h2>
-            <p className={styles.statValue}>{reportData.grossRevenue.toLocaleString('en-US')} VND</p>
+            <h2>Gross Revenue</h2>
+            <p className={styles.statValue}>{formatCurrency(reportData.grossRevenue)}</p>
             <p className={styles.statNote}>
               {reportData.confirmedBookings.toLocaleString('en-US')} confirmed bookings
             </p>
           </article>
           <article className={styles.statCard}>
-            <h2 className={styles.statLabel}>Deductions</h2>
-            <p className={styles.statValue}>-{deductions.toLocaleString('en-US')} VND</p>
+            <h2>Deductions</h2>
+            <p className={styles.statValue}>
+              -{formatCurrency(reportData.voucherDeductions + reportData.pointDeductions)}
+            </p>
             <p className={styles.statNote}>
-              Voucher {(reportData.voucherDeductions / 1000000).toLocaleString('en-US')}M · Points{' '}
-              {(reportData.pointDeductions / 1000000).toLocaleString('en-US')}M
+              Voucher {(reportData.voucherDeductions / 1_000_000).toLocaleString('en-US')}M
+              {' · '}Points {(reportData.pointDeductions / 1_000_000).toLocaleString('en-US')}M
             </p>
           </article>
           <article className={styles.statCard}>
-            <h2 className={styles.statLabel}>Refunds</h2>
-            <p className={styles.statValue}>-{reportData.refunds.toLocaleString('en-US')} VND</p>
-            <p className={styles.statNote}>
-              {reportData.refundCount.toLocaleString('en-US')} items, counted by refund date
-            </p>
+            <h2>Refunds</h2>
+            <p className={styles.statValue}>-{formatCurrency(reportData.refunds)}</p>
+            <p className={styles.statNote}>9 items, counted by refund date</p>
           </article>
           <article className={styles.statCard}>
-            <h2 className={styles.statLabel}>Net Revenue</h2>
-            <p className={styles.statValue}>{netRevenue.toLocaleString('en-US')} VND</p>
+            <h2>Net Revenue</h2>
+            <p className={styles.statValue}>{formatCurrency(netRevenue)}</p>
             <p className={styles.statNote}>Up 8% vs last month</p>
           </article>
         </section>
 
-        <section className={styles.chartsGrid} aria-label="Revenue and utilization charts">
+        <section className={styles.chartsGrid} aria-label="Revenue and court utilization charts">
           <article className={`${styles.chartCard} ${styles.revenueCard}`}>
             <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Weekly Net Revenue</h2>
-              <span className={styles.chartUnit}>million VND</span>
+              <h2>Weekly Net Revenue</h2>
+              <span>million VND</span>
             </div>
-            <div className={styles.revenueChart}>
-              {reportData.weeklyRevenue.map((week) => {
-                const barHeight = Math.min((week.value / 50) * 100, 100)
-                return (
-                  <div className={styles.weekColumn} key={week.label}>
-                    <div className={styles.barTrack} style={{ '--bar-height': `${barHeight}%` }}>
-                      <span className={styles.barValue}>{week.value.toFixed(1)}</span>
-                      <div className={styles.chartBar} style={{ height: `${barHeight}%` }} />
-                    </div>
-                    <span className={styles.weekLabel}>{week.label}</span>
+            <div className={styles.barChart} role="img" aria-label="Weekly net revenue in million VND">
+              {reportData.weeklyRevenue.map((revenue, index) => (
+                <div className={styles.barColumn} key={index}>
+                  <span className={styles.barValue}>{revenue.toFixed(1)}</span>
+                  <div className={styles.barTrack}>
+                    <div
+                      className={styles.bar}
+                      style={{ height: `${(revenue / 50) * 100}%` }}
+                    />
                   </div>
-                )
-              })}
+                  <span className={styles.barLabel}>
+                    {['W1 (1–7)', 'W2 (8–14)', 'W3 (15–21)', 'W4 (22–24)'][index]}
+                  </span>
+                </div>
+              ))}
             </div>
           </article>
 
           <article className={`${styles.chartCard} ${styles.utilizationCard}`}>
-            <h2 className={styles.cardTitle}>Court Utilization Rate</h2>
-            <div className={styles.courtList}>
-              {reportData.courtUtilization.map((court) => (
-                <div className={styles.courtItem} key={court.name}>
-                  <div className={styles.courtInfo}>
-                    <span className={styles.courtName}>{court.name}</span>
-                    <strong className={styles.courtPercentage}>{court.value}%</strong>
+            <div className={styles.cardHeader}>
+              <h2>Court Utilization Rate</h2>
+            </div>
+            <div className={styles.utilizationList}>
+              {reportData.courtUtilization.map((utilization, index) => (
+                <div className={styles.courtRow} key={index}>
+                  <div className={styles.courtLabels}>
+                    <span>Court {index + 1}</span>
+                    <strong>{utilization}%</strong>
                   </div>
                   <div
                     className={styles.progressTrack}
                     role="progressbar"
-                    aria-label={`${court.name} utilization`}
+                    aria-label={`Court ${index + 1} utilization`}
                     aria-valuemin="0"
                     aria-valuemax="100"
-                    aria-valuenow={court.value}
+                    aria-valuenow={utilization}
                   >
-                    <div className={styles.progressBar} style={{ width: `${court.value}%` }} />
+                    <div className={styles.progressBar} style={{ width: `${utilization}%` }} />
                   </div>
                 </div>
               ))}
