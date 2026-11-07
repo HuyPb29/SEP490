@@ -1,35 +1,55 @@
 package com.sep490.bms.service.booking;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.dto.booking.BatchOfferPublicResponse;
+import com.sep490.bms.dto.booking.PackagePreviewResponse;
+import com.sep490.bms.dto.booking.PackageRequest;
+import com.sep490.bms.dto.booking.PackageRequest.WeeklySlot;
+import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.enums.VoucherStatus;
 import com.sep490.bms.entity.location.BatchOffer;
+import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.promotion.Voucher;
+import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.location.BatchOfferRepository;
+import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.promotion.VoucherRepository;
+import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.LocationQueryService;
 
 import lombok.RequiredArgsConstructor;
 
 /**
  * Đặt nhiều buổi (UC15): gói (booking tổng) gồm nhiều buổi con, thanh toán một lần (BR10, BR26).
+ * Định kỳ hay tự chọn chỉ là cách nhập buổi; sau khi xác nhận lịch, gói là danh sách buổi con (BR27).
  */
 @Service
 @RequiredArgsConstructor
 public class PackageService {
 
+    /** BR27: định kỳ kéo dài từ 1 đến 3 tháng. */
+    static final int MIN_MONTHS = 1;
+    static final int MAX_MONTHS = 3;
+
     private final LocationQueryService locationQueryService;
     private final BatchOfferRepository batchOfferRepository;
     private final VoucherRepository voucherRepository;
+    private final CourtRepository courtRepository;
+    private final BookingService bookingService;
 
     /**
      * UC15 #9, FR44: chương trình ưu đãi đặt theo lô đang diễn ra của một địa điểm, công khai.
@@ -58,6 +78,123 @@ public class PackageService {
                 .sorted(Comparator.comparing(BatchOffer::getStartDate).thenComparing(BatchOffer::getId))
                 .map(offer -> BatchOfferPublicResponse.from(offer, vouchers.get(offer.getVoucherId())))
                 .toList();
+    }
+
+    /**
+     * UC15 #1–2, #4: Player nhập mẫu rồi xem lịch toàn kỳ trước khi bấm xác nhận lịch.
+     * Không tạo gói, không giữ chỗ: gói chỉ giữ chỗ từ lúc bấm xác nhận lịch (BR53).
+     */
+    @Transactional(readOnly = true)
+    public PackagePreviewResponse preview(UserPrincipal player, PackageRequest request) {
+        return preview(player, request, LocalDateTime.now());
+    }
+
+    PackagePreviewResponse preview(UserPrincipal player, PackageRequest request, LocalDateTime now) {
+        Court court = courtRepository.findByIdAndActiveTrue(request.courtId())
+                .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
+        Location location = locationQueryService.findActive(court.getLocationId());
+        bookingService.requireOwnTeam(player.getId(), request.teamId());
+
+        List<Planned> sessions = generateRecurring(request, court, now.toLocalDate());
+        return PackagePreviewResponse.builder()
+                .locationId(location.getId())
+                .locationName(location.getName())
+                .packageType(request.packageType())
+                .startDate(sessions.get(0).date())
+                .endDate(sessions.get(sessions.size() - 1).date())
+                .totalSessions(sessions.size())
+                .sessions(sessions.stream().map(PackageService::toResponse).toList())
+                .build();
+    }
+
+    /** Một buổi con dự kiến của gói: một sân, một ngày, các slot liền nhau [startMinute, endMinute). */
+    record Planned(LocalDate date, Court court, int startMinute, int endMinute) {
+    }
+
+    /**
+     * UC15 #2, BR27 (a): sinh các buổi từ mẫu định kỳ, mỗi ngày trong khoảng [startDate, endDate] trùng thứ
+     * của một dòng mẫu là một buổi. Mẫu phải có ít nhất 1 buổi/tuần và kéo dài 1–3 tháng (MSG41); điều kiện
+     * này chỉ kiểm trên mẫu ban đầu, không kiểm lại sau khi bỏ buổi trùng (D50).
+     */
+    List<Planned> generateRecurring(PackageRequest request, Court court, LocalDate today) {
+        if (request.packageType() != PackageType.RECURRING) {
+            throw new AppException("Chưa hỗ trợ cách đặt này");
+        }
+        List<WeeklySlot> pattern = request.weeklySlots();
+        LocalDate start = request.startDate();
+        LocalDate end = request.endDate();
+        if (pattern == null || pattern.isEmpty() || start == null || end == null || !isWithinMonths(start, end)) {
+            throw invalidRecurring();
+        }
+        if (start.isBefore(today)) {
+            throw new AppException("Ngày bắt đầu không được trước hôm nay.");
+        }
+        requireValidPattern(pattern);
+
+        List<WeeklySlot> sorted = pattern.stream()
+                .sorted(Comparator.comparing(WeeklySlot::dayOfWeek).thenComparing(WeeklySlot::startMinute))
+                .toList();
+        List<Planned> sessions = new ArrayList<>();
+        for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
+            int dayOfWeek = date.getDayOfWeek().getValue();
+            for (WeeklySlot slot : sorted) {
+                if (slot.dayOfWeek() == dayOfWeek) {
+                    sessions.add(new Planned(date, court, slot.startMinute(), slot.endMinute()));
+                }
+            }
+        }
+        return sessions;
+    }
+
+    /**
+     * BR27: từ 1 đến 3 tháng, tính cả ngày cuối (cùng cách đếm với hạn dịch vụ DR29):
+     * 01/12–31/12 là đủ 1 tháng, 01/12–28/02 là 3 tháng.
+     */
+    static boolean isWithinMonths(LocalDate start, LocalDate end) {
+        LocalDate dayAfterEnd = end.plusDays(1);
+        return !end.isBefore(start)
+                && !dayAfterEnd.isBefore(start.plusMonths(MIN_MONTHS))
+                && !dayAfterEnd.isAfter(start.plusMonths(MAX_MONTHS));
+    }
+
+    /** Khung giờ theo bước 30 phút; hai dòng cùng thứ không được chồng giờ nhau. */
+    private static void requireValidPattern(List<WeeklySlot> pattern) {
+        for (WeeklySlot slot : pattern) {
+            requireValidRange(slot.startMinute(), slot.endMinute());
+        }
+        for (int i = 0; i < pattern.size(); i++) {
+            for (int j = i + 1; j < pattern.size(); j++) {
+                WeeklySlot a = pattern.get(i);
+                WeeklySlot b = pattern.get(j);
+                if (a.dayOfWeek().equals(b.dayOfWeek()) && a.startMinute() < b.endMinute()
+                        && b.startMinute() < a.endMinute()) {
+                    throw new AppException("Hai buổi trong mẫu định kỳ bị chồng giờ vào cùng một thứ.");
+                }
+            }
+        }
+    }
+
+    static void requireValidRange(int startMinute, int endMinute) {
+        if (startMinute < 0 || endMinute > MinuteTime.DAY_MINUTES || endMinute <= startMinute
+                || !MinuteTime.isSlotBoundary(startMinute) || !MinuteTime.isSlotBoundary(endMinute)) {
+            throw new AppException("Slot phải theo bước 30 phút và giờ kết thúc sau giờ bắt đầu");
+        }
+    }
+
+    private static AppException invalidRecurring() {
+        return new AppException("Đặt định kỳ cần ít nhất 1 buổi mỗi tuần, thời gian từ 1 đến 3 tháng. (MSG41)");
+    }
+
+    private static PackagePreviewResponse.Session toResponse(Planned session) {
+        return PackagePreviewResponse.Session.builder()
+                .date(session.date())
+                .courtId(session.court().getId())
+                .courtName(session.court().getName())
+                .startMinute(session.startMinute())
+                .endMinute(session.endMinute())
+                .startTime(MinuteTime.format(session.startMinute()))
+                .endTime(MinuteTime.format(session.endMinute()))
+                .build();
     }
 
     private static boolean isPublished(Voucher voucher) {

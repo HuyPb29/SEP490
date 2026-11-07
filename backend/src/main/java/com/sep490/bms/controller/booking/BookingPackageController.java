@@ -7,6 +7,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -14,10 +15,14 @@ import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.booking.PackageDetailResponse;
 import com.sep490.bms.dto.booking.PackageListItem;
+import com.sep490.bms.dto.booking.PackagePreviewResponse;
+import com.sep490.bms.dto.booking.PackageRequest;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingQueryService;
+import com.sep490.bms.service.booking.PackageService;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -30,17 +35,19 @@ import lombok.RequiredArgsConstructor;
 public class BookingPackageController {
 
     private final BookingQueryService bookingQueryService;
+    private final PackageService packageService;
 
     /**
-     * UC15 – Đặt nhiều buổi (#4, #5, #6, #9, #10: lịch toàn kỳ, buổi trùng, tổng tiền, chương trình theo lô; không lưu gì)
+     * UC15 – Đặt nhiều buổi (#1–2, #4: sinh các buổi theo mẫu và hiện lịch toàn kỳ; không lưu gì, không giữ chỗ)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @PostMapping("/api/booking-packages/preview")
-    public ResponseEntity<Void> postBookingPackagesPreview() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PackagePreviewResponse>> postBookingPackagesPreview(
+            @Valid @RequestBody PackageRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(packageService.preview(currentUser, request)));
     }
 
     /**

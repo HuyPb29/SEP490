@@ -317,10 +317,10 @@ public class BookingService {
     }
 
     /**
-     * UC14 #1, FR37, BR09, DR03: không chọn đội là booking cá nhân; chọn đội thì đội đó phải do người đặt làm chủ.
+     * UC14 #1, UC15 #1, FR37, BR09, DR03: không chọn đội là booking cá nhân; chọn đội thì đội đó phải do người đặt làm chủ.
      * Kiểm tra cả ở màn tóm tắt và lúc Xác nhận (createSingleBooking gọi lại previewSummary).
      */
-    private void requireOwnTeam(Long playerId, Long teamId) {
+    public void requireOwnTeam(Long playerId, Long teamId) {
         if (teamId != null && !teamService.isCaptain(teamId, playerId)) {
             throw new AppException("Bạn chỉ đặt sân được cho đội mình làm chủ.", HttpStatus.FORBIDDEN);
         }
