@@ -97,10 +97,16 @@ public class VoucherService {
     @Transactional
     public VoucherResponse update(UserPrincipal user,Long id,@Valid VoucherUpdateRequest request) {
         Voucher v=owned(user,id);
-        if(v.getStatus()!=VoucherStatus.DRAFT || v.getSource()!=VoucherSource.CAMPAIGN)
-            throw new AppException("Chỉ sửa được campaign DRAFT",HttpStatus.CONFLICT);
+        // F2/UC37: voucher đã hết hạn vẫn phải sửa được ngày để gia hạn, nếu không sẽ thành
+        // bản ghi không thể cứu: DRAFT mới được sửa, mà publish() lại chặn ngày đã qua.
+        boolean editable=v.getStatus()==VoucherStatus.DRAFT || v.getStatus()==VoucherStatus.EXPIRED;
+        if(!editable || v.getSource()!=VoucherSource.CAMPAIGN)
+            throw new AppException("Chỉ sửa được campaign DRAFT hoặc EXPIRED",HttpStatus.CONFLICT);
         if(v.getVersion()!=request.version()) throw new AppException("Voucher đã thay đổi; tải lại dữ liệu",HttpStatus.CONFLICT);
-        configure(v,request.voucher()); return VoucherResponse.from(vouchers.saveAndFlush(v));
+        configure(v,request.voucher());
+        // configure() đã bắt validTo >= hôm nay, nên gia hạn xong là dùng lại được ngay.
+        if(v.getStatus()==VoucherStatus.EXPIRED) v.setStatus(VoucherStatus.PUBLISHED);
+        return VoucherResponse.from(vouchers.saveAndFlush(v));
     }
     private void configure(Voucher v,VoucherWriteRequest r) {
         if(r.validTo().isBefore(LocalDate.now())) throw new AppException("Voucher đã hết hạn");
