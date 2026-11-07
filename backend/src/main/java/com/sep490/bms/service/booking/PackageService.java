@@ -5,6 +5,8 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -22,26 +24,36 @@ import org.springframework.util.StringUtils;
 
 import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.dto.booking.BatchOfferPublicResponse;
+import com.sep490.bms.dto.booking.BookingListItem;
 import com.sep490.bms.dto.booking.BookingSummaryResponse.SlotPrice;
 import com.sep490.bms.dto.booking.PackagePreviewResponse;
 import com.sep490.bms.dto.booking.PackagePreviewResponse.BatchOfferStatus;
 import com.sep490.bms.dto.booking.PackagePreviewResponse.Conflict;
+import com.sep490.bms.dto.booking.PackageDetailResponse;
 import com.sep490.bms.dto.booking.PackageRequest;
 import com.sep490.bms.dto.booking.PackageRequest.WeeklySlot;
 import com.sep490.bms.dto.promotion.VoucherCheckRequest;
 import com.sep490.bms.dto.promotion.VoucherSelection;
 import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
+import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.enums.VoucherStatus;
 import com.sep490.bms.entity.location.BatchOffer;
 import com.sep490.bms.entity.location.Court;
+import com.sep490.bms.entity.notification.NotificationType;
 import com.sep490.bms.entity.promotion.Voucher;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.booking.BookingPackageRepository;
+import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.location.BatchOfferRepository;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.promotion.VoucherRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.notification.NotificationService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
 import com.sep490.bms.service.promotion.VoucherService;
 
@@ -58,6 +70,9 @@ public class PackageService {
     /** BR27: định kỳ kéo dài từ 1 đến 3 tháng; tự chọn trong vòng tối đa 3 tháng. */
     static final int MIN_MONTHS = 1;
     static final int MAX_MONTHS = 3;
+    /** Thời gian giữ chỗ của gói, tính từ lúc bấm xác nhận lịch (P27, BR53): cố định (D154). */
+    static final int HOLD_MINUTES = 15;
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final LocationQueryService locationQueryService;
     private final BatchOfferRepository batchOfferRepository;
@@ -68,6 +83,10 @@ public class PackageService {
     private final PriceCalculator priceCalculator;
     private final VoucherService voucherService;
     private final LoyaltyPointService loyaltyPointService;
+    private final BookingPackageRepository bookingPackageRepository;
+    private final BookingRepository bookingRepository;
+    private final BookingCodeGenerator bookingCodeGenerator;
+    private final NotificationService notificationService;
 
     /**
      * UC15 #9, FR44: chương trình ưu đãi đặt theo lô đang diễn ra của một địa điểm, công khai.
@@ -142,6 +161,213 @@ public class PackageService {
                 .pointDiscount(quote.pointDiscount())
                 .finalAmount(quote.finalAmount())
                 .batchOffer(offer)
+                .build();
+    }
+
+    /**
+     * UC15 #7–8, #11, FR41, FR46, BR53: Player bấm xác nhận lịch. Kiểm tra trùng lại một lần nữa; còn buổi trùng
+     * thì chưa giữ chỗ, báo số buổi và danh sách (MSG44). Không trùng thì tạo gói Đang giữ chỗ và các buổi con
+     * (booking SESSION), lưu từng slot, giữ chỗ 15 phút tính từ lúc bấm (P27); trừ voucher, điểm trên cả gói rồi
+     * chia cho từng buổi (BR28). Tất cả trong một giao dịch: lỗi ở bước nào thì không lưu gì.
+     */
+    @Transactional
+    public PackageDetailResponse create(UserPrincipal player, PackageRequest request) {
+        return create(player, request, LocalDateTime.now());
+    }
+
+    PackageDetailResponse create(UserPrincipal player, PackageRequest request, LocalDateTime now) {
+        // BR35: một gói tính là một booking chờ thanh toán.
+        bookingService.requirePendingPaymentLimit(player.getId(), now);
+        Court court = courtRepository.findByIdAndActiveTrue(request.courtId())
+                .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
+        Location location = locationQueryService.findActive(court.getLocationId());
+        bookingService.requireOwnTeam(player.getId(), request.teamId());
+        LocalDate today = now.toLocalDate();
+
+        List<Planned> sessions = markConflicts(location, plan(request, court, today), now);
+        List<Planned> conflicts = sessions.stream().filter(Planned::hasConflict).toList();
+        if (!conflicts.isEmpty()) {
+            throw sessionsTaken(conflicts);
+        }
+        if (sessions.size() < 2) {
+            throw tooFewSessions();
+        }
+        List<Priced> priced = price(sessions);
+        BigDecimal listAmount = sum(priced);
+        // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 15 phút.
+        LocalDateTime createdAt = now.truncatedTo(ChronoUnit.SECONDS);
+        LocalDateTime holdExpiresAt = createdAt.plusMinutes(HOLD_MINUTES);
+
+        // Lưu với giá niêm yết; consumeForPackage, redeemForPackage tự ghi số giảm và finalAmount vào gói.
+        BookingPackage pkg = bookingPackageRepository.save(BookingPackage.builder()
+                .locationId(location.getId())
+                .playerId(player.getId())
+                .packageType(request.packageType())
+                .startDate(sessions.get(0).date())
+                .endDate(sessions.get(sessions.size() - 1).date())
+                .listAmount(listAmount)
+                .finalAmount(listAmount)
+                .status(BookingStatus.HOLDING)
+                .holdExpiresAt(holdExpiresAt)
+                .createdAt(createdAt)
+                .build());
+        List<Booking> bookings = new ArrayList<>();
+        for (Priced session : priced) {
+            Booking booking = bookingRepository.save(Booking.builder()
+                    .bookingCode(bookingCodeGenerator.next())
+                    .bookingType(BookingType.SESSION)
+                    .locationId(location.getId())
+                    .courtId(session.session().court().getId())
+                    .playerId(player.getId())
+                    .teamId(request.teamId())
+                    .packageId(pkg.getId())
+                    .playDate(session.session().date())
+                    .startMinute(session.session().startMinute())
+                    .endMinute(session.session().endMinute())
+                    .listAmount(session.listAmount())
+                    .finalAmount(session.listAmount())
+                    .status(BookingStatus.HOLDING)
+                    .holdExpiresAt(holdExpiresAt)
+                    .createdAt(createdAt)
+                    .build());
+            try {
+                bookingService.saveSlots(booking, session.slots());
+            } catch (AppException e) {
+                // Người khác vừa giữ slot của buổi này sau bước kiểm tra lại (ux_slot_active): báo như MSG44.
+                if (e.getStatus() == HttpStatus.CONFLICT) {
+                    throw sessionsTaken(List.of(session.session()));
+                }
+                throw e;
+            }
+            bookings.add(booking);
+        }
+
+        // Voucher trước, điểm sau: trần điểm tính trên số tiền còn lại sau voucher (BR41).
+        useVoucher(pkg.getId(), request);
+        usePoints(pkg.getId(), request);
+        List<Priced> allocated = allocate(priced, pkg.getVoucherDiscount(), pkg.getPointsUsed(), pkg.getPointDiscount());
+        for (int i = 0; i < bookings.size(); i++) {
+            Booking booking = bookings.get(i);
+            Priced share = allocated.get(i);
+            booking.setVoucherDiscount(share.voucherDiscount());
+            booking.setPointsUsed(share.pointsUsed());
+            booking.setPointDiscount(share.pointDiscount());
+            booking.setFinalAmount(share.finalAmount());
+        }
+        // BR47: gói xác nhận lịch trong thời gian chương trình và đạt mức thì ghi chương trình để tặng voucher
+        // khi thanh toán gói được xác nhận.
+        BatchOfferStatus offer = offerStatus(location.getId(), today, pkg.getFinalAmount());
+        if (offer != null && offer.isReached()) {
+            pkg.setBatchOfferId(offer.getId());
+        }
+        bookingRepository.saveAllAndFlush(bookings);
+        bookingPackageRepository.saveAndFlush(pkg);
+        Map<Long, String> courtNames = new HashMap<>();
+        priced.forEach(p -> courtNames.put(p.session().court().getId(), p.session().court().getName()));
+        return toDetail(pkg, location, bookings, courtNames);
+    }
+
+    /**
+     * UC37, BR53: gói Đang giữ chỗ quá 15 phút mà Player chưa báo thanh toán thì gói và các buổi chuyển Hết hạn,
+     * nhả slot, trả voucher và điểm (BR40, BR45), báo Player (FR124, MSG110). Khóa dòng gói rồi kiểm tra lại:
+     * Player có thể vừa gửi chứng từ sau lần quét của job. Mỗi gói một giao dịch riêng.
+     *
+     * @return true nếu gói vừa được chuyển Hết hạn
+     */
+    @Transactional
+    public boolean expireHold(Long packageId, LocalDateTime now) {
+        BookingPackage pkg = bookingPackageRepository.findByIdForUpdate(packageId).orElse(null);
+        if (pkg == null || pkg.getStatus() != BookingStatus.HOLDING || pkg.getHoldExpiresAt() == null
+                || pkg.getHoldExpiresAt().isAfter(now)) {
+            return false;
+        }
+        pkg.setStatus(BookingStatus.EXPIRED);
+        bookingPackageRepository.saveAndFlush(pkg);
+        for (Booking session : bookingRepository.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(packageId)) {
+            bookingService.changeStatus(session, BookingStatus.EXPIRED);
+            bookingService.releaseSlots(session.getId());
+        }
+        // Hai hàm trả lại chỉ nhận gói đã ở trạng thái thất bại nên chạy sau khi đổi trạng thái.
+        voucherService.restoreForFailedPackage(packageId);
+        loyaltyPointService.restoreForFailedPackage(packageId);
+        notificationService.notifyOnce(pkg.getPlayerId(), NotificationType.BOOKING_HOLD_EXPIRED,
+                "Gói đặt nhiều buổi đã hết hạn giữ chỗ",
+                "Gói đặt nhiều buổi từ " + pkg.getStartDate().format(DATE) + " đến " + pkg.getEndDate().format(DATE)
+                        + " đã bị hủy vì quá hạn thanh toán. Các slot đã được nhả.",
+                "PACKAGE", packageId);
+        return true;
+    }
+
+    /** UC15 #6, FR74: trừ lượt voucher trên cả gói; lỗi do voucher không còn dùng được thì báo MSG108. */
+    private void useVoucher(Long packageId, PackageRequest request) {
+        VoucherSelection selection = voucherSelection(request);
+        if (selection == null) {
+            return;
+        }
+        try {
+            voucherService.consumeForPackage(packageId, selection);
+        } catch (AppException e) {
+            throw BookingService.noLongerUsable("Mã giảm giá", e);
+        }
+    }
+
+    /** UC15 #6, FR75: trừ điểm trên cả gói; LoyaltyPointService kiểm tra lại số dư và trần 50% (BR41). */
+    private void usePoints(Long packageId, PackageRequest request) {
+        Integer points = request.pointsToUse();
+        if (points == null || points == 0) {
+            return;
+        }
+        try {
+            loyaltyPointService.redeemForPackage(packageId, points);
+        } catch (AppException e) {
+            throw BookingService.noLongerUsable("Số điểm", e);
+        }
+    }
+
+    /** MSG44: số buổi và danh sách các buổi bị trùng (ngày, giờ, sân). */
+    private static AppException sessionsTaken(List<Planned> sessions) {
+        String list = sessions.stream()
+                .map(s -> s.date().format(DATE) + " " + MinuteTime.format(s.startMinute()) + "–"
+                        + MinuteTime.format(s.endMinute()) + " " + s.court().getName())
+                .collect(Collectors.joining("; "));
+        return new AppException("Bạn có " + sessions.size() + " buổi vừa bị đặt trùng: " + list
+                + ". Các buổi này đã được đánh dấu trên lịch, vui lòng chọn slot bù hoặc bỏ buổi. (MSG44)",
+                HttpStatus.CONFLICT);
+    }
+
+    /** Gói vừa tạo, cùng dạng với chi tiết gói ở UC17 (chưa có thanh toán). */
+    private static PackageDetailResponse toDetail(BookingPackage pkg, Location location, List<Booking> bookings,
+            Map<Long, String> courtNames) {
+        return PackageDetailResponse.builder()
+                .id(pkg.getId())
+                .packageType(pkg.getPackageType())
+                .locationId(location.getId())
+                .locationName(location.getName())
+                .locationAddress(location.getAddress())
+                .startDate(pkg.getStartDate())
+                .endDate(pkg.getEndDate())
+                .listAmount(pkg.getListAmount())
+                .voucherDiscount(pkg.getVoucherDiscount())
+                .pointsUsed(pkg.getPointsUsed())
+                .pointDiscount(pkg.getPointDiscount())
+                .finalAmount(pkg.getFinalAmount())
+                .status(pkg.getStatus())
+                .holdExpiresAt(pkg.getHoldExpiresAt())
+                .createdAt(pkg.getCreatedAt())
+                .sessions(bookings.stream().map(b -> BookingListItem.builder()
+                        .id(b.getId())
+                        .bookingCode(b.getBookingCode())
+                        .locationId(location.getId())
+                        .locationName(location.getName())
+                        .courtName(courtNames.get(b.getCourtId()))
+                        .playDate(b.getPlayDate())
+                        .startTime(MinuteTime.format(b.getStartMinute()))
+                        .endTime(MinuteTime.format(b.getEndMinute()))
+                        .finalAmount(b.getFinalAmount())
+                        .status(b.getStatus())
+                        .holdExpiresAt(b.getHoldExpiresAt())
+                        .createdAt(b.getCreatedAt())
+                        .build()).toList())
                 .build();
     }
 

@@ -52,15 +52,19 @@ public class BookingPackageController {
     }
 
     /**
-     * UC15 – Đặt nhiều buổi (#8, #11: tạo gói và các buổi con, giữ chỗ 15 phút)
+     * UC15 – Đặt nhiều buổi (#6–8, #11: bấm xác nhận lịch; tạo gói và các buổi con, trừ voucher và điểm,
+     * giữ chỗ 15 phút)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     * Gửi cùng nội dung với preview, sessions là danh sách buổi sau khi xử lý buổi trùng.
      */
     @PostMapping("/api/booking-packages")
-    public ResponseEntity<Void> postBookingPackages() {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PackageDetailResponse>> postBookingPackages(
+            @Valid @RequestBody PackageRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(packageService.create(currentUser, request)));
     }
 
     /**

@@ -237,4 +237,48 @@ public class VoucherService {
         if(u.getVoucherGrantId()!=null) grants.findById(u.getVoucherGrantId()).orElseThrow().setStatus(VoucherGrantStatus.AVAILABLE);
         u.setStatus(VoucherUsageStatus.RETURNED); u.setReturnedAt(LocalDateTime.now());
     }
+
+    /**
+     * UC15 #6, BR14: một voucher cho cả gói, trừ lượt và ngân sách khi tạo gói (FR74), cùng cách với consumeForBooking.
+     * F3 gọi trong giao dịch tạo gói, sau khi lưu gói và trước khi trừ điểm (BR41).
+     */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public VoucherUsage consumeForPackage(Long packageId,@Valid VoucherSelection selection) {
+        var p=em.find(com.sep490.bms.entity.booking.BookingPackage.class,packageId,LockModeType.PESSIMISTIC_WRITE);
+        if(p==null) throw new AppException("Không tìm thấy gói",HttpStatus.NOT_FOUND);
+        if(p.getStatus()!=BookingStatus.HOLDING || p.getHoldExpiresAt()!=null && !p.getHoldExpiresAt().isAfter(LocalDateTime.now()))
+            throw new AppException("Gói không thể dùng voucher");
+        Voucher v=resolve(p.getLocationId(),selection,true);
+        Optional<VoucherUsage> existing=usages.findByPackageId(packageId);
+        if(existing.isPresent()) {
+            VoucherUsage u=existing.get();
+            if(u.getStatus()!=VoucherUsageStatus.USED || !u.getVoucherId().equals(v.getId()) || !Objects.equals(u.getVoucherGrantId(),selection.grantId()))
+                throw new AppException("Gói đã có lịch sử voucher",HttpStatus.CONFLICT);
+            return u;
+        }
+        VoucherCheckResponse quote=evaluate(v,p.getPlayerId(),p.getLocationId(),p.getListAmount(),selection);
+        if(p.getPointsUsed()>0) throw new AppException("Phải áp voucher trước điểm (BR41)");
+        if(quote.discountAmount().add(p.getPointDiscount()).compareTo(p.getListAmount())>=0) throw new AppException("Tổng giảm phải nhỏ hơn giá trị đơn");
+        v.setUsedCount(v.getUsedCount()+1); v.setBudgetUsed(v.getBudgetUsed().add(quote.discountAmount()));
+        if(selection.grantId()!=null) grants.findById(selection.grantId()).orElseThrow().setStatus(VoucherGrantStatus.USED);
+        p.setVoucherDiscount(quote.discountAmount()); p.setFinalAmount(quote.amountAfterVoucher().subtract(p.getPointDiscount()));
+        return usages.saveAndFlush(VoucherUsage.builder().voucherId(v.getId()).voucherGrantId(selection.grantId()).playerId(p.getPlayerId())
+                .packageId(packageId).discountAmount(quote.discountAmount()).build());
+    }
+    /** UC15, UC37: gói hết hạn giữ chỗ hoặc bị từ chối thanh toán thì trả lượt, ngân sách, voucher được tặng (BR45). */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void restoreForFailedPackage(Long packageId) {
+        var p=em.find(com.sep490.bms.entity.booking.BookingPackage.class,packageId,LockModeType.PESSIMISTIC_WRITE);
+        if(p==null) throw new AppException("Không tìm thấy gói",HttpStatus.NOT_FOUND);
+        if(!List.of(BookingStatus.EXPIRED,BookingStatus.PAYMENT_REJECTED).contains(p.getStatus()))
+            throw new AppException("Gói chưa ở trạng thái thất bại được hoàn voucher");
+        var found=usages.findByPackageId(packageId);
+        if(found.isEmpty()) return;
+        VoucherUsage u=found.get(); Voucher v=locked(u.getVoucherId());
+        if(u.getStatus()==VoucherUsageStatus.RETURNED) return;
+        if(v.getUsedCount()<1 || v.getBudgetUsed().compareTo(u.getDiscountAmount())<0) throw new AppException("Dữ liệu lượt voucher không nhất quán",HttpStatus.CONFLICT);
+        v.setUsedCount(v.getUsedCount()-1); v.setBudgetUsed(v.getBudgetUsed().subtract(u.getDiscountAmount()));
+        if(u.getVoucherGrantId()!=null) grants.findById(u.getVoucherGrantId()).orElseThrow().setStatus(VoucherGrantStatus.AVAILABLE);
+        u.setStatus(VoucherUsageStatus.RETURNED); u.setReturnedAt(LocalDateTime.now());
+    }
 }

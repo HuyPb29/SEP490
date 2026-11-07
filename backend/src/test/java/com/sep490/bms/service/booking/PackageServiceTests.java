@@ -7,9 +7,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -17,6 +22,7 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,17 +30,25 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.http.HttpStatus;
 
 import com.sep490.bms.dto.booking.BatchOfferPublicResponse;
+import com.sep490.bms.dto.booking.BookingListItem;
+import com.sep490.bms.dto.booking.PackageDetailResponse;
 import com.sep490.bms.dto.booking.PackagePreviewResponse;
 import com.sep490.bms.dto.booking.PackagePreviewResponse.Conflict;
 import com.sep490.bms.dto.booking.PackageRequest;
 import com.sep490.bms.dto.booking.PackageRequest.WeeklySlot;
 import com.sep490.bms.dto.promotion.VoucherCheckRequest;
 import com.sep490.bms.dto.promotion.VoucherCheckResponse;
+import com.sep490.bms.dto.promotion.VoucherSelection;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
+import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.enums.DiscountType;
 import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.enums.VoucherStatus;
@@ -42,11 +56,14 @@ import com.sep490.bms.entity.location.BatchOffer;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.promotion.Voucher;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.booking.BookingPackageRepository;
+import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.location.BatchOfferRepository;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.promotion.VoucherRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.notification.NotificationService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
 import com.sep490.bms.service.promotion.VoucherService;
 
@@ -73,8 +90,16 @@ class PackageServiceTests {
     private final PriceCalculator prices = mock(PriceCalculator.class);
     private final VoucherService voucherService = mock(VoucherService.class);
     private final LoyaltyPointService points = mock(LoyaltyPointService.class);
+    private final BookingPackageRepository packages = mock(BookingPackageRepository.class);
+    private final BookingRepository bookings = mock(BookingRepository.class);
+    private final BookingCodeGenerator codes = mock(BookingCodeGenerator.class);
+    private final NotificationService notifications = mock(NotificationService.class);
     private final PackageService service = new PackageService(locations, offers, vouchers, courts, bookingService,
-            availability, prices, voucherService, points);
+            availability, prices, voucherService, points, packages, bookings, codes, notifications);
+
+    /** Gói vừa lưu trong lần gọi create gần nhất (mock save gán id 50). */
+    private BookingPackage savedPackage;
+    private final List<Booking> savedBookings = new ArrayList<>();
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
     private final Location location = Location.builder().id(LOCATION).name("Cầu lông A").build();
@@ -100,6 +125,18 @@ class PackageServiceTests {
             return result;
         });
         when(offers.findAllByLocationIdOrderByStartDateDescIdDesc(LOCATION)).thenReturn(List.of());
+        when(packages.save(any(BookingPackage.class))).thenAnswer(inv -> {
+            savedPackage = inv.getArgument(0);
+            savedPackage.setId(50L);
+            return savedPackage;
+        });
+        when(bookings.save(any(Booking.class))).thenAnswer(inv -> {
+            Booking b = inv.getArgument(0);
+            b.setId(100L + savedBookings.size());
+            savedBookings.add(b);
+            return b;
+        });
+        when(codes.next()).thenReturn("BK1", "BK2", "BK3", "BK4", "BK5", "BK6", "BK7");
     }
 
     private static PackageRequest withDiscounts(PackageRequest r, String code, Integer pointsToUse) {
@@ -478,6 +515,181 @@ class PackageServiceTests {
         assertThat(enough.getBatchOffer().getMessage()).isNull();
         assertThat(belowAfterVoucher.getFinalAmount()).isEqualByComparingTo("999999");
         assertThat(belowAfterVoucher.getBatchOffer().isReached()).isFalse();
+    }
+
+    // ===================== 12.5: tạo gói, giữ chỗ 15 phút =====================
+
+    /** Ba buổi tự chọn: 120.000 (sân 1), 160.000 (sân 2), 60.000 (sân 1). */
+    private PackageRequest threeSessions(String code, Integer pointsToUse) {
+        return withDiscounts(custom(
+                session(DEC_1, null, 1080, 1140),
+                session(LocalDate.of(2026, 12, 2), 12L, 1080, 1140),
+                session(LocalDate.of(2026, 12, 3), null, 1080, 1110)), code, pointsToUse);
+    }
+
+    @Test
+    void createSavesHoldingPackageAndSessionsHeldFifteenMinutes() {
+        LocalDateTime now = LocalDateTime.of(2026, 11, 7, 9, 0, 15, 700_000_000);
+
+        PackageDetailResponse result = service.create(player, threeSessions(null, null), now);
+
+        InOrder order = inOrder(bookingService, packages, bookings);
+        order.verify(bookingService).requirePendingPaymentLimit(PLAYER, now);
+        order.verify(packages).save(any(BookingPackage.class));
+        assertThat(savedPackage.getStatus()).isEqualTo(BookingStatus.HOLDING);
+        assertThat(savedPackage.getPackageType()).isEqualTo(PackageType.CUSTOM);
+        assertThat(savedPackage.getCreatedAt()).isEqualTo(LocalDateTime.of(2026, 11, 7, 9, 0, 15));
+        assertThat(savedPackage.getHoldExpiresAt()).isEqualTo(LocalDateTime.of(2026, 11, 7, 9, 15, 15));
+        assertThat(savedPackage.getStartDate()).isEqualTo(DEC_1);
+        assertThat(savedPackage.getEndDate()).isEqualTo(LocalDate.of(2026, 12, 3));
+        assertThat(savedPackage.getListAmount()).isEqualByComparingTo("340000");
+        assertThat(savedPackage.getFinalAmount()).isEqualByComparingTo("340000");
+        assertThat(savedPackage.getBatchOfferId()).isNull();
+
+        assertThat(savedBookings).hasSize(3);
+        assertThat(savedBookings).allSatisfy(b -> {
+            assertThat(b.getBookingType()).isEqualTo(BookingType.SESSION);
+            assertThat(b.getPackageId()).isEqualTo(50L);
+            assertThat(b.getPlayerId()).isEqualTo(PLAYER);
+            assertThat(b.getStatus()).isEqualTo(BookingStatus.HOLDING);
+            assertThat(b.getHoldExpiresAt()).isEqualTo(savedPackage.getHoldExpiresAt());
+        });
+        assertThat(savedBookings).extracting(Booking::getBookingCode).containsExactly("BK1", "BK2", "BK3");
+        assertThat(savedBookings).extracting(Booking::getCourtId).containsExactly(COURT, 12L, COURT);
+        assertThat(savedBookings).extracting(b -> b.getFinalAmount().intValue()).containsExactly(120000, 160000, 60000);
+        verify(bookingService).saveSlots(eq(savedBookings.get(1)), argThat(slots -> slots.size() == 2
+                && slots.get(0).getPrice().intValue() == 80000));
+        verifyNoInteractions(voucherService, points);
+
+        assertThat(result.getId()).isEqualTo(50L);
+        assertThat(result.getSessions()).extracting(BookingListItem::getCourtName).containsExactly("Sân 1", "Sân 2", "Sân 1");
+        verify(bookings).saveAllAndFlush(savedBookings);
+        verify(packages).saveAndFlush(savedPackage);
+    }
+
+    @Test
+    void createSplitsConsumedVoucherAndPointsOverSessions() {
+        doAnswer(inv -> {
+            savedPackage.setVoucherDiscount(new BigDecimal("100000"));
+            savedPackage.setFinalAmount(new BigDecimal("240000"));
+            return null;
+        }).when(voucherService).consumeForPackage(eq(50L), any());
+        doAnswer(inv -> {
+            savedPackage.setPointsUsed(101);
+            savedPackage.setPointDiscount(new BigDecimal("50500"));
+            savedPackage.setFinalAmount(new BigDecimal("189500"));
+            return new BigDecimal("50500");
+        }).when(points).redeemForPackage(50L, 101);
+
+        service.create(player, threeSessions("SALE", 101), NOW);
+
+        InOrder order = inOrder(voucherService, points);
+        order.verify(voucherService).consumeForPackage(50L, new VoucherSelection("SALE", null));
+        order.verify(points).redeemForPackage(50L, 101);
+        assertThat(savedBookings).extracting(b -> b.getVoucherDiscount().intValue()).containsExactly(35294, 47058, 17648);
+        assertThat(savedBookings).extracting(Booking::getPointsUsed).containsExactly(35, 47, 19);
+        assertThat(savedBookings).extracting(b -> b.getFinalAmount().intValue()).containsExactly(67206, 89442, 32852);
+    }
+
+    @Test
+    void createRecordsBatchOfferOnlyWhenReached() {
+        when(offers.findAllByLocationIdOrderByStartDateDescIdDesc(LOCATION))
+                .thenReturn(List.of(offer(1, TODAY.minusDays(1), TODAY.plusDays(30), 10)));
+        when(vouchers.findAllById(anyList())).thenReturn(List.of(voucher(10, VoucherStatus.PUBLISHED)));
+
+        service.create(player, recurring(DEC_1, DEC_31, TUESDAY_EVENING), NOW);
+        assertThat(savedPackage.getBatchOfferId()).isEqualTo(1L);
+
+        service.create(player, threeSessions(null, null), NOW);
+        assertThat(savedPackage.getBatchOfferId()).isNull();
+    }
+
+    @Test
+    void createWithConflictReportsSessionsWithoutSaving() {
+        when(availability.findProblem(LOCATION, 12L, LocalDate.of(2026, 12, 2), 1080, 1140))
+                .thenReturn(Optional.of(SlotAvailabilityService.SlotProblem.TAKEN));
+
+        assertThatThrownBy(() -> service.create(player, threeSessions(null, null), NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessage("Bạn có 1 buổi vừa bị đặt trùng: 02/12/2026 18:00–19:00 Sân 2. Các buổi này đã được "
+                        + "đánh dấu trên lịch, vui lòng chọn slot bù hoặc bỏ buổi. (MSG44)")
+                .extracting(e -> ((AppException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT);
+        verify(packages, never()).save(any());
+    }
+
+    @Test
+    void createWithSlotTakenWhileSavingIsMsg44() {
+        doThrow(new AppException("Slot vừa có người giữ hoặc đặt. (MSG28)", HttpStatus.CONFLICT))
+                .when(bookingService).saveSlots(argThat(b -> b != null && b.getCourtId().equals(12L)), anyList());
+
+        assertThatThrownBy(() -> service.create(player, threeSessions(null, null), NOW))
+                .hasMessageContaining("Bạn có 1 buổi vừa bị đặt trùng: 02/12/2026 18:00–19:00 Sân 2")
+                .hasMessageContaining("(MSG44)");
+    }
+
+    @Test
+    void createNeedsTwoSessionsAfterHandlingConflicts() {
+        PackageRequest one = new PackageRequest(PackageType.RECURRING, COURT, DEC_1, DEC_31,
+                List.of(TUESDAY_EVENING), List.of(session(DEC_1, null, 1080, 1200)), null, null, null, null);
+
+        assertThatThrownBy(() -> service.create(player, one, NOW)).hasMessageContaining("(MSG92)");
+        verify(packages, never()).save(any());
+    }
+
+    @Test
+    void createStopsAtPendingPaymentLimit() {
+        doThrow(new AppException("Bạn đang có 2 booking chờ thanh toán. (MSG29)", HttpStatus.CONFLICT))
+                .when(bookingService).requirePendingPaymentLimit(PLAYER, NOW);
+
+        assertThatThrownBy(() -> service.create(player, threeSessions(null, null), NOW)).hasMessageContaining("(MSG29)");
+        verify(packages, never()).save(any());
+    }
+
+    @Test
+    void createVoucherNoLongerUsableIsMsg108() {
+        doThrow(new AppException("Voucher hết lượt")).when(voucherService).consumeForPackage(eq(50L), any());
+
+        assertThatThrownBy(() -> service.create(player, threeSessions("SALE", null), NOW))
+                .hasMessage("Mã giảm giá không còn dùng được: Voucher hết lượt. Vui lòng kiểm tra lại. (MSG108)");
+    }
+
+    @Test
+    void expireHoldExpiresPackageSessionsAndReturnsDiscounts() {
+        BookingPackage pkg = BookingPackage.builder().id(50L).playerId(PLAYER).status(BookingStatus.HOLDING)
+                .startDate(DEC_1).endDate(DEC_31).holdExpiresAt(NOW.minusSeconds(1)).build();
+        Booking s1 = Booking.builder().id(101L).packageId(50L).status(BookingStatus.HOLDING).build();
+        Booking s2 = Booking.builder().id(102L).packageId(50L).status(BookingStatus.HOLDING).build();
+        when(packages.findByIdForUpdate(50L)).thenReturn(Optional.of(pkg));
+        when(bookings.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(50L)).thenReturn(List.of(s1, s2));
+
+        assertThat(service.expireHold(50L, NOW)).isTrue();
+
+        assertThat(pkg.getStatus()).isEqualTo(BookingStatus.EXPIRED);
+        InOrder order = inOrder(packages, bookingService, voucherService, points);
+        order.verify(packages).saveAndFlush(pkg);
+        order.verify(bookingService).changeStatus(s1, BookingStatus.EXPIRED);
+        order.verify(bookingService).releaseSlots(101L);
+        order.verify(bookingService).changeStatus(s2, BookingStatus.EXPIRED);
+        order.verify(bookingService).releaseSlots(102L);
+        order.verify(voucherService).restoreForFailedPackage(50L);
+        order.verify(points).restoreForFailedPackage(50L);
+        verify(notifications).notifyOnce(eq(PLAYER), eq("BOOKING_HOLD_EXPIRED"), anyString(),
+                eq("Gói đặt nhiều buổi từ 01/12/2026 đến 31/12/2026 đã bị hủy vì quá hạn thanh toán. Các slot đã được nhả."),
+                eq("PACKAGE"), eq(50L));
+    }
+
+    @Test
+    void expireHoldSkipsPackageAlreadyReportedOrStillHeld() {
+        BookingPackage reported = BookingPackage.builder().id(50L).status(BookingStatus.AWAITING_CONFIRMATION)
+                .holdExpiresAt(NOW.minusMinutes(1)).build();
+        BookingPackage stillHeld = BookingPackage.builder().id(51L).status(BookingStatus.HOLDING)
+                .holdExpiresAt(NOW.plusSeconds(1)).build();
+        when(packages.findByIdForUpdate(50L)).thenReturn(Optional.of(reported));
+        when(packages.findByIdForUpdate(51L)).thenReturn(Optional.of(stillHeld));
+
+        assertThat(service.expireHold(50L, NOW)).isFalse();
+        assertThat(service.expireHold(51L, NOW)).isFalse();
+        verifyNoInteractions(bookingService, voucherService, points, notifications);
     }
 
     private PackageService.Priced pricedSession(LocalDate date, String amount) {

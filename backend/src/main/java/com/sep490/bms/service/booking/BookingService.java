@@ -298,7 +298,7 @@ public class BookingService {
      * Voucher hoặc điểm đã áp ở màn tóm tắt nhưng lúc bấm Xác nhận không còn dùng được: MSG108 kèm lý do.
      * Lỗi không phải 400 (ví dụ 409 dữ liệu không nhất quán) giữ nguyên.
      */
-    private static AppException noLongerUsable(String what, AppException e) {
+    static AppException noLongerUsable(String what, AppException e) {
         if (e.getStatus() != HttpStatus.BAD_REQUEST) {
             return e;
         }
@@ -331,7 +331,7 @@ public class BookingService {
      * Khóa dòng account của Player trước khi đếm: hai request của cùng Player gửi cùng lúc phải chạy lần lượt,
      * nếu không cả hai cùng đếm được 1 rồi cùng tạo, thành 3 booking chờ.
      */
-    private void requirePendingPaymentLimit(Long playerId, LocalDateTime now) {
+    public void requirePendingPaymentLimit(Long playerId, LocalDateTime now) {
         accountRepository.findByIdForUpdate(playerId)
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản", HttpStatus.NOT_FOUND));
         long pending = bookingRepository.countPendingPayment(playerId, now)
