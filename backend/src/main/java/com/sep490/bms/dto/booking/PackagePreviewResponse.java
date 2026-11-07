@@ -1,5 +1,6 @@
 package com.sep490.bms.dto.booking;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -36,6 +37,35 @@ public class PackagePreviewResponse {
     private List<MonthSummary> months;
     /** Các buổi theo ngày giờ chơi. */
     private List<Session> sessions;
+
+    /**
+     * Số tiền của gói, chỉ tính các buổi đặt được (buổi trùng không tính). Thứ tự giảm: giá niêm yết → voucher
+     * → điểm (BR41); voucher áp một lần cho cả gói (BR14).
+     */
+    private BigDecimal listAmount;
+    private BigDecimal voucherDiscount;
+    private int pointsUsed;
+    private BigDecimal pointDiscount;
+    private BigDecimal finalAmount;
+    /** Chương trình ưu đãi đặt theo lô đang diễn ra; trống khi không có (FR44). */
+    private BatchOfferStatus batchOffer;
+
+    /** Gói đã đạt mức tặng voucher của chương trình theo lô chưa (BR47, MSG93). */
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class BatchOfferStatus {
+        private Long id;
+        private String name;
+        private BigDecimal minPackageAmount;
+        private String voucherName;
+        /** true: tổng số tiền thực trả của gói đã từ mức tối thiểu trở lên. */
+        private boolean reached;
+        /** MSG93 khi chưa đạt; trống khi đã đạt. */
+        private String message;
+    }
 
     /** Vì sao một buổi không đặt được. */
     public enum Conflict {
@@ -78,5 +108,14 @@ public class PackagePreviewResponse {
         private String endTime;
         /** Trống là buổi đặt được; có giá trị thì Player chọn slot bù hoặc bỏ buổi này (BR50). */
         private Conflict conflict;
+        /**
+         * Giá niêm yết và phần giảm đã chia cho buổi này theo tỷ lệ giá (BR28); là căn cứ khi hủy, đổi lịch,
+         * hoàn tiền từng buổi. Trống khi buổi bị trùng.
+         */
+        private BigDecimal listAmount;
+        private BigDecimal voucherDiscount;
+        private Integer pointsUsed;
+        private BigDecimal pointDiscount;
+        private BigDecimal finalAmount;
     }
 }

@@ -6,10 +6,12 @@ import java.util.List;
 import com.sep490.bms.entity.enums.PackageType;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 
 /**
  * Đặt nhiều buổi (UC15 #1–3, FR40, BR27). Dùng chung cho xem trước lịch gói và tạo gói.
@@ -30,7 +32,17 @@ public record PackageRequest(
         /** CUSTOM: các buổi tự chọn. RECURRING: danh sách buổi sau khi xử lý buổi trùng; để trống thì sinh theo mẫu. */
         @Valid List<Session> sessions,
         /** Đội mình làm chủ, không bắt buộc; để trống là đặt cho cá nhân (FR37, BR09). */
-        @Positive Long teamId) {
+        @Positive Long teamId,
+        /** Một voucher cho cả gói (BR14): mã công khai hoặc voucher được tặng, chọn một trong hai. */
+        @Size(max = 20) String voucherCode,
+        @Positive Long voucherGrantId,
+        /** Số điểm dùng cho cả gói, tối đa 50% số tiền còn lại sau voucher (BR41). */
+        @Min(0) Integer pointsToUse) {
+
+    @AssertTrue(message = "Chỉ chọn voucherCode hoặc voucherGrantId")
+    public boolean isVoucherSelectionValid() {
+        return voucherCode == null || voucherCode.isBlank() || voucherGrantId == null;
+    }
 
     /** Một buổi trong tuần: dayOfWeek 1 = thứ Hai … 7 = Chủ nhật; giờ tính bằng số phút từ 0 giờ. */
     public record WeeklySlot(

@@ -17,7 +17,9 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +31,8 @@ import com.sep490.bms.dto.booking.PackagePreviewResponse;
 import com.sep490.bms.dto.booking.PackagePreviewResponse.Conflict;
 import com.sep490.bms.dto.booking.PackageRequest;
 import com.sep490.bms.dto.booking.PackageRequest.WeeklySlot;
+import com.sep490.bms.dto.promotion.VoucherCheckRequest;
+import com.sep490.bms.dto.promotion.VoucherCheckResponse;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.enums.DiscountType;
@@ -43,6 +47,8 @@ import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.promotion.VoucherRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.promotion.LoyaltyPointService;
+import com.sep490.bms.service.promotion.VoucherService;
 
 /** UC15: đặt nhiều buổi. */
 class PackageServiceTests {
@@ -64,8 +70,11 @@ class PackageServiceTests {
     private final CourtRepository courts = mock(CourtRepository.class);
     private final BookingService bookingService = mock(BookingService.class);
     private final SlotAvailabilityService availability = mock(SlotAvailabilityService.class);
-    private final PackageService service =
-            new PackageService(locations, offers, vouchers, courts, bookingService, availability);
+    private final PriceCalculator prices = mock(PriceCalculator.class);
+    private final VoucherService voucherService = mock(VoucherService.class);
+    private final LoyaltyPointService points = mock(LoyaltyPointService.class);
+    private final PackageService service = new PackageService(locations, offers, vouchers, courts, bookingService,
+            availability, prices, voucherService, points);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
     private final Location location = Location.builder().id(LOCATION).name("Cầu lông A").build();
@@ -79,6 +88,31 @@ class PackageServiceTests {
         when(courts.findByIdAndActiveTrue(COURT)).thenReturn(Optional.of(court));
         when(courts.findByIdAndActiveTrue(12L)).thenReturn(Optional.of(court2));
         when(availability.findProblem(eq(LOCATION), anyLong(), any(), anyInt(), anyInt())).thenReturn(Optional.empty());
+        // Sân 1: 60.000 đồng/slot 30 phút; sân 2: 80.000 đồng/slot.
+        when(prices.rangePrices(anyLong(), any(), anyInt(), anyInt())).thenAnswer(inv -> {
+            long courtId = inv.getArgument(0);
+            int start = inv.getArgument(2);
+            int end = inv.getArgument(3);
+            Map<Integer, BigDecimal> result = new LinkedHashMap<>();
+            for (int s = start; s < end; s += 30) {
+                result.put(s, new BigDecimal(courtId == 12L ? "80000" : "60000"));
+            }
+            return result;
+        });
+        when(offers.findAllByLocationIdOrderByStartDateDescIdDesc(LOCATION)).thenReturn(List.of());
+    }
+
+    private static PackageRequest withDiscounts(PackageRequest r, String code, Integer pointsToUse) {
+        return new PackageRequest(r.packageType(), r.courtId(), r.startDate(), r.endDate(), r.weeklySlots(),
+                r.sessions(), r.teamId(), code, null, pointsToUse);
+    }
+
+    private void voucherGives(String discount) {
+        when(voucherService.check(eq(player), any(VoucherCheckRequest.class))).thenAnswer(inv -> {
+            VoucherCheckRequest req = inv.getArgument(1);
+            BigDecimal d = new BigDecimal(discount);
+            return new VoucherCheckResponse(5L, null, req.orderAmount(), d, req.orderAmount().subtract(d));
+        });
     }
 
     private static PackageRequest.Session session(LocalDate date, Long courtId, int start, int end) {
@@ -86,7 +120,7 @@ class PackageServiceTests {
     }
 
     private static PackageRequest custom(PackageRequest.Session... sessions) {
-        return new PackageRequest(PackageType.CUSTOM, COURT, null, null, null, List.of(sessions), null);
+        return new PackageRequest(PackageType.CUSTOM, COURT, null, null, null, List.of(sessions), null, null, null, null);
     }
 
     private static BatchOffer offer(long id, LocalDate start, LocalDate end, long voucherId) {
@@ -101,7 +135,7 @@ class PackageServiceTests {
 
     private static PackageRequest recurring(LocalDate start, LocalDate end, WeeklySlot... slots) {
         return new PackageRequest(PackageType.RECURRING, COURT, start, end,
-                slots.length == 0 ? null : List.of(slots), null, null);
+                slots.length == 0 ? null : List.of(slots), null, null, null, null, null);
     }
 
     // ===================== 12.1: chương trình theo lô công khai =====================
@@ -223,7 +257,7 @@ class PackageServiceTests {
         doThrow(new AppException("Bạn chỉ đặt sân được cho đội mình làm chủ.", HttpStatus.FORBIDDEN))
                 .when(bookingService).requireOwnTeam(PLAYER, 7L);
         PackageRequest request = new PackageRequest(PackageType.RECURRING, COURT, DEC_1, DEC_31,
-                List.of(TUESDAY_EVENING), null, 7L);
+                List.of(TUESDAY_EVENING), null, 7L, null, null, null);
 
         assertThatThrownBy(() -> service.preview(player, request, NOW))
                 .extracting(e -> ((AppException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
@@ -293,7 +327,7 @@ class PackageServiceTests {
         assertThatThrownBy(() -> service.preview(player, custom(session(DEC_1, null, 1080, 1140)), NOW))
                 .hasMessageContaining("(MSG91)");
         assertThatThrownBy(() -> service.preview(player,
-                new PackageRequest(PackageType.CUSTOM, COURT, null, null, null, null, null), NOW))
+                new PackageRequest(PackageType.CUSTOM, COURT, null, null, null, null, null, null, null, null), NOW))
                 .hasMessageContaining("(MSG91)");
         assertThatThrownBy(() -> service.preview(player, custom(
                 session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 3, 1), null, 1080, 1140)), NOW))
@@ -327,21 +361,128 @@ class PackageServiceTests {
         List<PackageRequest.Session> handled = List.of(session(DEC_1, null, 1080, 1200),
                 session(LocalDate.of(2026, 12, 9), 12L, 1080, 1200));
         PackageRequest ok = new PackageRequest(PackageType.RECURRING, COURT, DEC_1, DEC_31,
-                List.of(TUESDAY_EVENING), handled, null);
+                List.of(TUESDAY_EVENING), handled, null, null, null, null);
         assertThat(service.preview(player, ok, NOW).getTotalSessions()).isEqualTo(2);
 
         PackageRequest outside = new PackageRequest(PackageType.RECURRING, COURT, DEC_1, DEC_31,
                 List.of(TUESDAY_EVENING), List.of(session(DEC_1, null, 1080, 1200),
-                        session(LocalDate.of(2027, 1, 5), null, 1080, 1200)), null);
+                        session(LocalDate.of(2027, 1, 5), null, 1080, 1200)), null, null, null, null);
         assertThatThrownBy(() -> service.preview(player, outside, NOW)).hasMessageContaining("ngoài thời gian");
 
         PackageRequest badPattern = new PackageRequest(PackageType.RECURRING, COURT, DEC_1,
-                LocalDate.of(2026, 12, 20), List.of(TUESDAY_EVENING), handled, null);
+                LocalDate.of(2026, 12, 20), List.of(TUESDAY_EVENING), handled, null, null, null, null);
         assertThatThrownBy(() -> service.preview(player, badPattern, NOW)).hasMessageContaining("(MSG41)");
 
         PackageRequest allDropped = new PackageRequest(PackageType.RECURRING, COURT, DEC_1, DEC_31,
-                List.of(TUESDAY_EVENING), List.of(), null);
+                List.of(TUESDAY_EVENING), List.of(), null, null, null, null);
         assertThatThrownBy(() -> service.preview(player, allDropped, NOW)).hasMessageContaining("(MSG92)");
+    }
+
+    // ===================== 12.4: tổng tiền, chia giảm giá cho từng buổi =====================
+
+    @Test
+    void totalsCountOnlyBookableSessions() {
+        when(availability.findProblem(LOCATION, COURT, LocalDate.of(2026, 12, 8), 1080, 1200))
+                .thenReturn(Optional.of(SlotAvailabilityService.SlotProblem.TAKEN));
+
+        PackagePreviewResponse result = service.preview(player, recurring(DEC_1, DEC_31, TUESDAY_EVENING), NOW);
+
+        // 5 buổi thứ Ba, 1 buổi bị trùng; mỗi buổi 4 slot × 60.000.
+        assertThat(result.getListAmount()).isEqualByComparingTo("960000");
+        assertThat(result.getFinalAmount()).isEqualByComparingTo("960000");
+        assertThat(result.getVoucherDiscount()).isEqualByComparingTo("0");
+        assertThat(result.getSessions().get(1).getListAmount()).isNull();
+        assertThat(result.getSessions().get(0).getListAmount()).isEqualByComparingTo("240000");
+        assertThat(result.getSessions().get(0).getFinalAmount()).isEqualByComparingTo("240000");
+        assertThat(result.getBatchOffer()).isNull();
+        verifyNoInteractions(voucherService, points);
+    }
+
+    @Test
+    void voucherAndPointsSplitByPriceRemainderOnLastSession() {
+        // Buổi 1: 2 slot sân 1 = 120.000; buổi 2: 2 slot sân 2 = 160.000; buổi 3: 1 slot sân 1 = 60.000. Tổng 340.000.
+        PackageRequest request = withDiscounts(custom(
+                session(DEC_1, null, 1080, 1140),
+                session(LocalDate.of(2026, 12, 2), 12L, 1080, 1140),
+                session(LocalDate.of(2026, 12, 3), null, 1080, 1110)), "SALE", 101);
+        voucherGives("100000");
+        when(points.preview(PLAYER, LOCATION, new BigDecimal("240000"), 101)).thenReturn(new BigDecimal("50500"));
+
+        PackagePreviewResponse result = service.preview(player, request, NOW);
+
+        assertThat(result.getListAmount()).isEqualByComparingTo("340000");
+        assertThat(result.getVoucherDiscount()).isEqualByComparingTo("100000");
+        assertThat(result.getPointsUsed()).isEqualTo(101);
+        assertThat(result.getPointDiscount()).isEqualByComparingTo("50500");
+        assertThat(result.getFinalAmount()).isEqualByComparingTo("189500");
+        // Voucher: 100.000 × 120/340 = 35.294; × 160/340 = 47.058; buổi cuối 17.648.
+        assertThat(result.getSessions()).extracting(s -> s.getVoucherDiscount().intValue())
+                .containsExactly(35294, 47058, 17648);
+        // Điểm: 101 × 120/340 = 35; × 160/340 = 47; buổi cuối 19.
+        assertThat(result.getSessions()).extracting(PackagePreviewResponse.Session::getPointsUsed)
+                .containsExactly(35, 47, 19);
+        assertThat(result.getSessions()).extracting(s -> s.getPointDiscount().intValue())
+                .containsExactly(17500, 23500, 9500);
+        BigDecimal sumFinal = result.getSessions().stream().map(PackagePreviewResponse.Session::getFinalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(sumFinal).isEqualByComparingTo(result.getFinalAmount());
+    }
+
+    @Test
+    void allocationRefusesSessionLeftWithNothingToPay() {
+        List<PackageService.Priced> priced = List.of(
+                pricedSession(DEC_1, "300000"), pricedSession(LocalDate.of(2026, 12, 2), "1000"));
+        // Voucher 290.000 chia 290.000 × 300/301 = 289.036 cho buổi 1; buổi cuối nhận 964 < 1.000 nên còn 36;
+        // 3 điểm (1.500 đồng) chia 2 điểm cho buổi 1, buổi cuối nhận 1 điểm = 500 đồng > 36.
+        assertThatThrownBy(() -> PackageService.allocate(priced, new BigDecimal("290000"), 3, new BigDecimal("1500")))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("2026-12-02");
+    }
+
+    @Test
+    void voucherNotUsableIsMsg34() {
+        when(voucherService.check(eq(player), any(VoucherCheckRequest.class)))
+                .thenThrow(new AppException("Voucher hết lượt"));
+
+        assertThatThrownBy(() -> service.preview(player,
+                withDiscounts(recurring(DEC_1, DEC_31, TUESDAY_EVENING), "SALE", null), NOW))
+                .hasMessageContaining("Voucher hết lượt").hasMessageContaining("(MSG34)");
+    }
+
+    @Test
+    void batchOfferNotReachedShowsMsg93() {
+        BatchOffer bigOffer = offer(1, TODAY.minusDays(1), TODAY.plusDays(30), 10);
+        bigOffer.setMinPackageAmount(new BigDecimal("1500000"));
+        when(offers.findAllByLocationIdOrderByStartDateDescIdDesc(LOCATION)).thenReturn(List.of(bigOffer));
+        when(vouchers.findAllById(anyList())).thenReturn(List.of(voucher(10, VoucherStatus.PUBLISHED)));
+
+        PackagePreviewResponse small = service.preview(player, recurring(DEC_1, DEC_31, TUESDAY_EVENING), NOW);
+        assertThat(small.getBatchOffer().getId()).isEqualTo(1L);
+        assertThat(small.getBatchOffer().isReached()).isFalse();
+        assertThat(small.getBatchOffer().getMessage()).isEqualTo(
+                "Gói có tổng 1.200.000 đồng, chưa đủ 1.500.000 đồng để được tặng voucher của chương trình Chương trình 1.");
+    }
+
+    @Test
+    void batchOfferReachedOnAmountAfterDiscounts() {
+        when(offers.findAllByLocationIdOrderByStartDateDescIdDesc(LOCATION))
+                .thenReturn(List.of(offer(1, TODAY.minusDays(1), TODAY.plusDays(30), 10)));
+        when(vouchers.findAllById(anyList())).thenReturn(List.of(voucher(10, VoucherStatus.PUBLISHED)));
+
+        PackagePreviewResponse enough = service.preview(player, recurring(DEC_1, DEC_31, TUESDAY_EVENING), NOW);
+        voucherGives("200001");
+        PackagePreviewResponse belowAfterVoucher = service.preview(player,
+                withDiscounts(recurring(DEC_1, DEC_31, TUESDAY_EVENING), "SALE", null), NOW);
+
+        assertThat(enough.getBatchOffer().isReached()).isTrue();
+        assertThat(enough.getBatchOffer().getMessage()).isNull();
+        assertThat(belowAfterVoucher.getFinalAmount()).isEqualByComparingTo("999999");
+        assertThat(belowAfterVoucher.getBatchOffer().isReached()).isFalse();
+    }
+
+    private PackageService.Priced pricedSession(LocalDate date, String amount) {
+        return new PackageService.Priced(new PackageService.Planned(date, court, 1080, 1110), List.of(),
+                new BigDecimal(amount), BigDecimal.ZERO, 0, BigDecimal.ZERO);
     }
 
     private void assertMsg41(PackageRequest request) {

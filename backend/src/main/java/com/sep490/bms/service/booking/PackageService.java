@@ -1,5 +1,7 @@
 package com.sep490.bms.service.booking;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -7,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Function;
@@ -15,13 +18,18 @@ import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.dto.booking.BatchOfferPublicResponse;
+import com.sep490.bms.dto.booking.BookingSummaryResponse.SlotPrice;
 import com.sep490.bms.dto.booking.PackagePreviewResponse;
+import com.sep490.bms.dto.booking.PackagePreviewResponse.BatchOfferStatus;
 import com.sep490.bms.dto.booking.PackagePreviewResponse.Conflict;
 import com.sep490.bms.dto.booking.PackageRequest;
 import com.sep490.bms.dto.booking.PackageRequest.WeeklySlot;
+import com.sep490.bms.dto.promotion.VoucherCheckRequest;
+import com.sep490.bms.dto.promotion.VoucherSelection;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.enums.VoucherStatus;
@@ -34,6 +42,8 @@ import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.promotion.VoucherRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.promotion.LoyaltyPointService;
+import com.sep490.bms.service.promotion.VoucherService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -45,7 +55,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PackageService {
 
-    /** BR27: định kỳ kéo dài từ 1 đến 3 tháng. */
+    /** BR27: định kỳ kéo dài từ 1 đến 3 tháng; tự chọn trong vòng tối đa 3 tháng. */
     static final int MIN_MONTHS = 1;
     static final int MAX_MONTHS = 3;
 
@@ -55,6 +65,9 @@ public class PackageService {
     private final CourtRepository courtRepository;
     private final BookingService bookingService;
     private final SlotAvailabilityService slotAvailabilityService;
+    private final PriceCalculator priceCalculator;
+    private final VoucherService voucherService;
+    private final LoyaltyPointService loyaltyPointService;
 
     /**
      * UC15 #9, FR44: chương trình ưu đãi đặt theo lô đang diễn ra của một địa điểm, công khai.
@@ -68,6 +81,10 @@ public class PackageService {
 
     List<BatchOfferPublicResponse> listActiveBatchOffers(Long locationId, LocalDate today) {
         locationQueryService.findActive(locationId);
+        return runningOffers(locationId, today);
+    }
+
+    private List<BatchOfferPublicResponse> runningOffers(Long locationId, LocalDate today) {
         List<BatchOffer> offers = batchOfferRepository.findAllByLocationIdOrderByStartDateDescIdDesc(locationId)
                 .stream()
                 .filter(offer -> !today.isBefore(offer.getStartDate()) && !today.isAfter(offer.getEndDate()))
@@ -86,8 +103,8 @@ public class PackageService {
     }
 
     /**
-     * UC15 #1–2, #4: Player nhập mẫu rồi xem lịch toàn kỳ trước khi bấm xác nhận lịch.
-     * Không tạo gói, không giữ chỗ: gói chỉ giữ chỗ từ lúc bấm xác nhận lịch (BR53).
+     * UC15 #1–6, #9, #10: Player nhập mẫu hoặc chọn buổi rồi xem lịch toàn kỳ, số tiền và chương trình theo lô
+     * trước khi bấm xác nhận lịch. Không tạo gói, không giữ chỗ, không trừ voucher hay điểm (BR53, FR74, FR75).
      */
     @Transactional(readOnly = true)
     public PackagePreviewResponse preview(UserPrincipal player, PackageRequest request) {
@@ -101,7 +118,13 @@ public class PackageService {
         bookingService.requireOwnTeam(player.getId(), request.teamId());
 
         List<Planned> sessions = markConflicts(location, plan(request, court, now.toLocalDate()), now);
-        int conflicts = (int) sessions.stream().filter(Planned::hasConflict).count();
+        List<Planned> bookable = sessions.stream().filter(s -> !s.hasConflict()).toList();
+        Quote quote = quote(player, location, bookable, request);
+        BatchOfferStatus offer = offerStatus(location.getId(), now.toLocalDate(), quote.finalAmount());
+
+        Map<Planned, Priced> pricedBySession = new HashMap<>();
+        quote.sessions().forEach(p -> pricedBySession.put(p.session(), p));
+        int conflicts = sessions.size() - bookable.size();
         return PackagePreviewResponse.builder()
                 .locationId(location.getId())
                 .locationName(location.getName())
@@ -112,7 +135,13 @@ public class PackageService {
                 .conflictSessions(conflicts)
                 .summary("Tổng " + sessions.size() + " buổi, " + conflicts + " buổi bị trùng.")
                 .months(monthSummaries(sessions))
-                .sessions(sessions.stream().map(PackageService::toResponse).toList())
+                .sessions(sessions.stream().map(s -> toResponse(s, pricedBySession.get(s))).toList())
+                .listAmount(quote.listAmount())
+                .voucherDiscount(quote.voucherDiscount())
+                .pointsUsed(quote.pointsUsed())
+                .pointDiscount(quote.pointDiscount())
+                .finalAmount(quote.finalAmount())
+                .batchOffer(offer)
                 .build();
     }
 
@@ -132,6 +161,24 @@ public class PackageService {
 
         Planned withConflict(Conflict value) {
             return new Planned(date, court, startMinute, endMinute, value);
+        }
+    }
+
+    /** Một buổi đặt được kèm giá từng slot và phần giảm đã chia cho buổi này (BR28). */
+    record Priced(Planned session, List<SlotPrice> slots, BigDecimal listAmount, BigDecimal voucherDiscount,
+            int pointsUsed, BigDecimal pointDiscount) {
+
+        BigDecimal finalAmount() {
+            return listAmount.subtract(voucherDiscount).subtract(pointDiscount);
+        }
+    }
+
+    /** Số tiền của cả gói và của từng buổi đặt được. */
+    record Quote(List<Priced> sessions, BigDecimal listAmount, BigDecimal voucherDiscount, int pointsUsed,
+            BigDecimal pointDiscount) {
+
+        BigDecimal finalAmount() {
+            return listAmount.subtract(voucherDiscount).subtract(pointDiscount);
         }
     }
 
@@ -167,6 +214,38 @@ public class PackageService {
         }
         if (sessions.isEmpty()) {
             throw tooFewSessions();
+        }
+        return sessions;
+    }
+
+    /**
+     * UC15 #2, BR27 (a): sinh các buổi từ mẫu định kỳ, mỗi ngày trong khoảng [startDate, endDate] trùng thứ
+     * của một dòng mẫu là một buổi. Mẫu phải có ít nhất 1 buổi/tuần và kéo dài 1–3 tháng (MSG41); điều kiện
+     * này chỉ kiểm trên mẫu ban đầu, không kiểm lại sau khi bỏ buổi trùng (D50).
+     */
+    List<Planned> generateRecurring(PackageRequest request, Court court, LocalDate today) {
+        List<WeeklySlot> pattern = request.weeklySlots();
+        LocalDate start = request.startDate();
+        LocalDate end = request.endDate();
+        if (pattern == null || pattern.isEmpty() || start == null || end == null || !isWithinMonths(start, end)) {
+            throw invalidRecurring();
+        }
+        if (start.isBefore(today)) {
+            throw new AppException("Ngày bắt đầu không được trước hôm nay.");
+        }
+        requireValidPattern(pattern);
+
+        List<WeeklySlot> sorted = pattern.stream()
+                .sorted(Comparator.comparing(WeeklySlot::dayOfWeek).thenComparing(WeeklySlot::startMinute))
+                .toList();
+        List<Planned> sessions = new ArrayList<>();
+        for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
+            int dayOfWeek = date.getDayOfWeek().getValue();
+            for (WeeklySlot slot : sorted) {
+                if (slot.dayOfWeek() == dayOfWeek) {
+                    sessions.add(new Planned(date, court, slot.startMinute(), slot.endMinute()));
+                }
+            }
         }
         return sessions;
     }
@@ -228,6 +307,123 @@ public class PackageService {
         }).toList();
     }
 
+    /**
+     * UC15 #6, BR14, BR41: giá niêm yết của từng buổi đặt được; voucher áp một lần trên tổng gói, điểm tính sau
+     * voucher, tối đa 50% số tiền còn lại. Chỉ kiểm tra và tính, chưa trừ (FR74, FR75).
+     */
+    private Quote quote(UserPrincipal player, Location location, List<Planned> bookable, PackageRequest request) {
+        List<Priced> priced = price(bookable);
+        BigDecimal listAmount = sum(priced);
+        if (priced.isEmpty()) {
+            return new Quote(priced, listAmount, BigDecimal.ZERO, 0, BigDecimal.ZERO);
+        }
+        BigDecimal voucherDiscount = voucherDiscount(player, location.getId(), listAmount, request);
+        int points = request.pointsToUse() == null ? 0 : request.pointsToUse();
+        BigDecimal pointDiscount = points == 0 ? BigDecimal.ZERO
+                : loyaltyPointService.preview(player.getId(), location.getId(), listAmount.subtract(voucherDiscount), points);
+        return new Quote(allocate(priced, voucherDiscount, points, pointDiscount),
+                listAmount, voucherDiscount, points, pointDiscount);
+    }
+
+    /** Giá niêm yết từng slot 30 phút của mỗi buổi (FR20), như booking lẻ. */
+    List<Priced> price(List<Planned> bookable) {
+        return bookable.stream().map(session -> {
+            List<SlotPrice> slots = BookingService.toSlots(priceCalculator.rangePrices(session.court().getId(),
+                    session.date(), session.startMinute(), session.endMinute()));
+            BigDecimal list = slots.stream().map(SlotPrice::getPrice).reduce(BigDecimal.ZERO, BigDecimal::add);
+            return new Priced(session, slots, list, BigDecimal.ZERO, 0, BigDecimal.ZERO);
+        }).toList();
+    }
+
+    /**
+     * BR28: chia phần giảm của cả gói cho từng buổi theo tỷ lệ giá niêm yết của buổi; mỗi buổi làm tròn xuống,
+     * phần lẻ dồn vào buổi cuối. Voucher chia theo đồng, điểm chia theo điểm (1 điểm = 500 đồng, P10) để số điểm
+     * trả lại khi sân hủy một buổi khớp với số tiền đã giảm. Buổi nào không còn tiền phải trả thì không chia được.
+     */
+    static List<Priced> allocate(List<Priced> sessions, BigDecimal voucherDiscount, int points, BigDecimal pointDiscount) {
+        BigDecimal total = sum(sessions);
+        int last = sessions.size() - 1;
+        List<Priced> result = new ArrayList<>();
+        BigDecimal voucherLeft = voucherDiscount;
+        int pointsLeft = points;
+        BigDecimal pointValue = points == 0 ? BigDecimal.ZERO
+                : pointDiscount.divide(BigDecimal.valueOf(points), 0, RoundingMode.UNNECESSARY);
+        for (int i = 0; i < sessions.size(); i++) {
+            Priced session = sessions.get(i);
+            BigDecimal voucherShare;
+            int pointShare;
+            if (i == last) {
+                voucherShare = voucherLeft;
+                pointShare = pointsLeft;
+            } else {
+                voucherShare = voucherDiscount.multiply(session.listAmount()).divide(total, 0, RoundingMode.DOWN);
+                pointShare = BigDecimal.valueOf(points).multiply(session.listAmount())
+                        .divide(total, 0, RoundingMode.DOWN).intValueExact();
+            }
+            voucherLeft = voucherLeft.subtract(voucherShare);
+            pointsLeft -= pointShare;
+            Priced allocated = new Priced(session.session(), session.slots(), session.listAmount(), voucherShare,
+                    pointShare, pointValue.multiply(BigDecimal.valueOf(pointShare)));
+            if (allocated.finalAmount().signum() <= 0) {
+                throw new AppException("Phần giảm quá lớn so với giá của buổi ngày " + session.session().date()
+                        + ", không chia được cho từng buổi. Vui lòng dùng ít điểm hơn.");
+            }
+            result.add(allocated);
+        }
+        return result;
+    }
+
+    /**
+     * BR47, MSG93: chương trình theo lô đang diễn ra hôm nay (các chương trình của một địa điểm không trùng thời
+     * gian) và gói đã đạt mức tặng voucher chưa, tính trên số tiền thực trả sau voucher và điểm.
+     */
+    private BatchOfferStatus offerStatus(Long locationId, LocalDate today, BigDecimal finalAmount) {
+        List<BatchOfferPublicResponse> offers = runningOffers(locationId, today);
+        if (offers.isEmpty()) {
+            return null;
+        }
+        BatchOfferPublicResponse offer = offers.get(0);
+        boolean reached = finalAmount.compareTo(offer.getMinPackageAmount()) >= 0;
+        return BatchOfferStatus.builder()
+                .id(offer.getId())
+                .name(offer.getName())
+                .minPackageAmount(offer.getMinPackageAmount())
+                .voucherName(offer.getVoucherName())
+                .reached(reached)
+                .message(reached ? null : "Gói có tổng " + money(finalAmount) + " đồng, chưa đủ "
+                        + money(offer.getMinPackageAmount()) + " đồng để được tặng voucher của chương trình "
+                        + offer.getName() + ".")
+                .build();
+    }
+
+    /**
+     * Chỉ kiểm tra và tính số giảm của voucher trên tổng gói (BR14); voucher không dùng được thì báo MSG34
+     * kèm lý do, như booking lẻ.
+     */
+    private BigDecimal voucherDiscount(UserPrincipal player, Long locationId, BigDecimal listAmount,
+            PackageRequest request) {
+        VoucherSelection selection = voucherSelection(request);
+        if (selection == null) {
+            return BigDecimal.ZERO;
+        }
+        try {
+            return voucherService.check(player, new VoucherCheckRequest(locationId, listAmount, selection))
+                    .discountAmount();
+        } catch (AppException e) {
+            if (e.getStatus() != HttpStatus.BAD_REQUEST) {
+                throw e;
+            }
+            throw new AppException("Mã giảm giá không dùng được: " + e.getMessage() + " (MSG34)");
+        }
+    }
+
+    static VoucherSelection voucherSelection(PackageRequest request) {
+        if (request.voucherGrantId() != null) {
+            return new VoucherSelection(null, request.voucherGrantId());
+        }
+        return StringUtils.hasText(request.voucherCode()) ? new VoucherSelection(request.voucherCode(), null) : null;
+    }
+
     /** FR45: lịch theo từng tháng kèm tổng số buổi và số buổi bị trùng. */
     private static List<PackagePreviewResponse.MonthSummary> monthSummaries(List<Planned> sessions) {
         Map<YearMonth, List<Planned>> byMonth = sessions.stream()
@@ -244,38 +440,6 @@ public class PackageService {
     private static final Comparator<Planned> SESSION_ORDER = Comparator.comparing(Planned::date)
             .thenComparing(Planned::startMinute)
             .thenComparing(p -> p.court().getId());
-
-    /**
-     * UC15 #2, BR27 (a): sinh các buổi từ mẫu định kỳ, mỗi ngày trong khoảng [startDate, endDate] trùng thứ
-     * của một dòng mẫu là một buổi. Mẫu phải có ít nhất 1 buổi/tuần và kéo dài 1–3 tháng (MSG41); điều kiện
-     * này chỉ kiểm trên mẫu ban đầu, không kiểm lại sau khi bỏ buổi trùng (D50).
-     */
-    List<Planned> generateRecurring(PackageRequest request, Court court, LocalDate today) {
-        List<WeeklySlot> pattern = request.weeklySlots();
-        LocalDate start = request.startDate();
-        LocalDate end = request.endDate();
-        if (pattern == null || pattern.isEmpty() || start == null || end == null || !isWithinMonths(start, end)) {
-            throw invalidRecurring();
-        }
-        if (start.isBefore(today)) {
-            throw new AppException("Ngày bắt đầu không được trước hôm nay.");
-        }
-        requireValidPattern(pattern);
-
-        List<WeeklySlot> sorted = pattern.stream()
-                .sorted(Comparator.comparing(WeeklySlot::dayOfWeek).thenComparing(WeeklySlot::startMinute))
-                .toList();
-        List<Planned> sessions = new ArrayList<>();
-        for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
-            int dayOfWeek = date.getDayOfWeek().getValue();
-            for (WeeklySlot slot : sorted) {
-                if (slot.dayOfWeek() == dayOfWeek) {
-                    sessions.add(new Planned(date, court, slot.startMinute(), slot.endMinute()));
-                }
-            }
-        }
-        return sessions;
-    }
 
     /**
      * BR27: từ 1 đến 3 tháng, tính cả ngày cuối (cùng cách đếm với hạn dịch vụ DR29):
@@ -325,7 +489,15 @@ public class PackageService {
         return new AppException("Đặt định kỳ cần ít nhất 1 buổi mỗi tuần, thời gian từ 1 đến 3 tháng. (MSG41)");
     }
 
-    private static PackagePreviewResponse.Session toResponse(Planned session) {
+    private static BigDecimal sum(List<Priced> sessions) {
+        return sessions.stream().map(Priced::listAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static String money(BigDecimal amount) {
+        return String.format(Locale.forLanguageTag("vi-VN"), "%,d", amount.longValueExact());
+    }
+
+    private static PackagePreviewResponse.Session toResponse(Planned session, Priced priced) {
         return PackagePreviewResponse.Session.builder()
                 .date(session.date())
                 .courtId(session.court().getId())
@@ -335,6 +507,11 @@ public class PackageService {
                 .startTime(MinuteTime.format(session.startMinute()))
                 .endTime(MinuteTime.format(session.endMinute()))
                 .conflict(session.conflict())
+                .listAmount(priced == null ? null : priced.listAmount())
+                .voucherDiscount(priced == null ? null : priced.voucherDiscount())
+                .pointsUsed(priced == null ? null : priced.pointsUsed())
+                .pointDiscount(priced == null ? null : priced.pointDiscount())
+                .finalAmount(priced == null ? null : priced.finalAmount())
                 .build();
     }
 
