@@ -518,16 +518,14 @@ public class PackageService {
     /**
      * Danh sách buổi của gói theo ngày giờ chơi. Định kỳ: luôn kiểm mẫu ban đầu (MSG41); Player gửi danh sách
      * đã xử lý buổi trùng thì dùng danh sách đó, các buổi phải nằm trong thời gian của mẫu. Tự chọn: các buổi
-     * Player chọn, ít nhất 2 buổi, trong vòng 3 tháng (MSG91).
+     * Player chọn, ít nhất 2 buổi, trong vòng 3 tháng (MSG91). Cả hai cách: buổi xa nhất không quá 3 tháng kể từ
+     * hôm nay (D162).
      */
     List<Planned> plan(PackageRequest request, Court court, LocalDate today) {
         List<Planned> sessions;
         if (request.packageType() == PackageType.RECURRING) {
             List<Planned> generated = generateRecurring(request, court, today);
-            if (request.sessions() == null) {
-                return generated;
-            }
-            sessions = explicitSessions(request, court, today);
+            sessions = request.sessions() == null ? generated : explicitSessions(request, court, today);
             for (Planned session : sessions) {
                 if (session.date().isBefore(request.startDate()) || session.date().isAfter(request.endDate())) {
                     throw new AppException("Buổi ngày " + session.date() + " nằm ngoài thời gian đặt định kỳ ("
@@ -548,7 +546,20 @@ public class PackageService {
         if (sessions.isEmpty()) {
             throw tooFewSessions();
         }
+        requireWithinBookingWindow(sessions.get(sessions.size() - 1).date(), today);
         return sessions;
+    }
+
+    /**
+     * D162, BR27, MSG115: mọi buổi của gói nằm trong 3 tháng kể từ hôm nay (tính cả hôm nay, như cách đếm của BR27), khớp với
+     * lịch 3 tháng Owner/Staff xem được (D140). Hôm nay 07/11 thì buổi xa nhất là 06/02 năm sau.
+     */
+    private static void requireWithinBookingWindow(LocalDate lastDate, LocalDate today) {
+        LocalDate latest = today.plusMonths(MAX_MONTHS).minusDays(1);
+        if (lastDate.isAfter(latest)) {
+            throw new AppException("Chỉ đặt được các buổi trong vòng 3 tháng kể từ hôm nay, muộn nhất ngày "
+                    + latest.format(DATE) + ". (MSG115)");
+        }
     }
 
     /**
