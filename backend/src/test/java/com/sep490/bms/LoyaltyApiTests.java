@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.*;
 import java.util.*;
@@ -12,6 +13,7 @@ import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.*;
@@ -56,7 +58,8 @@ class LoyaltyApiTests {
         // Explicitly scoped to the existing integration test database. Never runs on a production catalog.
         try(var c=Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
             if(!"BMS_Test".equalsIgnoreCase(c.getCatalog())) throw new IllegalStateException("Loyalty regression requires BMS_Test");
-            String sql=Files.readString(Path.of("db/migrations/20261030_uc25_uc26_loyalty.sql")).replace("\uFEFF", "");
+            String sql = new ClassPathResource("db/20261030_uc25_uc26_loyalty.sql")
+                    .getContentAsString(StandardCharsets.UTF_8);
             for(int pass=0;pass<2;pass++) {
                 try { for(String batch:sql.split("(?im)^GO\\s*$")) if(!batch.isBlank()) try(var s=c.createStatement()) { s.execute(batch); } }
                 catch(Exception e) { try(var s=c.createStatement()) { s.execute("IF @@TRANCOUNT>0 ROLLBACK TRANSACTION"); } throw e; }

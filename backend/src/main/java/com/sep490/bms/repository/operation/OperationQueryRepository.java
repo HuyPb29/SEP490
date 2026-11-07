@@ -19,6 +19,15 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class OperationQueryRepository {
 
+    private static final String CONFIRMED_REFUND_PAYMENT = """
+            EXISTS (
+                SELECT 1
+                FROM booking paid_booking
+                JOIN payment p ON (p.booking_id = paid_booking.id OR p.package_id = paid_booking.package_id)
+                WHERE paid_booking.id = r.booking_id AND p.status = 'CONFIRMED'
+            )
+            """;
+
     private final JdbcTemplate jdbc;
 
     @Getter
@@ -115,11 +124,9 @@ public class OperationQueryRepository {
                 SELECT refund_date AS d, SUM(refunded_amount) AS amount, COUNT(*) AS cnt
                 FROM refund_request r
                 WHERE r.location_id = ? AND r.status = 'REFUNDED' AND r.refund_date BETWEEN ? AND ?
-                  AND EXISTS (SELECT 1 FROM booking b JOIN payment p
-                    ON (p.booking_id=b.id OR p.package_id=b.package_id)
-                    WHERE b.id=r.booking_id AND p.status='CONFIRMED')
+                  AND %s
                 GROUP BY refund_date
-                """,
+                """.formatted(CONFIRMED_REFUND_PAYMENT),
                 (rs, i) -> new AmountRow(rs.getDate("d").toLocalDate(), rs.getBigDecimal("amount"), rs.getLong("cnt")),
                 locationId, java.sql.Date.valueOf(from), java.sql.Date.valueOf(to));
     }
@@ -254,8 +261,9 @@ public class OperationQueryRepository {
                 JOIN booking b ON b.id = r.booking_id
                 LEFT JOIN account a ON a.id = b.player_id
                 WHERE r.location_id = ? AND r.status = 'REFUNDED' AND r.refund_date BETWEEN ? AND ?
+                  AND %s
                 ORDER BY r.refund_date, r.id
-                """,
+                """.formatted(CONFIRMED_REFUND_PAYMENT),
                 (rs, i) -> new RefundRow(rs.getDate("refund_date").toLocalDate(), rs.getString("booking_code"),
                         rs.getString("customer_name"), rs.getBigDecimal("refunded_amount"),
                         rs.getDate("original_payment_date").toLocalDate(), rs.getString("reason")),
@@ -311,9 +319,10 @@ public class OperationQueryRepository {
     public AmountRow sumRefundRequests(Long locationId, LocalDate from, LocalDate to) {
         return jdbc.queryForObject("""
                 SELECT COUNT(*) AS cnt, COALESCE(SUM(refunded_amount), 0) AS amount
-                FROM refund_request
-                WHERE location_id = ? AND created_at >= ? AND created_at < ?
-                """,
+                FROM refund_request r
+                WHERE r.location_id = ? AND r.created_at >= ? AND r.created_at < ?
+                  AND %s
+                """.formatted(CONFIRMED_REFUND_PAYMENT),
                 (rs, i) -> new AmountRow(null, rs.getBigDecimal("amount"), rs.getLong("cnt")),
                 locationId, Timestamp.valueOf(from.atStartOfDay()), Timestamp.valueOf(to.plusDays(1).atStartOfDay()));
     }

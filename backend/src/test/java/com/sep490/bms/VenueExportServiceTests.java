@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.sql.Date;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,6 +30,7 @@ import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.operation.OperationQueryRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.operation.VenueExportService;
 
@@ -40,6 +42,7 @@ class VenueExportServiceTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired LocationRepository locations;
     @Autowired VenueExportService exports;
+    @Autowired OperationQueryRepository reports;
 
     Long ownerId;
     Long playerId;
@@ -114,6 +117,44 @@ class VenueExportServiceTests {
     }
 
     @Test
+    void refundReportsAndExportRequireConfirmedBookingOrPackagePayment() throws Exception {
+        LocalDate created = today.minusDays(2);
+        String paid = booking("CANCELLED_BY_FACILITY", today.minusDays(1), 80000);
+        String paidSession = booking("CANCELLED_BY_FACILITY", today.minusDays(1), 60000);
+        String awaiting = booking("CANCELLED_BY_FACILITY", today.minusDays(1), 50000);
+        String unpaid = booking("CANCELLED_BY_FACILITY", today.minusDays(1), 40000);
+        payment(paid, 80000, 80000, created.atTime(9, 0));
+        confirmPackagePayment(paidSession, created);
+        jdbc.update("""
+                INSERT INTO payment (location_id, booking_id, amount_due, status)
+                SELECT location_id, id, final_amount, 'AWAITING_CONFIRMATION' FROM booking WHERE booking_code = ?
+                """, awaiting);
+        recordedRefund(paid, 10000, created);
+        recordedRefund(paidSession, 20000, created);
+        recordedRefund(awaiting, 30000, created);
+        recordedRefund(unpaid, 40000, created);
+
+        assertThat(reports.sumRefunds(locationId, today, today)).singleElement().satisfies(row -> {
+            assertThat(row.getCount()).isEqualTo(2);
+            assertThat(row.getAmount()).isEqualByComparingTo("30000");
+        });
+        assertThat(reports.sumRefunds(locationId, created, created)).isEmpty();
+        var refundRequests = reports.sumRefundRequests(locationId, created, created);
+        assertThat(refundRequests.getCount()).isEqualTo(2);
+        assertThat(refundRequests.getAmount()).isEqualByComparingTo("30000");
+        assertThat(reports.sumRefundRequests(locationId, today, today).getCount()).isZero();
+
+        try (Workbook wb = open(exports.exportVenueData(owner(), today, today))) {
+            Sheet cash = wb.getSheet("Thu chi");
+            assertThat(cash.getRow(1).getCell(1).getStringCellValue()).isEqualTo("Chi");
+            assertThat(cash.getRow(1).getCell(3).getStringCellValue()).isEqualTo(paid);
+            assertThat(cash.getRow(2).getCell(1).getStringCellValue()).isEqualTo("Chi");
+            assertThat(cash.getRow(2).getCell(3).getStringCellValue()).isEqualTo(paidSession);
+            assertThat(cash.getRow(4).getCell(7).getNumericCellValue()).isEqualTo(30000);
+        }
+    }
+
+    @Test
     void rejectsPeriodWhereFromIsAfterTo() {
         assertThatThrownBy(() -> exports.exportVenueData(owner(), today, today.minusDays(1)))
                 .isInstanceOf(AppException.class);
@@ -157,5 +198,36 @@ class VenueExportServiceTests {
                 INSERT INTO payment (location_id, booking_id, amount_due, received_amount, status, confirmed_at)
                 VALUES (?, ?, ?, ?, 'CONFIRMED', ?)
                 """, locationId, bookingId, due, received, java.sql.Timestamp.valueOf(confirmedAt));
+    }
+
+    private void confirmPackagePayment(String bookingCode, LocalDate confirmedDate) {
+        Long packageId = jdbc.queryForObject("""
+                INSERT INTO booking_package (location_id, player_id, package_type, start_date, end_date,
+                    list_amount, final_amount, status)
+                OUTPUT INSERTED.id
+                VALUES (?, ?, 'CUSTOM', ?, ?, 60000, 60000, 'CONFIRMED')
+                """, Long.class, locationId, playerId, Date.valueOf(today.minusDays(1)), Date.valueOf(today));
+        jdbc.update("UPDATE booking SET booking_type = 'SESSION', package_id = ? WHERE booking_code = ?",
+                packageId, bookingCode);
+        jdbc.update("""
+                INSERT INTO payment (location_id, package_id, amount_due, received_amount, status, confirmed_at)
+                VALUES (?, ?, 60000, 60000, 'CONFIRMED', ?)
+                """, locationId, packageId, java.sql.Timestamp.valueOf(confirmedDate.atTime(9, 0)));
+    }
+
+    private void recordedRefund(String bookingCode, long amount, LocalDate created) {
+        Long complaintId = jdbc.queryForObject("""
+                INSERT INTO complaint (location_id, booking_id, player_id, created_by, complaint_type, content)
+                OUTPUT INSERTED.id
+                SELECT location_id, id, player_id, player_id, 'OTHER', 'Refund report fixture'
+                FROM booking WHERE booking_code = ?
+                """, Long.class, bookingCode);
+        jdbc.update("""
+                INSERT INTO refund_request (location_id, booking_id, complaint_id, suggested_amount, refunded_amount,
+                    original_payment_date, refund_date, created_at, status)
+                SELECT location_id, id, ?, ?, ?, ?, ?, ?, 'REFUNDED'
+                FROM booking WHERE booking_code = ?
+                """, complaintId, amount, amount, Date.valueOf(created), Date.valueOf(today),
+                java.sql.Timestamp.valueOf(created.atTime(10, 0)), bookingCode);
     }
 }

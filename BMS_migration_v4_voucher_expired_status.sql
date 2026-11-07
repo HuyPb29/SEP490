@@ -4,7 +4,8 @@
 --
 -- CÁCH DÙNG: chạy SAU BMS_database.sql, BMS_migration_v2_location_slot_setting.sql
 -- và BMS_migration_v3_maintenance_cancelled.sql.
---   sqlcmd -S localhost,1433 -U sa -P *** -I -b -f 65001 -i BMS_migration_v4_voucher_expired_status.sql
+-- Chọn rõ cơ sở dữ liệu đích bằng -d (ví dụ dưới đây dành cho BMS_Test).
+--   sqlcmd -S localhost,1433 -d BMS_Test -U sa -P *** -I -b -f 65001 -i BMS_migration_v4_voucher_expired_status.sql
 --
 -- LÝ DO: job UC37 (VoucherExpiryJob) tự chuyển voucher PUBLISHED đã quá valid_to sang
 -- EXPIRED, để cột status phản ánh đúng thực tế thay vì chỉ gửi lời nhắc.
@@ -19,9 +20,6 @@
 -- Dữ liệu cũ: migration KHÔNG tự đổi status. Voucher đã quá hạn sẽ được job chuyển
 -- ở lần chạy kế tiếp (mặc định 00:10 hằng ngày).
 -- ============================================================
-
-USE BMS;
-GO
 
 IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'ck_voucher_status')
     ALTER TABLE dbo.voucher DROP CONSTRAINT ck_voucher_status;

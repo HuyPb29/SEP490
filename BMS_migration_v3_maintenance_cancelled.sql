@@ -3,7 +3,8 @@
 -- Feature: F2 - Quản lý địa điểm | UC10 - FR23..FR25 | Owner: Minh Anh
 --
 -- CÁCH DÙNG: chạy SAU BMS_database.sql và BMS_migration_v2_location_slot_setting.sql.
---   sqlcmd -S localhost,1433 -U sa -P *** -I -b -f 65001 -i BMS_migration_v3_maintenance_cancelled.sql
+-- Chọn rõ cơ sở dữ liệu đích bằng -d (ví dụ dưới đây dành cho BMS_Test).
+--   sqlcmd -S localhost,1433 -d BMS_Test -U sa -P *** -I -b -f 65001 -i BMS_migration_v3_maintenance_cancelled.sql
 --
 -- LÝ DO: người tạo cần rút được yêu cầu bảo trì khi còn PENDING, nhưng không được
 -- xoá dòng vì phải giữ vết (ai rút, rút lúc nào, vì sao). Vì vậy thêm trạng thái
@@ -11,9 +12,6 @@
 --
 -- Script idempotent: chạy lại nhiều lần không lỗi, không mất dữ liệu.
 -- ============================================================
-
-USE BMS;
-GO
 
 -- ------------------------------------------------------------
 -- 1. maintenance: cho phép CANCELLED.

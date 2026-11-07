@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 
 import java.net.URI;
 import java.net.http.*;
-import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
@@ -21,6 +21,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -84,7 +85,8 @@ class AccountSecurityAuditTests {
     @BeforeAll void upgradeTestSchemaTwice() throws Exception {
         try (var c = Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
             if (!"BMS_Test".equalsIgnoreCase(c.getCatalog())) throw new IllegalStateException("Security regression requires BMS_Test");
-            var sql = Files.readString(Path.of("db/migrations/20261030_account_security_audit.sql"));
+            var sql = new ClassPathResource("db/20261030_account_security_audit.sql")
+                    .getContentAsString(StandardCharsets.UTF_8);
             for (int pass = 0; pass < 2; pass++) {
                 try {
                     for (String batch : sql.split("(?im)^GO\\s*$")) if (!batch.isBlank()) {
