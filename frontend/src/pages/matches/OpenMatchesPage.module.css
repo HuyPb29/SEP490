@@ -1,0 +1,731 @@
+.page {
+  min-height: 100vh;
+  background: #f5f8f6;
+  color: #172033;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.navbar {
+  height: 60px;
+  border-bottom: 1px solid #e4e9e7;
+  background: #fff;
+}
+
+.navInner {
+  width: 100%;
+  max-width: 1280px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #172033;
+  font-size: 19px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.brandIcon {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #0d8a52;
+  color: #fff;
+  font-size: 15px;
+}
+
+.navLinks {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+
+.navLinks a {
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.navLinks a:hover,
+.navLinks .activeLink {
+  color: #0d8a52;
+}
+
+.navLinks .activeLink {
+  border-bottom-color: #0d8a52;
+  font-weight: 650;
+}
+
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #253044;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e5f3eb;
+  color: #147746;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.main {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 22px 20px 36px;
+}
+
+.pageHeading {
+  margin: 0 0 17px;
+}
+
+.pageHeading p {
+  margin: 0 0 4px;
+  color: #15945a;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+}
+
+.pageHeading h1 {
+  margin: 0;
+  color: #172033;
+  font-size: 29px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  line-height: 1.2;
+}
+
+.filterBar {
+  margin-bottom: 17px;
+  padding: 14px 17px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 11px;
+  border: 1px solid #e2e8e5;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.filterField {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.filterField input,
+.filterField select {
+  width: 100%;
+  height: 42px;
+  padding: 0 11px;
+  border: 1px solid #d5dee5;
+  border-radius: 9px;
+  outline: none;
+  background: #fff;
+  color: #273244;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.filterField input:focus,
+.filterField select:focus {
+  border-color: #66b388;
+  box-shadow: 0 0 0 3px rgba(13, 138, 82, 0.1);
+}
+
+.filterButton,
+.joinButton {
+  border: 0;
+  border-radius: 9px;
+  background: #0d8a52;
+  color: #fff;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.filterButton {
+  height: 42px;
+  min-width: 120px;
+  padding: 0 17px;
+  font-size: 12px;
+}
+
+.filterButton:hover,
+.joinButton:hover,
+.approveButton:hover,
+.modalSubmit:hover {
+  background: #087645;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.85fr) minmax(295px, 0.9fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.matchGrid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.matchCard,
+.hostedCard {
+  min-width: 0;
+  border: 1px solid #e2e8e5;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(28, 48, 37, 0.025);
+}
+
+.matchCard {
+  min-height: 178px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.matchTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.matchTop h2 {
+  min-width: 0;
+  margin: 0;
+  color: #1d2739;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.skillBadge {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f0f3f6;
+  color: #536176;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.matchTime {
+  margin: 3px 0 9px;
+  color: #8290a3;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.hostRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #68778b;
+  font-size: 11px;
+}
+
+.hostRow strong {
+  color: #293448;
+  font-weight: 700;
+}
+
+.progressTrack {
+  height: 6px;
+  overflow: hidden;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: #e4eaf0;
+}
+
+.progressTrack span {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: #0d9557;
+  transition: width 180ms ease;
+}
+
+.needPlayers {
+  margin: 5px 0 9px;
+  color: #8a97a8;
+  font-size: 10px;
+}
+
+.joinButton {
+  width: 100%;
+  min-height: 37px;
+  margin-top: auto;
+  font-size: 12px;
+}
+
+.joinButton:disabled {
+  background: #9aaca1;
+  cursor: not-allowed;
+}
+
+.requestStatusRow {
+  min-height: 37px;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.requestStatusRow strong {
+  color: #264c83;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.withdrawButton,
+.rejectButton {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #d3dce6;
+  border-radius: 8px;
+  background: #fff;
+  color: #43536a;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.withdrawButton:hover,
+.rejectButton:hover,
+.closeMatchButton:hover {
+  background: #f6f8fa;
+}
+
+.hostedCard {
+  padding: 16px;
+}
+
+.hostedTitle {
+  margin: 0 0 11px;
+  color: #1c2738;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.25px;
+}
+
+.hostedSummary {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 12px;
+  background: #e7f5ed;
+}
+
+.hostedSummary strong {
+  color: #233448;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.hostedSummary > span {
+  color: #728397;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.hostedSummary .hostedStatus {
+  color: #a44040;
+  font-weight: 700;
+}
+
+.requestsTitle {
+  margin: 13px 0 8px;
+  color: #445267;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.requestList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.requestItem {
+  padding: 10px 0 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 8px;
+  border-top: 1px solid #edf1f4;
+}
+
+.requestPerson {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.requestAvatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e4eaf1;
+  color: #415168;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.requestPerson > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.requestPerson strong {
+  overflow: hidden;
+  color: #243044;
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.requestPerson div span {
+  color: #8592a4;
+  font-size: 10px;
+}
+
+.rejectButton {
+  min-height: 34px;
+}
+
+.approveButton {
+  min-height: 33px;
+  justify-self: start;
+  grid-column: 1;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  background: #0d8a52;
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rejectButton:disabled,
+.approveButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.noRequests {
+  margin: 0;
+  padding: 12px 0;
+  border-top: 1px solid #edf1f4;
+  color: #8592a4;
+  font-size: 11px;
+}
+
+.hostedActions {
+  margin-top: 11px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.closeMatchButton,
+.cancelMatchButton {
+  min-height: 38px;
+  border-radius: 9px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.closeMatchButton {
+  border: 1px solid #d4dde7;
+  color: #46556c;
+}
+
+.cancelMatchButton {
+  border: 1px solid #f1b5b5;
+  color: #c14949;
+}
+
+.cancelMatchButton:hover {
+  background: #fff7f7;
+}
+
+.closeMatchButton:disabled,
+.cancelMatchButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.notice {
+  margin: 14px 0 0;
+  padding: 11px 14px;
+  border: 1px solid #d2e8d9;
+  border-radius: 9px;
+  background: #eef8f1;
+  color: #276d42;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.emptyState {
+  grid-column: 1 / -1;
+  padding: 28px;
+  border: 1px solid #e2e8e5;
+  border-radius: 14px;
+  background: #fff;
+  color: #758396;
+  font-size: 13px;
+  text-align: center;
+}
+
+.modalBackdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  padding: 20px;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.joinModal {
+  position: relative;
+  width: min(100%, 430px);
+  padding: 25px;
+  border: 1px solid #e2e8e5;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
+}
+
+.joinModal h2 {
+  margin: 0 34px 18px 0;
+  color: #1d2739;
+  font-size: 18px;
+}
+
+.modalClose {
+  position: absolute;
+  top: 13px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: #f1f4f2;
+  color: #536176;
+  font-size: 19px;
+  cursor: pointer;
+}
+
+.consentLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #4a586d;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.consentLabel input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+  accent-color: #0d8a52;
+}
+
+.requestError {
+  margin: 12px 0 0;
+  color: #bd3f3f;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.modalActions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.modalCancel,
+.modalSubmit {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modalCancel {
+  border: 1px solid #d5dee5;
+  background: #fff;
+  color: #526176;
+}
+
+.modalSubmit {
+  border: 0;
+  background: #0d8a52;
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  .contentGrid {
+    grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.9fr);
+    gap: 14px;
+  }
+
+  .matchGrid {
+    gap: 10px;
+  }
+
+  .matchCard {
+    padding: 13px;
+  }
+
+  .matchTop h2 {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 720px) {
+  .navInner {
+    padding: 0 14px;
+  }
+
+  .navLinks {
+    gap: 13px;
+  }
+
+  .navLinks a {
+    font-size: 11px;
+  }
+
+  .profileName {
+    display: none;
+  }
+
+  .main {
+    padding: 20px 14px 30px;
+  }
+
+  .pageHeading h1 {
+    font-size: 25px;
+  }
+
+  .filterBar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .filterButton {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .navbar {
+    height: 56px;
+  }
+
+  .brand {
+    font-size: 16px;
+  }
+
+  .brandIcon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .navLinks {
+    gap: 9px;
+  }
+
+  .navLinks a {
+    font-size: 10px;
+  }
+
+  .main {
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+
+  .pageHeading h1 {
+    font-size: 22px;
+  }
+
+  .filterBar {
+    padding: 12px;
+    grid-template-columns: 1fr;
+  }
+
+  .filterButton {
+    grid-column: auto;
+  }
+
+  .matchGrid {
+    grid-template-columns: 1fr;
+  }
+}
