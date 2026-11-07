@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -296,6 +297,66 @@ public class PackageService {
                         + " đã bị hủy vì quá hạn thanh toán. Các slot đã được nhả.",
                 "PACKAGE", packageId);
         return true;
+    }
+
+    /**
+     * UC18 (gói): gói của chính Player đang đăng nhập; gói của người khác trả 403 (NFR07).
+     */
+    @Transactional(readOnly = true)
+    public BookingPackage getForPlayer(Long packageId, Long playerId) {
+        BookingPackage pkg = bookingPackageRepository.findById(packageId).orElseThrow(PackageService::packageNotFound);
+        requireOwner(pkg, playerId);
+        return pkg;
+    }
+
+    /** Gói không phải của Player này thì 403. Dùng cả khi xem và khi khóa dòng để thanh toán. */
+    public void requireOwner(BookingPackage pkg, Long playerId) {
+        if (!playerId.equals(pkg.getPlayerId())) {
+            throw new AppException("Bạn không có quyền xem gói đặt nhiều buổi này", HttpStatus.FORBIDDEN);
+        }
+    }
+
+    /**
+     * UC18, UC19 (gói): đọc và khóa dòng gói đến hết giao dịch thanh toán, để bấm Báo đã thanh toán hai lần
+     * hay Staff và job cùng xử lý thì chạy lần lượt (FR56). Không kiểm tra người đặt.
+     */
+    public BookingPackage lockForPayment(Long packageId) {
+        return bookingPackageRepository.findByIdForUpdate(packageId).orElseThrow(PackageService::packageNotFound);
+    }
+
+    /**
+     * FR43, BR26: cả gói thanh toán một lần nên gói và mọi buổi con đổi trạng thái cùng nhau theo bước thanh toán.
+     * Chạy trong giao dịch của bên gọi, sau khi đã khóa dòng gói.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public BookingPackage changeStatus(BookingPackage pkg, BookingStatus status) {
+        pkg.setStatus(status);
+        bookingPackageRepository.saveAndFlush(pkg);
+        for (Booking session : sessionsOf(pkg.getId())) {
+            bookingService.changeStatus(session, status);
+        }
+        return pkg;
+    }
+
+    /** Các buổi của gói theo ngày giờ chơi. */
+    @Transactional(readOnly = true)
+    public List<Booking> sessionsOf(Long packageId) {
+        return bookingRepository.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(packageId);
+    }
+
+    /**
+     * Giờ kết thúc của buổi đầu tiên: hạn gửi lại chứng từ của gói (P07) và mốc hết giờ chơi mà vẫn chờ Staff
+     * (BR03). Đề xuất, chưa duyệt: requirement chỉ nói "hết giờ chơi" cho booking lẻ; với gói lấy buổi đầu tiên
+     * để buổi đầu không bị chơi khi gói chưa được xác nhận.
+     */
+    @Transactional(readOnly = true)
+    public LocalDateTime firstSessionEnd(Long packageId) {
+        Booking first = sessionsOf(packageId).get(0);
+        return first.getPlayDate().atStartOfDay().plusMinutes(first.getEndMinute());
+    }
+
+    private static AppException packageNotFound() {
+        return new AppException("Không tìm thấy gói đặt nhiều buổi", HttpStatus.NOT_FOUND);
     }
 
     /** UC15 #6, FR74: trừ lượt voucher trên cả gói; lỗi do voucher không còn dùng được thì báo MSG108. */

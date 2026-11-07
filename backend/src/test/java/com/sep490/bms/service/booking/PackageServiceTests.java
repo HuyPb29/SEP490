@@ -692,6 +692,35 @@ class PackageServiceTests {
         verifyNoInteractions(bookingService, voucherService, points, notifications);
     }
 
+    // ===================== 12.6: dùng cho thanh toán gói =====================
+
+    @Test
+    void changeStatusMovesPackageAndEverySession() {
+        BookingPackage pkg = BookingPackage.builder().id(50L).status(BookingStatus.HOLDING).build();
+        Booking s1 = Booking.builder().id(101L).build();
+        Booking s2 = Booking.builder().id(102L).build();
+        when(bookings.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(50L)).thenReturn(List.of(s1, s2));
+
+        service.changeStatus(pkg, BookingStatus.AWAITING_CONFIRMATION);
+
+        assertThat(pkg.getStatus()).isEqualTo(BookingStatus.AWAITING_CONFIRMATION);
+        verify(packages).saveAndFlush(pkg);
+        verify(bookingService).changeStatus(s1, BookingStatus.AWAITING_CONFIRMATION);
+        verify(bookingService).changeStatus(s2, BookingStatus.AWAITING_CONFIRMATION);
+    }
+
+    @Test
+    void packageOfAnotherPlayerIsForbiddenAndFirstSessionEndIsDeadline() {
+        when(packages.findById(50L)).thenReturn(Optional.of(BookingPackage.builder().id(50L).playerId(99L).build()));
+        when(bookings.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(50L)).thenReturn(List.of(
+                Booking.builder().playDate(DEC_1).startMinute(1380).endMinute(1440).build(),
+                Booking.builder().playDate(DEC_31).startMinute(360).endMinute(420).build()));
+
+        assertThatThrownBy(() -> service.getForPlayer(50L, PLAYER))
+                .extracting(e -> ((AppException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(service.firstSessionEnd(50L)).isEqualTo(LocalDateTime.of(2026, 12, 2, 0, 0));
+    }
+
     private PackageService.Priced pricedSession(LocalDate date, String amount) {
         return new PackageService.Priced(new PackageService.Planned(date, court, 1080, 1110), List.of(),
                 new BigDecimal(amount), BigDecimal.ZERO, 0, BigDecimal.ZERO);

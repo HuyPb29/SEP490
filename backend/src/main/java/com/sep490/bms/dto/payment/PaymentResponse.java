@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.entity.payment.Payment;
 
@@ -24,8 +25,10 @@ import lombok.Setter;
 public class PaymentResponse {
 
     private Long id;
+    /** Booking lẻ: có bookingId, bookingCode. Gói đặt nhiều buổi (UC15): có packageId, không có mã booking. */
     private Long bookingId;
     private String bookingCode;
+    private Long packageId;
     private BigDecimal amountDue;
     /** Số tiền Staff ghi nhận khi xác nhận; trống khi chưa xác nhận. */
     private BigDecimal receivedAmount;
@@ -41,10 +44,22 @@ public class PaymentResponse {
     private String receiptNo;
 
     public static PaymentResponse from(Payment payment, Booking booking) {
-        return PaymentResponse.builder()
-                .id(payment.getId())
+        return common(payment)
                 .bookingId(booking.getId())
                 .bookingCode(booking.getBookingCode())
+                .build();
+    }
+
+    /** Thanh toán của cả gói đặt nhiều buổi (FR43, BR26). */
+    public static PaymentResponse from(Payment payment, BookingPackage pkg) {
+        return common(payment)
+                .packageId(pkg.getId())
+                .build();
+    }
+
+    private static PaymentResponseBuilder common(Payment payment) {
+        return PaymentResponse.builder()
+                .id(payment.getId())
                 .amountDue(payment.getAmountDue())
                 .receivedAmount(payment.getReceivedAmount())
                 .status(payment.getStatus())
@@ -54,7 +69,6 @@ public class PaymentResponse {
                 .rejectReason(payment.getRejectReason())
                 .submittedAt(payment.getSubmittedAt())
                 .confirmedAt(payment.getConfirmedAt())
-                .receiptNo(payment.getReceiptNo())
-                .build();
+                .receiptNo(payment.getReceiptNo());
     }
 }

@@ -52,6 +52,7 @@ import com.sep490.bms.repository.payment.PaymentRepository;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
+import com.sep490.bms.service.booking.PackageService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
@@ -79,8 +80,9 @@ class PaymentConfirmationTests {
     private final VoucherService vouchers = mock(VoucherService.class);
     private final LoyaltyPointService points = mock(LoyaltyPointService.class);
     private final NotificationRepository notifications = mock(NotificationRepository.class);
+    private final PackageService packages = mock(PackageService.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings,
-            mock(LocationQueryService.class), files, access, vouchers, points, notifications);
+            mock(LocationQueryService.class), files, access, vouchers, points, notifications, packages);
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
     private final UserPrincipal owner = UserPrincipal.builder().id(OWNER).role(Role.OWNER).build();
