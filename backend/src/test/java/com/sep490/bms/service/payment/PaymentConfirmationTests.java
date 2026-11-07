@@ -40,6 +40,7 @@ import com.sep490.bms.dto.payment.ResubmitRequest;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.entity.notification.Notification;
@@ -49,9 +50,11 @@ import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.notification.NotificationRepository;
 import com.sep490.bms.repository.payment.PaymentProofRepository;
 import com.sep490.bms.repository.payment.PaymentRepository;
+import com.sep490.bms.repository.reschedule.RescheduleRequestRepository;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
+import com.sep490.bms.service.booking.PackageService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
@@ -79,8 +82,9 @@ class PaymentConfirmationTests {
     private final VoucherService vouchers = mock(VoucherService.class);
     private final LoyaltyPointService points = mock(LoyaltyPointService.class);
     private final NotificationRepository notifications = mock(NotificationRepository.class);
+    private final PackageService packages = mock(PackageService.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings,
-            mock(LocationQueryService.class), files, access, vouchers, points, notifications, mock(com.sep490.bms.repository.reschedule.RescheduleRequestRepository.class), mock(PackagePaymentService.class));
+            mock(LocationQueryService.class), files, access, vouchers, points, notifications, packages, mock(RescheduleRequestRepository.class));
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
     private final UserPrincipal owner = UserPrincipal.builder().id(OWNER).role(Role.OWNER).build();
@@ -130,7 +134,7 @@ class PaymentConfirmationTests {
 
     @Test
     void listShowsPendingPaymentsOfSelectedLocationOldestFirst() {
-        when(payments.findPendingBookingPayments(
+        when(payments.findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
                 LOCATION, PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(0, 20)))
                 .thenReturn(new PageImpl<>(List.of(payment), PageRequest.of(0, 20), 1));
         when(bookings.getByIds(anyCollection())).thenReturn(Map.of(BOOKING, booking));
@@ -436,5 +440,139 @@ class PaymentConfirmationTests {
         verify(bookings, never()).changeStatus(any(), any());
         verifyNoInteractions(points, vouchers, notifications);
         verify(bookings, never()).releaseSlots(eq(BOOKING));
+    }
+
+    // ---------- Gói đặt nhiều buổi (UC15 #7, FR43): cả gói một giao dịch ----------
+
+    private static final Long PACKAGE = 60L;
+    private static final LocalDateTime FIRST_SESSION_END = LocalDateTime.of(2026, 11, 5, 20, 0);
+
+    private BookingPackage packagePayment() {
+        BookingPackage pkg = BookingPackage.builder().id(PACKAGE).locationId(LOCATION).playerId(PLAYER)
+                .startDate(LocalDate.of(2026, 11, 5)).endDate(LocalDate.of(2026, 12, 3))
+                .finalAmount(new BigDecimal("905000")).status(BookingStatus.AWAITING_CONFIRMATION).build();
+        payment.setBookingId(null);
+        payment.setPackageId(PACKAGE);
+        payment.setAmountDue(new BigDecimal("905000"));
+        when(packages.lockForPayment(PACKAGE)).thenReturn(pkg);
+        when(packages.getByIds(anyCollection())).thenReturn(Map.of(PACKAGE, pkg));
+        when(packages.firstSessionEnd(PACKAGE)).thenReturn(FIRST_SESSION_END);
+        return pkg;
+    }
+
+    @Test
+    void listShowsPackagePaymentsWithBookingPayments() {
+        packagePayment();
+        Payment single = Payment.builder().id(51L).locationId(LOCATION).bookingId(BOOKING)
+                .amountDue(new BigDecimal("110000")).status(PaymentStatus.AWAITING_CONFIRMATION).build();
+        when(payments.findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
+                LOCATION, PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<>(List.of(payment, single), PageRequest.of(0, 20), 2));
+        when(bookings.getByIds(anyCollection())).thenReturn(Map.of(BOOKING, booking));
+
+        PageResponse<PaymentResponse> result = service.listPending(staff, 0, 20);
+
+        assertThat(result.getContent()).extracting(PaymentResponse::getPackageId, PaymentResponse::getBookingCode)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(PACKAGE, null),
+                        org.assertj.core.groups.Tuple.tuple(null, "BK000030"));
+    }
+
+    @Test
+    void packageDetailListsSessionsAndBooker() {
+        packagePayment();
+        Booking first = Booking.builder().id(101L).bookingCode("BK1").courtId(11L).playerId(PLAYER)
+                .playDate(LocalDate.of(2026, 11, 5)).startMinute(1080).endMinute(1200).build();
+        Booking second = Booking.builder().id(102L).bookingCode("BK2").courtId(11L).playerId(PLAYER)
+                .playDate(LocalDate.of(2026, 11, 12)).startMinute(1080).endMinute(1200).build();
+        when(packages.sessionsOf(PACKAGE)).thenReturn(List.of(first, second));
+        when(bookings.getCustomer(first)).thenReturn(new BookingService.Customer("Nguyễn Văn A", "0912345678"));
+        when(bookings.getCourtName(any())).thenReturn("Sân 1");
+
+        PaymentDetailResponse result = service.getPendingDetail(staff, PAYMENT);
+
+        assertThat(result.getPayment().getPackageId()).isEqualTo(PACKAGE);
+        assertThat(result.getCustomerName()).isEqualTo("Nguyễn Văn A");
+        assertThat(result.getSessions()).extracting(PaymentDetailResponse.Session::getBookingCode,
+                PaymentDetailResponse.Session::getStartTime).containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("BK1", "18:00"),
+                        org.assertj.core.groups.Tuple.tuple("BK2", "18:00"));
+        assertThat(result.getPlayDate()).isNull();
+    }
+
+    @Test
+    void confirmPackageConfirmsAllSessionsAccruesPointsAndGrantsBatchVoucher() {
+        BookingPackage pkg = packagePayment();
+
+        PaymentResponse result = service.confirm(staff, PAYMENT, null, NOW);
+
+        InOrder order = inOrder(payments, packages, points);
+        order.verify(payments).saveAndFlush(payment);
+        order.verify(packages).changeStatus(pkg, BookingStatus.CONFIRMED);
+        order.verify(points).accrueForConfirmedPayment(PAYMENT);
+        order.verify(packages).grantBatchOfferVoucher(pkg);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(payment.getReceiptNo()).isEqualTo("BN261104000050");
+        assertThat(result.getPackageId()).isEqualTo(PACKAGE);
+        ArgumentCaptor<Notification> sent = ArgumentCaptor.forClass(Notification.class);
+        verify(notifications).save(sent.capture());
+        assertThat(sent.getValue().getContent())
+                .isEqualTo("Thanh toán gói đặt nhiều buổi từ 05/11/2026 đến 03/12/2026 đã được xác nhận. Xem biên nhận.");
+        verify(bookings, never()).lockForPayment(any());
+    }
+
+    @Test
+    void confirmPackageAlreadyHandledIsMsg54() {
+        packagePayment().setStatus(BookingStatus.CONFIRMED);
+
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW)).hasMessageContaining("(MSG54)");
+        verify(packages, never()).changeStatus(any(), any());
+    }
+
+    @Test
+    void confirmPackageAfterFirstSessionEndedIsConflict() {
+        packagePayment();
+
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, FIRST_SESSION_END))
+                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+        verify(packages, never()).changeStatus(any(), any());
+    }
+
+    @Test
+    void resubmissionOfPackageMovesPackageWithFirstSessionDeadline() {
+        BookingPackage pkg = packagePayment();
+
+        service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Ảnh mờ", true), NOW);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.RESUBMIT_REQUESTED);
+        assertThat(payment.getResubmitDeadline()).isEqualTo(FIRST_SESSION_END);
+        assertThat(payment.getResubmitCount()).isEqualTo(1);
+        verify(packages).changeStatus(pkg, BookingStatus.RESUBMIT_REQUESTED);
+    }
+
+    @Test
+    void resubmissionOfPackageWithNoTurnLeftRejectsWholePackage() {
+        BookingPackage pkg = packagePayment();
+        payment.setResubmitCount(Payment.MAX_RESUBMITS);
+
+        service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Ảnh mờ", true), NOW);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REJECTED);
+        verify(packages).settleFailed(pkg, BookingStatus.PAYMENT_REJECTED);
+        verify(packages, never()).changeStatus(any(), any());
+    }
+
+    @Test
+    void rejectPackageReleasesEverySessionAndReturnsDiscounts() {
+        BookingPackage pkg = packagePayment();
+
+        PaymentResponse result = service.reject(staff, PAYMENT, new RejectPaymentRequest("Không thấy tiền về"));
+
+        InOrder order = inOrder(payments, packages);
+        order.verify(payments).saveAndFlush(payment);
+        order.verify(packages).settleFailed(pkg, BookingStatus.PAYMENT_REJECTED);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REJECTED);
+        assertThat(result.getPackageId()).isEqualTo(PACKAGE);
+        verify(bookings, never()).releaseSlots(any());
+        verifyNoInteractions(vouchers);
     }
 }

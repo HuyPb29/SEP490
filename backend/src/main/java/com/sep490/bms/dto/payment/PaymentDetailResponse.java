@@ -11,7 +11,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * UC19 #2: chi tiết một giao dịch chờ xác nhận cho Staff/Owner: số tiền, người đặt, giờ chơi,
+ * UC19 #2: chi tiết một giao dịch chờ xác nhận cho Staff/Owner: số tiền, người đặt, giờ chơi (gói đặt nhiều
+ * buổi: danh sách buổi trong sessions, không có sân và giờ chung),
  * ghi chú cho chủ sân (FR35) và các ảnh chứng từ (ảnh mới nhất trước). Ảnh chỉ để tham khảo,
  * căn cứ xác nhận là tiền thực về (BR33).
  */
@@ -30,8 +31,23 @@ public class PaymentDetailResponse {
     private String customerName;
     private String customerPhone;
     private String note;
+    /** Chỉ có với thanh toán gói (UC15): các buổi của gói theo ngày giờ chơi. */
+    private List<Session> sessions;
     private List<Proof> proofs;
-    private List<com.sep490.bms.entity.booking.Booking> sessions;
+
+    /** Một buổi của gói. */
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class Session {
+        private String bookingCode;
+        private String courtName;
+        private LocalDate playDate;
+        private String startTime;
+        private String endTime;
+    }
 
     /** Một lần gửi chứng từ; ảnh lấy qua imageUrl (API có kiểm tra quyền, A03). */
     @Getter

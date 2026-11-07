@@ -46,7 +46,6 @@ import lombok.RequiredArgsConstructor;
 public class PaymentController {
 
     private final PaymentService paymentService;
-    private final com.sep490.bms.service.payment.PackagePaymentService packagePayments;
 
     /**
      * UC18 – Thanh toán booking (#1: số tiền, tài khoản, QR, thời gian giữ chỗ còn lại)
@@ -95,34 +94,50 @@ public class PaymentController {
     }
 
     /**
-     * UC18 – Thanh toán booking (gói đặt nhiều buổi, UC15 #7: thanh toán toàn bộ một lần)
+     * UC18 – Thanh toán booking (gói đặt nhiều buổi, UC15 #7: số tiền cả gói, tài khoản, QR, giờ hết giữ chỗ)
      * Feature: F4 – Thanh toán
      * Owner: Minh
      */
     @GetMapping("/api/booking-packages/{id}/payment-instructions")
     @PreAuthorize("hasRole('PLAYER')")
-    public ApiResponse<com.sep490.bms.service.payment.PackagePaymentService.Instructions> getBookingPackagesByIdPaymentInstructions(
-            @PathVariable Long id,@AuthenticationPrincipal UserPrincipal user) {
-        return ApiResponse.success(packagePayments.instructions(user,id));
+    public ResponseEntity<ApiResponse<PaymentInstructionResponse>> getBookingPackagesByIdPaymentInstructions(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.getPackageInstructions(currentUser, id)));
     }
 
     /**
-     * UC18 – Thanh toán booking (gói đặt nhiều buổi; multipart ảnh chứng từ)
+     * UC18 – Thanh toán booking (gói đặt nhiều buổi: ảnh mã QR, chỉ trả qua API có kiểm tra quyền, A03)
      * Feature: F4 – Thanh toán
      * Owner: Minh
      */
-    @PostMapping("/api/booking-packages/{id}/payments")
-    @PreAuthorize("hasRole('PLAYER')")
-    public ResponseEntity<ApiResponse<PaymentResponse>> postBookingPackagesByIdPayments(@PathVariable Long id,
-            @AuthenticationPrincipal UserPrincipal user,@RequestParam(value="proof",required=false) MultipartFile proof) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(packagePayments.submit(user,id,proof)));
-    }
-
     @GetMapping("/api/booking-packages/{id}/payment-instructions/qr")
     @PreAuthorize("hasRole('PLAYER')")
-    public ResponseEntity<Resource> packageQr(@PathVariable Long id,@AuthenticationPrincipal UserPrincipal user) {
-        Resource image=packagePayments.qr(user,id);
-        return ResponseEntity.ok().contentType(MediaTypeFactory.getMediaType(image).orElse(MediaType.APPLICATION_OCTET_STREAM)).body(image);
+    public ResponseEntity<Resource> getBookingPackagesByIdPaymentInstructionsQr(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        Resource image = paymentService.loadPackageQrImage(currentUser, id);
+        return ResponseEntity.ok()
+                .contentType(MediaTypeFactory.getMediaType(image).orElse(MediaType.APPLICATION_OCTET_STREAM))
+                .body(image);
+    }
+
+    /**
+     * UC18 – Thanh toán booking (gói đặt nhiều buổi, UC15 #7: báo đã thanh toán cả gói một lần; multipart ảnh
+     * chứng từ ở phần "proof")
+     * Feature: F4 – Thanh toán
+     * Owner: Minh
+     * Gửi lại chứng từ của gói dùng POST /api/payments/{id}/resubmit như booking lẻ.
+     */
+    @PostMapping("/api/booking-packages/{id}/payments")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PaymentResponse>> postBookingPackagesByIdPayments(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "proof", required = false) MultipartFile proof,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Đã báo thanh toán. Vui lòng chờ nhân viên xác nhận.",
+                        paymentService.submitPackageProof(currentUser, id, proof)));
     }
 
     /**

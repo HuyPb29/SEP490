@@ -11,7 +11,8 @@ import com.sep490.bms.entity.location.*;
 import com.sep490.bms.entity.promotion.*;
 import com.sep490.bms.repository.AccountRepository;
 import com.sep490.bms.security.JwtTokenProvider;
-import com.sep490.bms.service.payment.PackagePaymentService;
+import com.sep490.bms.service.booking.PackageService;
+import com.sep490.bms.service.payment.PaymentService;
 import com.sep490.bms.scheduler.BookingStatusJob;
 import com.sep490.bms.service.reschedule.CancellationService;
 import com.sep490.bms.service.AccountMaintenanceService;
@@ -40,7 +41,8 @@ class SrsV18IntegrationTests {
     @Autowired ObjectMapper json;
     @Autowired AccountRepository accounts;
     @Autowired JwtTokenProvider jwt;
-    @Autowired PackagePaymentService packagePayments;
+    @Autowired PackageService packages;
+    @Autowired PaymentService payments;
     @Autowired CancellationService cancellations;
     @Autowired AccountMaintenanceService maintenance;
     @Autowired com.sep490.bms.service.promotion.LoyaltyPointService points;
@@ -74,7 +76,7 @@ class SrsV18IntegrationTests {
                         Map.of("courtId",court.getId(),"date",first.plusDays(1).toString(),"startMinute",600,"endMinute",660)),"voucherCode","SRS","pointsToUse",2));
         var result=mvc.perform(post("/api/booking-packages").header("Authorization",token(player)).contentType("application/json").content(body))
                 .andExpect(status().isCreated()).andReturn();
-        return json.readTree(result.getResponse().getContentAsString()).at("/data/bookingPackage/id").asLong();
+        return json.readTree(result.getResponse().getContentAsString()).at("/data/id").asLong();
     }
     PlayerLocationBalance wallet() {
         return em.createQuery("select b from PlayerLocationBalance b where b.playerId=:p and b.locationId=:l",PlayerLocationBalance.class)
@@ -93,9 +95,25 @@ class SrsV18IntegrationTests {
     }
     @Test void expiredPackageRestoresSingleVoucherUsageAndPointsExactlyOnce() throws Exception {
         Long id=createPackage();em.find(BookingPackage.class,id).setHoldExpiresAt(LocalDateTime.now().minusMinutes(1));em.flush();
-        packagePayments.expire(id);packagePayments.expire(id);
+        assertThat(packages.expireHold(id, LocalDateTime.now())).isTrue();
+        assertThat(packages.expireHold(id, LocalDateTime.now())).isFalse();
         assertThat(wallet().getPointBalance()).isEqualTo(10);assertThat(voucher.getUsedCount()).isZero();
         assertThat(em.createQuery("select u.status from VoucherUsage u where u.packageId=:p",VoucherUsageStatus.class).setParameter("p",id).getSingleResult()).isEqualTo(VoucherUsageStatus.RETURNED);
+    }
+    @Test void reportedPackageExpiresAtFirstSessionEndAndRestoresBenefitsOnce() throws Exception {
+        Long id = createPackage();
+        var proof = new MockMultipartFile("proof", "proof.png", "image/png", new byte[]{1, 2});
+        var result = mvc.perform(multipart("/api/booking-packages/" + id + "/payments")
+                .file(proof).header("Authorization", token(player))).andExpect(status().isCreated()).andReturn();
+        long paymentId = json.readTree(result.getResponse().getContentAsString()).at("/data/id").asLong();
+        LocalDateTime deadline = packages.firstSessionEnd(id);
+
+        assertThat(payments.expirePackagePayment(paymentId, deadline.minusSeconds(1))).isFalse();
+        assertThat(payments.expirePackagePayment(paymentId, deadline)).isTrue();
+        assertThat(payments.expirePackagePayment(paymentId, deadline)).isFalse();
+        assertThat(em.find(BookingPackage.class, id).getStatus()).isEqualTo(BookingStatus.PAYMENT_REJECTED);
+        assertThat(wallet().getPointBalance()).isEqualTo(10);
+        assertThat(voucher.getUsedCount()).isZero();
     }
     @Test void staffWalkInCreationAndConfirmationDoNotUsePlayerPoints() throws Exception {
         var request=Map.of("courtId",court.getId(),"date",LocalDate.now().plusDays(1).toString(),"startMinute",600,"endMinute",660,"customerName","Khách tại quầy","customerPhone","0912345678");

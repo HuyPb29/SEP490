@@ -8,6 +8,7 @@ import com.sep490.bms.repository.reschedule.RescheduleRequestRepository;
 import com.sep490.bms.repository.notification.NotificationRepository;
 import com.sep490.bms.security.*;
 import com.sep490.bms.service.booking.BookingService;
+import com.sep490.bms.service.booking.PackageService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.*;
@@ -25,7 +26,7 @@ class PaymentProofAccessTests {
     final FileStorageService files=mock(FileStorageService.class);
     final RescheduleRequestRepository requests=mock(RescheduleRequestRepository.class);
     final PaymentService service=new PaymentService(payments,proofs,bookings,mock(LocationQueryService.class),files,
-            mock(LocationAccessService.class),mock(VoucherService.class),mock(LoyaltyPointService.class),mock(NotificationRepository.class),requests,mock(PackagePaymentService.class));
+            mock(LocationAccessService.class),mock(VoucherService.class),mock(LoyaltyPointService.class),mock(NotificationRepository.class),mock(PackageService.class),requests);
     final UserPrincipal player=UserPrincipal.builder().id(7L).role(Role.PLAYER).build();
     void setup() {
         when(payments.findById(1L)).thenReturn(Optional.of(Payment.builder().id(1L).rescheduleRequestId(2L).build()));

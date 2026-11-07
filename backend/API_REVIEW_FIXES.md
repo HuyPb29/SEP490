@@ -1,5 +1,12 @@
 # Backend: thay đổi theo API.md (27/10/2026)
 
+## Tích hợp F3/F4 ngày 07/11/2026
+
+- UC15 dùng `weeklySlots` cho mẫu định kỳ và `sessions` cho lịch cuối cùng sau khi xử lý buổi trùng. Chi tiết gói có `data.id`. Danh sách gói của Player hỗ trợ `status/page/size`.
+- UC16 dùng `/api/staff/bookings` cho booking tại quầy, lấy địa điểm từ Staff. UC17 dùng DTO lịch sử có trạng thái và thông tin thanh toán. Chi tiết booking của Player kiểm tra quyền sở hữu.
+- UC18–19 xử lý thanh toán gói trong `PaymentService`. Job hết hạn trả voucher và điểm khi gói chưa thanh toán hoặc giao dịch chờ xử lý đã qua buổi đầu. Player vẫn có thể xem ảnh chứng từ phụ thu UC21 của booking mình.
+- Route ưu đãi đặt theo lô công khai và các route đối soát UC20 đã gọi service. Các mục mô tả route khung phía dưới là ghi chú lịch sử.
+
 ## Đã sửa logic F1
 
 - Khôi phục `GET/PATCH /api/users/me` và `GET /api/admin/accounts`, gọi lại service thật.
