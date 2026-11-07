@@ -360,9 +360,10 @@ class AuthAndUserApiTests {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/owner/staff-members").header("Authorization", "Bearer " + ownerToken)
                 .header("X-Location-Id", location.getId())).andExpect(status().isForbidden());
-        mockMvc.perform(get("/api/owner/booking-exports").header("Authorization", "Bearer " + ownerToken)
+        mockMvc.perform(get("/api/owner/exports").header("Authorization", "Bearer " + ownerToken)
                 .header("X-Location-Id", location.getId())).andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith("text/csv"));
+                .andExpect(content().contentTypeCompatibleWith(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
     }
 
     @Test

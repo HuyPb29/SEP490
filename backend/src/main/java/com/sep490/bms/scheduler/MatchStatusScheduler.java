@@ -12,7 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Feature: F7 – Đội và kèo
  * Owner: Hoàng
- * Định kỳ cập nhật trạng thái kèo đã hết hạn hoặc mất booking gốc.
+ * Định kỳ đóng kèo tới giờ chơi và cho hết hạn kèo có booking bị hủy (UC37, JOB10, FR101).
  * Tắt bằng bms.scheduler.match-sweep.enabled=false.
  */
 @Slf4j

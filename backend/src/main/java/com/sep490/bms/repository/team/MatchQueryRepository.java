@@ -114,33 +114,22 @@ public class MatchQueryRepository {
         return total == null ? 0 : total;
     }
 
-    /** Kèo còn mở nhưng giờ chơi đã bắt đầu thì hết hạn. */
-    public int expireStartedMatches() {
-        return jdbcTemplate.update("""
-                UPDATE m SET m.status = 'EXPIRED', m.closed_at = SYSDATETIME()
-                FROM [match] m JOIN booking b ON b.id = m.booking_id
+    /** JOB10, UC28 A5: kèo vẫn đang tuyển mà giờ chơi đã bắt đầu. */
+    public List<Long> findStartedOpenMatchIds() {
+        return jdbcTemplate.queryForList("""
+                SELECT m.id FROM [match] m JOIN booking b ON b.id = m.booking_id
                 WHERE m.status = 'OPEN'
                   AND DATEADD(MINUTE, b.start_minute, CAST(b.play_date AS DATETIME2)) <= SYSDATETIME()
-                """);
+                """, Long.class);
     }
 
-    /** Booking gốc không còn hiệu lực (bị hủy, hết hạn giữ chỗ, bị từ chối thanh toán) thì kèo bị hủy theo. */
-    public int cancelMatchesOfInvalidBookings() {
-        return jdbcTemplate.update("""
-                UPDATE m SET m.status = 'CANCELLED', m.closed_at = SYSDATETIME()
-                FROM [match] m JOIN booking b ON b.id = m.booking_id
+    /** FR101, UC28 A3: kèo còn hiệu lực nhưng booking đã bị người chơi hoặc sân hủy. */
+    public List<Long> findActiveMatchIdsOfCancelledBookings() {
+        return jdbcTemplate.queryForList("""
+                SELECT m.id FROM [match] m JOIN booking b ON b.id = m.booking_id
                 WHERE m.status IN ('OPEN', 'CLOSED')
-                  AND b.status IN ('CANCELLED_BY_PLAYER', 'CANCELLED_BY_FACILITY', 'EXPIRED', 'PAYMENT_REJECTED')
-                """);
-    }
-
-    /** Yêu cầu tham gia còn chờ duyệt của kèo đã kết thúc không còn ý nghĩa. */
-    public int cancelPendingRequestsOfEndedMatches() {
-        return jdbcTemplate.update("""
-                UPDATE r SET r.status = 'CANCELLED', r.decided_at = SYSDATETIME()
-                FROM match_join_request r JOIN [match] m ON m.id = r.match_id
-                WHERE r.status = 'PENDING' AND m.status IN ('EXPIRED', 'CANCELLED')
-                """);
+                  AND b.status IN ('CANCELLED_BY_PLAYER', 'CANCELLED_BY_FACILITY')
+                """, Long.class);
     }
 
     private String buildWhere(String status, Long locationId, LocalDate playDate, boolean upcomingOnly, List<Object> params) {

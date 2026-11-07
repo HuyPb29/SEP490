@@ -375,19 +375,18 @@ class AccountSecurityAuditTests {
         assertThat(getMe(token(player)).statusCode()).isEqualTo(200);
     }
 
-    @Test void mergedOwnerApisUseSelectedLocationAndCsvExportsRemainAvailableWhenLocked() throws Exception {
+    @Test void mergedOwnerApisUseSelectedLocationAndExcelExportRemainsAvailableWhenLocked() throws Exception {
         Location second = location(owner);
         Location foreign = location(account(Role.OWNER, null));
         String ownerToken = token(owner);
         for (Long selected : List.of(location.getId(), second.getId())) {
-            for (String path : List.of("/api/owner/booking-exports", "/api/owner/revenue-exports")) {
-                var response = call("GET", path, ownerToken, null, selected);
-                assertThat(response.statusCode()).as(path + ": " + response.body()).isEqualTo(200);
-                assertThat(response.headers().firstValue("Content-Type").orElse("")).contains("text/csv");
-                assertThat(response.body()).startsWith("\uFEFF");
-                assertThat(call("GET", path, ownerToken, null, null).statusCode()).isEqualTo(400);
-                assertThat(call("GET", path, ownerToken, null, foreign.getId()).statusCode()).isEqualTo(403);
-            }
+            var export = call("GET", "/api/owner/exports", ownerToken, null, selected);
+            assertThat(export.statusCode()).as(export.body()).isEqualTo(200);
+            assertThat(export.headers().firstValue("Content-Type").orElse(""))
+                    .contains("spreadsheetml.sheet");
+            assertThat(export.body()).startsWith("PK");
+            assertThat(call("GET", "/api/owner/exports", ownerToken, null, null).statusCode()).isEqualTo(400);
+            assertThat(call("GET", "/api/owner/exports", ownerToken, null, foreign.getId()).statusCode()).isEqualTo(403);
             for (String path : List.of("/api/owner/booking-reports", "/api/owner/revenue-reports",
                     "/api/owner/occupancy-reports", "/api/owner/cancellation-reports", "/api/owner/reschedule-reports",
                     "/api/owner/voucher-reports", "/api/owner/reviews", "/api/owner/complaints")) {
@@ -396,10 +395,14 @@ class AccountSecurityAuditTests {
             }
         }
         second.setStatus("LOCKED");
+        second.setLockedAt(LocalDateTime.now().minusDays(29));
         locations.saveAndFlush(second);
-        assertThat(call("GET", "/api/owner/booking-exports", ownerToken, null, second.getId()).statusCode()).isEqualTo(200);
-        assertThat(call("GET", "/api/owner/revenue-exports", ownerToken, null, second.getId()).statusCode()).isEqualTo(200);
+        assertThat(call("GET", "/api/owner/exports", ownerToken, null, second.getId()).statusCode()).isEqualTo(200);
         assertThat(call("GET", "/api/owner/booking-reports", ownerToken, null, second.getId()).statusCode()).isEqualTo(403);
+        // FR123: quá P29 = 30 ngày kể từ khi khóa thì không tải được nữa.
+        second.setLockedAt(LocalDateTime.now().minusDays(31));
+        locations.saveAndFlush(second);
+        assertThat(call("GET", "/api/owner/exports", ownerToken, null, second.getId()).statusCode()).isEqualTo(403);
     }
 
     @Test void mergedPublicRoutesPreserveGuestAccessAndSpecificInputErrors() throws Exception {
