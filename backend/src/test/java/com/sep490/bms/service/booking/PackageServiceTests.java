@@ -721,6 +721,34 @@ class PackageServiceTests {
         assertThat(service.firstSessionEnd(50L)).isEqualTo(LocalDateTime.of(2026, 12, 2, 0, 0));
     }
 
+    // ===================== 12.7: tặng voucher theo lô khi xác nhận thanh toán gói =====================
+
+    @Test
+    void batchVoucherGrantedOnlyForPackageThatReachedOffer() {
+        BookingPackage none = BookingPackage.builder().id(50L).playerId(PLAYER).build();
+        assertThat(service.grantBatchOfferVoucher(none)).isFalse();
+        verifyNoInteractions(voucherService, notifications);
+
+        BookingPackage reached = BookingPackage.builder().id(51L).playerId(PLAYER).batchOfferId(1L).build();
+        when(offers.findById(1L)).thenReturn(Optional.of(offer(1, TODAY, TODAY.plusDays(5), 10)));
+        when(voucherService.grantForBatchOffer(10L, PLAYER, "Ưu đãi đặt theo lô: Chương trình 1 (gói #51)"))
+                .thenReturn(true);
+
+        assertThat(service.grantBatchOfferVoucher(reached)).isTrue();
+        verify(notifications).notifyOnce(eq(PLAYER), eq("BATCH_OFFER_VOUCHER"), anyString(), anyString(),
+                eq("PACKAGE"), eq(51L));
+    }
+
+    @Test
+    void batchVoucherNotGrantableSendsNothing() {
+        BookingPackage reached = BookingPackage.builder().id(51L).playerId(PLAYER).batchOfferId(1L).build();
+        when(offers.findById(1L)).thenReturn(Optional.of(offer(1, TODAY, TODAY.plusDays(5), 10)));
+        when(voucherService.grantForBatchOffer(eq(10L), eq(PLAYER), anyString())).thenReturn(false);
+
+        assertThat(service.grantBatchOfferVoucher(reached)).isFalse();
+        verifyNoInteractions(notifications);
+    }
+
     private PackageService.Priced pricedSession(LocalDate date, String amount) {
         return new PackageService.Priced(new PackageService.Planned(date, court, 1080, 1110), List.of(),
                 new BigDecimal(amount), BigDecimal.ZERO, 0, BigDecimal.ZERO);

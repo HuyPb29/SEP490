@@ -8,6 +8,7 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -74,6 +75,8 @@ public class PackageService {
     /** Thời gian giữ chỗ của gói, tính từ lúc bấm xác nhận lịch (P27, BR53): cố định (D154). */
     static final int HOLD_MINUTES = 15;
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    /** Loại thông báo khi tặng voucher của chương trình theo lô (FR124). */
+    static final String BATCH_OFFER_VOUCHER = "BATCH_OFFER_VOUCHER";
 
     private final LocationQueryService locationQueryService;
     private final BatchOfferRepository batchOfferRepository;
@@ -282,15 +285,7 @@ public class PackageService {
                 || pkg.getHoldExpiresAt().isAfter(now)) {
             return false;
         }
-        pkg.setStatus(BookingStatus.EXPIRED);
-        bookingPackageRepository.saveAndFlush(pkg);
-        for (Booking session : bookingRepository.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(packageId)) {
-            bookingService.changeStatus(session, BookingStatus.EXPIRED);
-            bookingService.releaseSlots(session.getId());
-        }
-        // Hai hàm trả lại chỉ nhận gói đã ở trạng thái thất bại nên chạy sau khi đổi trạng thái.
-        voucherService.restoreForFailedPackage(packageId);
-        loyaltyPointService.restoreForFailedPackage(packageId);
+        settleFailed(pkg, BookingStatus.EXPIRED);
         notificationService.notifyOnce(pkg.getPlayerId(), NotificationType.BOOKING_HOLD_EXPIRED,
                 "Gói đặt nhiều buổi đã hết hạn giữ chỗ",
                 "Gói đặt nhiều buổi từ " + pkg.getStartDate().format(DATE) + " đến " + pkg.getEndDate().format(DATE)
@@ -357,6 +352,57 @@ public class PackageService {
 
     private static AppException packageNotFound() {
         return new AppException("Không tìm thấy gói đặt nhiều buổi", HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Gói thất bại (hết hạn giữ chỗ hoặc bị từ chối thanh toán): gói và các buổi đổi trạng thái, nhả slot của mọi
+     * buổi, trả voucher và điểm đã dùng (BR40, BR45). Hai hàm trả lại chỉ nhận gói đã ở trạng thái thất bại nên
+     * chạy sau khi đổi trạng thái. Chạy trong giao dịch của bên gọi, sau khi đã khóa dòng gói.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void settleFailed(BookingPackage pkg, BookingStatus status) {
+        pkg.setStatus(status);
+        bookingPackageRepository.saveAndFlush(pkg);
+        for (Booking session : sessionsOf(pkg.getId())) {
+            bookingService.changeStatus(session, status);
+            bookingService.releaseSlots(session.getId());
+        }
+        voucherService.restoreForFailedPackage(pkg.getId());
+        loyaltyPointService.restoreForFailedPackage(pkg.getId());
+    }
+
+    /**
+     * UC15 #9, FR44, BR47: thanh toán gói được xác nhận mà gói đã đạt mức của chương trình theo lô lúc xác nhận lịch
+     * thì tặng voucher của chương trình vào tài khoản Player (loại Player được chỉ định, BR48) và báo Player.
+     * Chương trình đã bị xóa hoặc voucher không tặng được thì không tặng.
+     *
+     * @return true nếu đã tặng
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean grantBatchOfferVoucher(BookingPackage pkg) {
+        if (pkg.getBatchOfferId() == null) {
+            return false;
+        }
+        BatchOffer offer = batchOfferRepository.findById(pkg.getBatchOfferId()).orElse(null);
+        if (offer == null || !voucherService.grantForBatchOffer(offer.getVoucherId(), pkg.getPlayerId(),
+                "Ưu đãi đặt theo lô: " + offer.getName() + " (gói #" + pkg.getId() + ")")) {
+            return false;
+        }
+        notificationService.notifyOnce(pkg.getPlayerId(), BATCH_OFFER_VOUCHER, "Bạn được tặng voucher",
+                "Gói đặt nhiều buổi của bạn đạt mức của chương trình " + offer.getName()
+                        + ". Voucher đã được thêm vào tài khoản.",
+                "PACKAGE", pkg.getId());
+        return true;
+    }
+
+    /** Các gói theo id, đọc một lần cho một trang giao dịch chờ xác nhận (UC19 #1). */
+    @Transactional(readOnly = true)
+    public Map<Long, BookingPackage> getByIds(Collection<Long> packageIds) {
+        if (packageIds.isEmpty()) {
+            return Map.of();
+        }
+        return bookingPackageRepository.findAllById(packageIds).stream()
+                .collect(Collectors.toMap(BookingPackage::getId, Function.identity()));
     }
 
     /** UC15 #6, FR74: trừ lượt voucher trên cả gói; lỗi do voucher không còn dùng được thì báo MSG108. */

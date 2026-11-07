@@ -265,6 +265,27 @@ public class VoucherService {
         return usages.saveAndFlush(VoucherUsage.builder().voucherId(v.getId()).voucherGrantId(selection.grantId()).playerId(p.getPlayerId())
                 .packageId(packageId).discountAmount(quote.discountAmount()).build());
     }
+    /**
+     * UC15 #9, BR47, BR48: tặng voucher của chương trình theo lô cho Player khi thanh toán gói được xác nhận.
+     * Chỉ tặng được voucher Player được chỉ định (SPECIFIED) đã phát hành, còn hạn; hạn của lượt tặng tính như grant().
+     * F3 gọi trong giao dịch xác nhận thanh toán gói.
+     *
+     * @return false nếu voucher không tặng được (bị tắt, hết hạn, không phải loại được chỉ định)
+     */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public boolean grantForBatchOffer(Long voucherId,Long playerId,String note) {
+        Voucher v=locked(voucherId);
+        LocalDateTime now=LocalDateTime.now();
+        if(v.getStatus()!=VoucherStatus.PUBLISHED || v.getTargetGroup()!=VoucherTargetGroup.SPECIFIED
+                || v.getValidTo()!=null && v.getValidTo().isBefore(now.toLocalDate())) return false;
+        LocalDateTime expiry=v.getValidTo()==null ? null:v.getValidTo().plusDays(1).atStartOfDay();
+        if(v.getGrantValidDays()!=null) {
+            LocalDateTime relative=now.plusDays(v.getGrantValidDays());
+            if(expiry==null || relative.isBefore(expiry)) expiry=relative;
+        }
+        grants.saveAndFlush(VoucherGrant.builder().voucherId(voucherId).playerId(playerId).expiresAt(expiry).note(note).build());
+        return true;
+    }
     /** UC15, UC37: gói hết hạn giữ chỗ hoặc bị từ chối thanh toán thì trả lượt, ngân sách, voucher được tặng (BR45). */
     @Transactional(propagation=Propagation.MANDATORY)
     public void restoreForFailedPackage(Long packageId) {

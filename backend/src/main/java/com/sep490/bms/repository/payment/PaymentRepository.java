@@ -39,11 +39,10 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Optional<Payment> findByPackageId(Long packageId);
 
     /**
-     * UC19 #1, FR58: giao dịch của booking lẻ tại một địa điểm theo trạng thái, gửi sớm nhất lên đầu
-     * để Staff xử lý theo thứ tự. Thanh toán gói (UC15) và khoản trả thêm khi đổi lịch (UC21) chưa làm
-     * nên chỉ lấy dòng có booking_id.
+     * UC19 #1, FR58: giao dịch của booking lẻ và gói đặt nhiều buổi tại một địa điểm theo trạng thái, gửi sớm
+     * nhất lên đầu để Staff xử lý theo thứ tự. Khoản trả thêm khi đổi lịch (UC21) có màn riêng nên không lấy.
      */
-    Page<Payment> findByLocationIdAndStatusAndBookingIdIsNotNullOrderBySubmittedAtAscIdAsc(
+    Page<Payment> findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
             Long locationId, PaymentStatus status, Pageable pageable);
 
     /**
