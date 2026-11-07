@@ -13,6 +13,8 @@ import OpenMatchesPage from './pages/matches/OpenMatchesPage'
 import StaffDashboardPage from './pages/staff/StaffDashboardPage'
 import StaffConfirmPaymentPage from './pages/staff/StaffConfirmPaymentPage'
 import OwnerReportPage from './pages/owner/OwnerReportPage'
+import OwnerCourtsPricingPage from './pages/owner/OwnerCourtsPricingPage'
+import AdminFacilitiesPage from './pages/admin/AdminFacilitiesPage'
 
 export default function App() {
   return (
@@ -31,7 +33,9 @@ function AppContent() {
     location.pathname === '/open-matches' ||
     location.pathname === '/staff/dashboard' ||
     location.pathname === '/staff/confirm-payments' ||
-    location.pathname === '/owner/reports'
+    location.pathname === '/owner/reports' ||
+    location.pathname === '/owner/courts-pricing' ||
+    location.pathname === '/admin/facilities'
   const [status, setStatus] = useState(() => (isFrontendMockPage ? 'mock preview' : 'checking...'))
 
   useEffect(() => {
@@ -68,6 +72,10 @@ function AppContent() {
         <Route path="/staff/confirm-payments" element={<StaffConfirmPaymentPage />} />
         {/* UC35: Owner operational and revenue reports mock preview */}
         <Route path="/owner/reports" element={<OwnerReportPage />} />
+        {/* UC07-09: Owner courts and pricing mock preview */}
+        <Route path="/owner/courts-pricing" element={<OwnerCourtsPricingPage />} />
+        {/* UC06: Admin facilities mock preview */}
+        <Route path="/admin/facilities" element={<AdminFacilitiesPage />} />
 
         {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
         <Route path="/login" element={<AuthPage />} />
