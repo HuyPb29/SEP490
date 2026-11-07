@@ -28,8 +28,38 @@ public class PackagePreviewResponse {
     private LocalDate startDate;
     private LocalDate endDate;
     private int totalSessions;
+    /** Số buổi bị trùng: đã có người giữ/đặt, bảo trì, ngoài giờ mở cửa hoặc đã bắt đầu (BR50). */
+    private int conflictSessions;
+    /** Dòng tóm tắt lịch của gói (MSG43). */
+    private String summary;
+    /** Lịch theo từng tháng: tổng số buổi và số buổi bị trùng của mỗi tháng (FR45). */
+    private List<MonthSummary> months;
     /** Các buổi theo ngày giờ chơi. */
     private List<Session> sessions;
+
+    /** Vì sao một buổi không đặt được. */
+    public enum Conflict {
+        /** Đã có người giữ chỗ hoặc đặt (kể cả chính Player đang giữ). */
+        TAKEN,
+        /** Trùng lịch bảo trì đã duyệt. */
+        MAINTENANCE,
+        /** Ngoài giờ mở cửa của ngày đó. */
+        CLOSED,
+        /** Buổi hôm nay đã đến giờ bắt đầu. */
+        STARTED
+    }
+
+    /** Tóm tắt một tháng của lịch gói, ví dụ month = "2026-12". */
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class MonthSummary {
+        private String month;
+        private int totalSessions;
+        private int conflictSessions;
+    }
 
     /** Một buổi con của gói. */
     @Getter
@@ -46,5 +76,7 @@ public class PackagePreviewResponse {
         /** Giờ dạng HH:mm, 24 giờ là "24:00". */
         private String startTime;
         private String endTime;
+        /** Trống là buổi đặt được; có giá trị thì Player chọn slot bù hoặc bỏ buổi này (BR50). */
+        private Conflict conflict;
     }
 }

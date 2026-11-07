@@ -2,7 +2,12 @@ package com.sep490.bms.service.booking;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -21,6 +26,7 @@ import org.springframework.http.HttpStatus;
 
 import com.sep490.bms.dto.booking.BatchOfferPublicResponse;
 import com.sep490.bms.dto.booking.PackagePreviewResponse;
+import com.sep490.bms.dto.booking.PackagePreviewResponse.Conflict;
 import com.sep490.bms.dto.booking.PackageRequest;
 import com.sep490.bms.dto.booking.PackageRequest.WeeklySlot;
 import com.sep490.bms.entity.Location;
@@ -57,16 +63,30 @@ class PackageServiceTests {
     private final VoucherRepository vouchers = mock(VoucherRepository.class);
     private final CourtRepository courts = mock(CourtRepository.class);
     private final BookingService bookingService = mock(BookingService.class);
-    private final PackageService service = new PackageService(locations, offers, vouchers, courts, bookingService);
+    private final SlotAvailabilityService availability = mock(SlotAvailabilityService.class);
+    private final PackageService service =
+            new PackageService(locations, offers, vouchers, courts, bookingService, availability);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
     private final Location location = Location.builder().id(LOCATION).name("Cầu lông A").build();
     private final Court court = Court.builder().id(COURT).locationId(LOCATION).name("Sân 1").build();
 
+    private final Court court2 = Court.builder().id(12L).locationId(LOCATION).name("Sân 2").build();
+
     @BeforeEach
     void defaults() {
         when(locations.findActive(LOCATION)).thenReturn(location);
         when(courts.findByIdAndActiveTrue(COURT)).thenReturn(Optional.of(court));
+        when(courts.findByIdAndActiveTrue(12L)).thenReturn(Optional.of(court2));
+        when(availability.findProblem(eq(LOCATION), anyLong(), any(), anyInt(), anyInt())).thenReturn(Optional.empty());
+    }
+
+    private static PackageRequest.Session session(LocalDate date, Long courtId, int start, int end) {
+        return new PackageRequest.Session(date, courtId, start, end);
+    }
+
+    private static PackageRequest custom(PackageRequest.Session... sessions) {
+        return new PackageRequest(PackageType.CUSTOM, COURT, null, null, null, List.of(sessions), null);
     }
 
     private static BatchOffer offer(long id, LocalDate start, LocalDate end, long voucherId) {
@@ -81,7 +101,7 @@ class PackageServiceTests {
 
     private static PackageRequest recurring(LocalDate start, LocalDate end, WeeklySlot... slots) {
         return new PackageRequest(PackageType.RECURRING, COURT, start, end,
-                slots.length == 0 ? null : List.of(slots), null);
+                slots.length == 0 ? null : List.of(slots), null, null);
     }
 
     // ===================== 12.1: chương trình theo lô công khai =====================
@@ -203,7 +223,7 @@ class PackageServiceTests {
         doThrow(new AppException("Bạn chỉ đặt sân được cho đội mình làm chủ.", HttpStatus.FORBIDDEN))
                 .when(bookingService).requireOwnTeam(PLAYER, 7L);
         PackageRequest request = new PackageRequest(PackageType.RECURRING, COURT, DEC_1, DEC_31,
-                List.of(TUESDAY_EVENING), 7L);
+                List.of(TUESDAY_EVENING), null, 7L);
 
         assertThatThrownBy(() -> service.preview(player, request, NOW))
                 .extracting(e -> ((AppException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
@@ -215,6 +235,113 @@ class PackageServiceTests {
 
         assertThatThrownBy(() -> service.preview(player, recurring(DEC_1, DEC_31, TUESDAY_EVENING), NOW))
                 .extracting(e -> ((AppException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    // ===================== 12.3: tự chọn, đánh dấu buổi trùng =====================
+
+    @Test
+    void conflictsAreMarkedWithReasonAndSummarized() {
+        when(availability.findProblem(LOCATION, COURT, LocalDate.of(2026, 12, 8), 1080, 1200))
+                .thenReturn(Optional.of(SlotAvailabilityService.SlotProblem.TAKEN));
+        when(availability.findProblem(LOCATION, COURT, LocalDate.of(2026, 12, 15), 1080, 1200))
+                .thenReturn(Optional.of(SlotAvailabilityService.SlotProblem.MAINTENANCE));
+        when(availability.findProblem(LOCATION, COURT, LocalDate.of(2027, 1, 5), 1080, 1200))
+                .thenReturn(Optional.of(SlotAvailabilityService.SlotProblem.CLOSED));
+
+        PackagePreviewResponse result = service.preview(player,
+                recurring(DEC_1, LocalDate.of(2027, 1, 31), TUESDAY_EVENING), NOW);
+
+        assertThat(result.getTotalSessions()).isEqualTo(9);
+        assertThat(result.getConflictSessions()).isEqualTo(3);
+        assertThat(result.getSummary()).isEqualTo("Tổng 9 buổi, 3 buổi bị trùng.");
+        assertThat(result.getSessions()).extracting(PackagePreviewResponse.Session::getConflict).containsExactly(
+                null, Conflict.TAKEN, Conflict.MAINTENANCE, null, null,
+                Conflict.CLOSED, null, null, null);
+        assertThat(result.getMonths()).extracting(PackagePreviewResponse.MonthSummary::getMonth,
+                PackagePreviewResponse.MonthSummary::getTotalSessions,
+                PackagePreviewResponse.MonthSummary::getConflictSessions)
+                .containsExactly(tuple("2026-12", 5, 2), tuple("2027-01", 4, 1));
+    }
+
+    @Test
+    void sessionTodayAlreadyStartedIsConflict() {
+        PackagePreviewResponse result = service.preview(player, custom(
+                session(TODAY, null, 480, 540), session(TODAY, null, 600, 660)), NOW);
+
+        assertThat(result.getSessions()).extracting(PackagePreviewResponse.Session::getConflict)
+                .containsExactly(Conflict.STARTED, null);
+    }
+
+    @Test
+    void customSessionsSortedAndMayUseAnotherCourtOfSameLocation() {
+        PackagePreviewResponse result = service.preview(player, custom(
+                session(LocalDate.of(2026, 12, 20), 12L, 1080, 1140),
+                session(DEC_1, null, 1200, 1320),
+                session(DEC_1, null, 1080, 1140)), NOW);
+
+        assertThat(result.getPackageType()).isEqualTo(PackageType.CUSTOM);
+        assertThat(result.getSessions()).extracting(PackagePreviewResponse.Session::getDate,
+                PackagePreviewResponse.Session::getStartTime, PackagePreviewResponse.Session::getCourtName)
+                .containsExactly(tuple(DEC_1, "18:00", "Sân 1"), tuple(DEC_1, "20:00", "Sân 1"),
+                        tuple(LocalDate.of(2026, 12, 20), "18:00", "Sân 2"));
+        assertThat(result.getStartDate()).isEqualTo(DEC_1);
+        assertThat(result.getEndDate()).isEqualTo(LocalDate.of(2026, 12, 20));
+    }
+
+    @Test
+    void customNeedsTwoSessionsWithinThreeMonths() {
+        assertThatThrownBy(() -> service.preview(player, custom(session(DEC_1, null, 1080, 1140)), NOW))
+                .hasMessageContaining("(MSG91)");
+        assertThatThrownBy(() -> service.preview(player,
+                new PackageRequest(PackageType.CUSTOM, COURT, null, null, null, null, null), NOW))
+                .hasMessageContaining("(MSG91)");
+        assertThatThrownBy(() -> service.preview(player, custom(
+                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 3, 1), null, 1080, 1140)), NOW))
+                .hasMessageContaining("(MSG91)");
+        assertThat(service.preview(player, custom(
+                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 2, 28), null, 1080, 1140)), NOW)
+                .getTotalSessions()).isEqualTo(2);
+    }
+
+    @Test
+    void customRejectsPastDaysOverlapsAndForeignCourts() {
+        assertThatThrownBy(() -> service.preview(player, custom(
+                session(TODAY.minusDays(1), null, 1080, 1140), session(DEC_1, null, 1080, 1140)), NOW))
+                .hasMessageContaining("đã qua");
+        assertThatThrownBy(() -> service.preview(player, custom(
+                session(DEC_1, null, 1080, 1200), session(DEC_1, null, 1140, 1260)), NOW))
+                .hasMessageContaining("chồng giờ");
+        when(courts.findByIdAndActiveTrue(99L))
+                .thenReturn(Optional.of(Court.builder().id(99L).locationId(2L).name("Sân khác").build()));
+        assertThatThrownBy(() -> service.preview(player, custom(
+                session(DEC_1, 99L, 1080, 1140), session(DEC_31, null, 1080, 1140)), NOW))
+                .hasMessageContaining("không thuộc địa điểm");
+        // Cùng giờ nhưng khác sân thì không chồng.
+        assertThat(service.preview(player, custom(
+                session(DEC_1, null, 1080, 1200), session(DEC_1, 12L, 1080, 1200)), NOW)
+                .getTotalSessions()).isEqualTo(2);
+    }
+
+    @Test
+    void recurringWithHandledSessionsKeepsPatternCheckAndPeriod() {
+        List<PackageRequest.Session> handled = List.of(session(DEC_1, null, 1080, 1200),
+                session(LocalDate.of(2026, 12, 9), 12L, 1080, 1200));
+        PackageRequest ok = new PackageRequest(PackageType.RECURRING, COURT, DEC_1, DEC_31,
+                List.of(TUESDAY_EVENING), handled, null);
+        assertThat(service.preview(player, ok, NOW).getTotalSessions()).isEqualTo(2);
+
+        PackageRequest outside = new PackageRequest(PackageType.RECURRING, COURT, DEC_1, DEC_31,
+                List.of(TUESDAY_EVENING), List.of(session(DEC_1, null, 1080, 1200),
+                        session(LocalDate.of(2027, 1, 5), null, 1080, 1200)), null);
+        assertThatThrownBy(() -> service.preview(player, outside, NOW)).hasMessageContaining("ngoài thời gian");
+
+        PackageRequest badPattern = new PackageRequest(PackageType.RECURRING, COURT, DEC_1,
+                LocalDate.of(2026, 12, 20), List.of(TUESDAY_EVENING), handled, null);
+        assertThatThrownBy(() -> service.preview(player, badPattern, NOW)).hasMessageContaining("(MSG41)");
+
+        PackageRequest allDropped = new PackageRequest(PackageType.RECURRING, COURT, DEC_1, DEC_31,
+                List.of(TUESDAY_EVENING), List.of(), null);
+        assertThatThrownBy(() -> service.preview(player, allDropped, NOW)).hasMessageContaining("(MSG92)");
     }
 
     private void assertMsg41(PackageRequest request) {

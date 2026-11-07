@@ -38,7 +38,8 @@ public class BookingPackageController {
     private final PackageService packageService;
 
     /**
-     * UC15 – Đặt nhiều buổi (#1–2, #4: sinh các buổi theo mẫu và hiện lịch toàn kỳ; không lưu gì, không giữ chỗ)
+     * UC15 – Đặt nhiều buổi (#1–5, #10: sinh buổi theo mẫu hoặc tự chọn, lịch toàn kỳ đánh dấu buổi trùng,
+     * tóm tắt theo tháng; không lưu gì, không giữ chỗ)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
      */

@@ -14,6 +14,9 @@ import jakarta.validation.constraints.Positive;
 /**
  * Đặt nhiều buổi (UC15 #1–3, FR40, BR27). Dùng chung cho xem trước lịch gói và tạo gói.
  * Định kỳ (RECURRING): gửi ngày bắt đầu, ngày kết thúc và mẫu hằng tuần, hệ thống sinh các buổi.
+ * Tự chọn (CUSTOM): gửi từng buổi trong sessions.
+ * Sau khi Player xử lý buổi trùng (chọn slot bù hoặc bỏ buổi, BR50), gửi danh sách buổi cuối cùng trong sessions;
+ * với định kỳ vẫn gửi kèm mẫu ban đầu vì điều kiện của mẫu chỉ kiểm trên mẫu ban đầu (BR27).
  */
 public record PackageRequest(
         @NotNull PackageType packageType,
@@ -24,12 +27,22 @@ public record PackageRequest(
         LocalDate endDate,
         /** RECURRING: mỗi dòng là một buổi cố định trong tuần (thứ + khung giờ), ít nhất 1 dòng. */
         @Valid List<WeeklySlot> weeklySlots,
+        /** CUSTOM: các buổi tự chọn. RECURRING: danh sách buổi sau khi xử lý buổi trùng; để trống thì sinh theo mẫu. */
+        @Valid List<Session> sessions,
         /** Đội mình làm chủ, không bắt buộc; để trống là đặt cho cá nhân (FR37, BR09). */
         @Positive Long teamId) {
 
     /** Một buổi trong tuần: dayOfWeek 1 = thứ Hai … 7 = Chủ nhật; giờ tính bằng số phút từ 0 giờ. */
     public record WeeklySlot(
             @NotNull @Min(1) @Max(7) Integer dayOfWeek,
+            @Min(0) @Max(1410) int startMinute,
+            @Min(30) @Max(1440) int endMinute) {
+    }
+
+    /** Một buổi chọn tay hoặc slot bù: courtId để trống là sân của gói; sân khác phải cùng địa điểm. */
+    public record Session(
+            @NotNull LocalDate date,
+            @Positive Long courtId,
             @Min(0) @Max(1410) int startMinute,
             @Min(30) @Max(1440) int endMinute) {
     }
