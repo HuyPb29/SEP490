@@ -370,8 +370,29 @@ class PackageServiceTests {
                 session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 3, 1), null, 1080, 1140)), NOW))
                 .hasMessageContaining("(MSG91)");
         assertThat(service.preview(player, custom(
-                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 2, 28), null, 1080, 1140)), NOW)
+                session(TODAY, null, 1080, 1140), session(LocalDate.of(2027, 2, 6), null, 1080, 1140)), NOW)
                 .getTotalSessions()).isEqualTo(2);
+    }
+
+    @Test
+    void everySessionWithinThreeMonthsFromToday() {
+        // Hôm nay 07/11/2026: buổi xa nhất là 06/02/2027 (D162).
+        assertThat(service.preview(player, custom(
+                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 2, 6), null, 1080, 1140)), NOW)
+                .getTotalSessions()).isEqualTo(2);
+        assertThatThrownBy(() -> service.preview(player, custom(
+                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 2, 7), null, 1080, 1140)), NOW))
+                .hasMessage("Chỉ đặt được các buổi trong vòng 3 tháng kể từ hôm nay, muộn nhất ngày 06/02/2027. (MSG115)");
+        // Định kỳ đủ dài (01/12–28/02) nhưng có buổi sau 06/02 thì bị chặn; định kỳ đủ 3 tháng phải bắt đầu hôm nay.
+        assertThatThrownBy(() -> service.preview(player,
+                recurring(DEC_1, LocalDate.of(2027, 2, 28), TUESDAY_EVENING), NOW))
+                .hasMessageContaining("trong vòng 3 tháng kể từ hôm nay");
+        assertThat(service.preview(player,
+                recurring(TODAY, LocalDate.of(2027, 2, 6), TUESDAY_EVENING), NOW).getTotalSessions()).isEqualTo(13);
+        // Slot bù của định kỳ cũng bị chặn theo cùng mốc.
+        PackageRequest late = new PackageRequest(PackageType.RECURRING, COURT, LocalDate.of(2027, 1, 10),
+                LocalDate.of(2027, 2, 9), List.of(TUESDAY_EVENING), null, null, null, null, null);
+        assertThatThrownBy(() -> service.preview(player, late, NOW)).hasMessageContaining("muộn nhất ngày 06/02/2027");
     }
 
     @Test
