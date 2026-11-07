@@ -22,8 +22,10 @@ import lombok.Setter;
 @Builder
 public class PaymentInstructionResponse {
 
+    /** Booking lẻ: bookingId, bookingCode. Gói đặt nhiều buổi (UC15): packageId. */
     private Long bookingId;
     private String bookingCode;
+    private Long packageId;
     /** HOLDING: lần đầu báo thanh toán. RESUBMIT_REQUESTED: chuyển thêm hoặc gửi lại chứng từ. */
     private BookingStatus status;
     private BigDecimal amountDue;

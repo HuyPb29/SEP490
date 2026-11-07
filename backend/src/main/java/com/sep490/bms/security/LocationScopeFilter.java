@@ -1,6 +1,7 @@
 package com.sep490.bms.security;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,6 +22,9 @@ import lombok.RequiredArgsConstructor;
 /** Enforces selected-location ownership and locked-location restrictions after authentication. */
 @RequiredArgsConstructor
 public class LocationScopeFilter extends OncePerRequestFilter {
+    /** P29: số ngày Owner của địa điểm bị khóa còn tải được dữ liệu. */
+    private static final int LOCKED_EXPORT_DAYS = 30;
+
     private final LocationAccessService locationAccess;
     private final LocationRepository locations;
 
@@ -66,10 +70,16 @@ public class LocationScopeFilter extends OncePerRequestFilter {
         } else {
             location = locationAccess.selectedLocation(user);
         }
-        boolean export = "GET".equals(request.getMethod())
-                && (path.equals("/api/owner/booking-exports") || path.equals("/api/owner/revenue-exports"));
-        if (!"ACTIVE".equals(location.getStatus()) && !export) {
+        if ("ACTIVE".equals(location.getStatus())) return;
+        boolean export = "GET".equals(request.getMethod()) && path.equals("/api/owner/exports");
+        if (!export) {
             throw new AppException("Địa điểm đã bị khóa; chỉ được tải dữ liệu", HttpStatus.FORBIDDEN);
+        }
+        // FR123, BR62: Owner chỉ còn tải được dữ liệu trong P29 ngày kể từ khi địa điểm bị khóa.
+        if (location.getLockedAt() != null
+                && location.getLockedAt().plusDays(LOCKED_EXPORT_DAYS).isBefore(LocalDateTime.now())) {
+            throw new AppException("Đã quá " + LOCKED_EXPORT_DAYS + " ngày kể từ khi địa điểm bị khóa, "
+                    + "không thể tải dữ liệu", HttpStatus.FORBIDDEN);
         }
     }
 }

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -33,7 +34,9 @@ import com.sep490.bms.dto.payment.PaymentResponse;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.payment.PaymentProof;
@@ -41,9 +44,11 @@ import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.notification.NotificationRepository;
 import com.sep490.bms.repository.payment.PaymentProofRepository;
 import com.sep490.bms.repository.payment.PaymentRepository;
+import com.sep490.bms.repository.reschedule.RescheduleRequestRepository;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
+import com.sep490.bms.service.booking.PackageService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
@@ -64,9 +69,10 @@ class PaymentServiceTests {
     private final BookingService bookings = mock(BookingService.class);
     private final LocationQueryService locations = mock(LocationQueryService.class);
     private final FileStorageService files = mock(FileStorageService.class);
+    private final PackageService packages = mock(PackageService.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings, locations, files,
             mock(LocationAccessService.class), mock(VoucherService.class), mock(LoyaltyPointService.class),
-            mock(NotificationRepository.class));
+            mock(NotificationRepository.class), packages, mock(RescheduleRequestRepository.class));
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
     private final MockMultipartFile proof = new MockMultipartFile("proof", "ck.jpg", "image/jpeg", new byte[] { 1, 2 });
@@ -427,6 +433,27 @@ class PaymentServiceTests {
                 .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    @Test
+    void walkInPaymentIsConfirmedWithReceiptAndNoProof() {
+        booking.setPlayerId(null);
+        booking.setBookingType(BookingType.WALK_IN);
+        booking.setFinalAmount(new BigDecimal("130000"));
+
+        Payment result = service.recordWalkInPayment(booking, 9L, NOW.plusNanos(700_000_000));
+
+        assertThat(result.getBookingId()).isEqualTo(BOOKING);
+        assertThat(result.getLocationId()).isEqualTo(LOCATION);
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(result.getAmountDue()).isEqualByComparingTo("130000");
+        assertThat(result.getReceivedAmount()).isEqualByComparingTo("130000");
+        assertThat(result.getConfirmedBy()).isEqualTo(9L);
+        assertThat(result.getConfirmedAt()).isEqualTo(NOW);
+        assertThat(result.getReceiptNo()).isEqualTo("BN261103000050");
+        assertThat(result.getSubmittedAt()).isNull();
+        verifyNoInteractions(proofs);
+        verify(payments, times(2)).saveAndFlush(any());
+    }
+
     /** Booking đang Chờ bổ sung, Staff đã trừ một lượt vì lỗi do Player. */
     private Payment resubmitRequested(LocalDateTime deadline) {
         booking.setStatus(BookingStatus.RESUBMIT_REQUESTED);
@@ -450,5 +477,136 @@ class PaymentServiceTests {
         verifyNoInteractions(proofs);
         verify(payments, never()).saveAndFlush(any());
         verify(bookings, never()).changeStatus(any(), any());
+    }
+
+    // ===================== UC15 #7: thanh toán cả gói một lần =====================
+
+    private static final Long PACKAGE = 60L;
+
+    private BookingPackage holdingPackage() {
+        BookingPackage pkg = BookingPackage.builder().id(PACKAGE).locationId(LOCATION).playerId(PLAYER)
+                .listAmount(new BigDecimal("960000")).finalAmount(new BigDecimal("905000"))
+                .status(BookingStatus.HOLDING).holdExpiresAt(NOW.plusMinutes(10)).build();
+        when(packages.getForPlayer(PACKAGE, PLAYER)).thenReturn(pkg);
+        when(packages.lockForPayment(PACKAGE)).thenReturn(pkg);
+        return pkg;
+    }
+
+    @Test
+    void packageInstructionsShowWholePackageAmountAndHoldTime() {
+        holdingPackage();
+
+        PaymentInstructionResponse result = service.getPackageInstructions(player, PACKAGE, NOW);
+
+        assertThat(result.getPackageId()).isEqualTo(PACKAGE);
+        assertThat(result.getBookingId()).isNull();
+        assertThat(result.getAmountDue()).isEqualByComparingTo("905000");
+        assertThat(result.getQrImageUrl()).isEqualTo("/api/booking-packages/60/payment-instructions/qr");
+        assertThat(result.getHoldExpiresAt()).isEqualTo(NOW.plusMinutes(10));
+        assertThat(result.getBankAccountNo()).isEqualTo("0011001234567");
+    }
+
+    @Test
+    void packageHoldPastFifteenMinutesIsMsg33() {
+        holdingPackage().setHoldExpiresAt(NOW);
+
+        assertThatThrownBy(() -> service.getPackageInstructions(player, PACKAGE, NOW)).hasMessageContaining("(MSG33)");
+        assertThatThrownBy(() -> service.submitPackageProof(player, PACKAGE, proof, NOW)).hasMessageContaining("(MSG33)");
+        verify(packages, never()).changeStatus(any(), any());
+        verify(files, never()).storeImage(any(), anyString());
+    }
+
+    @Test
+    void packageQrImageIsReadFromLocationPath() {
+        holdingPackage();
+        Resource image = new ByteArrayResource(new byte[] { 1 });
+        when(files.load(QR_PATH)).thenReturn(image);
+
+        assertThat(service.loadPackageQrImage(player, PACKAGE, NOW)).isSameAs(image);
+    }
+
+    @Test
+    void submitPackageCreatesOnePaymentForWholePackageAndMovesSessions() {
+        BookingPackage pkg = holdingPackage();
+
+        PaymentResponse result = service.submitPackageProof(player, PACKAGE, proof, NOW);
+
+        ArgumentCaptor<Payment> saved = ArgumentCaptor.forClass(Payment.class);
+        InOrder order = inOrder(packages, files, payments);
+        order.verify(packages).lockForPayment(PACKAGE);
+        order.verify(packages).requireOwner(pkg, PLAYER);
+        order.verify(files).storeImage(proof, "payment-proofs");
+        order.verify(payments).saveAndFlush(saved.capture());
+        order.verify(packages).changeStatus(pkg, BookingStatus.AWAITING_CONFIRMATION);
+        assertThat(saved.getValue().getPackageId()).isEqualTo(PACKAGE);
+        assertThat(saved.getValue().getBookingId()).isNull();
+        assertThat(saved.getValue().getAmountDue()).isEqualByComparingTo("905000");
+        assertThat(saved.getValue().getStatus()).isEqualTo(PaymentStatus.AWAITING_CONFIRMATION);
+        verify(proofs).save(any(PaymentProof.class));
+        assertThat(result.getPackageId()).isEqualTo(PACKAGE);
+        assertThat(result.getBookingCode()).isNull();
+    }
+
+    @Test
+    void submitPackageTwiceIsConflict() {
+        holdingPackage().setStatus(BookingStatus.AWAITING_CONFIRMATION);
+
+        assertThatThrownBy(() -> service.submitPackageProof(player, PACKAGE, proof, NOW))
+                .extracting(e -> ((AppException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT);
+        verify(payments, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void uniquePaymentPerPackageIsTheLastGuard() {
+        holdingPackage();
+        doThrow(new DataIntegrityViolationException("dup",
+                new SQLException("Cannot insert duplicate key row in object 'dbo.payment' with unique index 'ux_payment_package'")))
+                .when(payments).saveAndFlush(any());
+
+        assertThatThrownBy(() -> service.submitPackageProof(player, PACKAGE, proof, NOW))
+                .hasMessageContaining("đã được báo thanh toán");
+    }
+
+    @Test
+    void submitPackageOfAnotherPlayerSavesNothing() {
+        BookingPackage pkg = holdingPackage();
+        doThrow(new AppException("Bạn không có quyền xem gói đặt nhiều buổi này", HttpStatus.FORBIDDEN))
+                .when(packages).requireOwner(pkg, PLAYER);
+
+        assertThatThrownBy(() -> service.submitPackageProof(player, PACKAGE, proof, NOW))
+                .extracting(e -> ((AppException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+        verify(files, never()).storeImage(any(), anyString());
+        verify(payments, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void resubmitPackagePaymentUsesFirstSessionEndAsDeadline() {
+        BookingPackage pkg = holdingPackage();
+        pkg.setStatus(BookingStatus.RESUBMIT_REQUESTED);
+        Payment payment = Payment.builder().id(PAYMENT).locationId(LOCATION).packageId(PACKAGE)
+                .amountDue(new BigDecimal("905000")).status(PaymentStatus.RESUBMIT_REQUESTED).build();
+        when(payments.findByIdForUpdate(PAYMENT)).thenReturn(Optional.of(payment));
+        when(packages.firstSessionEnd(PACKAGE)).thenReturn(NOW.plusHours(1));
+
+        PaymentResponse result = service.resubmitProof(player, PAYMENT, proof, NOW);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.AWAITING_CONFIRMATION);
+        verify(packages).changeStatus(pkg, BookingStatus.AWAITING_CONFIRMATION);
+        assertThat(result.getPackageId()).isEqualTo(PACKAGE);
+
+        payment.setStatus(PaymentStatus.RESUBMIT_REQUESTED);
+        assertThatThrownBy(() -> service.resubmitProof(player, PAYMENT, proof, NOW.plusHours(1).plusSeconds(1)))
+                .hasMessageContaining("(MSG52)");
+    }
+
+    @Test
+    void playerSeesOwnPackagePayment() {
+        holdingPackage();
+        Payment payment = Payment.builder().id(PAYMENT).locationId(LOCATION).packageId(PACKAGE)
+                .amountDue(new BigDecimal("905000")).status(PaymentStatus.AWAITING_CONFIRMATION).build();
+        when(payments.findById(PAYMENT)).thenReturn(Optional.of(payment));
+
+        assertThat(service.getPayment(player, PAYMENT).getPackageId()).isEqualTo(PACKAGE);
+        verify(bookings, never()).getForPlayer(any(), any());
     }
 }

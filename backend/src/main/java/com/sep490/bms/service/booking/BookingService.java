@@ -85,7 +85,7 @@ public class BookingService {
         Court court = courtRepository.findByIdAndActiveTrue(request.courtId())
                 .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
         Location location = locationQueryService.findActive(court.getLocationId());
-        requireBookable(location, request, now);
+        requireBookable(location, request.courtId(), request.date(), request.startMinute(), request.endMinute(), now);
         requireOwnTeam(player.getId(), request.teamId());
         Account booker = accountRepository.findById(player.getId())
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản", HttpStatus.NOT_FOUND));
@@ -246,8 +246,9 @@ public class BookingService {
      * Mỗi slot 30 phút một dòng, kèm giá niêm yết lúc đặt (D88).
      * Hai người cùng qua bước kiểm tra lại rồi cùng ghi: unique ux_slot_active chặn người sau (NFR04).
      * Lỗi đó đổi thành MSG28 như khi bước kiểm tra lại phát hiện; cả giao dịch hủy nên booking vừa lưu cũng mất.
+     * Dùng chung cho booking lẻ (UC14) và booking tại quầy (UC16); chạy trong giao dịch của bên gọi.
      */
-    private void saveSlots(Booking booking, List<SlotPrice> slots) {
+    public void saveSlots(Booking booking, List<SlotPrice> slots) {
         try {
             bookingSlotRepository.saveAllAndFlush(slots.stream()
                     .map(slot -> BookingSlot.builder()
@@ -297,7 +298,7 @@ public class BookingService {
      * Voucher hoặc điểm đã áp ở màn tóm tắt nhưng lúc bấm Xác nhận không còn dùng được: MSG108 kèm lý do.
      * Lỗi không phải 400 (ví dụ 409 dữ liệu không nhất quán) giữ nguyên.
      */
-    private static AppException noLongerUsable(String what, AppException e) {
+    static AppException noLongerUsable(String what, AppException e) {
         if (e.getStatus() != HttpStatus.BAD_REQUEST) {
             return e;
         }
@@ -316,10 +317,10 @@ public class BookingService {
     }
 
     /**
-     * UC14 #1, FR37, BR09, DR03: không chọn đội là booking cá nhân; chọn đội thì đội đó phải do người đặt làm chủ.
+     * UC14 #1, UC15 #1, FR37, BR09, DR03: không chọn đội là booking cá nhân; chọn đội thì đội đó phải do người đặt làm chủ.
      * Kiểm tra cả ở màn tóm tắt và lúc Xác nhận (createSingleBooking gọi lại previewSummary).
      */
-    private void requireOwnTeam(Long playerId, Long teamId) {
+    public void requireOwnTeam(Long playerId, Long teamId) {
         if (teamId != null && !teamService.isCaptain(teamId, playerId)) {
             throw new AppException("Bạn chỉ đặt sân được cho đội mình làm chủ.", HttpStatus.FORBIDDEN);
         }
@@ -330,7 +331,7 @@ public class BookingService {
      * Khóa dòng account của Player trước khi đếm: hai request của cùng Player gửi cùng lúc phải chạy lần lượt,
      * nếu không cả hai cùng đếm được 1 rồi cùng tạo, thành 3 booking chờ.
      */
-    private void requirePendingPaymentLimit(Long playerId, LocalDateTime now) {
+    public void requirePendingPaymentLimit(Long playerId, LocalDateTime now) {
         accountRepository.findByIdForUpdate(playerId)
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản", HttpStatus.NOT_FOUND));
         long pending = bookingRepository.countPendingPayment(playerId, now)
@@ -387,18 +388,19 @@ public class BookingService {
     /**
      * Slot đã bắt đầu, quá hạn đặt trước (BR02), ngoài giờ mở cửa hoặc bảo trì: MSG31.
      * Slot đã có người giữ hoặc đặt, kể cả chính Player đang giữ (D132): MSG28.
+     * Dùng chung cho booking lẻ (UC14) và booking tại quầy (UC16: cùng giới hạn đặt trước BR02, BR43).
      */
-    private void requireBookable(Location location, BookingRequest request, LocalDateTime now) {
+    public void requireBookable(Location location, Long courtId, LocalDate date, int startMinute, int endMinute,
+            LocalDateTime now) {
         int advanceDays = location.getAdvanceBookingDays();
         LocalDate today = now.toLocalDate();
-        LocalDate date = request.date();
         boolean started = date.isBefore(today)
-                || (date.equals(today) && request.startMinute() <= now.getHour() * 60 + now.getMinute());
+                || (date.equals(today) && startMinute <= now.getHour() * 60 + now.getMinute());
         if (started || date.isAfter(today.plusDays(advanceDays))) {
             throw notBookable(advanceDays);
         }
-        SlotProblem problem = slotAvailabilityService.findProblem(location.getId(), request.courtId(), date,
-                request.startMinute(), request.endMinute()).orElse(null);
+        SlotProblem problem = slotAvailabilityService.findProblem(location.getId(), courtId, date,
+                startMinute, endMinute).orElse(null);
         if (problem == SlotProblem.TAKEN) {
             throw slotTaken();
         }
@@ -417,7 +419,8 @@ public class BookingService {
                 "Chỉ đặt được slot trống, trong giờ mở cửa và trước tối đa " + advanceDays + " ngày. (MSG31)");
     }
 
-    private static List<SlotPrice> toSlots(Map<Integer, BigDecimal> prices) {
+    /** Giá từng slot 30 phút theo thứ tự giờ: để hiện ở màn tóm tắt và để lưu vào booking_slot. */
+    public static List<SlotPrice> toSlots(Map<Integer, BigDecimal> prices) {
         return prices.entrySet().stream()
                 .map(e -> SlotPrice.builder()
                         .startMinute(e.getKey())

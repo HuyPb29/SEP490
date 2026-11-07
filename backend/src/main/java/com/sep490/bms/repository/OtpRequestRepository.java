@@ -25,6 +25,10 @@ public interface OtpRequestRepository extends JpaRepository<OtpRequest, Long> {
 
     long countByEmailAndCreatedAtAfter(String email, java.time.LocalDateTime since);
 
+    @Modifying(flushAutomatically=true)
+    @Query("update OtpRequest o set o.pendingData=null,o.usedAt=coalesce(o.usedAt,:now) where o.email=:email and o.purpose=com.sep490.bms.entity.OtpPurpose.REGISTER")
+    int discardRegistration(@Param("email") String email,@Param("now") java.time.LocalDateTime now);
+
     @Modifying(flushAutomatically = true)
     @Query("UPDATE OtpRequest o SET o.usedAt = :now WHERE o.email = :email AND o.purpose = :purpose AND o.usedAt IS NULL")
     int invalidateUnused(@Param("email") String email, @Param("purpose") OtpPurpose purpose,

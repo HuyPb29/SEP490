@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import {
   loginApi,
   registerPlayerApi,
@@ -11,9 +11,10 @@ import styles from './AuthPage.module.css';
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Tab: 'login' (UC02) | 'register' (UC01) | 'otp' (DR25)
-  const [activeTab, setActiveTab] = useState('login');
+  const [activeTab, setActiveTab] = useState(location.state?.isSignUp ? 'register' : 'login');
 
   // State UC02: Đăng nhập
   const [loginIdentity, setLoginIdentity] = useState('');
@@ -48,7 +49,7 @@ export default function AuthPage() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  // UC02: Xử lý đăng nhập (POST /api/v1/auth/login)
+  // UC02: Xử lý đăng nhập (POST /api/auth/login)
   const handleLoginSubmit = async (event) => {
     event.preventDefault();
     setLoginError('');
@@ -67,18 +68,22 @@ export default function AuthPage() {
       });
 
       if (response?.success) {
-        // Lưu JWT Token (24h), Refresh Token (30d) & thông tin Role phân quyền
+        // Lưu JWT token và thông tin người dùng trả về từ backend.
         localStorage.setItem('bms_access_token', response.data.access_token);
-        localStorage.setItem('bms_refresh_token', response.data.refresh_token);
+        localStorage.removeItem('bms_refresh_token');
         localStorage.setItem('bms_user_info', JSON.stringify(response.data.user_info));
+        window.dispatchEvent(new Event('bms-auth-change'));
         navigate('/');
       }
     } catch (error) {
       const code = error.response?.data?.code || error.code;
-      const message =
-        error.response?.data?.message ||
-        error.message ||
-        'Invalid login credentials.';
+      const status = error.response?.status;
+      const serverMessage = error.response?.data?.message;
+      const message = status === 401 || code === 'MSG10'
+        ? 'The username or password is incorrect. Please check and try again.'
+        : serverMessage && serverMessage !== 'No message available'
+          ? serverMessage
+          : 'We couldn’t sign you in. Please try again.';
 
       // MSG95: Tài khoản chưa xác thực OTP (status = 'unverified') -> chuyển sang tab OTP
       if (code === 'MSG95') {
@@ -219,7 +224,7 @@ export default function AuthPage() {
       <aside className={styles.leftPanel}>
         <div className={styles.brandHeader} onClick={() => navigate('/')}>
           <span className={styles.brandIcon}>⚡</span>
-          <span className={styles.brandName}>BMS</span>
+          <span className={styles.brandName}>Courtly</span>
         </div>
         <div className={styles.heroCopy}>
           <h1 className={styles.heroHeading}>Book badminton courts with ease</h1>

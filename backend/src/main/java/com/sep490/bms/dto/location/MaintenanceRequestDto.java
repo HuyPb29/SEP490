@@ -19,6 +19,8 @@ import lombok.Setter;
  * Bảng maintenance không có cột lý do từ chối, nên khi Owner từ chối, lý do được
  * ghi nối vào cột reason theo dấu phân cách bên dưới. DTO tách lại thành hai
  * trường reason / rejectReason để client không phải biết chi tiết lưu trữ này.
+ *
+ * Lý do huỷ thì có cột riêng (cancel_reason) nên đọc thẳng, không cần tách chuỗi.
  */
 @Getter
 @Setter
@@ -62,10 +64,19 @@ public class MaintenanceRequestDto {
 
     private LocalDateTime decidedAt;
 
+    /** Chỉ có giá trị khi người tạo đã rút yêu cầu (status = CANCELLED). */
+    private Long cancelledBy;
+
+    private String cancellerName;
+
+    private LocalDateTime cancelledAt;
+
+    private String cancelReason;
+
     private LocalDateTime createdAt;
 
     public static MaintenanceRequestDto fromEntity(Maintenance entity, String courtName, Long locationId,
-            String requesterName, String approverName) {
+            String requesterName, String approverName, String cancellerName) {
         if (entity == null) {
             return null;
         }
@@ -96,6 +107,10 @@ public class MaintenanceRequestDto {
                 .approvedBy(entity.getApprovedBy())
                 .approverName(approverName)
                 .decidedAt(entity.getDecidedAt())
+                .cancelledBy(entity.getCancelledBy())
+                .cancellerName(cancellerName)
+                .cancelledAt(entity.getCancelledAt())
+                .cancelReason(entity.getCancelReason())
                 .createdAt(entity.getCreatedAt())
                 .build();
     }

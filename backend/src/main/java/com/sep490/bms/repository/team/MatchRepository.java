@@ -1,6 +1,7 @@
 package com.sep490.bms.repository.team;
 
 import java.util.Collection;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -10,4 +11,6 @@ import com.sep490.bms.entity.team.MatchStatus;
 public interface MatchRepository extends JpaRepository<Match, Long> {
 
     boolean existsByBookingIdAndStatusIn(Long bookingId, Collection<MatchStatus> statuses);
+
+    Optional<Match> findFirstByBookingIdAndStatusIn(Long bookingId, Collection<MatchStatus> statuses);
 }

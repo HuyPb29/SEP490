@@ -7,4 +7,5 @@ import com.sep490.bms.entity.reschedule.AffectedBooking;
 
 @Repository
 public interface AffectedBookingRepository extends JpaRepository<AffectedBooking, Long> {
+    boolean existsByBookingIdAndStatus(Long bookingId,com.sep490.bms.entity.enums.AffectedStatus status);
 }

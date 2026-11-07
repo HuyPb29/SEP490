@@ -30,7 +30,7 @@ public class Account {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 20)
+    @Column(nullable = false, unique = true, length = 32)
     private String username;
 
     @Column(length = 100)
@@ -61,6 +61,16 @@ public class Account {
 
     @Column(name = "token_version", nullable = false)
     private long tokenVersion;
+
+    @Column(name="failed_login_count",nullable=false)
+    private int failedLoginCount;
+
+    /** Null distinguishes an Admin lock from a temporary failed-login lock. */
+    @Column(name="locked_until")
+    private LocalDateTime lockedUntil;
+
+    @Column(name="last_login_at")
+    private LocalDateTime lastLoginAt;
 
     /** Caller must hold the account row lock. Invalidates every previously issued token. */
     public void revokeTokens() {

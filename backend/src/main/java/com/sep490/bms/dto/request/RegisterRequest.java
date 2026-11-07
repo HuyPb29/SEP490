@@ -44,6 +44,6 @@ public class RegisterRequest {
     private String fullName;
 
     @NotBlank(message = "Tên đăng nhập không được để trống")
-    @Pattern(regexp = "^[a-z][a-z0-9._]{3,19}$", message = "Tên đăng nhập phải gồm 4–20 ký tự và bắt đầu bằng chữ thường")
+    @Pattern(regexp = ValidationRules.USERNAME, message = ValidationRules.USERNAME_MESSAGE)
     private String username;
 }
