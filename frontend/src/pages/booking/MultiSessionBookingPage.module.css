@@ -1,0 +1,709 @@
+.pageWrapper {
+  min-height: 100vh;
+  background: #f5f8f6;
+  color: #18251f;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.navbar {
+  height: 68px;
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.navContainer {
+  width: 100%;
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #173b2c;
+  font-size: 20px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.brandIcon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #0d8a52;
+  color: #fff;
+  font-size: 16px;
+}
+
+.navLinks {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.navLinks a {
+  color: #334155;
+  text-decoration: none;
+}
+
+.navLinks a:hover,
+.activeLink {
+  color: #0d8a52 !important;
+}
+
+.activeLink {
+  font-weight: 600;
+}
+
+.userProfile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #e6f4ed;
+  color: #0d8a52;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.userName {
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mainContainer {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 28px 24px 48px;
+}
+
+.pageTitle {
+  margin: 0 0 22px;
+  color: #17251d;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.layoutGrid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.35fr) minmax(0, 0.65fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.configCard,
+.calendarCard,
+.summaryFooterCard {
+  border: 1px solid #e2e8e4;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(27, 55, 39, 0.045);
+}
+
+.configCard {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 17px;
+}
+
+.modeSwitch {
+  padding: 4px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  border-radius: 11px;
+  background: #f1f5f2;
+}
+
+.modeTab {
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #64736a;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modeTabActive {
+  background: #fff;
+  color: #147a49;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+.fieldGroup {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.fieldLabel {
+  color: #425148;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.selectInput,
+.dateInput {
+  width: 100%;
+  min-width: 0;
+  height: 43px;
+  padding: 0 11px;
+  border: 1px solid #dce5de;
+  border-radius: 9px;
+  outline: none;
+  background: #fff;
+  color: #28372e;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.selectInput:focus,
+.dateInput:focus {
+  border-color: #51aa79;
+  box-shadow: 0 0 0 3px rgba(30, 147, 82, 0.1);
+}
+
+.twoColRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.weekdayRow {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.weekdayBtn {
+  height: 37px;
+  padding: 0;
+  border: 1px solid #dce5de;
+  border-radius: 8px;
+  background: #fff;
+  color: #66756c;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.weekdayBtnActive {
+  border-color: #17884f;
+  background: #17884f;
+  color: #fff;
+}
+
+.weekdayBtn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.customModeHint {
+  margin: 4px 0 0;
+  color: #78867d;
+  font-size: 11px;
+}
+
+.ruleHintText {
+  margin: 0;
+  color: #929e96;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.rightColumn {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.promoBanner {
+  min-height: 62px;
+  padding: 13px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #cfead8;
+  border-radius: 12px;
+  background: #eaf8ed;
+}
+
+.promoBanner strong {
+  color: #185e39;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.promoBanner span {
+  color: #0d7041;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.calendarCard {
+  padding: 22px 24px;
+}
+
+.calendarHeader {
+  min-height: 30px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.monthTitle {
+  margin: 0;
+  color: #1d2c23;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.legendGroup {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #48564d;
+  font-size: 11px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.dotSelected,
+.dotConflicted {
+  width: 11px;
+  height: 11px;
+  display: inline-block;
+  border-radius: 4px;
+}
+
+.dotSelected {
+  background: #18844e;
+}
+
+.dotConflicted {
+  border: 1.5px solid #df7957;
+  background: #fff5f0;
+}
+
+.weekdayHeaderGrid,
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.weekdayHeaderGrid {
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.weekdayHeaderCell {
+  color: #829087;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dayCell,
+.emptyDayCell {
+  height: 61px;
+}
+
+.dayCell {
+  min-width: 0;
+  padding: 6px 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  border: 1px solid #f0f3f1;
+  border-radius: 8px;
+  background: #f7f9f8;
+  color: #34443a;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.dayCell:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #8bc7a2;
+}
+
+.dayCell:disabled {
+  cursor: default;
+}
+
+.dayCellSelected {
+  border-color: #18844e;
+  background: #18844e;
+  color: #fff;
+}
+
+.dayCellConflicted {
+  border: 1.5px solid #df7957;
+  background: #fff5f0;
+  color: #a64e32;
+}
+
+.dayNumber {
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.timeSubTag,
+.conflictTag {
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.timeSubTag {
+  color: inherit;
+  opacity: 0.95;
+}
+
+.conflictTag {
+  color: #b45335;
+}
+
+.conflictResolutionBox {
+  margin-top: 16px;
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  border: 1px solid #f0bd96;
+  border-radius: 11px;
+  background: #fff7f0;
+}
+
+.conflictBoxTitle {
+  color: #914b30;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.5;
+}
+
+.conflictActionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.compensateBtn,
+.removeConflictsBtn {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.compensateBtn {
+  border: 1px solid #d68a62;
+  background: #fff;
+  color: #94502f;
+}
+
+.compensateBtn:hover {
+  background: #fff0e5;
+}
+
+.removeConflictsBtn {
+  border: 1px solid #dce2dd;
+  background: #fff;
+  color: #526057;
+}
+
+.removeConflictsBtn:hover {
+  background: #f7f9f8;
+}
+
+.notice {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eff8f1;
+  color: #267345;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.summaryFooterCard {
+  min-width: 0;
+  padding: 17px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.summaryLeft {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.formulaText {
+  color: #47564c;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.totalPriceText {
+  color: #111827;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.holdNoteText {
+  color: #87938b;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.confirmScheduleBtn {
+  min-height: 43px;
+  flex: 0 0 auto;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 9px;
+  background: #0d8a52;
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.confirmScheduleBtn:hover {
+  background: #0a7143;
+}
+
+.modalOverlay {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.modalCard {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  padding: 24px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
+}
+
+.modalClose {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: #f2f5f3;
+  color: #53635a;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.modalTitle {
+  margin: 0;
+  color: #1d2c23;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.modalSub {
+  margin: 0;
+  color: #6d7b72;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.modalActions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+@media (max-width: 960px) {
+  .layoutGrid {
+    grid-template-columns: minmax(280px, 0.38fr) minmax(0, 0.62fr);
+    gap: 16px;
+  }
+
+  .calendarCard {
+    padding: 18px;
+  }
+
+  .weekdayHeaderGrid,
+  .calendarGrid {
+    gap: 5px;
+  }
+
+  .dayCell,
+  .emptyDayCell {
+    height: 54px;
+  }
+}
+
+@media (max-width: 720px) {
+  .navContainer {
+    padding: 0 16px;
+  }
+
+  .navLinks {
+    gap: 14px;
+    font-size: 12px;
+  }
+
+  .navLinks a:nth-child(2) {
+    display: none;
+  }
+
+  .userName {
+    display: none;
+  }
+
+  .mainContainer {
+    padding: 22px 16px 36px;
+  }
+
+  .pageTitle {
+    font-size: 25px;
+  }
+
+  .layoutGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .promoBanner {
+    align-items: flex-start;
+  }
+
+  .promoBanner span {
+    max-width: 130px;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 480px) {
+  .navLinks a:nth-child(3) {
+    display: none;
+  }
+
+  .mainContainer {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .configCard {
+    padding: 17px;
+  }
+
+  .calendarCard {
+    padding: 15px 11px;
+  }
+
+  .calendarHeader {
+    align-items: flex-start;
+  }
+
+  .monthTitle {
+    font-size: 15px;
+  }
+
+  .legendGroup {
+    gap: 8px;
+    font-size: 9px;
+  }
+
+  .weekdayHeaderGrid,
+  .calendarGrid {
+    gap: 3px;
+  }
+
+  .dayCell,
+  .emptyDayCell {
+    height: 46px;
+    padding: 5px;
+  }
+
+  .timeSubTag,
+  .conflictTag {
+    font-size: 7px;
+  }
+
+  .summaryFooterCard {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .confirmScheduleBtn {
+    width: 100%;
+  }
+}

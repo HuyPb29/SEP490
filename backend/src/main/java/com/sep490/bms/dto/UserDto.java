@@ -30,6 +30,7 @@ public class UserDto {
     private AccountStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private LocalDateTime lastLoginAt;
 
     public static UserDto fromEntity(Account account) {
         if (account == null) {
@@ -47,6 +48,7 @@ public class UserDto {
                 .status(account.getStatus())
                 .createdAt(account.getCreatedAt())
                 .updatedAt(account.getUpdatedAt())
+                .lastLoginAt(account.getLastLoginAt())
                 .build();
     }
 }

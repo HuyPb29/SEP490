@@ -3,7 +3,8 @@
 -- Feature: F2 - Quản lý địa điểm | UC08 - FR18 | Owner: Minh Anh
 --
 -- CÁCH DÙNG: chạy SAU BMS_database.sql (và BMS_seed_dev.sql nếu cần dữ liệu mẫu).
---   sqlcmd -S localhost,1433 -U sa -P *** -I -b -f 65001 -i BMS_migration_v2_location_slot_setting.sql
+-- Chọn rõ cơ sở dữ liệu đích bằng -d (ví dụ dưới đây dành cho BMS_Test).
+--   sqlcmd -S localhost,1433 -d BMS_Test -U sa -P *** -I -b -f 65001 -i BMS_migration_v2_location_slot_setting.sql
 --
 -- NGUYÊN TẮC: không sửa BMS_database.sql cho từng thay đổi nhỏ. Mỗi thay đổi schema
 -- đi kèm một file version riêng (v2, v3, ...) để database đã tồn tại vẫn nâng cấp được
@@ -11,9 +12,6 @@
 --
 -- Script idempotent: chạy lại nhiều lần không lỗi, không mất dữ liệu.
 -- ============================================================
-
-USE BMS;
-GO
 
 -- location_slot_setting: cấu hình slot bán sân của địa điểm (UC08, FR18).
 -- Cấu hình ở cấp ĐỊA ĐIỂM: mọi sân con trong cùng địa điểm dùng chung một cấu hình,

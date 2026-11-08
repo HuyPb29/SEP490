@@ -94,27 +94,50 @@ public class PaymentController {
     }
 
     /**
-     * UC18 – Thanh toán booking (gói đặt nhiều buổi, UC15 #7: thanh toán toàn bộ một lần)
+     * UC18 – Thanh toán booking (gói đặt nhiều buổi, UC15 #7: số tiền cả gói, tài khoản, QR, giờ hết giữ chỗ)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
      */
     @GetMapping("/api/booking-packages/{id}/payment-instructions")
-    public ResponseEntity<Void> getBookingPackagesByIdPaymentInstructions(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PaymentInstructionResponse>> getBookingPackagesByIdPaymentInstructions(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.getPackageInstructions(currentUser, id)));
     }
 
     /**
-     * UC18 – Thanh toán booking (gói đặt nhiều buổi; multipart ảnh chứng từ)
+     * UC18 – Thanh toán booking (gói đặt nhiều buổi: ảnh mã QR, chỉ trả qua API có kiểm tra quyền, A03)
      * Feature: F4 – Thanh toán
      * Owner: Minh
-     * Status: NOT_IMPLEMENTED
+     */
+    @GetMapping("/api/booking-packages/{id}/payment-instructions/qr")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<Resource> getBookingPackagesByIdPaymentInstructionsQr(
+            @PathVariable("id") Long id,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        Resource image = paymentService.loadPackageQrImage(currentUser, id);
+        return ResponseEntity.ok()
+                .contentType(MediaTypeFactory.getMediaType(image).orElse(MediaType.APPLICATION_OCTET_STREAM))
+                .body(image);
+    }
+
+    /**
+     * UC18 – Thanh toán booking (gói đặt nhiều buổi, UC15 #7: báo đã thanh toán cả gói một lần; multipart ảnh
+     * chứng từ ở phần "proof")
+     * Feature: F4 – Thanh toán
+     * Owner: Minh
+     * Gửi lại chứng từ của gói dùng POST /api/payments/{id}/resubmit như booking lẻ.
      */
     @PostMapping("/api/booking-packages/{id}/payments")
-    public ResponseEntity<Void> postBookingPackagesByIdPayments(@PathVariable("id") String id) {
-        // TODO: implement
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PaymentResponse>> postBookingPackagesByIdPayments(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "proof", required = false) MultipartFile proof,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Đã báo thanh toán. Vui lòng chờ nhân viên xác nhận.",
+                        paymentService.submitPackageProof(currentUser, id, proof)));
     }
 
     /**

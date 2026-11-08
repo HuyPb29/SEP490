@@ -21,6 +21,7 @@ import com.sep490.bms.dto.request.RegisterRequest;
 import com.sep490.bms.dto.request.ResendOtpRequest;
 import com.sep490.bms.dto.request.ResetPasswordRequest;
 import com.sep490.bms.dto.request.VerifyEmailRequest;
+import com.sep490.bms.dto.request.ValidationRules;
 import com.sep490.bms.entity.Account;
 import com.sep490.bms.entity.AccountAuditAction;
 import com.sep490.bms.entity.AccountStatus;
@@ -43,7 +44,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class AuthService {
 
-    private static final Pattern USERNAME_PATTERN = Pattern.compile("^[a-z][a-z0-9._]{3,19}$");
+    private static final Pattern USERNAME_PATTERN = Pattern.compile(ValidationRules.USERNAME);
     private static final int OTP_EXPIRY_MINUTES = 10;
     private static final int MAX_FAILED_ATTEMPTS = 5;
 
@@ -72,12 +73,12 @@ public class AuthService {
             throw new AppException("Địa chỉ email đã được sử dụng bởi tài khoản khác (MSG09)");
         }
 
-        if (accountRepository.existsByPhoneAndRole(phone, Role.PLAYER)) {
-            throw new AppException("Số điện thoại này đã được đăng ký cho một tài khoản Player khác");
+        if (accountRepository.existsByPhone(phone)) {
+            throw new AppException("Số điện thoại đã được sử dụng bởi tài khoản khác");
         }
 
         String username = request.getUsername();
-        if (username == null || !USERNAME_PATTERN.matcher(username).matches()) throw new AppException("Tên đăng nhập không hợp lệ (DR22)");
+        if (username == null || !USERNAME_PATTERN.matcher(username).matches()) throw new AppException(ValidationRules.USERNAME_MESSAGE);
         if (accountRepository.existsByUsername(username)) throw new AppException("Tên đăng nhập đã tồn tại");
         checkOtpLimit(email);
 
@@ -130,7 +131,9 @@ public class AuthService {
                 .orElseThrow(() -> new AppException("Yêu cầu xác thực không tồn tại hoặc đã hết hạn (MSG96)"));
 
         if (otpRequest.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new AppException("Mã xác thực đã hết hạn. Vui lòng yêu cầu gửi lại mã (MSG96)");
+            otpRequest.setPendingData(null);otpRequest.setUsedAt(LocalDateTime.now());
+            otpRequestRepository.discardRegistration(email,LocalDateTime.now());
+            throw new InvalidOtpException("Mã xác thực đã hết hạn. Vui lòng đăng ký lại (MSG96)");
         }
 
         if (otpRequest.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
@@ -139,7 +142,9 @@ public class AuthService {
 
         if (!passwordEncoder.matches(otp, otpRequest.getCodeHash())) {
             otpRequest.setFailedAttempts(otpRequest.getFailedAttempts() + 1);
+            otpRequest.setUsedAt(LocalDateTime.now());otpRequest.setPendingData(null);
             otpRequestRepository.save(otpRequest);
+            otpRequestRepository.discardRegistration(email,LocalDateTime.now());
             throw new InvalidOtpException();
         }
 
@@ -154,6 +159,11 @@ public class AuthService {
         }
 
         String username = pendingData.get("username");
+        if (username == null || !USERNAME_PATTERN.matcher(username).matches()) {
+            otpRequest.setPendingData(null);
+            otpRequestRepository.discardRegistration(email, LocalDateTime.now());
+            throw new InvalidOtpException(ValidationRules.USERNAME_MESSAGE + ". Vui lòng đăng ký lại");
+        }
         otpLock.acquire("phone:" + pendingData.get("phone"));
         if (accountRepository.existsByEmail(email)) {
             throw new AppException("Tài khoản với email này đã tồn tại");
@@ -162,10 +172,11 @@ public class AuthService {
             throw new AppException("Tên đăng nhập đã tồn tại. Vui lòng đăng ký lại (DR22)");
         }
 
-        if (accountRepository.existsByPhoneAndRole(pendingData.get("phone"), Role.PLAYER)) {
-            throw new AppException("Số điện thoại này đã được đăng ký cho một tài khoản Player khác");
+        if (accountRepository.existsByPhone(pendingData.get("phone"))) {
+            throw new AppException("Số điện thoại đã được sử dụng bởi tài khoản khác");
         }
-        otpRequestRepository.invalidateUnused(email, OtpPurpose.REGISTER, LocalDateTime.now());
+        otpRequest.setPendingData(null);
+        otpRequestRepository.discardRegistration(email, LocalDateTime.now());
 
         Account account = Account.builder()
                 .username(username)
@@ -190,7 +201,7 @@ public class AuthService {
                 .build();
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = InvalidOtpException.class)
     public void resendOtp(ResendOtpRequest request) {
         String email = request.getEmail().trim().toLowerCase();
         otpLock.acquire(email);
@@ -201,6 +212,11 @@ public class AuthService {
             OtpRequest latest = otpRequestRepository
                     .findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER)
                     .orElseThrow(() -> new AppException("Không tìm thấy thông tin đăng ký đang chờ cho email này"));
+            if(!latest.getExpiresAt().isAfter(LocalDateTime.now()) || latest.getPendingData()==null) {
+                latest.setPendingData(null);latest.setUsedAt(LocalDateTime.now());
+                otpRequestRepository.discardRegistration(email,LocalDateTime.now());
+                throw new InvalidOtpException("Đăng ký đã hết hạn; vui lòng đăng ký lại (MSG96)");
+            }
 
             if (accountRepository.existsByEmail(email)) {
                 throw new AppException("Tài khoản với email này đã được kích hoạt");
@@ -213,7 +229,7 @@ public class AuthService {
                 throw new AppException("Không thể đọc dữ liệu đăng ký đang chờ");
             }
             otpLock.acquire("phone:" + reservedPhone);
-            if (accountRepository.existsByPhoneAndRole(reservedPhone, Role.PLAYER)
+            if (accountRepository.existsByPhone(reservedPhone)
                     || otpRequestRepository.countActiveReservations(email, reservedPhone, LocalDateTime.now(), 1) > 0) {
                 throw new AppException("Số điện thoại đã được sử dụng hoặc đang chờ xác thực bởi yêu cầu khác", HttpStatus.CONFLICT);
             }
@@ -256,14 +272,21 @@ public class AuthService {
         }
     }
 
-    @Transactional
+    @Transactional(noRollbackFor=com.sep490.bms.exception.LoginAttemptException.class)
     public LoginResponse login(LoginRequest request) {
         String identifier = request.getEmail().trim();
-        Account account = accountRepository.findByEmailOrUsername(identifier)
+        Account account = accountRepository.findByEmailOrUsernameForUpdate(identifier)
                 .orElseThrow(() -> new AppException("Tài khoản hoặc mật khẩu không chính xác (MSG10)", HttpStatus.UNAUTHORIZED));
 
         if (!passwordEncoder.matches(request.getPassword(), account.getPasswordHash())) {
-            throw new AppException("Tài khoản hoặc mật khẩu không chính xác (MSG10)", HttpStatus.UNAUTHORIZED);
+            if(account.getStatus()==AccountStatus.ACTIVE) {
+                account.setFailedLoginCount(account.getFailedLoginCount()+1);
+                if(account.getFailedLoginCount()>=5) {
+                    account.setStatus(AccountStatus.LOCKED);account.setLockedUntil(LocalDateTime.now().plusMinutes(10));account.revokeTokens();
+                }
+                accountRepository.save(account);
+            }
+            throw new com.sep490.bms.exception.LoginAttemptException();
         }
 
         if (account.getStatus() == AccountStatus.LOCKED) {
@@ -279,6 +302,7 @@ public class AuthService {
             throw new AppException("Địa điểm của nhân viên đã bị khóa", HttpStatus.FORBIDDEN);
         }
         String token = jwtTokenProvider.generateToken(account);
+        account.setFailedLoginCount(0);account.setLockedUntil(null);account.setLastLoginAt(LocalDateTime.now());
         audit.record(account.getId(), account.getRole(), account, AccountAuditAction.LOGIN, null, null);
 
         return LoginResponse.builder()

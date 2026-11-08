@@ -5,4 +5,5 @@ public class InvalidOtpException extends AppException {
     public InvalidOtpException() {
         super("Mã xác thực không chính xác");
     }
+    public InvalidOtpException(String message) { super(message); }
 }

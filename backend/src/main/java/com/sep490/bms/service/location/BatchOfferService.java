@@ -170,6 +170,9 @@ public class BatchOfferService {
         if (!locationId.equals(voucher.getLocationId())) {
             throw new AppException("Voucher không thuộc địa điểm này");
         }
+        if (voucher.getStatus() == VoucherStatus.EXPIRED) {
+            throw new AppException("Voucher đã hết hiệu lực, không thể gắn vào ưu đãi");
+        }
         if (voucher.getStatus() != VoucherStatus.PUBLISHED) {
             throw new AppException("Voucher phải ở trạng thái PUBLISHED trước khi gắn vào ưu đãi");
         }

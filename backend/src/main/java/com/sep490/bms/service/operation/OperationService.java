@@ -1,7 +1,6 @@
 package com.sep490.bms.service.operation;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -42,7 +41,7 @@ import com.sep490.bms.security.UserPrincipal;
 
 import lombok.RequiredArgsConstructor;
 
-/** F9 – UC34 bảng điều hành Staff, UC35 báo cáo vận hành và doanh thu, UC36 tải dữ liệu quản lý. */
+/** F9 – UC34 bảng điều hành Staff, UC35 báo cáo vận hành và doanh thu. */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -375,35 +374,6 @@ public class OperationService {
         return row == null ? 0 : (row.getCloseMinute() - row.getOpenMinute()) / SLOT_MINUTES;
     }
 
-    // ---------------------------------------------------------------- UC36 – Tải dữ liệu (CSV)
-
-    public byte[] exportBookings(UserPrincipal owner, LocalDate from, LocalDate to) {
-        Location location = findOwnerLocation(owner);
-        LocalDate[] range = resolveRange(from, to);
-        CsvBuilder csv = new CsvBuilder("Mã booking", "Loại", "Sân", "Ngày chơi", "Giờ bắt đầu", "Giờ kết thúc",
-                "Khách hàng", "Số điện thoại", "Trạng thái", "Giá niêm yết", "Giảm voucher", "Giảm điểm",
-                "Thành tiền");
-        for (BookingDetailRow r : queryRepository.findBookingDetails(location.getId(), range[0], range[1])) {
-            csv.row(r.getBookingCode(), r.getBookingType(), r.getCourtName(), r.getPlayDate(),
-                    formatMinute(r.getStartMinute()), formatMinute(r.getEndMinute()), r.getCustomerName(),
-                    r.getCustomerPhone(), r.getStatus(), r.getListAmount(), r.getVoucherDiscount(),
-                    r.getPointDiscount(), r.getFinalAmount());
-        }
-        return csv.toBytes();
-    }
-
-    public byte[] exportRevenue(UserPrincipal owner, LocalDate from, LocalDate to) {
-        Location location = findOwnerLocation(owner);
-        LocalDate[] range = resolveRange(from, to);
-        RevenueReportResponse report = buildRevenueReport(location.getId(), range[0], range[1]);
-        CsvBuilder csv = new CsvBuilder("Ngày", "Doanh thu", "Đã hoàn", "Doanh thu ròng");
-        for (RevenueReportResponse.DayItem d : report.getDaily()) {
-            csv.row(d.getDate(), d.getRevenue(), d.getRefunds(), d.getNet());
-        }
-        csv.row("Tổng", report.getTotalRevenue(), report.getTotalRefunds(), report.getNetRevenue());
-        return csv.toBytes();
-    }
-
     // ---------------------------------------------------------------- helpers
 
     private Location findOwnerLocation(UserPrincipal owner) {
@@ -429,47 +399,5 @@ public class OperationService {
 
     private static double round(double value) {
         return Math.round(value * 10000d) / 10000d;
-    }
-
-    private static String formatMinute(int minute) {
-        return String.format("%02d:%02d", (minute / 60) % 24, minute % 60);
-    }
-
-    /** CSV UTF-8 có BOM để Excel đọc đúng tiếng Việt. */
-    private static class CsvBuilder {
-        private final StringBuilder sb = new StringBuilder("﻿");
-
-        CsvBuilder(String... headers) {
-            row((Object[]) headers);
-        }
-
-        void row(Object... cells) {
-            for (int i = 0; i < cells.length; i++) {
-                if (i > 0) {
-                    sb.append(',');
-                }
-                sb.append(escape(cells[i]));
-            }
-            sb.append("\r\n");
-        }
-
-        private static String escape(Object cell) {
-            if (cell == null) {
-                return "";
-            }
-            String text = cell instanceof BigDecimal d ? d.toPlainString() : cell.toString();
-            // Chặn CSV injection khi mở bằng Excel.
-            if (!text.isEmpty() && "=+-@".indexOf(text.charAt(0)) >= 0 && !(cell instanceof Number)) {
-                text = "'" + text;
-            }
-            if (text.contains(",") || text.contains("\"") || text.contains("\n") || text.contains("\r")) {
-                return "\"" + text.replace("\"", "\"\"") + "\"";
-            }
-            return text;
-        }
-
-        byte[] toBytes() {
-            return sb.toString().getBytes(StandardCharsets.UTF_8);
-        }
     }
 }

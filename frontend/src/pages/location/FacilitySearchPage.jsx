@@ -1,7 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { searchFacilities } from '../../api/facilityApi';
 import styles from './FacilitySearchPage.module.css';
+
+function getSavedUserInfo() {
+  const savedUserInfo = localStorage.getItem('bms_user_info');
+  if (!savedUserInfo) return null;
+
+  try {
+    return JSON.parse(savedUserInfo);
+  } catch (error) {
+    console.error('Error reading saved user information:', error);
+    return null;
+  }
+}
 
 // Bản đồ CSS tĩnh: quy đổi tọa độ về % trong khung, cách mép 25% để nhãn tên không bị cắt
 function scaleToMap(value, min, max) {
@@ -21,13 +33,32 @@ function buildMapProjection(points) {
 
 export default function FacilitySearchPage() {
   const navigate = useNavigate();
-  const [keyword, setKeyword] = useState('');
-  const [playDate, setPlayDate] = useState('2026-10-24');
+  const [keyword, setKeyword] = useState('Cau Giay');
+  // Lấy đúng giờ Việt Nam (Local Time)
+  const getLocalToday = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const [playDate, setPlayDate] = useState(getLocalToday());
   const [facilities, setFacilities] = useState([]);
   const [sortBy, setSortBy] = useState('nearest'); // 'nearest' | 'rating'
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [usingGps, setUsingGps] = useState(false);
+  const [userInfo, setUserInfo] = useState(getSavedUserInfo);
+
+  useEffect(() => {
+    const syncUserInfo = () => setUserInfo(getSavedUserInfo());
+    window.addEventListener('bms-auth-change', syncUserInfo);
+    window.addEventListener('storage', syncUserInfo);
+    return () => {
+      window.removeEventListener('bms-auth-change', syncUserInfo);
+      window.removeEventListener('storage', syncUserInfo);
+    };
+  }, []);
   const [position, setPosition] = useState(null);
   const [loadError, setLoadError] = useState(false);
 
@@ -37,7 +68,17 @@ export default function FacilitySearchPage() {
     try {
       const res = await searchFacilities({ keyword: kw, userLat: lat, userLng: lng });
       if (res?.success) {
-        setFacilities(res.data.items || []);
+        const locations = Array.isArray(res.data) ? res.data : res.data?.items;
+        if (!Array.isArray(locations)) {
+          throw new Error('Unexpected locations response: expected an array in data.');
+        }
+
+        setFacilities(locations.map((location) => ({
+          ...location,
+          facility_id: location.id ?? location.facility_id,
+          facility_name: location.name ?? location.facility_name,
+          distance_km: location.distanceKm ?? location.distance_km,
+        })));
       }
     } catch (err) {
       console.error('Error loading facilities:', err);
@@ -79,8 +120,8 @@ export default function FacilitySearchPage() {
   };
 
   const sortedFacilities = [...facilities].sort((a, b) => {
-    if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
-    return (a.distance_km || 0) - (b.distance_km || 0);
+    if (sortBy === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
+    return (a.distance_km ?? 0) - (b.distance_km ?? 0);
   });
 
   // Backend chưa trả điểm đánh giá nên chỉ hiện nút sắp xếp khi có dữ liệu
@@ -94,8 +135,9 @@ export default function FacilitySearchPage() {
 
   const handleSelectFacility = (facility) => {
     sessionStorage.setItem('selected_facility_id', String(facility.facility_id));
-    navigate(`/facilities/${facility.facility_id}`);
+    navigate(`/facilities/${facility.facility_id}`, { state: { playDate } });
   };
+  const userDisplayName = userInfo?.full_name || userInfo?.username || userInfo?.email;
 
   return (
     <div className={styles.pageWrapper}>
@@ -107,24 +149,58 @@ export default function FacilitySearchPage() {
           </div>
           <nav className={styles.navLinks}>
             <a href="#search" className={styles.activeLink}>Find Court</a>
-            <a href="#matches">Open Matches</a>
+            <Link to="/open-matches">Open Matches</Link>
             <a href="#register-service">Register Service</a>
           </nav>
           <div className={styles.authActions}>
-            <button
-              type="button"
-              className={styles.loginBtn}
-              onClick={() => navigate('/login')}
-            >
-              Login
-            </button>
-            <button
-              type="button"
-              className={styles.registerBtn}
-              onClick={() => navigate('/login')}
-            >
-              Sign Up
-            </button>
+            {userDisplayName ? (
+              <div className={styles.userProfileWrapper}>
+                <div className={styles.userProfileHover}>
+                  <div className={styles.avatar}>
+                    {userDisplayName.charAt(0).toUpperCase()}
+                  </div>
+                  <span className={styles.userName}>{userDisplayName}</span>
+                </div>
+
+                {/* Dropdown Menu thả xuống */}
+                <div className={styles.dropdownMenu}>
+                  <div
+                    className={styles.dropdownItem}
+                    onClick={() => navigate('/my-bookings')}
+                  >
+                    🏸 My Bookings
+                  </div>
+                  <div
+                    className={`${styles.dropdownItem} ${styles.logoutItem}`}
+                    onClick={() => {
+                      localStorage.removeItem('bms_user_info');
+                      localStorage.removeItem('token');
+                      window.dispatchEvent(new Event('bms-auth-change'));
+                    }}
+                  >
+                    Đăng xuất
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={styles.loginBtn}
+                  onClick={() => navigate('/login')}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  className={styles.registerBtn}
+                  // Gắn thêm state: { isSignUp: true } để báo cho AuthPage biết
+                  onClick={() => navigate('/login', { state: { isSignUp: true } })}
+                >
+                  Sign Up
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -259,16 +335,24 @@ export default function FacilitySearchPage() {
                       )}
                     </div>
                     <p className={styles.cardAddress}>
-                      {[item.address, item.district, idx === 0 ? item.city : null].filter(Boolean).join(', ')}
+                      {item.address}
+                      {item.district && `, ${item.district}`}
+                      {idx === 0 && item.city && `, ${item.city}`}
                     </p>
-                    <div className={styles.cardMeta}>
-                      {item.distance_km != null && (
-                        <strong>{String(item.distance_km).replace('.', ',')} km</strong>
-                      )}
-                      {item.courts_count != null && (
-                        <span>{item.courts_count} courts · {item.open_hours}</span>
-                      )}
-                    </div>
+                    {(item.distance_km != null || item.courts_count != null || item.open_hours) && (
+                      <div className={styles.cardMeta}>
+                        {item.distance_km != null && (
+                          <strong>{String(item.distance_km).replace('.', ',')} km</strong>
+                        )}
+                        {(item.courts_count != null || item.open_hours) && (
+                          <span>
+                            {item.courts_count != null && `${item.courts_count} courts`}
+                            {item.courts_count != null && item.open_hours && ' · '}
+                            {item.open_hours}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))

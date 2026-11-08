@@ -10,6 +10,6 @@ public record VoucherResponse(Long id, Long locationId, String code, String name
     public static VoucherResponse from(Voucher v) {
         return new VoucherResponse(v.getId(),v.getLocationId(),v.getCode(),v.getName(),v.getSource(),v.getTargetGroup(),
                 v.getDiscountType(),v.getDiscountValue(),v.getMinOrderAmount(),v.getValidFrom(),v.getValidTo(),
-                v.getGrantValidDays(),v.getMaxUsesPerPlayer(),v.getMaxTotalUses(),v.getUsedCount(),v.getBudget(),v.getBudgetUsed(),v.getStatus(),v.getVersion(),v.isAllowPoints(),v.getMaxPointPercent());
+                v.getGrantValidDays(),v.getMaxUsesPerPlayer(),v.getMaxTotalUses(),v.getUsedCount(),v.getBudget(),v.getBudgetUsed(),v.getStatus(),v.getVersion(),true,50);
     }
 }

@@ -3,9 +3,11 @@ package com.sep490.bms.repository.operation;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import lombok.AllArgsConstructor;
@@ -16,6 +18,15 @@ import lombok.RequiredArgsConstructor;
 @Repository
 @RequiredArgsConstructor
 public class OperationQueryRepository {
+
+    private static final String CONFIRMED_REFUND_PAYMENT = """
+            EXISTS (
+                SELECT 1
+                FROM booking paid_booking
+                JOIN payment p ON (p.booking_id = paid_booking.id OR p.package_id = paid_booking.package_id)
+                WHERE paid_booking.id = r.booking_id AND p.status = 'CONFIRMED'
+            )
+            """;
 
     private final JdbcTemplate jdbc;
 
@@ -93,7 +104,7 @@ public class OperationQueryRepository {
                 locationId, java.sql.Date.valueOf(from), java.sql.Date.valueOf(to));
     }
 
-    /** Doanh thu theo ngày xác nhận của các khoản thanh toán đã xác nhận. */
+    /** Doanh thu theo ngày xác nhận, tính theo số tiền phải trả, không tính tiền chuyển thừa (BR37, BR51). */
     public List<AmountRow> sumConfirmedPayments(Long locationId, LocalDate from, LocalDate to) {
         return jdbc.query("""
                 SELECT CAST(confirmed_at AS DATE) AS d,
@@ -113,11 +124,9 @@ public class OperationQueryRepository {
                 SELECT refund_date AS d, SUM(refunded_amount) AS amount, COUNT(*) AS cnt
                 FROM refund_request r
                 WHERE r.location_id = ? AND r.status = 'REFUNDED' AND r.refund_date BETWEEN ? AND ?
-                  AND EXISTS (SELECT 1 FROM booking b JOIN payment p
-                    ON (p.booking_id=b.id OR p.package_id=b.package_id)
-                    WHERE b.id=r.booking_id AND p.status='CONFIRMED')
+                  AND %s
                 GROUP BY refund_date
-                """,
+                """.formatted(CONFIRMED_REFUND_PAYMENT),
                 (rs, i) -> new AmountRow(rs.getDate("d").toLocalDate(), rs.getBigDecimal("amount"), rs.getLong("cnt")),
                 locationId, java.sql.Date.valueOf(from), java.sql.Date.valueOf(to));
     }
@@ -158,26 +167,106 @@ public class OperationQueryRepository {
                 locationId, java.sql.Date.valueOf(from), java.sql.Date.valueOf(to));
     }
 
+    private static final String BOOKING_DETAIL_SELECT = """
+            SELECT b.id, b.booking_code, b.booking_type, c.name AS court_name, b.play_date,
+                   b.start_minute, b.end_minute,
+                   COALESCE(a.full_name, b.customer_name) AS customer_name,
+                   COALESCE(a.phone, b.customer_phone) AS customer_phone,
+                   b.status, b.list_amount, b.voucher_discount, b.point_discount, b.final_amount
+            FROM booking b
+            JOIN court c ON c.id = b.court_id
+            LEFT JOIN account a ON a.id = b.player_id
+            """;
+
+    private static final RowMapper<BookingDetailRow> BOOKING_DETAIL_MAPPER = (rs, i) -> new BookingDetailRow(
+            rs.getLong("id"), rs.getString("booking_code"), rs.getString("booking_type"), rs.getString("court_name"),
+            rs.getDate("play_date").toLocalDate(), rs.getInt("start_minute"), rs.getInt("end_minute"),
+            rs.getString("customer_name"), rs.getString("customer_phone"), rs.getString("status"),
+            rs.getBigDecimal("list_amount"), rs.getBigDecimal("voucher_discount"),
+            rs.getBigDecimal("point_discount"), rs.getBigDecimal("final_amount"));
+
     /** Booking trong khoảng ngày, kèm tên khách (player hoặc khách vãng lai do Staff nhập). */
     public List<BookingDetailRow> findBookingDetails(Long locationId, LocalDate from, LocalDate to) {
-        return jdbc.query("""
-                SELECT b.id, b.booking_code, b.booking_type, c.name AS court_name, b.play_date,
-                       b.start_minute, b.end_minute,
-                       COALESCE(a.full_name, b.customer_name) AS customer_name,
-                       COALESCE(a.phone, b.customer_phone) AS customer_phone,
-                       b.status, b.list_amount, b.voucher_discount, b.point_discount, b.final_amount
-                FROM booking b
-                JOIN court c ON c.id = b.court_id
-                LEFT JOIN account a ON a.id = b.player_id
+        return jdbc.query(BOOKING_DETAIL_SELECT + """
                 WHERE b.location_id = ? AND b.play_date BETWEEN ? AND ?
                 ORDER BY b.play_date, b.start_minute, c.name
                 """,
-                (rs, i) -> new BookingDetailRow(rs.getLong("id"), rs.getString("booking_code"),
-                        rs.getString("booking_type"), rs.getString("court_name"),
-                        rs.getDate("play_date").toLocalDate(), rs.getInt("start_minute"), rs.getInt("end_minute"),
-                        rs.getString("customer_name"), rs.getString("customer_phone"), rs.getString("status"),
-                        rs.getBigDecimal("list_amount"), rs.getBigDecimal("voucher_discount"),
-                        rs.getBigDecimal("point_discount"), rs.getBigDecimal("final_amount")),
+                BOOKING_DETAIL_MAPPER, locationId, java.sql.Date.valueOf(from), java.sql.Date.valueOf(to));
+    }
+
+    /** Booking đã xác nhận từ ngày cho trước trở đi (gồm booking đơn, tại quầy và từng buổi của gói). */
+    public List<BookingDetailRow> findUpcomingBookings(Long locationId, LocalDate from) {
+        return jdbc.query(BOOKING_DETAIL_SELECT + """
+                WHERE b.location_id = ? AND b.play_date >= ? AND b.status IN ('CONFIRMED','IN_USE')
+                ORDER BY b.play_date, b.start_minute, c.name
+                """,
+                BOOKING_DETAIL_MAPPER, locationId, java.sql.Date.valueOf(from));
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class IncomeRow {
+        private final LocalDateTime confirmedAt;
+        private final String receiptNo;
+        /** BOOKING, PACKAGE hoặc RESCHEDULE (tiền chênh lệch đổi lịch). */
+        private final String source;
+        private final String reference;
+        private final String customerName;
+        private final BigDecimal amount;
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class RefundRow {
+        private final LocalDate refundDate;
+        private final String bookingCode;
+        private final String customerName;
+        private final BigDecimal amount;
+        private final LocalDate originalPaymentDate;
+        private final String reason;
+    }
+
+    /** Từng khoản thu đã xác nhận trong kỳ, theo số tiền phải trả (BR37). */
+    public List<IncomeRow> findConfirmedPayments(Long locationId, LocalDate from, LocalDate to) {
+        return jdbc.query("""
+                SELECT p.confirmed_at, p.receipt_no,
+                       CASE WHEN p.booking_id IS NOT NULL THEN 'BOOKING'
+                            WHEN p.package_id IS NOT NULL THEN 'PACKAGE' ELSE 'RESCHEDULE' END AS source,
+                       COALESCE(b.booking_code, rb.booking_code,
+                                'PKG-' + CAST(p.package_id AS VARCHAR(20))) AS reference,
+                       COALESCE(a.full_name, b.customer_name, rb.customer_name) AS customer_name,
+                       p.amount_due
+                FROM payment p
+                LEFT JOIN booking b ON b.id = p.booking_id
+                LEFT JOIN reschedule_request r ON r.id = p.reschedule_request_id
+                LEFT JOIN booking rb ON rb.id = r.booking_id
+                LEFT JOIN booking_package bp ON bp.id = p.package_id
+                LEFT JOIN account a ON a.id = COALESCE(b.player_id, rb.player_id, bp.player_id)
+                WHERE p.location_id = ? AND p.status = 'CONFIRMED'
+                  AND p.confirmed_at >= ? AND p.confirmed_at < ?
+                ORDER BY p.confirmed_at
+                """,
+                (rs, i) -> new IncomeRow(rs.getTimestamp("confirmed_at").toLocalDateTime(), rs.getString("receipt_no"),
+                        rs.getString("source"), rs.getString("reference"), rs.getString("customer_name"),
+                        rs.getBigDecimal("amount_due")),
+                locationId, Timestamp.valueOf(from.atStartOfDay()), Timestamp.valueOf(to.plusDays(1).atStartOfDay()));
+    }
+
+    /** Từng khoản hoàn tiền đã ghi nhận trong kỳ, theo ngày hoàn (BR36, BR37). */
+    public List<RefundRow> findRefunds(Long locationId, LocalDate from, LocalDate to) {
+        return jdbc.query("""
+                SELECT r.refund_date, b.booking_code, COALESCE(a.full_name, b.customer_name) AS customer_name,
+                       r.refunded_amount, r.original_payment_date, r.reason
+                FROM refund_request r
+                JOIN booking b ON b.id = r.booking_id
+                LEFT JOIN account a ON a.id = b.player_id
+                WHERE r.location_id = ? AND r.status = 'REFUNDED' AND r.refund_date BETWEEN ? AND ?
+                  AND %s
+                ORDER BY r.refund_date, r.id
+                """.formatted(CONFIRMED_REFUND_PAYMENT),
+                (rs, i) -> new RefundRow(rs.getDate("refund_date").toLocalDate(), rs.getString("booking_code"),
+                        rs.getString("customer_name"), rs.getBigDecimal("refunded_amount"),
+                        rs.getDate("original_payment_date").toLocalDate(), rs.getString("reason")),
                 locationId, java.sql.Date.valueOf(from), java.sql.Date.valueOf(to));
     }
 
@@ -230,9 +319,10 @@ public class OperationQueryRepository {
     public AmountRow sumRefundRequests(Long locationId, LocalDate from, LocalDate to) {
         return jdbc.queryForObject("""
                 SELECT COUNT(*) AS cnt, COALESCE(SUM(refunded_amount), 0) AS amount
-                FROM refund_request
-                WHERE location_id = ? AND created_at >= ? AND created_at < ?
-                """,
+                FROM refund_request r
+                WHERE r.location_id = ? AND r.created_at >= ? AND r.created_at < ?
+                  AND %s
+                """.formatted(CONFIRMED_REFUND_PAYMENT),
                 (rs, i) -> new AmountRow(null, rs.getBigDecimal("amount"), rs.getLong("cnt")),
                 locationId, Timestamp.valueOf(from.atStartOfDay()), Timestamp.valueOf(to.plusDays(1).atStartOfDay()));
     }

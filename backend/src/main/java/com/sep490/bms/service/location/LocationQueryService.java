@@ -2,8 +2,12 @@ package com.sep490.bms.service.location;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -83,6 +87,16 @@ public class LocationQueryService {
     public Location findActive(Long locationId) {
         return locationRepository.findByIdAndStatus(locationId, ACTIVE)
                 .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
+    }
+
+    /**
+     * UC17: địa điểm của các booking trong lịch sử, đọc một lần cho cả trang. Lấy cả địa điểm đã khóa,
+     * để booking cũ vẫn hiện tên địa điểm.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, Location> getByIds(Collection<Long> locationIds) {
+        return locationRepository.findAllById(locationIds).stream()
+                .collect(Collectors.toMap(Location::getId, Function.identity()));
     }
 
     // ---------------------------------------------------------------- Hỗ trợ

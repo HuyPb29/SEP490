@@ -117,6 +117,20 @@ class OperationReportAndReviewHideTests {
     }
 
     @Test
+    void staffDashboardAndRevenueReportCountAmountDueNotOverpayment() {
+        // BR37, BR51: khách chuyển thừa 20.000 thì doanh thu vẫn chỉ tính số tiền phải trả.
+        payment(booking("CONFIRMED", 100000), 100000, 120000L);
+        payment(booking("CONFIRMED", 50000), 50000, null);
+        UserPrincipal staff = UserPrincipal.builder().id(owner.id()).username("staff").role(Role.STAFF)
+                .locationId(location.getId()).status(AccountStatus.ACTIVE).authorities(List.of()).build();
+
+        assertThat(operations.getStaffDashboard(staff).getTodayRevenue()).isEqualByComparingTo("150000");
+        var report = operations.getRevenueReport(principal(owner), today, today);
+        assertThat(report.getTotalRevenue()).isEqualByComparingTo("150000");
+        assertThat(report.getPaymentCount()).isEqualTo(2);
+    }
+
+    @Test
     void reportsRejectRangeLongerThanAYear() {
         assertThatThrownBy(() -> operations.getVoucherReport(principal(owner),
                 today.minusDays(400), today)).isInstanceOf(AppException.class);
@@ -194,6 +208,13 @@ class OperationReportAndReviewHideTests {
                 """, code, location.getId(), courtId, player.id(), java.sql.Date.valueOf(today), amount, amount,
                 status);
         return jdbc.queryForObject("SELECT id FROM booking WHERE booking_code = ?", Long.class, code);
+    }
+
+    private void payment(long booking, long due, Long received) {
+        jdbc.update("""
+                INSERT INTO payment (location_id, booking_id, amount_due, received_amount, status, confirmed_at)
+                VALUES (?, ?, ?, ?, 'CONFIRMED', SYSDATETIME())
+                """, location.getId(), booking, due, received);
     }
 
     private void reschedule(long booking, String status, long extra, boolean free) {

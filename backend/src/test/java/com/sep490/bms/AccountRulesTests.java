@@ -20,6 +20,18 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 class AccountRulesTests {
+    @Test
+    void playerAndStaffUsernamesAcceptExactlySixThroughThirtyTwoCharacters() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            var validator = factory.getValidator();
+            for (Class<?> request : java.util.List.of(RegisterRequest.class, CreateStaffRequest.class)) {
+                for (int length : new int[] {6, 20, 21, 32})
+                    assertThat(validator.validateValue(request, "username", "a".repeat(length))).isEmpty();
+                for (int length : new int[] {4, 5, 33})
+                    assertThat(validator.validateValue(request, "username", "a".repeat(length))).isNotEmpty();
+            }
+        }
+    }
     private final AccountRepository accounts = mock(AccountRepository.class);
     private final OtpRequestRepository otps = mock(OtpRequestRepository.class);
     private final PasswordEncoder encoder = mock(PasswordEncoder.class);

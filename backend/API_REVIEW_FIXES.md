@@ -1,5 +1,12 @@
 # Backend: thay đổi theo API.md (27/10/2026)
 
+## Tích hợp F3/F4 ngày 07/11/2026
+
+- UC15 dùng `weeklySlots` cho mẫu định kỳ và `sessions` cho lịch cuối cùng sau khi xử lý buổi trùng. Chi tiết gói có `data.id`. Danh sách gói của Player hỗ trợ `status/page/size`.
+- UC16 dùng `/api/staff/bookings` cho booking tại quầy, lấy địa điểm từ Staff. UC17 dùng DTO lịch sử có trạng thái và thông tin thanh toán. Chi tiết booking của Player kiểm tra quyền sở hữu.
+- UC18–19 xử lý thanh toán gói trong `PaymentService`. Job hết hạn trả voucher và điểm khi gói chưa thanh toán hoặc giao dịch chờ xử lý đã qua buổi đầu. Player vẫn có thể xem ảnh chứng từ phụ thu UC21 của booking mình.
+- Route ưu đãi đặt theo lô công khai và các route đối soát UC20 đã gọi service. Các mục mô tả route khung phía dưới là ghi chú lịch sử.
+
 ## Đã sửa logic F1
 
 - Khôi phục `GET/PATCH /api/users/me` và `GET /api/admin/accounts`, gọi lại service thật.
@@ -18,7 +25,7 @@
 - Chọn cách G3 bằng header `X-Location-Id`. Owner phải gửi header cho API theo địa điểm không có location id trong path. Không suy ra một địa điểm duy nhất từ Owner nữa.
 - Với `/api/owner/locations/{id}/...`, path là địa điểm được chọn. Server kiểm tra địa điểm thuộc Owner. Với STAFF, địa điểm lấy từ tài khoản; header nếu có phải trùng.
 - Filter kiểm tra quyền truy cập và trạng thái địa điểm; service Staff kiểm tra lại quyền sở hữu và địa điểm của nhân viên mục tiêu.
-- Staff tại địa điểm bị khóa bị chặn khi đăng nhập và khi dùng token cũ. Owner được liệt kê địa điểm để chọn; tại địa điểm bị khóa chỉ được gọi GET `/api/owner/exports`.
+- Staff tại địa điểm bị khóa bị chặn khi đăng nhập và khi dùng token cũ. Owner được liệt kê địa điểm để chọn; tại địa điểm bị khóa chỉ được gọi GET `/api/owner/exports`, trong 30 ngày (P29) kể từ `locked_at` (FR123).
 - Các service feature khác khi được triển khai phải kiểm tra resource `{id}` thuộc địa điểm đã chọn và kiểm tra quyền trên resource. Header không thay thế kiểm tra này.
 
 Ví dụ tạo Staff:
@@ -56,8 +63,8 @@ Các route dưới đây là **hợp đồng khung**, vẫn trả **501** vì ch
 - F5/F6 đã có entity/repository sau merge nhánh Minh; chưa có service nghiệp vụ: tính hạn đổi lịch/chênh lệch, xử lý hủy/hoàn tiền, validate/redeem voucher/điểm, cộng/trả điểm và tặng voucher tự động. Thêm route không thực hiện những nghiệp vụ này.
 - DTO phản hồi và các DTO request còn thiếu của khung feature cần được hoàn thiện khi xác định hợp đồng nghiệp vụ; chưa coi G4 đã xong toàn bộ.
 - F2: chốt trường chính sách/chuyển khoản và nơi lưu/upload ảnh QR; controller địa điểm vẫn là khung.
-- F7: đã có PATCH/cancel kèo; job `MatchStatusScheduler` (mặc định 5 phút, tắt bằng `bms.scheduler.match-sweep.enabled=false`) chuyển kèo OPEN quá giờ chơi sang EXPIRED, hủy kèo khi booking gốc bị hủy/hết hạn/bị từ chối thanh toán và hủy yêu cầu tham gia còn chờ. Cách giữ kèo khi đổi lịch vẫn cần thống nhất giữa chủ feature.
-- F8/F9: đã có service cho đánh giá (Owner/Admin ẩn, Owner phản hồi), khiếu nại, bảng điều hành Staff, báo cáo booking/doanh thu/lấp đầy/hủy/đổi lịch/voucher và tải CSV `booking-exports`, `revenue-exports`. Chưa gộp thành `/api/owner/exports` một file Excel ba sheet.
+- F7: đã có PATCH/cancel kèo; job `MatchStatusScheduler` (mặc định 5 phút, tắt bằng `bms.scheduler.match-sweep.enabled=false`) theo SRS v18: kèo OPEN tới giờ chơi chuyển CLOSED (JOB10), kèo có booking bị người chơi hoặc sân hủy chuyển EXPIRED (FR101); kèo đóng, hủy hoặc hết hạn thì yêu cầu còn chờ bị hủy (FR102). Đổi lịch không tự thay đổi kèo, chủ kèo quyết định giữ hay hủy (FR90). Đã gửi thông báo MSG75/MSG76 (FR124). Service đổi lịch (F5) cần gọi `MatchService.onBookingRescheduled(bookingId)` sau khi booking chuyển sang slot mới, kể cả khi chuyển slot miễn phí do sân hủy (UC22).
+- F8/F9: đã có service cho đánh giá (Owner/Admin ẩn, Owner phản hồi), khiếu nại, bảng điều hành Staff, báo cáo booking/doanh thu/lấp đầy/hủy/đổi lịch/voucher. Doanh thu tính theo số tiền phải trả (BR37). `GET /api/owner/exports?from=&to=` trả file .xlsx ba sheet theo FR122: Lịch sắp tới, Booking đã qua, Thu chi; đã bỏ hai route CSV cũ.
 - FR124/UC37: phân công thông báo và job tự động theo nhóm; chưa tự gán người phụ trách.
 - Không có Baseline 2, Report-4 hoặc `tracking/BMS_Theo_doi_API.xlsx` trong checkout này; chưa đối chiếu bản gốc, sửa hình sequence hoặc đánh dấu “Đã chốt”.
 

@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sep490.bms.dto.location.CancelMaintenanceRequest;
 import com.sep490.bms.dto.location.CreateMaintenanceRequest;
 import com.sep490.bms.dto.location.MaintenanceRequestDto;
 import com.sep490.bms.dto.location.RejectMaintenanceRequest;
@@ -37,6 +39,9 @@ import lombok.RequiredArgsConstructor;
  * Luồng: Staff gửi yêu cầu bảo trì (PENDING) cho một sân thuộc địa điểm mình làm
  * việc -> Owner duyệt (APPROVED) hoặc từ chối kèm lý do (REJECTED). Yêu cầu đã
  * xử lý không được duyệt/từ chối lại (trả 409) để giữ đúng lịch sử quyết định.
+ *
+ * Người tạo cũng có thể rút yêu cầu khi còn PENDING (CANCELLED). Bản ghi được giữ
+ * lại kèm cancelled_by / cancelled_at / cancel_reason thay vì xoá, để không mất vết.
  *
  * Phạm vi địa điểm lấy theo header X-Location-Id; riêng STAFF bị ghim vào địa
  * điểm ghi trên tài khoản (xem {@link LocationAccessService}).
@@ -141,6 +146,37 @@ public class MaintenanceService {
         return toDto(maintenanceRepository.save(entity));
     }
 
+    /**
+     * UC10 - Người tạo rút yêu cầu bảo trì khi còn PENDING.
+     *
+     * Không xoá dòng: giữ nguyên bản ghi và ghi thêm cancelled_by / cancelled_at /
+     * cancel_reason để còn vết ai rút, rút lúc nào, vì sao. Nhờ vậy màn hình lịch sử
+     * vẫn thấy yêu cầu đã rút thay vì biến mất, và không đụng tới approved_by /
+     * decided_at (đó là vết quyết định của Owner).
+     */
+    @Transactional
+    public MaintenanceRequestDto cancel(UserPrincipal user, Long maintenanceId,
+            CancelMaintenanceRequest request) {
+        if (user == null) {
+            throw new AppException("Chưa đăng nhập", HttpStatus.UNAUTHORIZED);
+        }
+        Location location = locationAccessService.selectedLocation(user);
+        Maintenance entity = requireRequestInLocation(location.getId(), maintenanceId);
+        requirePending(entity);
+        if (!Objects.equals(entity.getRequestedBy(), user.getId())) {
+            throw new AppException("Chỉ người tạo yêu cầu mới được huỷ", HttpStatus.FORBIDDEN);
+        }
+        String cancelReason = request == null || isBlank(request.getReason())
+                ? null
+                : request.getReason().trim();
+
+        entity.setStatus(ApprovalStatus.CANCELLED);
+        entity.setCancelledBy(user.getId());
+        entity.setCancelledAt(LocalDateTime.now());
+        entity.setCancelReason(cancelReason);
+        return toDto(maintenanceRepository.save(entity));
+    }
+
     // --------------------------------------------------------------- helpers
 
     private List<Long> courtIdsOf(Long locationId) {
@@ -238,7 +274,8 @@ public class MaintenanceService {
                 court == null ? null : court.getName(),
                 court == null ? null : court.getLocationId(),
                 accountName(entity.getRequestedBy()),
-                accountName(entity.getApprovedBy()));
+                accountName(entity.getApprovedBy()),
+                accountName(entity.getCancelledBy()));
     }
 
     private List<MaintenanceRequestDto> toDtos(List<Maintenance> items) {
@@ -254,7 +291,8 @@ public class MaintenanceService {
                             court == null ? null : court.getName(),
                             court == null ? null : court.getLocationId(),
                             item.getRequestedBy() == null ? null : names.get(item.getRequestedBy()),
-                            item.getApprovedBy() == null ? null : names.get(item.getApprovedBy()));
+                            item.getApprovedBy() == null ? null : names.get(item.getApprovedBy()),
+                            item.getCancelledBy() == null ? null : names.get(item.getCancelledBy()));
                 })
                 .toList();
     }
@@ -274,7 +312,7 @@ public class MaintenanceService {
 
     private Map<Long, String> accountNames(List<Maintenance> items) {
         List<Long> ids = items.stream()
-                .flatMap(item -> Stream.of(item.getRequestedBy(), item.getApprovedBy()))
+                .flatMap(item -> Stream.of(item.getRequestedBy(), item.getApprovedBy(), item.getCancelledBy()))
                 .filter(id -> id != null)
                 .distinct()
                 .toList();
@@ -307,7 +345,7 @@ public class MaintenanceService {
         try {
             return ApprovalStatus.valueOf(status.trim().toUpperCase());
         } catch (IllegalArgumentException ex) {
-            throw new AppException("Trạng thái lọc không hợp lệ, chỉ nhận PENDING, APPROVED hoặc REJECTED");
+            throw new AppException("Trạng thái lọc không hợp lệ, chỉ nhận PENDING, APPROVED, REJECTED hoặc CANCELLED");
         }
     }
 

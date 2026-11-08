@@ -28,6 +28,24 @@ import com.sep490.bms.service.*;
 /** No outer test transaction: assertions observe real service commits/rollbacks. */
 @SpringBootTest
 class OtpLifecycleTests {
+    @Test void wrongRegistrationCodeCommitsDiscardAndDoesNotCreateAccount() {
+        auth.register(RegisterRequest.builder().email(email).username("p"+suffix)
+                .phone("0"+String.format("%09d",Math.floorMod((long)suffix.hashCode(),1000000000L))).fullName("Test Player").password("Original123").build());
+        OtpRequest pending=otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email,OtpPurpose.REGISTER).orElseThrow();
+        pending.setCodeHash(encoder.encode("123456"));otps.saveAndFlush(pending);
+        assertThatThrownBy(()->auth.verifyEmail(new VerifyEmailRequest(email,"000000"))).isInstanceOf(AppException.class);
+        OtpRequest discarded=otps.findById(pending.getId()).orElseThrow();
+        assertThat(discarded.getPendingData()).isNull();assertThat(discarded.getUsedAt()).isNotNull();assertThat(accounts.findByEmail(email)).isEmpty();
+    }
+    @Test void expiredRegistrationCannotBeRevivedByResendAndDiscardCommits() {
+        auth.register(RegisterRequest.builder().email(email).username("p"+suffix)
+                .phone("0"+String.format("%09d",Math.floorMod((long)suffix.hashCode(),1000000000L))).fullName("Test Player").password("Original123").build());
+        OtpRequest pending=otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email,OtpPurpose.REGISTER).orElseThrow();
+        jdbc.update("update otp_request set created_at=?,expires_at=? where id=?",java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(12)),
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(2)),pending.getId());
+        assertThatThrownBy(()->auth.resendOtp(new ResendOtpRequest(email,OtpPurpose.REGISTER))).isInstanceOf(AppException.class);
+        assertThat(otps.findById(pending.getId()).orElseThrow().getPendingData()).isNull();assertThat(accounts.findByEmail(email)).isEmpty();
+    }
     @Autowired AuthService auth;
     @Autowired AccountRepository accounts;
     @Autowired OtpRequestRepository otps;
@@ -59,8 +77,8 @@ class OtpLifecycleTests {
     }
 
     @Test
-    void wrongAttemptsCommitAndBlockCorrectCodeForBothPurposes() {
-        for (OtpPurpose purpose : OtpPurpose.values()) {
+    void wrongResetAttemptsCommitAndBlockCorrectCode() {
+        for (OtpPurpose purpose : java.util.List.of(OtpPurpose.RESET_PASSWORD)) {
             OtpRequest request = otp(purpose);
             for (int i = 1; i <= 5; i++) {
                 assertThatThrownBy(() -> verify(purpose, "000000")).isInstanceOf(AppException.class);
@@ -161,7 +179,6 @@ class OtpLifecycleTests {
         OtpRequest latest = otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER).orElseThrow();
         latest.setCodeHash(encoder.encode("654321"));
         otps.saveAndFlush(latest);
-        assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "123456")).isInstanceOf(AppException.class);
         verify(OtpPurpose.REGISTER, "654321");
         assertThat(accounts.findByEmail(email).orElseThrow().getStatus()).isEqualTo(AccountStatus.ACTIVE);
         assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "123456")).isInstanceOf(AppException.class);

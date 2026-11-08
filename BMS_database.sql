@@ -1,4 +1,4 @@
-﻿-- ============================================================
+-- ============================================================
 -- BMS (SEP490-G13) - Tạo database BMS và 37 bảng, SQL Server 2019+. Chỉ có cấu trúc, chưa có dữ liệu.
 -- Theo Baseline 2 (UC_FR_NFR_baseline2.xlsx, 21/10/2026). Sinh tự động từ erd_spec.js, khớp BMS_ERD.drawio.
 -- Khóa ngoại thêm sau cùng (account <-> location tham chiếu vòng).
@@ -28,7 +28,7 @@ BEGIN TRANSACTION;
 -- account: Tài khoản của Player, Staff, Owner, Admin (Guest không có tài khoản).
 CREATE TABLE account (
     id BIGINT IDENTITY(1,1) NOT NULL,
-    username VARCHAR(20) NOT NULL,
+    username VARCHAR(32) NOT NULL,
     email VARCHAR(100) NULL,
     phone VARCHAR(10) NULL,
     password_hash VARCHAR(100) NOT NULL,
@@ -38,6 +38,9 @@ CREATE TABLE account (
     location_id BIGINT NULL,
     status VARCHAR(10) NOT NULL CONSTRAINT df_account_status DEFAULT 'ACTIVE',
     token_version BIGINT NOT NULL CONSTRAINT df_account_token_version DEFAULT 0,
+    failed_login_count INT NOT NULL CONSTRAINT df_account_failed_login_count DEFAULT 0,
+    locked_until DATETIME2(0) NULL,
+    last_login_at DATETIME2(0) NULL,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_account_created_at DEFAULT SYSDATETIME(),
     updated_at DATETIME2(0) NULL,
     CONSTRAINT pk_account PRIMARY KEY (id),
@@ -45,14 +48,15 @@ CREATE TABLE account (
     CONSTRAINT ck_account_role CHECK (role IN ('PLAYER','STAFF','OWNER','ADMIN')),
     CONSTRAINT ck_account_status CHECK (status IN ('ACTIVE','LOCKED','DISABLED')),
     CONSTRAINT ck_account_token_version CHECK (token_version >= 0),
+    CONSTRAINT ck_account_failed_login_count CHECK (failed_login_count BETWEEN 0 AND 5),
     CONSTRAINT ck_account_staff_location CHECK ((role = 'STAFF' AND location_id IS NOT NULL) OR (role <> 'STAFF' AND location_id IS NULL)),
     CONSTRAINT ck_account_email CHECK (role NOT IN ('PLAYER','OWNER') OR email IS NOT NULL),
     CONSTRAINT ck_account_phone CHECK (role NOT IN ('PLAYER','OWNER') OR phone IS NOT NULL),
     CONSTRAINT ck_account_phone_digits CHECK (phone IS NULL OR (LEN(phone) = 10 AND phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
-    CONSTRAINT ck_account_username CHECK (LEN(username) >= 4 AND username COLLATE Latin1_General_BIN LIKE '[a-z]%' AND username COLLATE Latin1_General_BIN NOT LIKE '%[^a-z0-9._]%')
+    CONSTRAINT ck_account_username CHECK (LEN(username) BETWEEN 6 AND 32 AND username COLLATE Latin1_General_BIN LIKE '[a-z]%' AND username COLLATE Latin1_General_BIN NOT LIKE '%[^a-z0-9._]%')
 );
 CREATE UNIQUE INDEX ux_account_email ON account (email) WHERE email IS NOT NULL;
-CREATE UNIQUE INDEX ux_account_player_phone ON account (phone) WHERE role = 'PLAYER';
+CREATE UNIQUE INDEX ux_account_phone ON account (phone) WHERE phone IS NOT NULL;
 
 -- Append-only account history; historical IDs have no FK/cascade so account deletion retains evidence.
 CREATE TABLE account_audit (
@@ -461,6 +465,8 @@ CREATE TABLE refund_request (
     complaint_id BIGINT NULL,
     suggested_amount DECIMAL(12,0) NOT NULL,
     refunded_amount DECIMAL(12,0) NULL,
+    loyalty_settled_amount DECIMAL(12,0) NOT NULL CONSTRAINT df_refund_loyalty_amount DEFAULT 0,
+    loyalty_revoked_points INT NOT NULL CONSTRAINT df_refund_loyalty_points DEFAULT 0,
     refund_date DATE NULL,
     original_payment_date DATE NOT NULL,
     reason NVARCHAR(500) NULL,
@@ -601,14 +607,14 @@ CREATE TABLE loyalty_accrual (
   earning_rate INT NOT NULL,
   CONSTRAINT fk_loyalty_accrual_payment FOREIGN KEY(payment_id) REFERENCES payment(id),
   CONSTRAINT fk_loyalty_accrual_balance FOREIGN KEY(balance_id) REFERENCES player_location_balance(id),
-  CONSTRAINT ck_loyalty_accrual CHECK(paid_amount > 0 AND earned_points >= 0 AND earning_rate=10000)
+  CONSTRAINT ck_loyalty_accrual CHECK(paid_amount > 0 AND earned_points >= 0 AND earning_rate BETWEEN 1000 AND 100000)
  );
 
 -- loyalty_tier: SRS V2 8.3/BR12 paid-session reward configuration; legacy spending fields retained.
 CREATE TABLE loyalty_tier (
     id BIGINT IDENTITY(1,1) NOT NULL,
     location_id BIGINT NOT NULL,
-    session_threshold INT NULL, -- SRS V2: number of paid sessions; NULL marks a legacy spending tier
+    session_threshold INT NULL, -- Legacy session configuration only; monetary milestones have NULL here (SRS v18 BR12).
     version INT NOT NULL CONSTRAINT df_tier_version DEFAULT 0,
     milestone_amount DECIMAL(14,0) NOT NULL, -- legacy storage, no longer the reward criterion
     voucher_id BIGINT NOT NULL,

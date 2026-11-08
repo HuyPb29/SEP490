@@ -11,7 +11,7 @@ import java.util.List;
 import org.springframework.http.*;
 import com.sep490.bms.service.promotion.LoyaltyMilestoneService;
 @RestController @RequiredArgsConstructor @PreAuthorize("hasRole('OWNER')")
-@io.swagger.v3.oas.annotations.tags.Tag(name="F6 - UC26 Loyalty (SRS UC18)")
+@io.swagger.v3.oas.annotations.tags.Tag(name="F6 - UC26 Loyalty Rewards")
 public class LoyaltyMilestoneController {
  private final LoyaltyMilestoneService service;
  @GetMapping("/api/owner/loyalty-milestones")

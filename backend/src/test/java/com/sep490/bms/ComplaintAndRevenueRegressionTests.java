@@ -69,6 +69,8 @@ class ComplaintAndRevenueRegressionTests {
                 .address("Test").contactPhone("0987654321").latitude(BigDecimal.ONE).longitude(BigDecimal.ONE).build());
         court = courts.saveAndFlush(Court.builder().locationId(location.getId()).name("Test court").active(true).build());
         Booking booking = booking();
+        payments.saveAndFlush(Payment.builder().locationId(location.getId()).bookingId(booking.getId()).amountDue(booking.getFinalAmount())
+                .receivedAmount(booking.getFinalAmount()).status(PaymentStatus.CONFIRMED).confirmedBy(owner.getId()).confirmedAt(LocalDateTime.now().minusDays(7)).build());
         complaint = complaints.saveAndFlush(Complaint.builder().locationId(location.getId()).bookingId(booking.getId())
                 .playerId(player.getId()).createdBy(player.getId()).complaintType("COURT_SERVICE")
                 .content("Test complaint").status(ComplaintStatus.PENDING_OWNER).build());
