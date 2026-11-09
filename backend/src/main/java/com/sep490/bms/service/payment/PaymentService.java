@@ -565,6 +565,39 @@ public class PaymentService {
         return PaymentResponse.from(payment, booking);
     }
 
+    /**
+     * UC37, BR03, FR125 (D80): hết giờ chơi mà giao dịch của booking lẻ vẫn chờ Staff (Chờ xác nhận hoặc Chờ
+     * bổ sung) thì hệ thống chuyển sang Bị từ chối thanh toán: nhả slot, trả voucher và điểm (BR40, BR45), báo
+     * Player (MSG51) và Owner (MSG56). Khóa payment rồi booking theo cùng thứ tự với Staff, rồi kiểm tra lại:
+     * Staff có thể vừa xử lý sau lần quét của job. Player đã chuyển tiền thì khiếu nại (UC33).
+     *
+     * @return true nếu giao dịch vừa bị từ chối
+     */
+    @Transactional
+    public boolean expireBookingPayment(Long paymentId, LocalDateTime now) {
+        Payment payment = paymentRepository.findByIdForUpdate(paymentId).orElse(null);
+        if (payment == null || payment.getBookingId() == null
+                || (payment.getStatus() != PaymentStatus.AWAITING_CONFIRMATION
+                        && payment.getStatus() != PaymentStatus.RESUBMIT_REQUESTED)) {
+            return false;
+        }
+        Booking booking = bookingService.lockForPayment(payment.getBookingId());
+        if ((booking.getStatus() != BookingStatus.AWAITING_CONFIRMATION
+                && booking.getStatus() != BookingStatus.RESUBMIT_REQUESTED)
+                || now.isBefore(playEnd(booking))) {
+            return false;
+        }
+        rejectLocked(payment, booking, "Hết giờ chơi mà giao dịch chưa được xác nhận");
+        // Địa điểm bị khóa vẫn báo Owner, nên không dùng findActive.
+        Location location = locationQueryService.getByIds(List.of(booking.getLocationId())).get(booking.getLocationId());
+        if (location != null) {
+            notify(location.getOwnerId(), "PAYMENT_EXPIRED_AT_PLAY_END", "Hết giờ chơi mà thanh toán chưa được xác nhận",
+                    "Booking " + booking.getBookingCode() + " đã hết giờ chơi mà chưa được xác nhận thanh toán; "
+                            + "hệ thống đã chuyển sang Bị từ chối thanh toán.", payment);
+        }
+        return true;
+    }
+
     // ===================== UC19 cho gói đặt nhiều buổi (FR43, BR26) =====================
 
     @Transactional

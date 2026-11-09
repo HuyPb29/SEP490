@@ -56,6 +56,20 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             @Param("today") LocalDate today);
 
     /**
+     * UC37, BR03, FR125: giao dịch của booking lẻ vẫn chờ Staff mà ngày chơi đã đến. Chỉ lọc theo ngày;
+     * PaymentService kiểm lại giờ kết thúc sau khi khóa dòng. Gói và khoản trả thêm khi đổi lịch không có
+     * booking_id nên không lấy (ck_payment_target).
+     */
+    @Query("""
+            SELECT p.id FROM Payment p
+            WHERE p.status IN :statuses AND p.bookingId IS NOT NULL AND EXISTS (
+                SELECT b.id FROM Booking b WHERE b.id = p.bookingId AND b.playDate <= :today
+            )
+            """)
+    List<Long> findBookingPaymentExpiryCandidates(@Param("statuses") Collection<PaymentStatus> statuses,
+            @Param("today") LocalDate today);
+
+    /**
      * UC20 #1, FR61: tổng các giao dịch có trạng thái status của địa điểm, xác nhận trong [from, to).
      * Doanh thu ghi vào ngày xác nhận (BR37), nên lọc theo confirmed_at. Lấy mọi loại giao dịch
      * (booking lẻ, gói, trả thêm khi đổi lịch, tại quầy), vì tiền của loại nào cũng về cùng tài khoản.
