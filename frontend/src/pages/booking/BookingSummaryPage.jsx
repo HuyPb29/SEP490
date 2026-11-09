@@ -524,7 +524,7 @@ export default function BookingSummaryPage() {
               </button>
 
               <p className={styles.holdNotice}>
-                After confirmation, the slot will be held for 5 minutes for you to transfer funds and upload the receipt.
+                After confirmation, the slot will be held for 10 minutes for you to transfer funds and upload the receipt.
               </p>
 
               {/* Hiển thị thông báo xác nhận giữ chỗ thành công (Chuẩn bị nối sang UC18) */}

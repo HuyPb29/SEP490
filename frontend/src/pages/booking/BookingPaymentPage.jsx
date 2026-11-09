@@ -196,7 +196,7 @@ export default function BookingPaymentPage() {
     setErrorMessage('');
     setToastSuccess('');
 
-    // BR03 / MSG33: Chặn nếu đã hết thời gian giữ chỗ 5 phút
+    // BR03 / MSG33: Chặn nếu đã hết thời gian giữ chỗ
     if (remainingSeconds <= 0 || bookingData.status === 'expired') {
       setErrorMessage(
         `Hold time expired (MSG33): Booking ${bookingData.booking_code} has expired because payment proof was not submitted in time. The slot has been released.`
@@ -278,7 +278,7 @@ export default function BookingPaymentPage() {
       </header>
 
       <main className={styles.mainContainer}>
-        {/* BR03 / P02 / MSG32 / MSG33: Thanh đếm ngược thời gian giữ chỗ 5 phút */}
+        {/* BR03 / P02 / MSG32 / MSG33: Thanh đếm ngược thời gian giữ chỗ */}
         {isConfirmedWait ? (
           <div className={styles.confirmedBanner}>
             <span>
@@ -296,7 +296,7 @@ export default function BookingPaymentPage() {
           <div className={styles.expiredBanner}>
             <span>
               ⚠️ <strong>Hold time expired (MSG33):</strong> Booking #{bookingData.booking_code} has
-              expired because payment proof was not submitted within 5 minutes. Your slot has been
+              expired because payment proof was not submitted within the holding time. Your slot has been
               released and any applied points/vouchers have been refunded.
             </span>
             <span className={styles.countdownText}>00:00</span>

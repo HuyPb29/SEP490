@@ -78,7 +78,7 @@ export default function MyBookingsPage() {
       const currentNow = Date.now();
       setNowMs(currentNow);
 
-      // Tự động chuyển sang expired nếu hết 5 phút giữ chỗ mà chưa gửi chứng từ (MSG33)
+      // Tự động chuyển sang expired nếu hết thời gian giữ chỗ mà chưa gửi chứng từ (MSG33)
       setBookings((prev) =>
         prev.map((item) => {
           if (item.status === 'holding' && item.hold_expires_at) {

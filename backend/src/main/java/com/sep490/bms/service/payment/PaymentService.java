@@ -871,7 +871,7 @@ public class PaymentService {
         throw notWaitingForPayment();
     }
 
-    /** Đang giữ chỗ nhưng đã quá 5 phút: coi như hết hạn dù job UC37 chưa kịp đổi trạng thái (BR03). */
+    /** Đang giữ chỗ nhưng đã quá hạn giữ chỗ: coi như hết hạn dù job UC37 chưa kịp đổi trạng thái (BR03). */
     private static void requireHoldNotExpired(Booking booking, LocalDateTime now) {
         if (!booking.getHoldExpiresAt().isAfter(now)) {
             throw holdExpired();

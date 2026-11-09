@@ -301,11 +301,11 @@ class BookingServiceTests {
         assertThat(booking.getNote()).isEqualTo("Mượn 2 vợt");
         assertThat(booking.getListAmount()).isEqualByComparingTo("130000");
         assertThat(booking.getFinalAmount()).isEqualByComparingTo("130000");
-        // 12:10:00.7 + 5 phút, bỏ phần lẻ của giây.
-        assertThat(booking.getHoldExpiresAt()).isEqualTo(TODAY.atTime(12, 15));
+        // 12:10:00.7 + 10 phút (D164), bỏ phần lẻ của giây.
+        assertThat(booking.getHoldExpiresAt()).isEqualTo(TODAY.atTime(12, 20));
         assertThat(booking.getCreatedAt()).isEqualTo(TODAY.atTime(12, 10));
         assertThat(created.getId()).isEqualTo(100L);
-        assertThat(created.getHoldExpiresAt()).isEqualTo(TODAY.atTime(12, 15));
+        assertThat(created.getHoldExpiresAt()).isEqualTo(TODAY.atTime(12, 20));
     }
 
     @Test

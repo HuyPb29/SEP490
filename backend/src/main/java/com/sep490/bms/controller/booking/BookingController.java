@@ -58,7 +58,7 @@ public class BookingController {
     }
 
     /**
-     * UC14 – Đặt sân lẻ (#6–8: bấm Xác nhận, tạo booking Đang giữ chỗ, giữ chỗ 5 phút)
+     * UC14 – Đặt sân lẻ (#6–8: bấm Xác nhận, tạo booking Đang giữ chỗ, giữ chỗ 10 phút)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
      */

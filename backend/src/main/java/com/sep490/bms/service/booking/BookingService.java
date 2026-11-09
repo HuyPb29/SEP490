@@ -54,8 +54,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class BookingService {
 
-    /** Thời gian giữ chỗ (BR03, P02): cố định, Owner không cài (D154). */
-    static final int HOLD_MINUTES = 5;
+    /** Thời gian giữ chỗ của đặt sân lẻ online (BR03, P02): 10 phút (D164), cố định, Owner không cài (D154). */
+    static final int HOLD_MINUTES = 10;
     /** Số booking đang chờ thanh toán tối đa của một Player (BR35, P08): cố định (D154). */
     static final int MAX_PENDING_PAYMENTS = 2;
     /** Unique có điều kiện trên booking_slot (court_id, slot_date, slot_start_minute) WHERE is_active = 1. */
@@ -117,7 +117,7 @@ public class BookingService {
 
     /**
      * UC14 #6–8: Player bấm Xác nhận ở màn tóm tắt. Tạo booking Đang giữ chỗ, lưu từng slot 30 phút,
-     * giữ chỗ 5 phút tính từ lúc bấm (D128, BR03). Tất cả trong một giao dịch: lỗi ở bước nào thì không lưu gì.
+     * giữ chỗ 10 phút tính từ lúc bấm (D128, BR03, D164). Tất cả trong một giao dịch: lỗi ở bước nào thì không lưu gì.
      */
     @Transactional
     public BookingResponse createSingleBooking(UserPrincipal player, BookingRequest request) {
