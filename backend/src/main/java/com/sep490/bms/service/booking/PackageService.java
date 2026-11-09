@@ -193,7 +193,8 @@ public class PackageService {
         if (!conflicts.isEmpty()) {
             throw sessionsTaken(conflicts);
         }
-        if (sessions.size() < 2) {
+        // D163, BR27: sau khi xử lý buổi trùng, các buổi còn lại phải nằm trong ít nhất 2 ngày khác nhau.
+        if (distinctDays(sessions) < 2) {
             throw tooFewSessions();
         }
         List<Priced> priced = price(sessions);
@@ -518,8 +519,8 @@ public class PackageService {
     /**
      * Danh sách buổi của gói theo ngày giờ chơi. Định kỳ: luôn kiểm mẫu ban đầu (MSG41); Player gửi danh sách
      * đã xử lý buổi trùng thì dùng danh sách đó, các buổi phải nằm trong thời gian của mẫu. Tự chọn: các buổi
-     * Player chọn, ít nhất 2 buổi, trong vòng 3 tháng (MSG91). Cả hai cách: buổi xa nhất không quá 3 tháng kể từ
-     * hôm nay (D162).
+     * Player chọn, nằm trong ít nhất 2 ngày khác nhau (D163), trong vòng 3 tháng (MSG91). Cả hai cách: buổi xa
+     * nhất không quá 3 tháng kể từ hôm nay (D162).
      */
     List<Planned> plan(PackageRequest request, Court court, LocalDate today) {
         List<Planned> sessions;
@@ -539,7 +540,7 @@ public class PackageService {
             sessions = explicitSessions(request, court, today);
             LocalDate first = sessions.get(0).date();
             LocalDate last = sessions.get(sessions.size() - 1).date();
-            if (last.plusDays(1).isAfter(first.plusMonths(MAX_MONTHS))) {
+            if (distinctDays(sessions) < 2 || last.plusDays(1).isAfter(first.plusMonths(MAX_MONTHS))) {
                 throw invalidCustom();
             }
         }
@@ -820,13 +821,19 @@ public class PackageService {
         }
     }
 
+    /** D163: số ngày khác nhau có buổi; một ngày có nhiều buổi vẫn tính là một ngày. */
+    static long distinctDays(List<Planned> sessions) {
+        return sessions.stream().map(Planned::date).distinct().count();
+    }
+
     private static AppException invalidCustom() {
-        return new AppException("Đặt tự chọn cần ít nhất 2 buổi, trong vòng tối đa 3 tháng. (MSG91)");
+        return new AppException(
+                "Đặt tự chọn cần các buổi nằm trong ít nhất 2 ngày khác nhau, trong vòng tối đa 3 tháng. (MSG91)");
     }
 
     static AppException tooFewSessions() {
-        return new AppException(
-                "Gói phải còn ít nhất 2 buổi. Vui lòng chọn slot bù cho các buổi bị trùng thay vì bỏ. (MSG92)");
+        return new AppException("Gói phải có buổi trong ít nhất 2 ngày khác nhau. "
+                + "Vui lòng chọn slot bù cho các buổi bị trùng thay vì bỏ. (MSG92)");
     }
 
     private static AppException invalidRecurring() {

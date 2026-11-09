@@ -337,10 +337,10 @@ class PackageServiceTests {
     @Test
     void sessionTodayAlreadyStartedIsConflict() {
         PackagePreviewResponse result = service.preview(player, custom(
-                session(TODAY, null, 480, 540), session(TODAY, null, 600, 660)), NOW);
+                session(TODAY, null, 480, 540), session(TODAY, null, 600, 660), session(DEC_1, null, 600, 660)), NOW);
 
         assertThat(result.getSessions()).extracting(PackagePreviewResponse.Session::getConflict)
-                .containsExactly(Conflict.STARTED, null);
+                .containsExactly(Conflict.STARTED, null, null);
     }
 
     @Test
@@ -372,6 +372,16 @@ class PackageServiceTests {
         assertThat(service.preview(player, custom(
                 session(TODAY, null, 1080, 1140), session(LocalDate.of(2027, 2, 6), null, 1080, 1140)), NOW)
                 .getTotalSessions()).isEqualTo(2);
+    }
+
+    @Test
+    void customSessionsAllOnOneDayAreNotAPackage() {
+        // D163: hai khung giờ, hai sân trong cùng một ngày là đặt lẻ, không phải gói.
+        assertThatThrownBy(() -> service.preview(player, custom(
+                session(DEC_1, null, 1080, 1140), session(DEC_1, null, 1200, 1260), session(DEC_1, 12L, 1080, 1140)),
+                NOW))
+                .hasMessageContaining("ít nhất 2 ngày khác nhau")
+                .hasMessageContaining("(MSG91)");
     }
 
     @Test
@@ -408,10 +418,10 @@ class PackageServiceTests {
         assertThatThrownBy(() -> service.preview(player, custom(
                 session(DEC_1, 99L, 1080, 1140), session(DEC_31, null, 1080, 1140)), NOW))
                 .hasMessageContaining("không thuộc địa điểm");
-        // Cùng giờ nhưng khác sân thì không chồng.
+        // Cùng giờ nhưng khác sân thì không chồng (thêm một ngày nữa cho đủ 2 ngày, D163).
         assertThat(service.preview(player, custom(
-                session(DEC_1, null, 1080, 1200), session(DEC_1, 12L, 1080, 1200)), NOW)
-                .getTotalSessions()).isEqualTo(2);
+                session(DEC_1, null, 1080, 1200), session(DEC_1, 12L, 1080, 1200), session(DEC_31, null, 1080, 1200)), NOW)
+                .getTotalSessions()).isEqualTo(3);
     }
 
     @Test
@@ -654,6 +664,19 @@ class PackageServiceTests {
                 List.of(TUESDAY_EVENING), List.of(session(DEC_1, null, 1080, 1200)), null, null, null, null);
 
         assertThatThrownBy(() -> service.create(player, one, NOW)).hasMessageContaining("(MSG92)");
+        verify(packages, never()).save(any());
+    }
+
+    @Test
+    void createNeedsTwoDaysAfterHandlingConflicts() {
+        // D163: bỏ buổi trùng xong còn hai buổi nhưng cùng một ngày thì không tạo gói.
+        PackageRequest oneDay = new PackageRequest(PackageType.RECURRING, COURT, DEC_1, DEC_31,
+                List.of(TUESDAY_EVENING),
+                List.of(session(DEC_1, null, 1080, 1200), session(DEC_1, null, 1200, 1260)), null, null, null, null);
+
+        assertThatThrownBy(() -> service.create(player, oneDay, NOW))
+                .hasMessageContaining("ít nhất 2 ngày khác nhau")
+                .hasMessageContaining("(MSG92)");
         verify(packages, never()).save(any());
     }
 
