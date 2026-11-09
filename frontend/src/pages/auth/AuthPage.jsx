@@ -73,7 +73,8 @@ export default function AuthPage() {
         localStorage.removeItem('bms_refresh_token');
         localStorage.setItem('bms_user_info', JSON.stringify(response.data.user_info));
         window.dispatchEvent(new Event('bms-auth-change'));
-        navigate('/');
+        // Staff vào thẳng màn xác nhận thanh toán (UC19); vai trò khác về trang chủ.
+        navigate(response.data.user_info?.role_code === 'staff' ? '/staff/confirm-payments' : '/');
       }
     } catch (error) {
       const code = error.response?.data?.code || error.code;

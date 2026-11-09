@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_DATA = true;
+export const USE_MOCK_DATA = false;
 // UC11 đã nối Backend thật; UC12, UC13 vẫn dùng USE_MOCK_DATA
 export const USE_MOCK_SEARCH = false;
 

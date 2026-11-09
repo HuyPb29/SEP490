@@ -10,7 +10,8 @@ export default function FacilityDetailPage() {
   const scheduleRef = useRef(null);
 
   const [playDate, setPlayDate] = useState(
-    () => location.state?.playDate || new Date().toISOString().split('T')[0]
+    // Ngày theo giờ máy (en-CA = yyyy-MM-dd); toISOString lấy ngày UTC nên trước 7h sáng bị lùi một ngày.
+    () => location.state?.playDate || new Date().toLocaleDateString('en-CA')
   );
   const [facility, setFacility] = useState(null);
   const [loadError, setLoadError] = useState('');

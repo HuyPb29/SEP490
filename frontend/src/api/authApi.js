@@ -2,6 +2,8 @@ import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
 export const USE_MOCK_AUTH = true;
+// Đăng nhập dùng backend thật để các màn F3/F4 gọi API có JWT; đăng ký và OTP vẫn theo USE_MOCK_AUTH.
+export const USE_MOCK_LOGIN = false;
 
 // In-memory DB giả lập
 const mockUsers = [
@@ -61,7 +63,7 @@ function ensureOtpSession(email) {
 
 // UC02: Đăng nhập (POST /api/auth/login)
 export async function loginApi({ username_or_email, password }) {
-  if (USE_MOCK_AUTH) {
+  if (USE_MOCK_LOGIN) {
     await new Promise((r) => setTimeout(r, 300));
     const input = username_or_email.trim().toLowerCase();
 
