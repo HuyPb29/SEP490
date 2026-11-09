@@ -271,9 +271,21 @@ public class MatchService {
     @Transactional
     public void onBookingRescheduled(Long bookingId) {
         matchRepository.findFirstByBookingIdAndStatusIn(bookingId, Set.of(MatchStatus.OPEN, MatchStatus.CLOSED))
-                .ifPresent(match -> matchNotifier.matchRescheduled(view(match.getId()),
-                        playerIds(match.getId(), JoinRequestStatus.APPROVED),
-                        playerIds(match.getId(), JoinRequestStatus.PENDING)));
+                .ifPresent(match -> matchQueryRepository.findMatch(match.getId())
+                        .ifPresent(view -> matchNotifier.matchRescheduled(view,
+                                playerIds(match.getId(), JoinRequestStatus.APPROVED),
+                                playerIds(match.getId(), JoinRequestStatus.PENDING))));
+    }
+
+    /**
+     * UC22, FR101 – gọi ngay khi booking có kèo bị hủy (Player hủy, cơ sở hủy), trong cùng transaction hủy booking.
+     * Kèo còn hiệu lực chuyển EXPIRED, yêu cầu còn chờ bị hủy (FR102), thành viên và người chờ nhận MSG76.
+     * Job sweepEndedMatches vẫn là lưới an toàn cho booking bị hủy ở luồng khác.
+     */
+    @Transactional
+    public void onBookingCancelled(Long bookingId) {
+        matchRepository.findByBookingIdAndStatusInForUpdate(bookingId, Set.of(MatchStatus.OPEN, MatchStatus.CLOSED))
+                .forEach(match -> endMatch(match, MatchStatus.EXPIRED, true));
     }
 
     // ---------------------------------------------------------------- Helper
@@ -296,8 +308,9 @@ public class MatchService {
         matchJoinRequestRepository.saveAllAndFlush(pending);
 
         List<Long> approved = notifyApproved ? playerIds(match.getId(), JoinRequestStatus.APPROVED) : List.of();
-        matchNotifier.matchEnded(view(match.getId()), status, approved,
-                pending.stream().map(MatchJoinRequest::getPlayerId).toList());
+        // Không lấy được thông tin hiển thị thì bỏ qua thông báo, không làm hỏng giao dịch hủy booking/đóng kèo.
+        matchQueryRepository.findMatch(match.getId()).ifPresent(view -> matchNotifier.matchEnded(view, status, approved,
+                pending.stream().map(MatchJoinRequest::getPlayerId).toList()));
     }
 
     private List<Long> playerIds(Long matchId, JoinRequestStatus status) {
