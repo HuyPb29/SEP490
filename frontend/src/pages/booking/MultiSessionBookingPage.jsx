@@ -1,7 +1,17 @@
-import { useMemo, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import {
+  createBookingPackageApi,
+  getLocationCourtsApi,
+  getMyOwnedTeams,
+  previewBookingPackageApi,
+  toMinutes,
+  toTimeLabel,
+} from '../../api/bookingApi'
+import { apiErrorMessage } from '../../api'
 import styles from './MultiSessionBookingPage.module.css'
 
+// value theo Date.getDay() (CN = 0); backend dùng 1 = Thứ 2 … 7 = Chủ nhật
 const WEEKDAYS = [
   { value: 1, label: 'Mon' },
   { value: 2, label: 'Tue' },
@@ -11,144 +21,294 @@ const WEEKDAYS = [
   { value: 6, label: 'Sat' },
   { value: 0, label: 'Sun' },
 ]
-const COURTS = ['Court 1', 'Court 2', 'Court 3', 'Court 4', 'Court 5']
-const TIMES = ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00']
-const CONFLICT_DATES = ['2026-11-12', '2026-11-24']
-const INITIAL_CUSTOM_DATES = [
-  '2026-11-03',
-  '2026-11-05',
-  '2026-11-10',
-  '2026-11-12',
-  '2026-11-17',
-  '2026-11-19',
-  '2026-11-24',
-  '2026-11-26',
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ]
-const SLOT_PRICE = 80000
-
-const toDateKey = (date) => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+// Mốc 30 phút từ 05:00 đến 24:00; giờ mở cửa thật do backend kiểm (buổi ngoài giờ bị đánh dấu trùng)
+const TIMES = Array.from({ length: 39 }, (_, index) => toTimeLabel(300 + index * 30))
+const CONFLICT_LABELS = {
+  TAKEN: 'already booked',
+  MAINTENANCE: 'maintenance',
+  CLOSED: 'outside opening hours',
+  STARTED: 'already started',
 }
 
-const formatCurrency = (amount) => `${new Intl.NumberFormat('en-US').format(amount)} VND`
+const toDateKey = (date) => date.toLocaleDateString('en-CA')
+const parseDateKey = (dateKey) => {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+const addMonths = (dateKey, months, minusDays = 0) => {
+  const date = parseDateKey(dateKey)
+  return toDateKey(new Date(date.getFullYear(), date.getMonth() + months, date.getDate() - minusDays))
+}
+const formatCurrency = (amount) => `${new Intl.NumberFormat('en-US').format(Number(amount || 0))} VND`
+const sessionKey = (session) => `${session.date}|${session.courtId}|${session.startMinute}`
 
 export default function MultiSessionBookingPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const facilityName = location.state?.facilityName || 'Smash Arena'
+  const { id } = useParams()
+  const facilityId = Number(id || location.state?.facilityId) || null
+  const facilityName = location.state?.facilityName || ''
+
+  const today = useMemo(() => toDateKey(new Date()), [])
+  const [courts, setCourts] = useState([])
+  const [teams, setTeams] = useState([])
   const [mode, setMode] = useState('recurring')
-  const [court, setCourt] = useState('Court 3')
-  const [fromDate, setFromDate] = useState('2026-11-01')
-  const [toDate, setToDate] = useState('2026-11-30')
+  const [courtId, setCourtId] = useState(null)
+  const [fromDate, setFromDate] = useState(today)
+  const [toDate, setToDate] = useState(() => addMonths(today, 1, 1))
   const [selectedWeekdays, setSelectedWeekdays] = useState([2, 4])
   const [startTime, setStartTime] = useState('19:00')
   const [endTime, setEndTime] = useState('21:00')
-  const [bookFor, setBookFor] = useState('Personal')
-  const [customDates, setCustomDates] = useState(INITIAL_CUSTOM_DATES)
-  const [removedDates, setRemovedDates] = useState([])
-  const [compensatedDates, setCompensatedDates] = useState([])
+  const [teamId, setTeamId] = useState('')
+  const [customDates, setCustomDates] = useState([])
+  // Xử lý buổi trùng (BR50): buổi bỏ và buổi đổi sang slot bù, theo khóa của buổi gốc
+  const [removedKeys, setRemovedKeys] = useState([])
+  const [replacements, setReplacements] = useState({})
   const [showCompensation, setShowCompensation] = useState(false)
-  const [compensationCourt, setCompensationCourt] = useState('Court 2')
+  const [compensationCourtId, setCompensationCourtId] = useState(null)
   const [compensationTime, setCompensationTime] = useState('19:00')
+  const [viewMonth, setViewMonth] = useState(() => parseDateKey(today))
+  const [basePreview, setBasePreview] = useState(null)
+  const [adjustedPreview, setAdjustedPreview] = useState(null)
+  const [previewError, setPreviewError] = useState('')
   const [notice, setNotice] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
-  const monthStart = useMemo(() => new Date(2026, 10, 1), [])
+  useEffect(() => {
+    if (!facilityId) return
+    Promise.all([getLocationCourtsApi(facilityId), getMyOwnedTeams()])
+      .then(([courtList, teamRes]) => {
+        setCourts(courtList)
+        setCourtId((current) => current ?? courtList[0]?.court_id ?? null)
+        setTeams(teamRes.data)
+      })
+      .catch((err) => setPreviewError(apiErrorMessage(err, 'Could not load courts.')))
+  }, [facilityId])
+
+  const startMinute = toMinutes(startTime)
+  const endMinute = toMinutes(endTime)
+
+  // UC15 #2, #3: PackageRequest theo mẫu Player nhập (chưa xử lý buổi trùng)
+  const baseRequest = useMemo(() => {
+    if (!courtId || endMinute <= startMinute) return null
+    const common = {
+      courtId,
+      startDate: fromDate,
+      endDate: toDate,
+      teamId: teamId ? Number(teamId) : null,
+    }
+    if (mode === 'recurring') {
+      if (selectedWeekdays.length === 0) return null
+      return {
+        ...common,
+        packageType: 'RECURRING',
+        weeklySlots: selectedWeekdays.map((day) => ({ dayOfWeek: day === 0 ? 7 : day, startMinute, endMinute })),
+      }
+    }
+    if (customDates.length === 0) return null
+    return {
+      ...common,
+      packageType: 'CUSTOM',
+      sessions: [...customDates].sort().map((date) => ({ date, courtId, startMinute, endMinute })),
+    }
+  }, [courtId, fromDate, toDate, teamId, mode, selectedWeekdays, customDates, startMinute, endMinute])
+
+  // Đổi mẫu thì bỏ các xử lý buổi trùng cũ
+  useEffect(() => {
+    setRemovedKeys([])
+    setReplacements({})
+    setAdjustedPreview(null)
+  }, [baseRequest])
+
+  // UC15 #4: backend sinh buổi và đánh dấu buổi trùng
+  useEffect(() => {
+    if (!baseRequest) {
+      setBasePreview(null)
+      return undefined
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      previewBookingPackageApi(baseRequest)
+        .then((data) => {
+          if (cancelled) return
+          setBasePreview(data)
+          setPreviewError('')
+        })
+        .catch((err) => {
+          if (cancelled) return
+          setBasePreview(null)
+          setPreviewError(apiErrorMessage(err, 'Could not build the schedule.'))
+        })
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [baseRequest])
+
+  const hasAdjustments = removedKeys.length > 0 || Object.keys(replacements).length > 0
+
+  // Danh sách buổi gửi backend sau khi bỏ buổi trùng hoặc chọn slot bù (UC15 #5)
+  const adjustedRequest = useMemo(() => {
+    if (!baseRequest || !basePreview || !hasAdjustments) return null
+    const sessions = basePreview.sessions
+      .filter((session) => !removedKeys.includes(sessionKey(session)))
+      .map((session) => {
+        const replacement = replacements[sessionKey(session)]
+        return {
+          date: session.date,
+          courtId: replacement?.courtId ?? session.courtId,
+          startMinute: replacement?.startMinute ?? session.startMinute,
+          endMinute: replacement?.endMinute ?? session.endMinute,
+        }
+      })
+    return { ...baseRequest, sessions }
+  }, [baseRequest, basePreview, hasAdjustments, removedKeys, replacements])
+
+  // Kiểm tra lại các slot bù với backend
+  useEffect(() => {
+    if (!adjustedRequest) {
+      setAdjustedPreview(null)
+      return undefined
+    }
+    let cancelled = false
+    previewBookingPackageApi(adjustedRequest)
+      .then((data) => {
+        if (cancelled) return
+        setAdjustedPreview(data)
+        setPreviewError('')
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setAdjustedPreview(null)
+        setPreviewError(apiErrorMessage(err, 'Could not check the adjusted schedule.'))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [adjustedRequest])
+
+  const preview = hasAdjustments ? adjustedPreview : basePreview
+  const sessions = useMemo(() => preview?.sessions ?? [], [preview])
+  const conflictedSessions = sessions.filter((session) => session.conflict)
+  const finalRequest = hasAdjustments ? adjustedRequest : baseRequest
+
+  const sessionsByDate = useMemo(() => {
+    const map = {}
+    sessions.forEach((session) => {
+      map[session.date] = [...(map[session.date] || []), session]
+    })
+    return map
+  }, [sessions])
 
   const calendarDays = useMemo(() => {
-    const leadingDays = (monthStart.getDay() + 6) % 7
-    const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate()
+    const year = viewMonth.getFullYear()
+    const month = viewMonth.getMonth()
+    const leadingDays = (new Date(year, month, 1).getDay() + 6) % 7
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
     const cells = Array.from({ length: leadingDays }, () => null)
-
     for (let day = 1; day <= daysInMonth; day += 1) {
-      const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day)
-      const dateKey = toDateKey(date)
-      const inRange = (!fromDate || dateKey >= fromDate) && (!toDate || dateKey <= toDate)
-      const selectedByRule =
-        mode === 'recurring'
-          ? selectedWeekdays.includes(date.getDay())
-          : customDates.includes(dateKey)
-      const isSelected = inRange && selectedByRule && !removedDates.includes(dateKey)
-      const isConflicted =
-        isSelected && CONFLICT_DATES.includes(dateKey) && !compensatedDates.includes(dateKey)
-
-      cells.push({ dateKey, day, isSelected, isConflicted })
+      const dateKey = toDateKey(new Date(year, month, day))
+      const daySessions = sessionsByDate[dateKey] || []
+      cells.push({
+        dateKey,
+        day,
+        sessions: daySessions,
+        isSelected: daySessions.length > 0 || (mode === 'custom' && customDates.includes(dateKey)),
+        isConflicted: daySessions.some((session) => session.conflict),
+      })
     }
-
     return cells
-  }, [
-    monthStart,
-    fromDate,
-    toDate,
-    mode,
-    selectedWeekdays,
-    customDates,
-    removedDates,
-    compensatedDates,
-  ])
-
-  const selectedSessions = calendarDays.filter((day) => day?.isSelected)
-  const conflictedSessions = selectedSessions.filter((day) => day.isConflicted)
-  const validSessions = selectedSessions.length - conflictedSessions.length
-  const durationMinutes = (() => {
-    const [startHour, startMinute] = startTime.split(':').map(Number)
-    const [endHour, endMinute] = endTime.split(':').map(Number)
-    return endHour * 60 + endMinute - (startHour * 60 + startMinute)
-  })()
-  const slotsPerSession = durationMinutes > 0 ? Math.ceil(durationMinutes / 30) : 0
-  const totalPrice = validSessions * slotsPerSession * SLOT_PRICE
-  const shortTime = `${Number(startTime.slice(0, 2))}–${Number(endTime.slice(0, 2))}h`
+  }, [viewMonth, sessionsByDate, mode, customDates])
 
   const toggleWeekday = (weekday) => {
     setSelectedWeekdays((current) =>
-      current.includes(weekday)
-        ? current.filter((day) => day !== weekday)
-        : [...current, weekday]
+      current.includes(weekday) ? current.filter((day) => day !== weekday) : [...current, weekday]
     )
-    setRemovedDates([])
     setNotice('')
   }
 
   const toggleCustomDate = (dateKey) => {
     if (mode !== 'custom') return
     setCustomDates((current) =>
-      current.includes(dateKey)
-        ? current.filter((date) => date !== dateKey)
-        : [...current, dateKey]
+      current.includes(dateKey) ? current.filter((date) => date !== dateKey) : [...current, dateKey]
     )
-    setRemovedDates((current) => current.filter((date) => date !== dateKey))
     setNotice('')
   }
 
+  const originalKeyOf = (session) => {
+    // Buổi đang hiển thị có thể là slot bù: tìm lại buổi gốc cùng ngày trong bản xem trước ban đầu
+    const replaced = Object.entries(replacements).find(
+      ([key, value]) =>
+        key.startsWith(`${session.date}|`) &&
+        value.courtId === session.courtId &&
+        value.startMinute === session.startMinute
+    )
+    return replaced ? replaced[0] : sessionKey(session)
+  }
+
   const removeAllConflicts = () => {
-    setRemovedDates((current) => [
-      ...new Set([...current, ...conflictedSessions.map((day) => day.dateKey)]),
-    ])
-    setNotice(`Removed ${conflictedSessions.length} conflicting sessions from your schedule.`)
+    const keys = conflictedSessions.map(originalKeyOf)
+    setRemovedKeys((current) => [...new Set([...current, ...keys])])
+    setNotice(`Removed ${keys.length} conflicting sessions from your schedule.`)
   }
 
   const applyCompensation = () => {
-    setCompensatedDates((current) => [
-      ...new Set([...current, ...conflictedSessions.map((day) => day.dateKey)]),
-    ])
+    const replacementStart = toMinutes(compensationTime)
+    const next = { ...replacements }
+    conflictedSessions.forEach((session) => {
+      const duration = session.endMinute - session.startMinute
+      next[originalKeyOf(session)] = {
+        courtId: Number(compensationCourtId),
+        startMinute: replacementStart,
+        endMinute: replacementStart + duration,
+      }
+    })
+    setReplacements(next)
     setShowCompensation(false)
-    setNotice(
-      `Replacement slot ${compensationCourt} · ${compensationTime} selected for ${conflictedSessions.length} sessions.`
-    )
+    setNotice(`Replacement slot selected for ${conflictedSessions.length} sessions.`)
   }
 
-  const confirmSchedule = () => {
-    if (durationMinutes <= 0) {
-      setNotice('The end time must be after the start time.')
-    } else if (conflictedSessions.length > 0) {
-      setNotice('Please resolve all conflicting sessions before confirming your schedule.')
-    } else if (validSessions < 2) {
-      setNotice('A booking package must include at least 2 valid sessions.')
-    } else {
-      setNotice('Your schedule preview is ready. This is mock data; no booking has been submitted.')
+  const confirmSchedule = async () => {
+    setNotice('')
+    if (!finalRequest || !preview) {
+      setNotice(previewError || 'Please choose a court, time and sessions first.')
+      return
     }
+    if (conflictedSessions.length > 0) {
+      setNotice('Please resolve all conflicting sessions before confirming your schedule.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      // UC15 #11: giữ chỗ gói 15 phút (P27) rồi sang thanh toán UC18
+      const res = await createBookingPackageApi(finalRequest)
+      sessionStorage.setItem('active_holding_booking', JSON.stringify(res.data))
+      navigate('/booking/payment')
+    } catch (err) {
+      setNotice(apiErrorMessage(err, 'Could not confirm the package.'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const shiftMonth = (offset) =>
+    setViewMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1))
+
+  if (!facilityId) {
+    return (
+      <div className={styles.pageWrapper}>
+        <main className={styles.mainContainer}>
+          <h1 className={styles.pageTitle}>Multi-Session Booking</h1>
+          <p>Please open multi-session booking from a facility page.</p>
+          <Link to="/">‹ Find courts</Link>
+        </main>
+      </div>
+    )
   }
 
   return (
@@ -164,15 +324,13 @@ export default function MultiSessionBookingPage() {
             <Link to="/open-matches">Open Matches</Link>
             <Link to="/my-bookings">My Bookings</Link>
           </nav>
-          <div className={styles.userProfile}>
-            <span className={styles.avatar}>MA</span>
-            <span className={styles.userName}>Minh Anh</span>
-          </div>
         </div>
       </header>
 
       <main className={styles.mainContainer}>
-        <h1 className={styles.pageTitle}>Multi-Session Booking · {facilityName}</h1>
+        <h1 className={styles.pageTitle}>
+          Multi-Session Booking{facilityName || preview?.locationName ? ` · ${facilityName || preview?.locationName}` : ''}
+        </h1>
 
         <div className={styles.layoutGrid}>
           <aside className={styles.configCard}>
@@ -205,19 +363,43 @@ export default function MultiSessionBookingPage() {
 
             <div className={styles.fieldGroup}>
               <label className={styles.fieldLabel} htmlFor="court">Court</label>
-              <select id="court" className={styles.selectInput} value={court} onChange={(event) => setCourt(event.target.value)}>
-                {COURTS.map((option) => <option key={option}>{option}</option>)}
+              <select
+                id="court"
+                className={styles.selectInput}
+                value={courtId ?? ''}
+                onChange={(event) => setCourtId(Number(event.target.value))}
+              >
+                {courts.map((court) => (
+                  <option key={court.court_id} value={court.court_id}>{court.court_name}</option>
+                ))}
               </select>
             </div>
 
             <div className={styles.twoColRow}>
               <div className={styles.fieldGroup}>
                 <label className={styles.fieldLabel} htmlFor="from-date">From date</label>
-                <input id="from-date" type="date" className={styles.dateInput} value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+                <input
+                  id="from-date"
+                  type="date"
+                  className={styles.dateInput}
+                  min={today}
+                  value={fromDate}
+                  onChange={(event) => {
+                    setFromDate(event.target.value)
+                    if (event.target.value) setViewMonth(parseDateKey(event.target.value))
+                  }}
+                />
               </div>
               <div className={styles.fieldGroup}>
                 <label className={styles.fieldLabel} htmlFor="to-date">To date</label>
-                <input id="to-date" type="date" className={styles.dateInput} min={fromDate} value={toDate} onChange={(event) => setToDate(event.target.value)} />
+                <input
+                  id="to-date"
+                  type="date"
+                  className={styles.dateInput}
+                  min={fromDate}
+                  value={toDate}
+                  onChange={(event) => setToDate(event.target.value)}
+                />
               </div>
             </div>
 
@@ -259,30 +441,38 @@ export default function MultiSessionBookingPage() {
 
             <div className={styles.fieldGroup}>
               <label className={styles.fieldLabel} htmlFor="book-for">Book for</label>
-              <select id="book-for" className={styles.selectInput} value={bookFor} onChange={(event) => setBookFor(event.target.value)}>
-                <option>Personal</option>
-                <option>Team</option>
+              <select id="book-for" className={styles.selectInput} value={teamId} onChange={(event) => setTeamId(event.target.value)}>
+                <option value="">Personal</option>
+                {teams.map((team) => (
+                  <option key={team.team_id} value={team.team_id}>{team.team_name}</option>
+                ))}
               </select>
             </div>
 
             <p className={styles.ruleHintText}>
-              Recurring: minimum 1 session/week, from 1 to 3 months.
+              Recurring: minimum 1 session/week, from 1 to 3 months. All sessions must be within 3 months from today.
             </p>
           </aside>
 
           <div className={styles.rightColumn}>
-            <div className={styles.promoBanner}>
-              <strong>Batch booking offer: packages from 1,000,000 VND get a 100,000 VND voucher</strong>
-              <span>Your package qualifies for this reward</span>
-            </div>
+            {preview?.batchOffer && (
+              <div className={styles.promoBanner}>
+                <strong>{preview.batchOffer.name}</strong>
+                <span>{preview.batchOffer.message}</span>
+              </div>
+            )}
 
-            <section className={styles.calendarCard} aria-label="November 2026 booking calendar">
+            <section className={styles.calendarCard} aria-label="Booking calendar">
               <div className={styles.calendarHeader}>
-                <h2 className={styles.monthTitle}>November 2026</h2>
+                <h2 className={styles.monthTitle}>
+                  <button type="button" className={styles.weekdayBtn} onClick={() => shiftMonth(-1)} aria-label="Previous month">‹</button>
+                  {' '}{MONTH_NAMES[viewMonth.getMonth()]} {viewMonth.getFullYear()}{' '}
+                  <button type="button" className={styles.weekdayBtn} onClick={() => shiftMonth(1)} aria-label="Next month">›</button>
+                </h2>
                 <div className={styles.legendGroup}>
                   <span className={styles.legendItem}>
                     <i className={styles.dotSelected} />
-                    Selected · {selectedSessions.length}
+                    Sessions · {preview?.totalSessions ?? 0}
                   </span>
                   <span className={styles.legendItem}>
                     <i className={styles.dotConflicted} />
@@ -302,6 +492,7 @@ export default function MultiSessionBookingPage() {
                     day.isSelected && !day.isConflicted ? styles.dayCellSelected : '',
                     day.isConflicted ? styles.dayCellConflicted : '',
                   ].filter(Boolean).join(' ')
+                  const first = day.sessions[0]
 
                   return (
                     <button
@@ -316,7 +507,11 @@ export default function MultiSessionBookingPage() {
                       <strong className={styles.dayNumber}>{day.day}</strong>
                       {day.isConflicted
                         ? <span className={styles.conflictTag}>Conflict</span>
-                        : day.isSelected && <span className={styles.timeSubTag}>{shortTime}</span>}
+                        : first && (
+                          <span className={styles.timeSubTag}>
+                            {first.startTime}–{first.endTime}{day.sessions.length > 1 ? ` +${day.sessions.length - 1}` : ''}
+                          </span>
+                        )}
                     </button>
                   )
                 })}
@@ -325,10 +520,19 @@ export default function MultiSessionBookingPage() {
               {conflictedSessions.length > 0 && (
                 <div className={styles.conflictResolutionBox} role="status">
                   <strong className={styles.conflictBoxTitle}>
-                    {conflictedSessions.length} conflicting sessions: {conflictedSessions.map((day) => `${String(day.day).padStart(2, '0')}/11`).join(' and ')} ({startTime} – {endTime} already booked)
+                    {preview?.summary} {conflictedSessions
+                      .map((session) => `${session.date.slice(8)}/${session.date.slice(5, 7)} ${session.startTime} ${session.courtName} (${CONFLICT_LABELS[session.conflict] || session.conflict})`)
+                      .join(', ')}
                   </strong>
                   <div className={styles.conflictActionRow}>
-                    <button type="button" className={styles.compensateBtn} onClick={() => setShowCompensation(true)}>
+                    <button
+                      type="button"
+                      className={styles.compensateBtn}
+                      onClick={() => {
+                        setCompensationCourtId(courtId)
+                        setShowCompensation(true)
+                      }}
+                    >
                       Choose replacement slot
                     </button>
                     <button type="button" className={styles.removeConflictsBtn} onClick={removeAllConflicts}>
@@ -337,21 +541,22 @@ export default function MultiSessionBookingPage() {
                   </div>
                 </div>
               )}
+              {previewError && <p className={styles.notice} role="alert">{previewError}</p>}
               {notice && <p className={styles.notice} role="status">{notice}</p>}
             </section>
 
             <section className={styles.summaryFooterCard}>
               <div className={styles.summaryLeft}>
                 <span className={styles.formulaText}>
-                  {validSessions} valid sessions × {slotsPerSession} slots × {formatCurrency(SLOT_PRICE)}
+                  {preview ? `${preview.totalSessions - preview.conflictSessions} valid sessions · list price ${formatCurrency(preview.listAmount)}` : 'No sessions yet'}
                 </span>
-                <strong className={styles.totalPriceText}>{formatCurrency(totalPrice)}</strong>
+                <strong className={styles.totalPriceText}>{formatCurrency(preview?.finalAmount)}</strong>
                 <span className={styles.holdNoteText}>
                   One-time payment. After confirming, your package is held for 15 minutes.
                 </span>
               </div>
-              <button type="button" className={styles.confirmScheduleBtn} onClick={confirmSchedule}>
-                Confirm Schedule
+              <button type="button" className={styles.confirmScheduleBtn} disabled={submitting} onClick={confirmSchedule}>
+                {submitting ? 'Holding package...' : 'Confirm Schedule'}
               </button>
             </section>
           </div>
@@ -364,12 +569,19 @@ export default function MultiSessionBookingPage() {
             <button type="button" className={styles.modalClose} aria-label="Close" onClick={() => setShowCompensation(false)}>×</button>
             <h2 id="modal-title" className={styles.modalTitle}>Choose replacement slot</h2>
             <p className={styles.modalSub}>
-              Select an alternative court and time for {conflictedSessions.length} conflicting sessions.
+              Select an alternative court and start time for {conflictedSessions.length} conflicting sessions (same duration, same day).
             </p>
             <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="replacement-court">Alternative court</label>
-              <select id="replacement-court" className={styles.selectInput} value={compensationCourt} onChange={(event) => setCompensationCourt(event.target.value)}>
-                {COURTS.filter((option) => option !== court).map((option) => <option key={option}>{option}</option>)}
+              <label className={styles.fieldLabel} htmlFor="replacement-court">Court</label>
+              <select
+                id="replacement-court"
+                className={styles.selectInput}
+                value={compensationCourtId ?? ''}
+                onChange={(event) => setCompensationCourtId(Number(event.target.value))}
+              >
+                {courts.map((court) => (
+                  <option key={court.court_id} value={court.court_id}>{court.court_name}</option>
+                ))}
               </select>
             </div>
             <div className={styles.fieldGroup}>

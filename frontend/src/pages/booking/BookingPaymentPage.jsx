@@ -1,7 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { uploadPaymentProofApi } from '../../api/bookingApi';
+import { apiErrorMessage, fetchProtectedImage } from '../../api';
 import styles from './BookingPaymentPage.module.css';
+
+// Mở trang khi chưa có booking nào đang chờ thanh toán
+const NO_BOOKING = {
+  booking_id: null,
+  booking_code: '',
+  status: 'none',
+  hold_expires_at: null,
+  pricing_summary: { final_amount: 0 },
+  bank_info: {},
+};
 
 // DR21: Dung lượng ảnh tối đa 5MB & chỉ nhận JPG, PNG
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -29,39 +40,40 @@ export default function BookingPaymentPage() {
       const saved = sessionStorage.getItem('active_holding_booking');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed?.booking_code && parsed?.hold_expires_at) return parsed;
+        if (parsed?.booking_id) return parsed;
       }
     } catch {
-      // Fallback nếu JSON lỗi
+      // JSON lỗi thì coi như chưa có booking
     }
-
-    // Khởi tạo mốc giữ chỗ 5 phút cố định (P02 = 5 phút) nếu mở trực tiếp trang để test
-    const fallbackBooking = {
-      booking_id: 1005,
-      booking_code: 'BK-24102',
-      status: 'holding',
-      hold_expires_at: new Date(Date.now() + 4 * 60 * 1000 + 12 * 1000).toISOString(), // 04:12 theo Mockup
-      resubmit_attempts_left: 3, // P06 = 3 lần
-      pricing_summary: {
-        final_amount: 80000,
-      },
-      bank_info: {
-        bank_name: 'Vietcombank',
-        bank_account_number: '0011 0023 4567',
-        bank_account_holder: 'NGUYEN VAN HUNG',
-        qr_image_url: null,
-        transfer_content: 'BK24102 0987654321',
-      },
-    };
-    sessionStorage.setItem('active_holding_booking', JSON.stringify(fallbackBooking));
-    return fallbackBooking;
+    return NO_BOOKING;
   });
 
   // State đếm ngược (BR03 / P02 / MSG33)
   const [remainingSeconds, setRemainingSeconds] = useState(() => {
+    if (!bookingData.hold_expires_at) return 0;
     const expiresMs = new Date(bookingData.hold_expires_at).getTime();
     return Math.max(0, Math.floor((expiresMs - Date.now()) / 1000));
   });
+
+  // FR55: ảnh QR của địa điểm cần JWT nên tải thành object URL; không có QR thì giữ hình minh họa
+  const [qrObjectUrl, setQrObjectUrl] = useState(null);
+  const qrImageUrl = bookingData.bank_info?.qr_image_url;
+  useEffect(() => {
+    if (!qrImageUrl) return undefined;
+    let objectUrl = null;
+    let cancelled = false;
+    fetchProtectedImage(qrImageUrl)
+      .then((url) => {
+        objectUrl = url;
+        if (cancelled) URL.revokeObjectURL(url);
+        else setQrObjectUrl(url);
+      })
+      .catch(() => setQrObjectUrl(null));
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [qrImageUrl]);
 
   // State chọn file ảnh chứng từ (DR21 / MSG106)
   const [selectedFile, setSelectedFile] = useState(null);
@@ -72,7 +84,7 @@ export default function BookingPaymentPage() {
 
   // BR03: Đồng hồ đếm ngược theo mốc thời gian thực hold_expires_at
   useEffect(() => {
-    if (bookingData.status === 'awaiting_confirmation') return undefined;
+    if (bookingData.status === 'awaiting_confirmation' || !bookingData.hold_expires_at) return undefined;
 
     const updateTimer = () => {
       const expiresMs = new Date(bookingData.hold_expires_at).getTime();
@@ -154,6 +166,15 @@ export default function BookingPaymentPage() {
 
   // FR55 / D145: Tải mã QR về máy (Đã vá lỗi thiếu xmlns của SVG)
   const handleDownloadQr = () => {
+    if (qrObjectUrl) {
+      const link = document.createElement('a');
+      link.href = qrObjectUrl;
+      link.download = `QR_${bookingData.booking_code}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
     const svgElement = document.getElementById('bms-vietqr-svg');
     if (!svgElement) return;
     const serializer = new XMLSerializer();
@@ -191,11 +212,7 @@ export default function BookingPaymentPage() {
 
     setSubmitting(true);
     try {
-      const res = await uploadPaymentProofApi({
-        bookingId: bookingData.booking_id,
-        file: selectedFile,
-        resubmitAttemptsLeft: bookingData.resubmit_attempts_left ?? 3,
-      });
+      const res = await uploadPaymentProofApi({ context: bookingData, file: selectedFile });
 
       if (res?.success) {
         // BR03 / OI02: Chuyển sang awaiting_confirmation (Khóa slot an toàn, dừng đếm ngược)
@@ -212,12 +229,7 @@ export default function BookingPaymentPage() {
         );
       }
     } catch (err) {
-      const message = err.response?.data?.message;
-      setErrorMessage(
-        message && message !== 'No message available'
-          ? message
-          : 'Không thể tải ảnh lên. Vui lòng kiểm tra lại.'
-      );
+      setErrorMessage(apiErrorMessage(err, 'Không thể tải ảnh lên. Vui lòng kiểm tra lại.'));
     } finally {
       setSubmitting(false);
     }
@@ -225,8 +237,20 @@ export default function BookingPaymentPage() {
 
   const isExpired = remainingSeconds <= 0 && bookingData.status !== 'awaiting_confirmation';
   const isConfirmedWait = bookingData.status === 'awaiting_confirmation';
-  const finalAmount = bookingData.pricing_summary?.final_amount || 80000;
+  const finalAmount = bookingData.pricing_summary?.final_amount || 0;
   const bankInfo = bookingData.bank_info || {};
+
+  if (!bookingData.booking_id) {
+    return (
+      <div className={styles.pageWrapper}>
+        <main className={styles.mainContainer}>
+          <h1 className={styles.pageTitle}>Payment</h1>
+          <p>No booking is waiting for payment.</p>
+          <Link to="/my-bookings">‹ My Bookings</Link>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.pageWrapper}>
@@ -301,6 +325,9 @@ export default function BookingPaymentPage() {
             </strong>
 
             <div className={styles.qrBox}>
+              {qrObjectUrl ? (
+                <img src={qrObjectUrl} alt="Facility QR code" className={styles.qrSvg} />
+              ) : (
               <svg
                 id="bms-vietqr-svg"
                 xmlns="http://www.w3.org/2000/svg"
@@ -338,6 +365,7 @@ export default function BookingPaymentPage() {
                 <rect x="136" y="166" width="16" height="14" fill="#0b172a" />
                 <rect x="164" y="144" width="16" height="24" fill="#0b172a" />
               </svg>
+              )}
             </div>
 
             <button type="button" className={styles.saveQrBtn} onClick={handleDownloadQr}>
@@ -350,25 +378,25 @@ export default function BookingPaymentPage() {
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Bank</span>
                 <strong className={styles.bankValue}>
-                  {bankInfo.bank_name || 'Vietcombank'}
+                  {bankInfo.bank_name || '—'}
                 </strong>
               </div>
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Account number</span>
                 <strong className={styles.bankValue}>
-                  {bankInfo.bank_account_number || '0011 0023 4567'}
+                  {bankInfo.bank_account_number || '—'}
                 </strong>
               </div>
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Account holder</span>
                 <strong className={styles.bankValue}>
-                  {bankInfo.bank_account_holder || 'NGUYEN VAN HUNG'}
+                  {bankInfo.bank_account_holder || '—'}
                 </strong>
               </div>
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Transfer content</span>
                 <strong className={styles.bankValue}>
-                  {bankInfo.transfer_content || `${bookingData.booking_code} 0987654321`}
+                  {bankInfo.transfer_content || bookingData.booking_code}
                 </strong>
               </div>
             </div>

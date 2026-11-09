@@ -5,26 +5,19 @@ import {
   getMyOwnedTeams,
   applyVoucherApi,
   createBookingApi,
+  previewBookingSummaryApi,
+  toMinutes,
+  toTimeLabel,
 } from '../../api/bookingApi';
+import { apiErrorMessage } from '../../api';
 import styles from './BookingSummaryPage.module.css';
 
-// FIX: Cinderella Bug (Chặn lỗi 24:00:00 của SQL Server)
-function addThirtyMinutes(timeStr) {
-  const [hh, mm] = timeStr.split(':').map(Number);
-  const totalMins = hh * 60 + mm + 30;
-
-  // Nếu chạm mốc 24:00 (1440 phút), ép về 23:59 để DB không bị crash
-  if (totalMins >= 1440) return '23:59';
-
-  const nextH = String(Math.floor(totalMins / 60)).padStart(2, '0');
-  const nextM = String(totalMins % 60).padStart(2, '0');
-  return `${nextH}:${nextM}`;
-}
+const EMPTY_CONTEXT = { facility: null, playDate: '', selectedSlots: [] };
 
 export default function BookingSummaryPage() {
   const navigate = useNavigate();
 
-  // 1. Load dữ liệu các slot đã chọn từ UC13 (hoặc khởi tạo chuẩn theo Mockup để dễ test)
+  // 1. Các slot đã chọn ở lịch sân (UC13), lưu trong sessionStorage
   const [bookingContext] = useState(() => {
     try {
       const saved = sessionStorage.getItem('pending_booking_selection');
@@ -33,42 +26,28 @@ export default function BookingSummaryPage() {
         if (parsed?.selectedSlots?.length > 0) return parsed;
       }
     } catch {
-      // Fallback nếu JSON lỗi
+      // JSON lỗi thì coi như chưa chọn slot
     }
-    return {
-      facility: {
-        facility_id: 1,
-        facility_name: 'Smash Arena',
-        address: '12 Tran Thai Tong, Cau Giay, Hanoi',
-      },
-      playDate: '2026-10-24',
-      selectedSlots: [
-        { courtId: 2, courtName: 'Court 2', timeIdx: 4, time: '19:00', price: 80000 },
-        { courtId: 2, courtName: 'Court 2', timeIdx: 5, time: '19:30', price: 80000 },
-      ],
-    };
+    return EMPTY_CONTEXT;
   });
+  const hasSelection = bookingContext.selectedSlots.length > 0;
 
-  // 2. Load thông tin Player đăng nhập (DR24, DR01)
+  // 2. Thông tin Player đăng nhập (FR38: họ tên, số điện thoại)
   const [playerInfo] = useState(() => {
     try {
       const savedUser = localStorage.getItem('bms_user_info');
       if (savedUser) {
         const parsed = JSON.parse(savedUser);
         return {
-          full_name: parsed.full_name || 'Nguyen Minh Anh',
-          phone_number: parsed.phone_number || '0987 654 321',
-          email: parsed.email || 'minhanh@gmail.com',
+          full_name: parsed.full_name || '',
+          phone_number: parsed.phone_number || '',
+          email: parsed.email || '',
         };
       }
     } catch {
-      // Fallback
+      // Chưa đăng nhập hoặc dữ liệu lỗi
     }
-    return {
-      full_name: 'Nguyen Minh Anh',
-      phone_number: '0987 654 321',
-      email: 'minhanh@gmail.com',
-    };
+    return { full_name: '', phone_number: '', email: '' };
   });
 
   // State Đội bóng (DR03 / BR09)
@@ -85,26 +64,31 @@ export default function BookingSummaryPage() {
   const [voucherLoading, setVoucherLoading] = useState(false);
 
   // State Điểm thưởng tại cơ sở (FR89, P10, P11, P13, BR15, BR41)
-  const [availablePoints, setAvailablePoints] = useState(120);
-  const [usePoints, setUsePoints] = useState(true);
+  const [availablePoints, setAvailablePoints] = useState(0);
+  const [usePoints, setUsePoints] = useState(false);
 
   // State thông báo khi chốt đơn
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [createdBooking, setCreatedBooking] = useState(null);
 
+  // Số tiền backend tính (POST /api/bookings/summary); null khi chưa tính xong hoặc lỗi
+  const [serverPricing, setServerPricing] = useState(null);
+  const [pricingError, setPricingError] = useState('');
+
   useEffect(() => {
+    const facilityId = bookingContext.facility?.facility_id;
+    if (!facilityId) return;
     const fetchInitialData = async () => {
-      const facilityId = bookingContext.facility?.facility_id || 1;
-      const [pointsRes, teamsRes] = await Promise.all([
-        getMyPointsAtFacility(facilityId),
-        getMyOwnedTeams(),
-      ]);
-      if (pointsRes?.success) {
+      try {
+        const [pointsRes, teamsRes] = await Promise.all([
+          getMyPointsAtFacility(facilityId),
+          getMyOwnedTeams(),
+        ]);
         setAvailablePoints(pointsRes.data.available_points);
-      }
-      if (teamsRes?.success) {
         setOwnedTeams(teamsRes.data);
+      } catch (err) {
+        setPricingError(apiErrorMessage(err, 'Không tải được điểm và đội của bạn.'));
       }
     };
     fetchInitialData();
@@ -114,12 +98,13 @@ export default function BookingSummaryPage() {
   const slotSummary = useMemo(() => {
     const slots = bookingContext.selectedSlots || [];
     const totalSlots = slots.length;
-    const unitPrice = slots[0]?.price || 80000;
+    const unitPrice = slots[0]?.price || 0;
     const totalListPrice = slots.reduce((sum, s) => sum + s.price, 0);
-    const courtId = slots[0]?.courtId || 2;
-    const courtName = slots[0]?.courtName || 'Court 2';
-    const startTime = slots[0]?.time || '19:00';
-    const endTime = slots.length > 0 ? addThirtyMinutes(slots[slots.length - 1].time) : '20:00';
+    const courtId = slots[0]?.courtId;
+    const courtName = slots[0]?.courtName || '';
+    const startTime = slots[0]?.time || '';
+    // Giờ kết thúc = slot cuối + 30 phút; slot 23:30 kết thúc lúc 24:00 (endMinute 1440)
+    const endTime = slots.length > 0 ? toTimeLabel(toMinutes(slots[slots.length - 1].time) + 30) : '';
 
     return {
       totalSlots,
@@ -127,49 +112,77 @@ export default function BookingSummaryPage() {
       totalListPrice,
       courtId,
       courtName,
+      startTime,
+      endTime,
       timeRangeText: `${startTime} – ${endTime} (${totalSlots} slot)`,
     };
   }, [bookingContext.selectedSlots]);
 
-  // Thuật toán tính thứ tự trừ tiền (Discount Calculation Order - BR15, BR41, P10, P11, P13):
-  // Giá niêm yết -> Trừ Voucher -> Trừ Điểm thưởng (tối đa 50% phần còn lại) -> Thực trả (> 0đ)
-  const pricingSummary = useMemo(() => {
-    const listPrice = slotSummary.totalListPrice;
+  // Lựa chọn gửi backend: một sân, các slot liền nhau (BR01)
+  const selection = useMemo(
+    () => ({
+      courtId: slotSummary.courtId,
+      date: bookingContext.playDate,
+      startTime: slotSummary.startTime,
+      endTime: slotSummary.endTime,
+    }),
+    [slotSummary, bookingContext.playDate]
+  );
+
+  // Thứ tự trừ tiền (BR41, D161): giá niêm yết → voucher → điểm, điểm tối đa 50% số còn lại sau voucher
+  // (P10: 1 điểm = 500 đồng). Ở đây chỉ chọn số điểm dùng tối đa; số tiền hiển thị lấy từ backend.
+  const pointsToUse = useMemo(() => {
+    if (!usePoints) return 0;
     const voucherDiscount = appliedVoucher ? appliedVoucher.discount_amount : 0;
-    const remainingAfterVoucher = Math.max(0, listPrice - voucherDiscount);
+    const remainingAfterVoucher = Math.max(0, slotSummary.totalListPrice - voucherDiscount);
+    return Math.min(availablePoints, Math.floor((remainingAfterVoucher * 0.5) / 500));
+  }, [usePoints, appliedVoucher, availablePoints, slotSummary.totalListPrice]);
 
-    let pointsUsed = 0;
-    let pointsDiscount = 0;
-
-    if (usePoints && availablePoints >= 2 && remainingAfterVoucher > 1000) {
-      // P13 / BR41: Tối đa 50% số tiền còn lại sau khi trừ Voucher
-      const maxAllowedDiscountByRatio = Math.floor(remainingAfterVoucher * 0.5);
-      // BR15: Không có booking 0 đồng (giữ lại ít nhất 1.000đ thực trả)
-      const maxAllowedDiscountByNonZero = Math.max(0, remainingAfterVoucher - 1000);
-      const maxDiscountVnd = Math.min(maxAllowedDiscountByRatio, maxAllowedDiscountByNonZero);
-
-      // Quy đổi sang số điểm tối đa được phép dùng (P10: 1 điểm = 500đ)
-      const maxPointsByRule = Math.floor(maxDiscountVnd / 500);
-      const candidatePoints = Math.min(availablePoints, maxPointsByRule);
-
-      // P11 / BR15: Mỗi lần dùng điểm phải giảm tối thiểu 1.000đ (tức >= 2 điểm)
-      if (candidatePoints >= 2) {
-        pointsUsed = candidatePoints;
-        pointsDiscount = pointsUsed * 500;
-      }
-    }
-
-    const finalAmount = Math.max(0, remainingAfterVoucher - pointsDiscount);
-
-    return {
-      listPrice,
-      voucherDiscount,
-      remainingAfterVoucher,
-      pointsUsed,
-      pointsDiscount,
-      finalAmount,
+  // UC14 #3–#5: backend tính lại tiền mỗi khi đổi voucher hoặc điểm
+  useEffect(() => {
+    if (!hasSelection) return undefined;
+    let cancelled = false;
+    previewBookingSummaryApi({
+      selection,
+      voucherCode: appliedVoucher?.voucher_code,
+      pointsToUse,
+    })
+      .then((res) => {
+        if (cancelled) return;
+        setServerPricing(res.data);
+        setPricingError('');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setServerPricing(null);
+        setPricingError(apiErrorMessage(err, 'Không tính được tiền booking.'));
+      });
+    return () => {
+      cancelled = true;
     };
-  }, [slotSummary.totalListPrice, appliedVoucher, usePoints, availablePoints]);
+  }, [hasSelection, selection, appliedVoucher, pointsToUse]);
+
+  const pricingSummary = useMemo(() => {
+    if (serverPricing) {
+      return {
+        listPrice: serverPricing.listAmount,
+        voucherDiscount: serverPricing.voucherDiscount,
+        pointsUsed: pointsToUse,
+        pointsDiscount: serverPricing.pointDiscount,
+        finalAmount: serverPricing.finalAmount,
+      };
+    }
+    return {
+      listPrice: slotSummary.totalListPrice,
+      voucherDiscount: appliedVoucher ? appliedVoucher.discount_amount : 0,
+      pointsUsed: pointsToUse,
+      pointsDiscount: pointsToUse * 500,
+      finalAmount: Math.max(
+        0,
+        slotSummary.totalListPrice - (appliedVoucher ? appliedVoucher.discount_amount : 0) - pointsToUse * 500
+      ),
+    };
+  }, [serverPricing, slotSummary.totalListPrice, appliedVoucher, pointsToUse]);
 
   const formatDate = (dateStr) => {
     const d = new Date(dateStr);
@@ -198,20 +211,13 @@ export default function BookingSummaryPage() {
 
     setVoucherLoading(true);
     try {
-      const res = await applyVoucherApi({
-        facility_id: bookingContext.facility?.facility_id || 1,
-        total_list_price: slotSummary.totalListPrice,
-        voucher_code: voucherInput.trim(),
-      });
+      const res = await applyVoucherApi({ selection, voucher_code: voucherInput.trim() });
       if (res?.success) {
         setAppliedVoucher(res.data);
       }
     } catch (err) {
-      const message = err.response?.data?.message;
       setVoucherError(
-        message && message !== 'No message available'
-          ? message
-          : 'Mã giảm giá không đủ điều kiện hoặc có lỗi xảy ra. Vui lòng kiểm tra lại.'
+        apiErrorMessage(err, 'Mã giảm giá không đủ điều kiện hoặc có lỗi xảy ra. Vui lòng kiểm tra lại.')
       );
     } finally {
       setVoucherLoading(false);
@@ -232,54 +238,44 @@ export default function BookingSummaryPage() {
       return;
     }
 
-    // Format danh sách slot chuẩn "HH:mm:00" cho Backend
-    const formattedSlots = (bookingContext.selectedSlots || []).map((s) => ({
-      start_time: `${s.time}:00`,
-      end_time: `${addThirtyMinutes(s.time)}:00`,
-    }));
-
-    const payload = {
-      facility_id: bookingContext.facility?.facility_id || 1,
-      court_id: slotSummary.courtId,
-      booking_date: bookingContext.playDate,
-      booking_type: 'single',
-      slots: formattedSlots,
-      team_id: selectedTeamId,
-      voucher_code: appliedVoucher ? appliedVoucher.voucher_code : null,
-      points_used: pricingSummary.pointsUsed,
-      guest_note: guestNote.trim() || null,
-      // Các trường hỗ trợ hiển thị Mock Response
-      total_list_price: pricingSummary.listPrice,
-      voucher_discount_amount: pricingSummary.voucherDiscount,
-      final_amount: pricingSummary.finalAmount,
-    };
-
     setSubmitting(true);
     try {
-      const res = await createBookingApi(payload);
+      const res = await createBookingApi({
+        selection,
+        voucherCode: appliedVoucher?.voucher_code,
+        pointsToUse,
+        note: guestNote.trim(),
+        teamId: selectedTeamId,
+      });
       if (res?.success) {
-        // Lưu thông tin giữ chỗ 5 phút (BR03) và VietQR vào sessionStorage cho màn UC18 (Thanh toán)
+        // Dữ liệu giữ chỗ (BR03) và tài khoản nhận cho màn thanh toán UC18
         sessionStorage.setItem('active_holding_booking', JSON.stringify(res.data));
+        sessionStorage.removeItem('pending_booking_selection');
         setCreatedBooking(res.data);
         navigate('/booking/payment');
       }
     } catch (err) {
-      const message = err.response?.data?.message;
-      if (message?.includes('MSG37')) {
-        setSubmitError(
-          'Điểm thưởng của bạn không đủ để thực hiện giao dịch này. Vui lòng tải lại trang để cập nhật số điểm.'
-        );
-      } else {
-        setSubmitError(
-          message && message !== 'No message available'
-            ? message
-            : 'Không thể xác nhận đặt sân. Vui lòng kiểm tra lại thông tin và thử lại.'
-        );
-      }
+      setSubmitError(
+        apiErrorMessage(err, 'Không thể xác nhận đặt sân. Vui lòng kiểm tra lại thông tin và thử lại.')
+      );
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (!hasSelection) {
+    return (
+      <div className={styles.pageWrapper}>
+        <main className={styles.mainContainer}>
+          <h1 className={styles.pageTitle}>Booking Summary</h1>
+          <p>No slots selected. Please choose slots on a court schedule first.</p>
+          <Link to="/" className={styles.backLink}>
+            ‹ Find courts
+          </Link>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.pageWrapper}>
@@ -496,6 +492,8 @@ export default function BookingSummaryPage() {
                   {pricingSummary.finalAmount.toLocaleString('vi-VN')} VND
                 </strong>
               </div>
+
+              {pricingError && !submitError && <p className={styles.errorText}>{pricingError}</p>}
 
               {submitError && (
                 <div style={{

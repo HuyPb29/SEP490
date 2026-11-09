@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { getMyBookingsApi, cancelBookingApi } from '../../api/bookingApi';
+import { getMyBookingsApi, cancelBookingApi, loadPaymentContextForItemApi } from '../../api/bookingApi';
+import { apiErrorMessage } from '../../api';
 import styles from './MyBookingsPage.module.css';
 
 // Phân nhóm 10 trạng thái chính thức theo chuẩn SRS v18 (Sheet Trang_thai)
@@ -38,7 +39,7 @@ export default function MyBookingsPage() {
     setLoading(true);
     setFetchError('');
     try {
-      const res = await getMyBookingsApi({ tab: 'all' });
+      const res = await getMyBookingsApi();
       if (res?.success) {
         // VÁ LỖI HOLDING FLASH: Ép trạng thái expired ngay từ lúc nhận dữ liệu nếu đã quá giờ
         const currentNow = Date.now();
@@ -61,7 +62,7 @@ export default function MyBookingsPage() {
         setFetchError('Could not load your bookings.');
       }
     } catch (err) {
-      setFetchError(err.response?.data?.message || err.message || 'Error loading bookings.');
+      setFetchError(apiErrorMessage(err, 'Error loading bookings.'));
     } finally {
       setLoading(false);
     }
@@ -146,7 +147,7 @@ export default function MyBookingsPage() {
   };
 
   // Điều hướng sang UC18 khi bấm "Continue Payment" (holding) hoặc "Resubmit Receipt" (resubmit_requested)
-  const handleGoToPayment = (booking) => {
+  const handleGoToPayment = async (booking) => {
     setFeedbackBanner('');
 
     // BR34 / P06 / MSG52: Chặn nếu đã hết lượt gửi lại chứng từ
@@ -155,27 +156,14 @@ export default function MyBookingsPage() {
       return;
     }
 
-    const payloadForPayment = {
-      booking_id: booking.booking_id,
-      booking_code: booking.booking_code,
-      status: booking.status,
-      hold_expires_at:
-        booking.hold_expires_at || new Date(Date.now() + 4 * 60 * 1000).toISOString(),
-      resubmit_attempts_left: booking.resubmit_attempts_left ?? 3,
-      pricing_summary: {
-        final_amount: booking.final_amount,
-      },
-      bank_info: booking.bank_info || {
-        bank_name: 'Vietcombank',
-        bank_account_number: '0011 0023 4567',
-        bank_account_holder: 'NGUYEN VAN HUNG',
-        qr_image_url: null,
-        transfer_content: `${booking.booking_code} 0987654321`,
-      },
-    };
-
-    sessionStorage.setItem('active_holding_booking', JSON.stringify(payloadForPayment));
-    navigate('/booking/payment');
+    try {
+      // UC17 #5: lấy số tiền, tài khoản nhận, hạn giữ chỗ thật rồi chuyển sang UC18
+      const payloadForPayment = await loadPaymentContextForItemApi(booking);
+      sessionStorage.setItem('active_holding_booking', JSON.stringify(payloadForPayment));
+      navigate('/booking/payment');
+    } catch (err) {
+      setFeedbackBanner(apiErrorMessage(err, 'Could not open the payment page.'));
+    }
   };
 
   // BR07 / MSG66: Xác nhận hủy booking (Không hoàn tiền, không trả lại điểm & voucher)
@@ -207,7 +195,7 @@ export default function MyBookingsPage() {
         setCancelTarget(null);
       }
     } catch (err) {
-      setFeedbackBanner(err.response?.data?.message || err.message || 'Could not cancel booking.');
+      setFeedbackBanner(apiErrorMessage(err, 'Could not cancel booking.'));
     } finally {
       setCancelling(false);
     }
@@ -443,7 +431,7 @@ export default function MyBookingsPage() {
                           className={styles.outlineActionBtn}
                           onClick={() =>
                             setFeedbackBanner(
-                              `Viewing recurring schedule for package ${item.booking_code} (24 sessions).`
+                              `Package ${item.booking_code}: ${item.court_name}.`
                             )
                           }
                         >
