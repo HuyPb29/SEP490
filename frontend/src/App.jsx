@@ -26,13 +26,10 @@ export default function App() {
 
 function AppContent() {
   const location = useLocation()
-  const isMultiSessionBooking =
-    location.pathname === '/booking/multi' || location.pathname.endsWith('/package-booking')
+  // UC15 (đặt nhiều buổi) và UC19 (xác nhận thanh toán) đã nối backend thật
   const isFrontendMockPage =
-    isMultiSessionBooking ||
     location.pathname === '/open-matches' ||
     location.pathname === '/staff/dashboard' ||
-    location.pathname === '/staff/confirm-payments' ||
     location.pathname === '/owner/reports' ||
     location.pathname === '/owner/courts-pricing' ||
     location.pathname === '/admin/facilities'
@@ -68,7 +65,7 @@ function AppContent() {
 
         {/* UC34: Staff dashboard mock preview */}
         <Route path="/staff/dashboard" element={<StaffDashboardPage />} />
-        {/* UC19: Staff payment confirmation mock preview */}
+        {/* UC19: Staff xác nhận thanh toán (GET/POST /api/staff/payments) */}
         <Route path="/staff/confirm-payments" element={<StaffConfirmPaymentPage />} />
         {/* UC35: Owner operational and revenue reports mock preview */}
         <Route path="/owner/reports" element={<OwnerReportPage />} />

@@ -1,188 +1,137 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import {
+  confirmPaymentApi,
+  listPendingPaymentsApi,
+  rejectPaymentApi,
+  requestResubmissionApi,
+} from '../../api/bookingApi'
+import { apiErrorMessage, fetchProtectedImage } from '../../api'
 import styles from './StaffConfirmPaymentPage.module.css'
 
-const initialTransactions = [
-  {
-    id: 'BK-24087',
-    customer: 'Le Hoang',
-    court: 'Court 2',
-    playDate: '24/10',
-    playTime: '19:00 – 20:00',
-    listTime: '19:00',
-    phone: '0903 111 222',
-    transferContent: 'BK24087 0903111222',
-    amountDue: 160000,
-    actualAmount: 160000,
-    waiting: '17 mins',
-    overdue: true,
-    attempt: 1,
-    resubmissionsLeft: 2,
-    note: 'Please prepare 1 extra tube of shuttlecocks.',
-  },
-  {
-    id: 'BK-24095',
-    customer: 'Ngoc Mai',
-    court: 'Court 5',
-    playDate: '24/10',
-    playTime: '19:00 – 21:00',
-    listTime: '19:00',
-    phone: '0908 222 333',
-    transferContent: 'BK24095 0908222333',
-    amountDue: 320000,
-    actualAmount: 320000,
-    waiting: '6 mins',
-    overdue: false,
-    attempt: 1,
-    resubmissionsLeft: 2,
-    note: '',
-  },
-  {
-    id: 'BK-24102',
-    customer: 'Minh Anh',
-    court: 'Court 2',
-    playDate: '25/10',
-    playTime: '19:00 – 20:00',
-    listTime: '25/10',
-    phone: '0912 333 444',
-    transferContent: 'BK24102 0912333444',
-    amountDue: 80000,
-    actualAmount: 80000,
-    waiting: '1 min',
-    overdue: false,
-    attempt: 1,
-    resubmissionsLeft: 2,
-    note: '',
-  },
-]
-
+// Lý do đầu tiên là lỗi phía sân (tiền về chậm) nên không trừ lượt gửi lại của Player (BR34)
 const reasons = [
   'Money not yet received in bank account',
   'Blurry or unreadable receipt image',
   'Incorrect transfer amount or content',
 ]
 
-function getInitialBookingId(search) {
-  const requestedId = new URLSearchParams(search).get('booking')
-  return initialTransactions.some((transaction) => transaction.id === requestedId)
-    ? requestedId
-    : initialTransactions[0].id
-}
-
 export default function StaffConfirmPaymentPage() {
   const location = useLocation()
   const navigate = useNavigate()
-  const [transactions, setTransactions] = useState(initialTransactions)
-  const [selectedBookingId, setSelectedBookingId] = useState(() => getInitialBookingId(location.search))
-  const [actualAmount, setActualAmount] = useState(() => {
-    const bookingId = getInitialBookingId(location.search)
-    return String(initialTransactions.find((transaction) => transaction.id === bookingId)?.actualAmount ?? '')
-  })
+  const [transactions, setTransactions] = useState([])
+  const [selectedBookingId, setSelectedBookingId] = useState(null)
+  const [actualAmount, setActualAmount] = useState('')
   const [reason, setReason] = useState(reasons[0])
-  const [processedBookings, setProcessedBookings] = useState({})
   const [isProcessing, setIsProcessing] = useState(false)
   const [message, setMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [isProofOpen, setIsProofOpen] = useState(false)
+  const [proofUrl, setProofUrl] = useState(null)
 
   const selectedBooking = transactions.find((transaction) => transaction.id === selectedBookingId) ?? null
 
   const selectBooking = (transaction) => {
-    setSelectedBookingId(transaction.id)
-    setActualAmount(String(transaction.actualAmount))
-    setMessage('')
+    setSelectedBookingId(transaction?.id ?? null)
+    setActualAmount(transaction ? String(transaction.actualAmount) : '')
     setErrorMessage('')
   }
 
-  const removeSelectedBooking = (status, successMessage, resubmissionsLeft, metadata = {}) => {
+  // UC19 #1–#2: giao dịch chờ xác nhận của địa điểm; ?booking=<mã> chọn sẵn một giao dịch
+  const loadTransactions = useCallback(async () => {
+    try {
+      const items = await listPendingPaymentsApi()
+      setTransactions(items)
+      const requested = new URLSearchParams(location.search).get('booking')
+      const initial = items.find((item) => item.code === requested) ?? items[0] ?? null
+      setSelectedBookingId(initial?.id ?? null)
+      setActualAmount(initial ? String(initial.actualAmount) : '')
+    } catch (err) {
+      setErrorMessage(apiErrorMessage(err, 'Could not load payments awaiting confirmation.'))
+    }
+  }, [location.search])
+
+  useEffect(() => {
+    loadTransactions()
+  }, [loadTransactions])
+
+  // Ảnh chứng từ cần JWT nên tải thành object URL
+  const proofImageUrl = selectedBooking?.proofImageUrl
+  useEffect(() => {
+    if (!proofImageUrl) {
+      setProofUrl(null)
+      return undefined
+    }
+    let objectUrl = null
+    let cancelled = false
+    fetchProtectedImage(proofImageUrl)
+      .then((url) => {
+        objectUrl = url
+        if (cancelled) URL.revokeObjectURL(url)
+        else setProofUrl(url)
+      })
+      .catch(() => setProofUrl(null))
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [proofImageUrl])
+
+  // Giao dịch đã xử lý thì rời danh sách chờ; chọn giao dịch kế tiếp
+  const removeSelectedBooking = (successMessage) => {
     if (!selectedBooking) return
     const remaining = transactions.filter((transaction) => transaction.id !== selectedBooking.id)
-    setProcessedBookings((current) => ({
-      ...current,
-      [selectedBooking.id]: { status, ...metadata, ...(resubmissionsLeft == null ? {} : { resubmissionsLeft }) },
-    }))
     setTransactions(remaining)
-    const nextBooking = remaining[0] ?? null
-    setSelectedBookingId(nextBooking?.id ?? null)
-    setActualAmount(nextBooking ? String(nextBooking.actualAmount) : '')
+    selectBooking(remaining[0] ?? null)
     setMessage(successMessage)
   }
 
+  const runAction = async (action, fallback) => {
+    if (!selectedBooking) return
+    setIsProcessing(true)
+    setErrorMessage('')
+    try {
+      const res = await action()
+      removeSelectedBooking(res?.message || fallback)
+    } catch (err) {
+      setErrorMessage(apiErrorMessage(err))
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // UC19 #3: xác nhận; nhập số thực nhận khi khách chuyển thừa (BR51)
   const confirmPayment = async () => {
-    try {
-      if (!selectedBooking) return
-      const amountReceived = Number(actualAmount)
-      if (!Number.isFinite(amountReceived) || amountReceived < 0) {
-        throw new Error('Enter a valid amount received.')
-      }
-
-      const confirmed = window.confirm(
-        `Confirm that you have received ${amountReceived.toLocaleString()} VND for booking ${selectedBooking.id}?`,
-      )
-      if (!confirmed) return
-
-      setIsProcessing(true)
-      setErrorMessage('')
-      const receivedNote = amountReceived > selectedBooking.amountDue
-        ? ` Customer transferred ${(amountReceived - selectedBooking.amountDue).toLocaleString()} VND extra; only ${selectedBooking.amountDue.toLocaleString()} VND was recorded.`
-        : ''
-      removeSelectedBooking(
-        'payment_confirmed',
-        `Payment confirmed for ${selectedBooking.id}.${receivedNote}`,
-        null,
-        { revenue: selectedBooking.amountDue, amountReceived },
-      )
-    } catch (err) {
-      setErrorMessage(err.response?.data?.message || err.message)
-    } finally {
-      setIsProcessing(false)
+    if (!selectedBooking) return
+    const amountReceived = Number(actualAmount)
+    if (!Number.isFinite(amountReceived) || amountReceived <= 0) {
+      setErrorMessage('Enter a valid amount received.')
+      return
     }
+    const confirmed = window.confirm(
+      `Confirm that you have received ${amountReceived.toLocaleString()} VND for booking ${selectedBooking.code}?`,
+    )
+    if (!confirmed) return
+    await runAction(
+      () => confirmPaymentApi(selectedBooking.id, amountReceived),
+      `Payment confirmed for ${selectedBooking.code}.`,
+    )
   }
 
-  const requestResubmission = async () => {
-    try {
-      if (!selectedBooking) return
-      setIsProcessing(true)
-      setErrorMessage('')
-      const resubmissionsLeft = reason === reasons[0]
-        ? selectedBooking.resubmissionsLeft
-        : Math.max(0, selectedBooking.resubmissionsLeft - 1)
+  // UC19 #4: yêu cầu bổ sung (BR34)
+  const requestResubmission = () =>
+    runAction(
+      () => requestResubmissionApi(selectedBooking.id, reason, reason !== reasons[0]),
+      `Resubmission requested for ${selectedBooking?.code}.`,
+    )
 
-      if (resubmissionsLeft === 0) {
-        removeSelectedBooking(
-          'payment_rejected',
-          `MSG52: ${selectedBooking.id} has no resubmissions left. Payment was rejected.`,
-          resubmissionsLeft,
-        )
-      } else {
-        removeSelectedBooking(
-          'resubmit_requested',
-          `MSG50: Resubmission requested for ${selectedBooking.id}.`,
-          resubmissionsLeft,
-        )
-      }
-    } catch (err) {
-      setErrorMessage(err.response?.data?.message || err.message)
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  const rejectPayment = async () => {
-    try {
-      if (!selectedBooking) return
-      setIsProcessing(true)
-      setErrorMessage('')
-      removeSelectedBooking(
-        'payment_rejected',
-        `MSG51: ${selectedBooking.id} was rejected. The slot was released and points/voucher were refunded.`,
-        selectedBooking.resubmissionsLeft,
-      )
-    } catch (err) {
-      setErrorMessage(err.response?.data?.message || err.message)
-    } finally {
-      setIsProcessing(false)
-    }
+  // UC19 #5: từ chối; slot được nhả, voucher và điểm được trả (BR40, BR45)
+  const rejectPayment = () => {
+    if (!selectedBooking || !window.confirm(`Reject payment for ${selectedBooking.code}?`)) return
+    return runAction(
+      () => rejectPaymentApi(selectedBooking.id, reason),
+      `${selectedBooking.code} was rejected.`,
+    )
   }
 
   return (
@@ -216,6 +165,7 @@ export default function StaffConfirmPaymentPage() {
       <main className={styles.main}>
         <h1 className={styles.pageTitle}>Confirm Payments</h1>
         {message && <p className={styles.actionMessage} role="status">{message}</p>}
+        {errorMessage && !selectedBooking && <p className={styles.errorMessage} role="alert">{errorMessage}</p>}
         <div className={styles.workspace}>
           <section className={styles.bookingList} aria-label="Bookings awaiting confirmation">
             {transactions.map((transaction) => (
@@ -226,7 +176,7 @@ export default function StaffConfirmPaymentPage() {
                 onClick={() => selectBooking(transaction)}
               >
                 <span className={styles.bookingTopline}>
-                  <strong>{transaction.id}</strong>
+                  <strong>{transaction.code}</strong>
                   <strong>{transaction.amountDue.toLocaleString()} VND</strong>
                 </span>
                 <span className={styles.bookingMeta}>
@@ -245,7 +195,7 @@ export default function StaffConfirmPaymentPage() {
           {selectedBooking && (
             <section className={styles.detailCard} aria-label="Selected payment details">
               <header className={styles.detailHeader}>
-                <h2>{selectedBooking.id} · {selectedBooking.customer}</h2>
+                <h2>{selectedBooking.code} · {selectedBooking.customer}</h2>
                 <span className={styles.statusBadge}>
                   Awaiting confirmation · attempt {selectedBooking.attempt}/3
                 </span>
@@ -310,7 +260,7 @@ export default function StaffConfirmPaymentPage() {
                   {reasons.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
                 <p>
-                  Customer has {processedBookings[selectedBooking.id]?.resubmissionsLeft ?? selectedBooking.resubmissionsLeft} resubmissions left,
+                  Customer has {selectedBooking.resubmissionsLeft} resubmissions left,
                   {' '}deadline until end of play time ({selectedBooking.playTime.split('–')[1]?.trim().split(' ')[0]}).
                 </p>
               </section>
@@ -344,12 +294,16 @@ export default function StaffConfirmPaymentPage() {
           <section className={styles.proofModal} role="dialog" aria-modal="true" aria-label="Payment proof">
             <button className={styles.closeProof} type="button" onClick={() => setIsProofOpen(false)}>Close</button>
             <div className={styles.proofLarge}>
-              <svg viewBox="0 0 32 32" aria-hidden="true">
-                <rect x="4" y="5" width="24" height="22" rx="2" />
-                <circle cx="12" cy="12" r="2" />
-                <path d="m6 24 7-7 4 4 4-5 5 7" />
-              </svg>
-              <strong>Payment Proof · {selectedBooking.id}</strong>
+              {proofUrl ? (
+                <img src={proofUrl} alt={`Payment proof ${selectedBooking.code}`} style={{ maxWidth: '100%', maxHeight: '70vh' }} />
+              ) : (
+                <svg viewBox="0 0 32 32" aria-hidden="true">
+                  <rect x="4" y="5" width="24" height="22" rx="2" />
+                  <circle cx="12" cy="12" r="2" />
+                  <path d="m6 24 7-7 4 4 4-5 5 7" />
+                </svg>
+              )}
+              <strong>Payment Proof · {selectedBooking.code}</strong>
             </div>
           </section>
         </div>
