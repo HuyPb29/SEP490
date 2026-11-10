@@ -35,6 +35,25 @@ import org.springframework.web.context.WebApplicationContext;
 
 @SpringBootTest(properties="app.booking-change.jobs-enabled=false")
 class BookingChangeApiTests {
+    @Test void extraPaymentSupportsResubmissionAndPlayerCanReadItsProof() throws Exception {
+        Long id=create(660);
+        mvc.perform(post("/api/reschedule-requests/"+id+"/payments").header("Authorization",token(player))).andExpect(status().isOk());
+        Long payment=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);
+        mvc.perform(post("/api/staff/reschedule-payments/"+payment+"/request-resubmission").header("Authorization",token(owner))
+                .header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"Transfer delayed\",\"playerAtFault\":false}")).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("select status from payment where id=?",String.class,payment)).isEqualTo("RESUBMIT_REQUESTED");
+        assertThat(bookingStatus()).isEqualTo("CONFIRMED");
+        var proof=new org.springframework.mock.web.MockMultipartFile("proof","receipt.png","image/png",new byte[]{1,2});
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/reschedule-payments/"+payment+"/resubmit")
+                .file(proof).header("Authorization",token(player))).andExpect(status().isOk());
+        Long proofId=jdbc.queryForObject("select id from payment_proof where payment_id=?",Long.class,payment);
+        String image="/api/payments/"+payment+"/proofs/"+proofId+"/image";
+        mvc.perform(get(image).header("Authorization",token(player))).andExpect(status().isOk());
+        mvc.perform(get(image).header("Authorization",token(other))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/staff/reschedule-payments/"+payment+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("APPROVED"));
+    }
     @Autowired WebApplicationContext context;
     @Autowired EntityManager em;
     @Autowired JdbcTemplate jdbc;

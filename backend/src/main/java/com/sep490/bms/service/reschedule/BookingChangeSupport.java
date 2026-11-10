@@ -53,6 +53,16 @@ public class BookingChangeSupport {
                 .setParameter("s", PaymentStatus.CONFIRMED).setParameter("id", b.getId()).getSingleResult();
         return b.getFinalAmount().add(extra);
     }
+    public BigDecimal refundableAmount(Booking b) {
+        BigDecimal collected=basePayments(b).stream().map(p->p.getReceivedAmount()!=null?p.getReceivedAmount():
+                p.getStatus()==PaymentStatus.CONFIRMED?p.getAmountDue():BigDecimal.ZERO).reduce(BigDecimal.ZERO,BigDecimal::add);
+        return paidAmount(b).subtract(b.getFinalAmount()).add(b.getFinalAmount().min(collected));
+    }
+    public LocalDate originalPaymentDate(Booking b) {
+        return basePayments(b).stream().filter(p->p.getConfirmedAt()!=null)
+                .map(p->p.getConfirmedAt().toLocalDate()).min(LocalDate::compareTo)
+                .orElseThrow(()->new AppException("Chưa có ngày thanh toán gốc được xác nhận"));
+    }
     public void release(Long bookingId, Long requestId) {
         List<BookingSlot> slots = em.createQuery("select s from BookingSlot s where s.bookingId=:id and s.active=true", BookingSlot.class)
                 .setParameter("id", bookingId).getResultList();

@@ -31,6 +31,27 @@ import org.springframework.web.multipart.MultipartFile;
 public class ReschedulePaymentController {
     private final RescheduleService service;
 
+    @GetMapping("/api/reschedule-requests/{id}/payment-instructions/qr")
+    @PreAuthorize("hasRole('PLAYER')")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> qr(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id) {
+        var resource=service.qr(user,id);
+        return org.springframework.http.ResponseEntity.ok().contentType(org.springframework.http.MediaTypeFactory.getMediaType(resource)
+                .orElse(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM)).body(resource);
+    }
+
+    @PostMapping("/api/staff/reschedule-payments/{id}/request-resubmission")
+    @PreAuthorize("hasAnyRole('STAFF','OWNER')")
+    public ApiResponse<RescheduleRequest> requestResubmission(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id,
+            @Valid @RequestBody com.sep490.bms.dto.payment.ResubmitRequest input) {
+        return ApiResponse.success(service.requestResubmission(u,id,input));
+    }
+    @PostMapping("/api/reschedule-payments/{id}/resubmit")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ApiResponse<RescheduleRequest> resubmit(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id,
+            @RequestPart("proof") MultipartFile proof) {
+        return ApiResponse.success(service.resubmit(u,id,proof));
+    }
+
     @GetMapping("/api/reschedule-requests/{id}/payment-instructions")
     @PreAuthorize("hasRole('PLAYER')")
     public ApiResponse<RescheduleService.Instructions> instructions(

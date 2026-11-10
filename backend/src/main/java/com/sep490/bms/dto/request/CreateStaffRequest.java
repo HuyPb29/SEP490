@@ -22,6 +22,7 @@ public class CreateStaffRequest {
     @Pattern(regexp = ValidationRules.NAME, message = "Họ tên chỉ được chứa chữ và khoảng trắng")
     private String fullName;
 
+    @NotBlank(message = "Số điện thoại không được để trống")
     @Pattern(regexp = "^0[0-9]{9}$", message = "Số điện thoại phải gồm đúng 10 chữ số")
     private String phone;
 
@@ -30,7 +31,7 @@ public class CreateStaffRequest {
     private String password;
 
     @NotBlank(message = "Tên đăng nhập không được để trống")
-    @Pattern(regexp = "^[a-z][a-z0-9._]{3,19}$", message = "Tên đăng nhập phải gồm 4–20 ký tự và bắt đầu bằng chữ thường")
+    @Pattern(regexp = ValidationRules.USERNAME, message = ValidationRules.USERNAME_MESSAGE)
     private String username;
 
 

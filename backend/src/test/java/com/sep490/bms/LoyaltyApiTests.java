@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.*;
 import java.util.*;
@@ -12,6 +13,7 @@ import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.*;
@@ -56,7 +58,8 @@ class LoyaltyApiTests {
         // Explicitly scoped to the existing integration test database. Never runs on a production catalog.
         try(var c=Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
             if(!"BMS_Test".equalsIgnoreCase(c.getCatalog())) throw new IllegalStateException("Loyalty regression requires BMS_Test");
-            String sql=Files.readString(Path.of("db/migrations/20261030_uc25_uc26_loyalty.sql")).replace("\uFEFF", "");
+            String sql = new ClassPathResource("db/20261030_uc25_uc26_loyalty.sql")
+                    .getContentAsString(StandardCharsets.UTF_8);
             for(int pass=0;pass<2;pass++) {
                 try { for(String batch:sql.split("(?im)^GO\\s*$")) if(!batch.isBlank()) try(var s=c.createStatement()) { s.execute(batch); } }
                 catch(Exception e) { try(var s=c.createStatement()) { s.execute("IF @@TRANCOUNT>0 ROLLBACK TRANSACTION"); } throw e; }
@@ -86,6 +89,7 @@ class LoyaltyApiTests {
         jdbc.update("DELETE FROM voucher_usage WHERE voucher_id IN (SELECT id FROM voucher WHERE location_id=?)",id);
         jdbc.update("DELETE FROM loyalty_tier WHERE location_id=?",id);
         jdbc.update("DELETE FROM voucher_grant WHERE voucher_id IN (SELECT id FROM voucher WHERE location_id=?)",id);
+        jdbc.update("DELETE FROM refund_request WHERE location_id=?",id);
         jdbc.update("DELETE FROM affected_booking WHERE booking_id IN (SELECT id FROM booking WHERE location_id=?)",id);
         jdbc.update("DELETE FROM payment WHERE location_id=?",id);
         jdbc.update("DELETE FROM reschedule_request WHERE booking_id IN (SELECT id FROM booking WHERE location_id=?)",id);
@@ -109,14 +113,14 @@ class LoyaltyApiTests {
                     .status(PaymentStatus.CONFIRMED).confirmedBy(owner.getId()).confirmedAt(LocalDateTime.now()).build(); em.persist(p); em.flush(); return p; });
     }
     long configure(int threshold) throws Exception {
-        String content=json.writeValueAsString(new LoyaltyMilestoneRequest(threshold,"Thank you",BigDecimal.valueOf(5000),10));
+        String content=json.writeValueAsString(new LoyaltyMilestoneRequest(BigDecimal.valueOf(threshold*10000L),"Thank you",BigDecimal.valueOf(5000),10));
         var result=mvc.perform(post("/api/owner/loyalty-milestones").header("Authorization",token(owner)).header("X-Location-Id",location.getId())
                 .contentType(MediaType.APPLICATION_JSON).content(content)).andExpect(status().isCreated()).andReturn();
         return json.readTree(result.getResponse().getContentAsString()).at("/data/id").asLong();
     }
     long affected(Booking b,AffectedChoice choice) {
         return tx.execute(s -> { em.find(Booking.class,b.getId()).setStatus(BookingStatus.CANCELLED_BY_FACILITY);
-            var a=AffectedBooking.builder().bookingId(b.getId()).cause(AffectedCause.OWNER_CANCELLED).status(AffectedStatus.RESOLVED).choice(choice).createdBy(owner.getId()).chosenAt(LocalDateTime.now()).build(); em.persist(a); em.flush(); return a.getId(); });
+            var a=AffectedBooking.builder().bookingId(b.getId()).cause(AffectedCause.OWNER_CANCELLED).status(AffectedStatus.RESOLVED).choice(choice).createdBy(owner.getId()).chosenAt(LocalDateTime.now()).build(); em.persist(a); em.flush(); if(choice==AffectedChoice.REFUND) { em.persist(RefundRequest.builder().locationId(location.getId()).bookingId(b.getId()).affectedBookingId(a.getId()).suggestedAmount(em.find(Booking.class,b.getId()).getFinalAmount()).originalPaymentDate(LocalDate.now()).build()); em.flush(); } return a.getId(); });
     }
     @Test void balanceHistoryAdjustmentRbacAndPrivacy() throws Exception {
         Booking b=booking(10000);
@@ -134,16 +138,16 @@ class LoyaltyApiTests {
         try { mvc.perform(post("/api/owner/loyalty-adjustments").header("Authorization",token(owner)).header("X-Location-Id",foreign.getId()).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden()); }
         finally { locations.deleteById(foreign.getId()); }
     }
-    @Test void paymentAccrualIsAtomicIdempotentAndCountsSessions() throws Exception {
+    @Test void paymentAccrualIsAtomicIdempotentAndAccumulatesSpend() throws Exception {
         configure(2); Booking first=booking(19999); Payment p=payment(first);
         assertThatThrownBy(() -> tx.execute(s -> { points.accrueForConfirmedPayment(p.getId()); throw new AppException("rollback"); })).isInstanceOf(AppException.class);
         assertThat(balances.findByPlayerIdAndLocationId(player.getId(),location.getId())).isEmpty();
         tx.executeWithoutResult(s -> { points.accrueForConfirmedPayment(p.getId()); points.accrueForConfirmedPayment(p.getId()); });
-        assertThat(balance().getPointBalance()).isEqualTo(1); assertThat(balance().getLoyaltySessions()).isEqualTo(1);
+        assertThat(balance().getPointBalance()).isEqualTo(1);
         assertThat(balance().getTotalPaid()).isEqualByComparingTo("19999");
         Payment second=payment(booking(999));
         tx.executeWithoutResult(s -> { points.accrueForConfirmedPayment(second.getId()); points.accrueForConfirmedPayment(second.getId()); });
-        assertThat(balance().getPointBalance()).isEqualTo(1); assertThat(balance().getLoyaltySessions()).isZero();
+        assertThat(balance().getPointBalance()).isEqualTo(1);
         assertThat(grants.findByPlayerId(player.getId(),org.springframework.data.domain.Pageable.unpaged()).getTotalElements()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM loyalty_accrual WHERE balance_id=?",Integer.class,balance().getId())).isEqualTo(2);
         mvc.perform(get("/api/me/vouchers").header("Authorization",token(player))).andExpect(jsonPath("$.data.content[0].voucher.source").value("LOYALTY"));
@@ -172,13 +176,13 @@ class LoyaltyApiTests {
         } finally { pool.shutdownNow(); pool.awaitTermination(10,TimeUnit.SECONDS); }
     }
     @Test void facilityRefundClampsRevocationAndKeepsRewardVoucher() throws Exception {
-        configure(1); Booking b=booking(20000); Payment p=payment(b);
+        configure(2); Booking b=booking(20000); Payment p=payment(b);
         tx.executeWithoutResult(s -> points.accrueForConfirmedPayment(p.getId()));
         // Simulate points already spent on a separate booking.
         Booking spend=booking(2000); tx.executeWithoutResult(s -> points.redeemForBooking(spend.getId(),2));
         long a=affected(b,AffectedChoice.REFUND);
         tx.executeWithoutResult(s -> { points.settleFacilityCancellation(a); points.settleFacilityCancellation(a); });
-        assertThat(balance().getPointBalance()).isZero(); assertThat(balance().getLoyaltySessions()).isZero();
+        assertThat(balance().getPointBalance()).isZero();
         assertThat(grants.findByPlayerId(player.getId(),org.springframework.data.domain.Pageable.unpaged()).getTotalElements()).isEqualTo(1);
         assertThat(balance().getTotalPaid()).isEqualByComparingTo("0");
     }
@@ -190,20 +194,19 @@ class LoyaltyApiTests {
         long a=affected(b,AffectedChoice.POINTS);
         tx.executeWithoutResult(s -> { points.settleFacilityCancellation(a); points.settleFacilityCancellation(a); });
         assertThat(balance().getPointBalance()).isEqualTo(5); // return 2 + ceil(1251/500)=3
-        assertThat(balance().getLoyaltySessions()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM notification WHERE recipient_id=?",Integer.class,player.getId())).isEqualTo(1);
     }
     @Test void milestoneVersionAndExistingGrantValueArePreserved() throws Exception {
         long id=configure(1); Payment p=payment(booking(10000)); tx.executeWithoutResult(s -> points.accrueForConfirmedPayment(p.getId()));
         VoucherGrant g=grants.findByPlayerId(player.getId(),org.springframework.data.domain.Pageable.unpaged()).getContent().get(0);
-        String body=json.writeValueAsString(new LoyaltyMilestoneUpdateRequest(0,true,new LoyaltyMilestoneRequest(3,"New reward",BigDecimal.valueOf(8000),20)));
-        mvc.perform(patch("/api/owner/loyalty-milestones/"+id).header("Authorization",token(owner)).header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk()).andExpect(jsonPath("$.data.sessionThreshold").value(3));
+        String body=json.writeValueAsString(new LoyaltyMilestoneUpdateRequest(0,true,new LoyaltyMilestoneRequest(BigDecimal.valueOf(30000),"New reward",BigDecimal.valueOf(8000),20)));
+        mvc.perform(patch("/api/owner/loyalty-milestones/"+id).header("Authorization",token(owner)).header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk()).andExpect(jsonPath("$.data.milestoneAmount").value(30000));
         mvc.perform(patch("/api/owner/loyalty-milestones/"+id).header("Authorization",token(owner)).header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
         assertThat(vouchers.findById(g.getVoucherId()).orElseThrow().getDiscountValue()).isEqualByComparingTo("5000");
         mvc.perform(get("/api/owner/loyalty-milestones").header("Authorization",token(owner)).header("X-Location-Id",location.getId())).andExpect(jsonPath("$.data[0].version").value(1));
     }
 
-    @Test void packageAccruesAllSessionsOnceAndRescheduleEarnsWithoutCountingAgain() throws Exception {
+    @Test void packageAndRescheduleAccumulateSpendWithoutReset() throws Exception {
         configure(3);
         Booking one=booking(10000),two=booking(10000);
         Long pkg=tx.execute(s -> {
@@ -214,17 +217,15 @@ class LoyaltyApiTests {
             return p.getId();
         });
         Long paymentId=tx.execute(s -> { Payment p=Payment.builder().locationId(location.getId()).packageId(pkg).amountDue(BigDecimal.valueOf(20000)).status(PaymentStatus.CONFIRMED).confirmedBy(owner.getId()).build(); em.persist(p); em.flush(); return p.getId(); });
-        tx.executeWithoutResult(s -> { points.accrueForConfirmedPayment(paymentId); points.accrueForConfirmedPayment(paymentId); });
-        assertThat(balance().getLoyaltySessions()).isEqualTo(2); assertThat(balance().getPointBalance()).isEqualTo(2);
+        tx.executeWithoutResult(s -> { points.accrueForConfirmedPayment(paymentId); points.accrueForConfirmedPayment(paymentId); }); assertThat(balance().getPointBalance()).isEqualTo(2);
         Long extraPayment=tx.execute(s -> {
             RescheduleRequest r=RescheduleRequest.builder().bookingId(one.getId()).newCourtId(court).newDate(LocalDate.now().plusDays(2)).newStartMinute(600).newEndMinute(660)
                     .oldListAmount(BigDecimal.valueOf(10000)).newListAmount(BigDecimal.valueOf(30000)).extraAmount(BigDecimal.valueOf(20000)).status(RescheduleStatus.APPROVED).build(); em.persist(r); em.flush();
             Payment p=Payment.builder().locationId(location.getId()).rescheduleRequestId(r.getId()).amountDue(BigDecimal.valueOf(20000)).status(PaymentStatus.CONFIRMED).confirmedBy(owner.getId()).build(); em.persist(p); em.flush(); return p.getId();
         });
         tx.executeWithoutResult(s -> { points.accrueForConfirmedPayment(extraPayment); points.accrueForConfirmedPayment(extraPayment); });
-        assertThat(balance().getPointBalance()).isEqualTo(4); assertThat(balance().getLoyaltySessions()).isEqualTo(2);
+        assertThat(balance().getPointBalance()).isEqualTo(4);
         Payment last=payment(booking(10000)); tx.executeWithoutResult(s -> points.accrueForConfirmedPayment(last.getId()));
-        assertThat(balance().getLoyaltySessions()).isZero();
         assertThat(grants.findByPlayerId(player.getId(),org.springframework.data.domain.Pageable.unpaged()).getTotalElements()).isEqualTo(1);
     }
     @Test void voucherPointsPolicyAndMinimumAreEnforced() {
@@ -269,7 +270,7 @@ class LoyaltyApiTests {
             assertThat(grants.findByPlayerId(player.getId(),org.springframework.data.domain.Pageable.unpaged()).getTotalElements()).isEqualTo(1);
         } finally { pool.shutdownNow(); pool.awaitTermination(10,TimeUnit.SECONDS); }
     }
-    @Test void partialPackageRefundReturnsOnlyAllocatedPointsAndOneSession() {
+    @Test void partialPackageRefundReturnsAllocatedPointsAndDeductsOnlyThatSessionSpend() {
         seed(10); Booking one=booking(10000),two=booking(10000);
         Long pkg=tx.execute(s -> {
             BookingPackage p=BookingPackage.builder().locationId(location.getId()).playerId(player.getId()).packageType(PackageType.CUSTOM)
@@ -282,9 +283,9 @@ class LoyaltyApiTests {
         });
         Long paymentId=tx.execute(s -> { Payment p=Payment.builder().locationId(location.getId()).packageId(pkg).amountDue(BigDecimal.valueOf(18000)).status(PaymentStatus.CONFIRMED).build(); em.persist(p); em.flush(); return p.getId(); });
         tx.executeWithoutResult(s -> points.accrueForConfirmedPayment(paymentId));
-        assertThat(balance().getPointBalance()).isEqualTo(7); assertThat(balance().getLoyaltySessions()).isEqualTo(2);
+        assertThat(balance().getPointBalance()).isEqualTo(7);
         long a=affected(one,AffectedChoice.REFUND); tx.executeWithoutResult(s -> { points.settleFacilityCancellation(a); points.settleFacilityCancellation(a); });
-        assertThat(balance().getPointBalance()).isEqualTo(9); assertThat(balance().getLoyaltySessions()).isEqualTo(1);
+        assertThat(balance().getPointBalance()).isEqualTo(9);
         assertThat(balance().getTotalPaid()).isEqualByComparingTo("9000");
     }
     @Test void openApiIncludesSixRoutesAndOwnerLocationHeader() throws Exception {

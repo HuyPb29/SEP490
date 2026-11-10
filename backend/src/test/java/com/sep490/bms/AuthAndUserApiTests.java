@@ -279,7 +279,7 @@ class AuthAndUserApiTests {
                 .andExpect(jsonPath("$.data.content").isArray())
                 .andExpect(jsonPath("$.data.totalElements").isNumber());
 
-        // 14. PATCH /api/admin/accounts/{id}/status (as Admin)
+        // 14. Admin lock/unlock must not reactivate Staff already deactivated under FR07.
         UpdateStatusRequest updateAccountStatusReq = UpdateStatusRequest.builder()
                 .status("LOCKED")
                 .reason("Khóa thử nghiệm")
@@ -289,8 +289,8 @@ class AuthAndUserApiTests {
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateAccountStatusReq)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("LOCKED"));
+                .andExpect(status().isBadRequest());
+        assertThat(accountRepository.findById(createdStaffId).orElseThrow().getStatus()).isEqualTo(AccountStatus.DISABLED);
 
         // An Owner cannot manage staff through another location's scope.
         var foreignLocation = fixtureLocation(fixtureAccount("other_" + uniqueSuffix, Role.OWNER));
@@ -315,7 +315,7 @@ class AuthAndUserApiTests {
         mockMvc.perform(patch("/api/owner/staff-members/" + createdStaffId + "/status")
                 .header("Authorization", "Bearer " + ownerToken).header("X-Location-Id", location.getId())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"ACTIVE\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isBadRequest());
         var secondAdmin = fixtureAccount("admin2_" + uniqueSuffix, Role.ADMIN);
         mockMvc.perform(patch("/api/admin/accounts/" + secondAdmin.getId() + "/status")
                 .header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON)
@@ -360,9 +360,10 @@ class AuthAndUserApiTests {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/owner/staff-members").header("Authorization", "Bearer " + ownerToken)
                 .header("X-Location-Id", location.getId())).andExpect(status().isForbidden());
-        mockMvc.perform(get("/api/owner/booking-exports").header("Authorization", "Bearer " + ownerToken)
+        mockMvc.perform(get("/api/owner/exports").header("Authorization", "Bearer " + ownerToken)
                 .header("X-Location-Id", location.getId())).andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith("text/csv"));
+                .andExpect(content().contentTypeCompatibleWith(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
     }
 
     @Test

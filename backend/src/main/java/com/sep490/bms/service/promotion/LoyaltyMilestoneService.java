@@ -39,8 +39,8 @@ public class LoyaltyMilestoneService {
         return configured(ownerLocation(user,false).getId()).stream().map(this::response).toList();
     }
     private List<LoyaltyTier> configured(Long location) {
-        // Legacy spending tiers are retained for audit, never interpreted as session thresholds.
-        return tiers.findByLocationIdOrderByMilestoneAmountAsc(location).stream().filter(t -> t.getSessionThreshold()!=null).toList();
+        // Old session configurations retain their identity/rewards and are never reinterpreted as VND.
+        return tiers.findByLocationIdOrderByMilestoneAmountAsc(location).stream().filter(t -> t.getSessionThreshold()==null).toList();
     }
     private LoyaltyMilestoneResponse response(LoyaltyTier t) {
         return LoyaltyMilestoneResponse.from(t,VoucherResponse.from(vouchers.findById(t.getVoucherId()).orElseThrow()));
@@ -48,13 +48,11 @@ public class LoyaltyMilestoneService {
     @Transactional
     public LoyaltyMilestoneResponse create(UserPrincipal user,@Valid LoyaltyMilestoneRequest r) {
         Location l=ownerLocation(user,true);
-        if(!configured(l.getId()).isEmpty()) throw new AppException("Địa điểm đã có cấu hình; dùng PATCH",HttpStatus.CONFLICT);
-        // Legacy SQL amount column is preserved; the new API only uses sessionThreshold.
-        if(tiers.existsByLocationIdAndMilestoneAmount(l.getId(),BigDecimal.valueOf(r.sessionThreshold())))
-            throw new AppException("Mốc legacy trùng giá trị; cần rà soát dữ liệu trước khi cấu hình",HttpStatus.CONFLICT);
+        if(tiers.existsByLocationIdAndMilestoneAmount(l.getId(),r.milestoneAmount()))
+            throw new AppException("Mốc chi tiêu đã tồn tại",HttpStatus.CONFLICT);
         Voucher v=template(l.getId(),r);
-        return response(tiers.saveAndFlush(LoyaltyTier.builder().locationId(l.getId()).sessionThreshold(r.sessionThreshold())
-                .milestoneAmount(BigDecimal.valueOf(r.sessionThreshold())).voucherId(v.getId()).build()));
+        return response(tiers.saveAndFlush(LoyaltyTier.builder().locationId(l.getId())
+                .milestoneAmount(r.milestoneAmount()).voucherId(v.getId()).build()));
     }
     @Transactional
     public LoyaltyMilestoneResponse update(UserPrincipal user,Long id,@Valid LoyaltyMilestoneUpdateRequest r) {
@@ -62,11 +60,14 @@ public class LoyaltyMilestoneService {
         LoyaltyTier t=tiers.findById(id).orElseThrow(() -> new AppException("Không tìm thấy cấu hình",HttpStatus.NOT_FOUND));
         if(!location.equals(t.getLocationId())) throw new AppException("Mốc không thuộc địa điểm",HttpStatus.FORBIDDEN);
         em.refresh(t,LockModeType.PESSIMISTIC_WRITE);
-        if(t.getSessionThreshold()==null) throw new AppException("Mốc chi tiêu legacy không phải cấu hình số buổi",HttpStatus.CONFLICT);
+        if(t.getSessionThreshold()!=null) throw new AppException("Cấu hình số buổi cũ chỉ giữ để tra cứu lịch sử",HttpStatus.CONFLICT);
         if(t.getVersion()!=r.version()) throw new AppException("Cấu hình đã thay đổi; tải lại",HttpStatus.CONFLICT);
+        if(t.getMilestoneAmount().compareTo(r.settings().milestoneAmount())!=0 && tiers.existsByLocationIdAndMilestoneAmount(location,r.settings().milestoneAmount()))
+            throw new AppException("Mốc chi tiêu đã tồn tại",HttpStatus.CONFLICT);
+        // Validate before mutation so query auto-flush does not increment the version twice.
         // A fresh template preserves the value/expiry of grants already issued (BR52).
         t.setVoucherId(template(location,r.settings()).getId());
-        t.setSessionThreshold(r.settings().sessionThreshold()); t.setActive(r.active());
+        t.setMilestoneAmount(r.settings().milestoneAmount()); t.setActive(r.active());
         return response(tiers.saveAndFlush(t));
     }
     private Voucher template(Long location,LoyaltyMilestoneRequest r) {
@@ -74,21 +75,23 @@ public class LoyaltyMilestoneService {
                 .targetGroup(VoucherTargetGroup.SPECIFIED).discountType(DiscountType.AMOUNT).discountValue(r.rewardValue())
                 .grantValidDays(r.voucherValidDays()).status(VoucherStatus.PUBLISHED).build());
     }
-    /** Caller holds the facility and player locks and has already counted the paid sessions. */
+    /** BR12: caller holds venue/player locks. Every confirmed payment, including extras, evaluates all thresholds. */
     @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void reward(PlayerLocationBalance balance) {
-        LoyaltyTier t=configured(balance.getLocationId()).stream().filter(LoyaltyTier::isActive).findFirst().orElse(null);
-        if(t==null || balance.getLoyaltySessions()<t.getSessionThreshold()) return;
-        Voucher v=vouchers.lockById(t.getVoucherId()).orElseThrow();
-        em.refresh(v,LockModeType.PESSIMISTIC_WRITE);
-        if(v.getStatus()!=VoucherStatus.PUBLISHED) return;
-        VoucherGrant g=grants.saveAndFlush(VoucherGrant.builder().voucherId(v.getId()).playerId(balance.getPlayerId())
-                .expiresAt(LocalDateTime.now().plusDays(v.getGrantValidDays())).note("Loyalty reward: paid sessions").build());
-        // Sequence rather than spending amount: prior rewards remain immutable after counter resets/refunds.
-        Long sequence=em.createQuery("select count(r) from LoyaltyReward r where r.playerId=:p and r.loyaltyTierId=:t",Long.class)
-                .setParameter("p",balance.getPlayerId()).setParameter("t",t.getId()).getSingleResult()+1;
-        rewards.saveAndFlush(LoyaltyReward.builder().playerId(balance.getPlayerId()).loyaltyTierId(t.getId())
-                .reachedAmount(BigDecimal.valueOf(sequence)).voucherGrantId(g.getId()).build());
-        balance.setLoyaltySessions(0); // SRS 8.3 N2 explicitly resets the counter, including a package crossing the threshold.
+        List<LoyaltyTier> active=configured(balance.getLocationId()).stream().filter(LoyaltyTier::isActive).toList();
+        for(int i=0;i<active.size();i++) {
+            LoyaltyTier t=active.get(i);
+            Voucher v=vouchers.lockById(t.getVoucherId()).orElseThrow();
+            em.refresh(v,LockModeType.PESSIMISTIC_WRITE);
+            if(v.getStatus()!=VoucherStatus.PUBLISHED) continue;
+            List<BigDecimal> issued=em.createQuery("select r.reachedAmount from LoyaltyReward r where r.playerId=:p and r.loyaltyTierId=:t",BigDecimal.class)
+                    .setParameter("p",balance.getPlayerId()).setParameter("t",t.getId()).getResultList();
+            for(BigDecimal reached:MonetaryMilestones.due(balance.getTotalPaid(),t.getMilestoneAmount(),i==active.size()-1,issued)) {
+                    VoucherGrant g=grants.saveAndFlush(VoucherGrant.builder().voucherId(v.getId()).playerId(balance.getPlayerId())
+                            .expiresAt(LocalDateTime.now().plusDays(v.getGrantValidDays())).note("Loyalty reward: total spend "+reached.toPlainString()).build());
+                    rewards.saveAndFlush(LoyaltyReward.builder().playerId(balance.getPlayerId()).loyaltyTierId(t.getId())
+                            .reachedAmount(reached).voucherGrantId(g.getId()).build());
+            }
+        }
     }
 }

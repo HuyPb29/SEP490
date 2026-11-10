@@ -76,8 +76,6 @@ public class CancellationService {
     }
     public AffectedBooking detail(UserPrincipal u,Long id) {
         AffectedBooking a=find(id); Booking b=support.booking(a.getBookingId()); support.player(u,b);
-        em.refresh(a,LockModeType.PESSIMISTIC_WRITE);
-        if(a.getStatus()==AffectedStatus.PENDING && !support.start(b).isAfter(LocalDateTime.now())) settle(a,b,AffectedChoice.POINTS,true);
         return a;
     }
     public AffectedBooking choose(UserPrincipal u,Long id,AffectedChoiceRequest input) {
@@ -94,7 +92,7 @@ public class CancellationService {
     private void settle(AffectedBooking a,Booking b,AffectedChoice choice,boolean defaultChoice) {
         a.setChoice(choice);a.setDefaultChoice(defaultChoice);a.setStatus(AffectedStatus.RESOLVED);a.setChosenAt(LocalDateTime.now());
         cancelBooking(b,a.getCreatedBy(),BookingStatus.CANCELLED_BY_FACILITY);
-        em.flush(); points.settleFacilityCancellation(a.getId()); vouchers.restoreForFailedBooking(b.getId());
+        em.flush();
         if(choice==AffectedChoice.REFUND) {
             LocalDate original=support.basePayments(b).stream().filter(p->p.getStatus()==PaymentStatus.CONFIRMED)
                     .map(p->p.getConfirmedAt().toLocalDate()).min(LocalDate::compareTo).orElseThrow();
@@ -102,6 +100,7 @@ public class CancellationService {
                     .suggestedAmount(support.paidAmount(b)).originalPaymentDate(original).reason("Hoàn tiền do cơ sở gây ảnh hưởng").build());
             support.notify(em.find(Location.class,b.getLocationId()).getOwnerId(),"REFUND_REQUEST","Có yêu cầu hoàn tiền cho "+b.getBookingCode(),b.getId());
         }
+        em.flush(); points.settleFacilityCancellation(a.getId()); vouchers.restoreForFailedBooking(b.getId());
         support.notify(b.getPlayerId(),"AFFECTED_RESOLVED","Đã xử lý booking theo lựa chọn "+choice+(defaultChoice?" (mặc định)":""),b.getId());
     }
     private void cancelBooking(Booking b,Long actor,BookingStatus status) {

@@ -34,11 +34,11 @@ public class RescheduleService {
     private final LocationAccessService access;
     private final LoyaltyPointService points;
     private final FileStorageService storage;
-    // Schema currently caps successful paid reschedules at one. Configuration is server-side until Owner settings exist.
-    @Value("${app.reschedule.cutoff-hours:6}") private int cutoffHours;
-    @Value("${app.reschedule.cutoff-percent:50}") private int cutoffPercent;
-    @Value("${app.reschedule.approval-buffer-minutes:30}") private int bufferMinutes;
-    @Value("${app.reschedule.hold-minutes:5}") private int holdMinutes;
+    // SRS parameter table P02/P03/P04/P05/P25: fixed values, no Owner settings.
+    private final int cutoffHours=6;
+    private final int cutoffPercent=50;
+    private final int bufferMinutes=60;
+    private final int holdMinutes=5;
 
     @jakarta.annotation.PostConstruct
     void validatePolicy() {
@@ -49,13 +49,13 @@ public class RescheduleService {
     public record Quote(BigDecimal oldListAmount, BigDecimal newListAmount, BigDecimal amountPaid,
             BigDecimal extraAmount, LocalDateTime rescheduleDeadline, LocalDateTime approveDeadline, boolean free) {}
     public record Instructions(Long requestId, BigDecimal amountDue, LocalDateTime holdExpiresAt,
-            LocalDateTime approveDeadline, String bankName, String bankAccountNo, String bankAccountHolder, String qrImagePath) {}
+            LocalDateTime approveDeadline, String bankName, String bankAccountNo, String bankAccountHolder, String qrImageUrl) {}
     public record PaymentView(Payment payment, List<PaymentProof> proofs) {}
 
     public List<Payment> staffPayments(UserPrincipal u,PaymentStatus status) {
         Long location=access.selectedLocation(u).getId();
-        return em.createQuery("select p from Payment p where p.locationId=:l and p.rescheduleRequestId is not null and (:s is null or p.status=:s) order by p.id desc",Payment.class)
-                .setParameter("l",location).setParameter("s",status).getResultList();
+        return em.createQuery("select p from Payment p where p.locationId=:l and p.rescheduleRequestId is not null and p.status=:s order by p.submittedAt,p.id",Payment.class)
+                .setParameter("l",location).setParameter("s",status==null?PaymentStatus.AWAITING_CONFIRMATION:status).getResultList();
     }
     public PaymentView payment(UserPrincipal u,Long id) {
         Payment p=em.find(Payment.class,id);
@@ -64,7 +64,6 @@ public class RescheduleService {
         RescheduleRequest r=find(p.getRescheduleRequestId());Booking b=support.booking(r.getBookingId());
         if(u.getRole()==Role.PLAYER) support.player(u,b);
         else if(!access.selectedLocation(u).getId().equals(b.getLocationId())) throw new AppException("Sai địa điểm",HttpStatus.FORBIDDEN);
-        em.refresh(r,LockModeType.PESSIMISTIC_WRITE);expire(r,b);
         return new PaymentView(p,em.createQuery("select p from PaymentProof p where p.paymentId=:id order by p.id",PaymentProof.class).setParameter("id",id).getResultList());
     }
 
@@ -78,12 +77,12 @@ public class RescheduleService {
         return r.getStatus() == RescheduleStatus.PENDING_PAYMENT || r.getStatus() == RescheduleStatus.AWAITING_CONFIRMATION;
     }
     public List<RescheduleRequest> requests(UserPrincipal u, Long bookingId) {
-        Booking b = support.booking(bookingId); support.player(u, b); expireFor(b);
+        Booking b = support.booking(bookingId); support.player(u, b);
         return all(b);
     }
     public RescheduleRequest detail(UserPrincipal u, Long id) {
         RescheduleRequest r = find(id); Booking b = support.booking(r.getBookingId()); support.player(u,b);
-        em.refresh(r, LockModeType.PESSIMISTIC_WRITE); expire(r,b); return r;
+        return r;
     }
     private RescheduleRequest find(Long id) {
         RescheduleRequest r = em.find(RescheduleRequest.class, id);
@@ -189,10 +188,18 @@ public class RescheduleService {
     }
     public Instructions instructions(UserPrincipal u,Long id) {
         RescheduleRequest r=detail(u,id); Location l=em.find(Location.class,support.booking(r.getBookingId()).getLocationId());
-        return new Instructions(id,r.getExtraAmount(),r.getHoldExpiresAt(),r.getApproveDeadline(),l.getBankName(),l.getBankAccountNo(),l.getBankAccountHolder(),l.getQrImagePath());
+        return new Instructions(id,r.getExtraAmount(),r.getHoldExpiresAt(),r.getApproveDeadline(),l.getBankName(),l.getBankAccountNo(),l.getBankAccountHolder(),
+                l.getQrImagePath()==null?null:"/api/reschedule-requests/"+id+"/payment-instructions/qr");
+    }
+    public org.springframework.core.io.Resource qr(UserPrincipal u,Long id) {
+        RescheduleRequest request=detail(u,id);
+        String path=em.find(Location.class,support.booking(request.getBookingId()).getLocationId()).getQrImagePath();
+        if(path==null) throw new AppException("Chưa có ảnh QR",HttpStatus.NOT_FOUND);
+        return storage.load(path);
     }
     public RescheduleRequest submit(UserPrincipal u,Long id,MultipartFile proof) {
         RescheduleRequest r=detail(u,id);
+        Booking locked=support.booking(r.getBookingId());em.refresh(r,LockModeType.PESSIMISTIC_WRITE);expire(r,locked);
         if(r.getStatus()==RescheduleStatus.EXPIRED) return r; // persist expiry instead of rolling it back with an exception
         if(r.getStatus()!=RescheduleStatus.PENDING_PAYMENT) throw new AppException("Yêu cầu không chờ phụ thu",HttpStatus.CONFLICT);
         Booking b=support.booking(r.getBookingId());
@@ -200,6 +207,32 @@ public class RescheduleService {
                 .submittedAt(LocalDateTime.now()).build(); em.persist(p);em.flush();
         if(proof!=null && !proof.isEmpty()) em.persist(PaymentProof.builder().paymentId(p.getId()).imagePath(storage.storeImage(proof,"payment-proofs")).build());
         r.setStatus(RescheduleStatus.AWAITING_CONFIRMATION); return r;
+    }
+    public RescheduleRequest requestResubmission(UserPrincipal u,Long paymentId,com.sep490.bms.dto.payment.ResubmitRequest input) {
+        Payment observed=em.find(Payment.class,paymentId);
+        if(observed==null || observed.getRescheduleRequestId()==null) throw new AppException("Không tìm thấy phụ thu",HttpStatus.NOT_FOUND);
+        RescheduleRequest r=find(observed.getRescheduleRequestId()); Booking b=support.booking(r.getBookingId());
+        if(!access.selectedLocation(u).getId().equals(b.getLocationId())) throw new AppException("Sai địa điểm",HttpStatus.FORBIDDEN);
+        em.refresh(r,LockModeType.PESSIMISTIC_WRITE); Payment p=support.lock(Payment.class,paymentId);
+        if(expire(r,b)) return r;
+        if(r.getStatus()!=RescheduleStatus.AWAITING_CONFIRMATION || p.getStatus()!=PaymentStatus.AWAITING_CONFIRMATION)
+            throw new AppException("Thanh toán không chờ xác nhận",HttpStatus.CONFLICT);
+        if(input.playerAtFault() && p.noResubmitLeft()) { finish(r,b,RescheduleStatus.REJECTED); return r; }
+        p.requestResubmission(input.reason().trim(),r.getApproveDeadline(),input.playerAtFault());
+        support.notify(b.getPlayerId(),"PAYMENT_RESUBMIT","Cần bổ sung thanh toán phụ thu: "+input.reason(),b.getId());
+        return r;
+    }
+    public RescheduleRequest resubmit(UserPrincipal u,Long paymentId,MultipartFile proof) {
+        Payment observed=em.find(Payment.class,paymentId);
+        if(observed==null || observed.getRescheduleRequestId()==null) throw new AppException("Không tìm thấy phụ thu",HttpStatus.NOT_FOUND);
+        RescheduleRequest r=find(observed.getRescheduleRequestId()); Booking b=support.booking(r.getBookingId());support.player(u,b);
+        em.refresh(r,LockModeType.PESSIMISTIC_WRITE);Payment p=support.lock(Payment.class,paymentId);
+        if(expire(r,b)) return r;
+        if(r.getStatus()!=RescheduleStatus.AWAITING_CONFIRMATION || p.getStatus()!=PaymentStatus.RESUBMIT_REQUESTED)
+            throw new AppException("Chưa được yêu cầu bổ sung",HttpStatus.CONFLICT);
+        if(proof==null || proof.isEmpty()) throw new AppException("Cần ảnh chứng từ bổ sung (MSG106)");
+        em.persist(PaymentProof.builder().paymentId(p.getId()).imagePath(storage.storeImage(proof,"payment-proofs")).build());
+        p.resubmitted(LocalDateTime.now()); return r;
     }
     /** UC21 reschedule-payment endpoints delegate here; booking payments use Minh's PaymentService. */
     public RescheduleRequest decidePayment(UserPrincipal u,Long paymentId,boolean confirm,ReschedulePaymentDecision input) {

@@ -4,8 +4,14 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.core.io.Resource;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -13,6 +19,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -27,6 +34,7 @@ import com.sep490.bms.dto.payment.ResubmitRequest;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.entity.notification.Notification;
@@ -36,9 +44,11 @@ import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.notification.NotificationRepository;
 import com.sep490.bms.repository.payment.PaymentProofRepository;
 import com.sep490.bms.repository.payment.PaymentRepository;
+import com.sep490.bms.repository.reschedule.RescheduleRequestRepository;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
+import com.sep490.bms.service.booking.PackageService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
@@ -47,7 +57,7 @@ import com.sep490.bms.service.promotion.VoucherService;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Thanh toán booking lẻ (UC18) và xác nhận thanh toán (UC19). Hệ thống không nối ngân hàng: Player tự
+ * Thanh toán booking lẻ và gói đặt nhiều buổi (UC18, UC15 #7) và xác nhận thanh toán (UC19). Hệ thống không nối ngân hàng: Player tự
  * chuyển khoản theo thông tin của địa điểm rồi báo kèm ảnh chứng từ; Staff (hoặc Owner thay Staff, BR58)
  * đối chiếu tiền thực về rồi xác nhận, yêu cầu bổ sung hoặc từ chối (BR33).
  */
@@ -59,11 +69,14 @@ public class PaymentService {
     static final String PROOF_FOLDER = "payment-proofs";
     /** Unique có điều kiện: mỗi booking chỉ có một dòng payment (FR56). */
     static final String PAYMENT_BOOKING_UNIQUE_INDEX = "ux_payment_booking";
+    /** Unique có điều kiện: mỗi gói chỉ có một dòng payment (FR56, BR26). */
+    static final String PAYMENT_PACKAGE_UNIQUE_INDEX = "ux_payment_package";
     private static final int MAX_PAGE_SIZE = 100;
     /** Cột notification.content NVARCHAR(500). */
     private static final int NOTIFICATION_CONTENT_MAX = 500;
     private static final DateTimeFormatter RECEIPT_DATE_FORMAT = DateTimeFormatter.ofPattern("yyMMdd");
     private static final DateTimeFormatter DEADLINE_FORMAT = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
+    private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final PaymentRepository paymentRepository;
     private final PaymentProofRepository paymentProofRepository;
@@ -74,6 +87,8 @@ public class PaymentService {
     private final VoucherService voucherService;
     private final LoyaltyPointService loyaltyPointService;
     private final NotificationRepository notificationRepository;
+    private final PackageService packageService;
+    private final RescheduleRequestRepository rescheduleRequests;
 
     /** UC18 #1, FR55: số tiền, tài khoản nhận, mã QR và giờ hết giữ chỗ. Không thay đổi gì. */
     @Transactional(readOnly = true)
@@ -155,6 +170,83 @@ public class PaymentService {
         return PaymentResponse.from(payment, booking);
     }
 
+    // ===================== UC18 cho gói đặt nhiều buổi (UC15 #7, FR43, BR26) =====================
+
+    /** UC18 #1, UC15 #7: số tiền của cả gói, tài khoản nhận, mã QR và giờ hết giữ chỗ (15 phút, P27). */
+    @Transactional(readOnly = true)
+    public PaymentInstructionResponse getPackageInstructions(UserPrincipal player, Long packageId) {
+        return getPackageInstructions(player, packageId, LocalDateTime.now());
+    }
+
+    PaymentInstructionResponse getPackageInstructions(UserPrincipal player, Long packageId, LocalDateTime now) {
+        BookingPackage pkg = packageService.getForPlayer(packageId, player.getId());
+        requireWaitingForTransfer(pkg, now);
+        Location location = locationQueryService.findActive(pkg.getLocationId());
+        boolean holding = pkg.getStatus() == BookingStatus.HOLDING;
+
+        return PaymentInstructionResponse.builder()
+                .packageId(pkg.getId())
+                .status(pkg.getStatus())
+                .amountDue(pkg.getFinalAmount())
+                .bankName(location.getBankName())
+                .bankAccountNo(location.getBankAccountNo())
+                .bankAccountHolder(location.getBankAccountHolder())
+                .qrImageUrl(location.getQrImagePath() == null ? null
+                        : "/api/booking-packages/" + pkg.getId() + "/payment-instructions/qr")
+                .holdExpiresAt(holding ? pkg.getHoldExpiresAt() : null)
+                .build();
+    }
+
+    /** UC18 #1 (gói): ảnh mã QR của địa điểm, chỉ người đặt gói đang chờ chuyển khoản lấy được (A03). */
+    @Transactional(readOnly = true)
+    public Resource loadPackageQrImage(UserPrincipal player, Long packageId) {
+        return loadPackageQrImage(player, packageId, LocalDateTime.now());
+    }
+
+    Resource loadPackageQrImage(UserPrincipal player, Long packageId, LocalDateTime now) {
+        BookingPackage pkg = packageService.getForPlayer(packageId, player.getId());
+        requireWaitingForTransfer(pkg, now);
+        String path = locationQueryService.findActive(pkg.getLocationId()).getQrImagePath();
+        if (path == null) {
+            throw new AppException("Địa điểm chưa có ảnh mã QR", HttpStatus.NOT_FOUND);
+        }
+        return fileStorageService.load(path);
+    }
+
+    /**
+     * UC18 #2–3, UC15 #7, FR43: Player báo đã thanh toán toàn bộ gói một lần kèm ảnh chứng từ. Tạo payment
+     * Chờ xác nhận cho gói; gói và mọi buổi con sang Chờ xác nhận, slot giữ đến khi Staff xử lý xong (BR03).
+     */
+    @Transactional
+    public PaymentResponse submitPackageProof(UserPrincipal player, Long packageId, MultipartFile proof) {
+        return submitPackageProof(player, packageId, proof, LocalDateTime.now());
+    }
+
+    PaymentResponse submitPackageProof(UserPrincipal player, Long packageId, MultipartFile proof, LocalDateTime now) {
+        requireProofAttached(proof);
+        // Khóa dòng gói: bấm hai lần hoặc job hết hạn chạy cùng lúc thì chạy lần lượt.
+        BookingPackage pkg = packageService.lockForPayment(packageId);
+        packageService.requireOwner(pkg, player.getId());
+        requireNotReportedYet(pkg.getStatus(), pkg.getHoldExpiresAt(), now);
+
+        String imagePath = fileStorageService.storeImage(proof, PROOF_FOLDER);
+        LocalDateTime submittedAt = now.truncatedTo(ChronoUnit.SECONDS);
+        Payment payment = insertPayment(Payment.builder()
+                .locationId(pkg.getLocationId())
+                .packageId(pkg.getId())
+                .amountDue(pkg.getFinalAmount())
+                .status(PaymentStatus.AWAITING_CONFIRMATION)
+                .submittedAt(submittedAt)
+                .build());
+        paymentProofRepository.save(PaymentProof.builder()
+                .paymentId(payment.getId())
+                .imagePath(imagePath)
+                .uploadedAt(submittedAt)
+                .build());
+        packageService.changeStatus(pkg, BookingStatus.AWAITING_CONFIRMATION);
+        return PaymentResponse.from(payment, pkg);
+    }
+
     /**
      * UC18 #4, FR54, BR34: Staff đã yêu cầu bổ sung, Player gửi ảnh chứng từ mới. Ảnh cũ vẫn giữ;
      * payment và booking quay lại Chờ xác nhận để Staff xem lại.
@@ -168,12 +260,15 @@ public class PaymentService {
 
     PaymentResponse resubmitProof(UserPrincipal player, Long paymentId, MultipartFile proof, LocalDateTime now) {
         requireProofAttached(proof);
-        // Khóa payment trước rồi đến booking, cùng thứ tự với phía Staff, để hai bên không chờ nhau mãi.
+        // Khóa payment trước rồi đến booking (hoặc gói), cùng thứ tự với phía Staff, để hai bên không chờ nhau mãi.
         Payment payment = paymentRepository.findByIdForUpdate(paymentId)
                 .orElseThrow(PaymentService::paymentNotFound);
+        if (payment.getPackageId() != null) {
+            return resubmitPackageProof(player, payment, proof, now);
+        }
         Booking booking = bookingService.lockForPayment(bookingIdOf(payment));
         bookingService.requireBooker(booking, player.getId());
-        requireResubmitAllowed(payment, booking, now);
+        requireResubmitAllowed(payment, playEnd(booking), now);
 
         String imagePath = fileStorageService.storeImage(proof, PROOF_FOLDER);
         LocalDateTime submittedAt = now.truncatedTo(ChronoUnit.SECONDS);
@@ -188,6 +283,26 @@ public class PaymentService {
         return PaymentResponse.from(payment, booking);
     }
 
+    /** UC18 #4 (gói): như booking lẻ, gói và các buổi quay lại Chờ xác nhận; hạn là hết buổi đầu tiên. */
+    private PaymentResponse resubmitPackageProof(UserPrincipal player, Payment payment, MultipartFile proof,
+            LocalDateTime now) {
+        BookingPackage pkg = packageService.lockForPayment(payment.getPackageId());
+        packageService.requireOwner(pkg, player.getId());
+        requireResubmitAllowed(payment, packageService.firstSessionEnd(pkg.getId()), now);
+
+        String imagePath = fileStorageService.storeImage(proof, PROOF_FOLDER);
+        LocalDateTime submittedAt = now.truncatedTo(ChronoUnit.SECONDS);
+        paymentProofRepository.save(PaymentProof.builder()
+                .paymentId(payment.getId())
+                .imagePath(imagePath)
+                .uploadedAt(submittedAt)
+                .build());
+        payment.resubmitted(submittedAt);
+        paymentRepository.saveAndFlush(payment);
+        packageService.changeStatus(pkg, BookingStatus.AWAITING_CONFIRMATION);
+        return PaymentResponse.from(payment, pkg);
+    }
+
     /**
      * UC18 #5, FR57: trạng thái thanh toán và biên nhận (số biên nhận có khi Staff đã xác nhận).
      * Chỉ người đặt booking xem được; người khác 403 (NFR07). Không thay đổi gì.
@@ -195,8 +310,56 @@ public class PaymentService {
     @Transactional(readOnly = true)
     public PaymentResponse getPayment(UserPrincipal player, Long paymentId) {
         Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
+        if (payment.getPackageId() != null) {
+            return PaymentResponse.from(payment, packageService.getForPlayer(payment.getPackageId(), player.getId()));
+        }
         Booking booking = bookingService.getForPlayer(bookingIdOf(payment), player.getId());
         return PaymentResponse.from(payment, booking);
+    }
+
+    /**
+     * UC17 #3, #5: payment của booking để chi tiết booking hiện trạng thái thanh toán và paymentId cho nút
+     * Gửi lại chứng từ. Không kiểm tra quyền: bên gọi đã kiểm tra booking là của Player.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Payment> findForBooking(Long bookingId) {
+        return paymentRepository.findByBookingId(bookingId);
+    }
+
+    /** UC16: payment của các booking trong một trang danh sách, theo mã booking. Bên gọi đã kiểm tra quyền. */
+    @Transactional(readOnly = true)
+    public Map<Long, Payment> findForBookings(Collection<Long> bookingIds) {
+        if (bookingIds.isEmpty()) {
+            return Map.of();
+        }
+        return paymentRepository.findByBookingIdIn(bookingIds).stream()
+                .collect(Collectors.toMap(Payment::getBookingId, Function.identity()));
+    }
+
+    /** UC17: payment của gói đặt nhiều buổi (cả gói thanh toán một lần). Bên gọi đã kiểm tra quyền. */
+    @Transactional(readOnly = true)
+    public Optional<Payment> findForPackage(Long packageId) {
+        return paymentRepository.findByPackageId(packageId);
+    }
+
+    /**
+     * UC16 #3, FR48, BR43: Staff thấy tiền của khách tại quầy đã về (BR33) và bấm Xác nhận. Ghi một payment
+     * Đã xác nhận kèm biên nhận, để đối soát cuối ngày (UC20) và doanh thu (BR37) tính được khoản này theo
+     * ngày xác nhận. Không có ảnh chứng từ (BR33), không ghi phương thức thanh toán, không cộng điểm (BR43).
+     * Bên gọi đã khóa dòng booking và kiểm tra trạng thái; chạy trong giao dịch của bên gọi.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Payment recordWalkInPayment(Booking booking, Long staffId, LocalDateTime now) {
+        LocalDateTime confirmedAt = now.truncatedTo(ChronoUnit.SECONDS);
+        Payment payment = insertPayment(Payment.builder()
+                .locationId(booking.getLocationId())
+                .bookingId(booking.getId())
+                .amountDue(booking.getFinalAmount())
+                .status(PaymentStatus.CONFIRMED)
+                .build());
+        // Số biên nhận cần id của payment nên ghi sau khi chèn dòng.
+        payment.confirm(staffId, payment.getAmountDue(), receiptNo(payment, confirmedAt), confirmedAt);
+        return paymentRepository.saveAndFlush(payment);
     }
 
     // ===================== UC19: Staff (hoặc Owner thay Staff, BR58) xử lý giao dịch =====================
@@ -211,10 +374,15 @@ public class PaymentService {
             throw new AppException("Phân trang không hợp lệ");
         }
         Location location = locationAccessService.selectedLocation(user);
-        Page<Payment> result = paymentRepository.findByLocationIdAndStatusAndBookingIdIsNotNullOrderBySubmittedAtAscIdAsc(
+        Page<Payment> result = paymentRepository.findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
                 location.getId(), PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(page, size));
-        Map<Long, Booking> bookings = bookingService.getByIds(result.map(Payment::getBookingId).toList());
-        return PageResponse.from(result.map(payment -> PaymentResponse.from(payment, bookings.get(payment.getBookingId()))));
+        Map<Long, Booking> bookings = bookingService.getByIds(
+                result.stream().map(Payment::getBookingId).filter(Objects::nonNull).toList());
+        Map<Long, BookingPackage> packages = packageService.getByIds(
+                result.stream().map(Payment::getPackageId).filter(Objects::nonNull).toList());
+        return PageResponse.from(result.map(payment -> payment.getPackageId() != null
+                ? PaymentResponse.from(payment, packages.get(payment.getPackageId()))
+                : PaymentResponse.from(payment, bookings.get(payment.getBookingId()))));
     }
 
     /**
@@ -226,6 +394,17 @@ public class PaymentService {
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
         requireSameLocation(payment, location);
+        List<PaymentDetailResponse.Proof> proofs = paymentProofRepository
+                .findByPaymentIdOrderByUploadedAtDescIdDesc(payment.getId()).stream()
+                .map(proof -> PaymentDetailResponse.Proof.builder()
+                        .id(proof.getId())
+                        .uploadedAt(proof.getUploadedAt())
+                        .imageUrl("/api/payments/" + payment.getId() + "/proofs/" + proof.getId() + "/image")
+                        .build())
+                .toList();
+        if (payment.getPackageId() != null) {
+            return packageDetail(payment, proofs);
+        }
         Booking booking = bookingService.getById(bookingIdOf(payment));
         BookingService.Customer customer = bookingService.getCustomer(booking);
 
@@ -238,13 +417,29 @@ public class PaymentService {
                 .customerName(customer.name())
                 .customerPhone(customer.phone())
                 .note(booking.getNote())
-                .proofs(paymentProofRepository.findByPaymentIdOrderByUploadedAtDescIdDesc(payment.getId()).stream()
-                        .map(proof -> PaymentDetailResponse.Proof.builder()
-                                .id(proof.getId())
-                                .uploadedAt(proof.getUploadedAt())
-                                .imageUrl("/api/payments/" + payment.getId() + "/proofs/" + proof.getId() + "/image")
+                .proofs(proofs)
+                .build();
+    }
+
+    /** UC19 #2 (gói): người đặt và danh sách buổi để Staff đối chiếu một khoản chuyển cho cả gói (FR43). */
+    private PaymentDetailResponse packageDetail(Payment payment, List<PaymentDetailResponse.Proof> proofs) {
+        BookingPackage pkg = packageService.getByIds(List.of(payment.getPackageId())).get(payment.getPackageId());
+        List<Booking> sessions = packageService.sessionsOf(pkg.getId());
+        BookingService.Customer customer = bookingService.getCustomer(sessions.get(0));
+        return PaymentDetailResponse.builder()
+                .payment(PaymentResponse.from(payment, pkg))
+                .customerName(customer.name())
+                .customerPhone(customer.phone())
+                .sessions(sessions.stream()
+                        .map(session -> PaymentDetailResponse.Session.builder()
+                                .bookingCode(session.getBookingCode())
+                                .courtName(bookingService.getCourtName(session))
+                                .playDate(session.getPlayDate())
+                                .startTime(MinuteTime.format(session.getStartMinute()))
+                                .endTime(MinuteTime.format(session.getEndMinute()))
                                 .build())
                         .toList())
+                .proofs(proofs)
                 .build();
     }
 
@@ -255,8 +450,14 @@ public class PaymentService {
     @Transactional(readOnly = true)
     public Resource loadProofImage(UserPrincipal user, Long paymentId, Long proofId) {
         Payment payment = paymentRepository.findById(paymentId).orElseThrow(PaymentService::paymentNotFound);
-        if (user.getRole() == Role.PLAYER) {
-            bookingService.getForPlayer(bookingIdOf(payment), user.getId());
+        if (user.getRole() == Role.PLAYER && payment.getPackageId() != null) {
+            packageService.getForPlayer(payment.getPackageId(), user.getId());
+        } else if (user.getRole() == Role.PLAYER) {
+            Long bookingId = payment.getRescheduleRequestId() == null
+                    ? bookingIdOf(payment)
+                    : rescheduleRequests.findById(payment.getRescheduleRequestId())
+                            .orElseThrow(PaymentService::paymentNotFound).getBookingId();
+            bookingService.getForPlayer(bookingId, user.getId());
         } else {
             requireSameLocation(payment, locationAccessService.selectedLocation(user));
         }
@@ -285,6 +486,9 @@ public class PaymentService {
         if (received.compareTo(payment.getAmountDue()) < 0) {
             throw new AppException("Số tiền thực nhận ít hơn số phải trả (" + money(payment.getAmountDue())
                     + "). Không xác nhận được; hãy yêu cầu khách chuyển thêm phần còn thiếu.");
+        }
+        if (payment.getPackageId() != null) {
+            return confirmPackage(user, location, payment, received, now);
         }
         Booking booking = lockBookingOf(payment);
         requireBeforePlayEnd(booking, now);
@@ -320,6 +524,9 @@ public class PaymentService {
     PaymentResponse requestResubmission(UserPrincipal user, Long paymentId, ResubmitRequest request, LocalDateTime now) {
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
+        if (payment.getPackageId() != null) {
+            return requestPackageResubmission(payment, request, now);
+        }
         Booking booking = lockBookingOf(payment);
         requireBeforePlayEnd(booking, now);
         String reason = request.reason().trim();
@@ -348,9 +555,111 @@ public class PaymentService {
     public PaymentResponse reject(UserPrincipal user, Long paymentId, RejectPaymentRequest request) {
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
+        if (payment.getPackageId() != null) {
+            BookingPackage pkg = lockPackageOf(payment);
+            rejectLockedPackage(payment, pkg, request.reason().trim());
+            return PaymentResponse.from(payment, pkg);
+        }
         Booking booking = lockBookingOf(payment);
         rejectLocked(payment, booking, request.reason().trim());
         return PaymentResponse.from(payment, booking);
+    }
+
+    // ===================== UC19 cho gói đặt nhiều buổi (FR43, BR26) =====================
+
+    @Transactional
+    public boolean expirePackagePayment(Long paymentId, LocalDateTime now) {
+        Payment payment = paymentRepository.findByIdForUpdate(paymentId).orElse(null);
+        if (payment == null || payment.getPackageId() == null
+                || (payment.getStatus() != PaymentStatus.AWAITING_CONFIRMATION
+                        && payment.getStatus() != PaymentStatus.RESUBMIT_REQUESTED)) {
+            return false;
+        }
+        BookingPackage pkg = packageService.lockForPayment(payment.getPackageId());
+        if ((pkg.getStatus() != BookingStatus.AWAITING_CONFIRMATION
+                && pkg.getStatus() != BookingStatus.RESUBMIT_REQUESTED)
+                || packageService.firstSessionEnd(pkg.getId()).isAfter(now)) {
+            return false;
+        }
+        rejectLockedPackage(payment, pkg, "Quá hạn xác nhận thanh toán gói");
+        return true;
+    }
+
+    /**
+     * UC19 #3, FR43: xác nhận thanh toán gói thì gói và mọi buổi con cùng sang Đã xác nhận; cộng điểm theo số tiền
+     * của cả gói (FR76); gói đạt mức chương trình theo lô thì tặng voucher (BR47). Chuyển thừa như booking lẻ.
+     */
+    private PaymentResponse confirmPackage(UserPrincipal user, Location location, Payment payment, BigDecimal received,
+            LocalDateTime now) {
+        BookingPackage pkg = lockPackageOf(payment);
+        requireBeforePlayEnd(packageService.firstSessionEnd(pkg.getId()), now);
+
+        LocalDateTime confirmedAt = now.truncatedTo(ChronoUnit.SECONDS);
+        payment.confirm(user.getId(), received, receiptNo(payment, confirmedAt), confirmedAt);
+        paymentRepository.saveAndFlush(payment);
+        packageService.changeStatus(pkg, BookingStatus.CONFIRMED);
+        loyaltyPointService.accrueForConfirmedPayment(payment.getId());
+        packageService.grantBatchOfferVoucher(pkg);
+
+        notify(pkg.getPlayerId(), "PAYMENT_CONFIRMED", "Thanh toán đã được xác nhận",
+                "Thanh toán " + packageLabel(pkg) + " đã được xác nhận. Xem biên nhận.", payment);
+        BigDecimal extra = received.subtract(payment.getAmountDue());
+        if (extra.signum() > 0) {
+            notify(location.getOwnerId(), "PAYMENT_OVERPAID", "Khách chuyển thừa tiền",
+                    "Khách chuyển thừa " + money(extra) + " cho " + packageLabel(pkg) + ". Vui lòng liên hệ trả lại.",
+                    payment);
+        }
+        return PaymentResponse.from(payment, pkg);
+    }
+
+    /** UC19 #4, BR34 (gói): như booking lẻ; hạn gửi lại là hết buổi đầu tiên của gói. */
+    private PaymentResponse requestPackageResubmission(Payment payment, ResubmitRequest request, LocalDateTime now) {
+        BookingPackage pkg = lockPackageOf(payment);
+        LocalDateTime deadline = packageService.firstSessionEnd(pkg.getId());
+        requireBeforePlayEnd(deadline, now);
+        String reason = request.reason().trim();
+        boolean playerAtFault = Boolean.TRUE.equals(request.playerAtFault());
+
+        if (playerAtFault && payment.noResubmitLeft()) {
+            rejectLockedPackage(payment, pkg, "Hết lượt gửi lại chứng từ. " + reason);
+            return PaymentResponse.from(payment, pkg);
+        }
+        payment.requestResubmission(reason, deadline, playerAtFault);
+        paymentRepository.saveAndFlush(payment);
+        packageService.changeStatus(pkg, BookingStatus.RESUBMIT_REQUESTED);
+        notify(pkg.getPlayerId(), "PAYMENT_RESUBMIT_REQUESTED", "Cần bổ sung thanh toán",
+                "Vui lòng bổ sung cho " + packageLabel(pkg) + ": " + reason
+                        + ". Hạn: " + payment.getResubmitDeadline().format(DEADLINE_FORMAT)
+                        + ". Còn " + (Payment.MAX_RESUBMITS - payment.getResubmitCount()) + " lượt gửi lại.",
+                payment);
+        return PaymentResponse.from(payment, pkg);
+    }
+
+    /**
+     * UC19 #5 (gói): payment Bị từ chối; gói và các buổi Bị từ chối thanh toán, nhả slot mọi buổi, trả voucher
+     * và điểm (BR40, BR45), báo Player (MSG51).
+     */
+    private void rejectLockedPackage(Payment payment, BookingPackage pkg, String reason) {
+        payment.reject(reason);
+        paymentRepository.saveAndFlush(payment);
+        packageService.settleFailed(pkg, BookingStatus.PAYMENT_REJECTED);
+        notify(pkg.getPlayerId(), "PAYMENT_REJECTED", "Thanh toán bị từ chối",
+                "Thanh toán " + packageLabel(pkg) + " bị từ chối. Lý do: " + reason
+                        + ". Nếu bạn đã chuyển tiền, hãy gửi khiếu nại.", payment);
+    }
+
+    /** Khóa gói của giao dịch, sau payment (cùng thứ tự với phía Player gửi lại chứng từ). */
+    private BookingPackage lockPackageOf(Payment payment) {
+        BookingPackage pkg = packageService.lockForPayment(payment.getPackageId());
+        if (pkg.getStatus() != BookingStatus.AWAITING_CONFIRMATION) {
+            throw new AppException("Giao dịch này đã được xử lý. (MSG54)", HttpStatus.CONFLICT);
+        }
+        return pkg;
+    }
+
+    private static String packageLabel(BookingPackage pkg) {
+        return "gói đặt nhiều buổi từ " + pkg.getStartDate().format(DAY_FORMAT) + " đến "
+                + pkg.getEndDate().format(DAY_FORMAT);
     }
 
     /**
@@ -403,7 +712,11 @@ public class PaymentService {
      * xác nhận hay yêu cầu bổ sung được nữa, kể cả khi job chưa kịp chạy. Player đã chuyển tiền thì khiếu nại.
      */
     private static void requireBeforePlayEnd(Booking booking, LocalDateTime now) {
-        if (!now.isBefore(playEnd(booking))) {
+        requireBeforePlayEnd(playEnd(booking), now);
+    }
+
+    private static void requireBeforePlayEnd(LocalDateTime playEnd, LocalDateTime now) {
+        if (!now.isBefore(playEnd)) {
             throw new AppException("Booking đã hết giờ chơi nên không xử lý giao dịch này được nữa. "
                     + "Khách đã chuyển tiền thì gửi khiếu nại cho chủ sân.", HttpStatus.CONFLICT);
         }
@@ -445,19 +758,19 @@ public class PaymentService {
      * Chỉ gửi lại khi đang chờ bổ sung (nút chỉ hiện khi Staff yêu cầu, BR34) và chưa quá hạn.
      * Hạn là resubmit_deadline Staff đặt (hết giờ chơi, P07); thiếu thì lấy giờ kết thúc booking.
      */
-    private static void requireResubmitAllowed(Payment payment, Booking booking, LocalDateTime now) {
+    private static void requireResubmitAllowed(Payment payment, LocalDateTime playEnd, LocalDateTime now) {
         if (payment.getStatus() != PaymentStatus.RESUBMIT_REQUESTED) {
             throw new AppException("Thanh toán này không chờ bổ sung chứng từ.", HttpStatus.CONFLICT);
         }
-        LocalDateTime deadline = payment.getResubmitDeadline() != null ? payment.getResubmitDeadline()
-                : booking.getPlayDate().atStartOfDay().plusMinutes(booking.getEndMinute());
+        LocalDateTime deadline = payment.getResubmitDeadline() != null ? payment.getResubmitDeadline() : playEnd;
         if (now.isAfter(deadline)) {
             throw new AppException("Đã hết lượt hoặc hết hạn gửi lại chứng từ. (MSG52)", HttpStatus.CONFLICT);
         }
     }
 
     /**
-     * Payment của gói (UC15) và của khoản trả thêm khi đổi lịch (UC21) chưa làm: tạm coi như không có.
+     * Booking của payment booking lẻ. Payment của gói đi theo nhánh riêng (packageId); khoản trả thêm khi đổi
+     * lịch (UC21) do RescheduleService xử lý nên ở đây coi như không có.
      */
     private static Long bookingIdOf(Payment payment) {
         if (payment.getBookingId() == null) {
@@ -479,7 +792,8 @@ public class PaymentService {
             return paymentRepository.saveAndFlush(payment);
         } catch (DataIntegrityViolationException e) {
             String cause = e.getMostSpecificCause().getMessage();
-            if (cause == null || !cause.contains(PAYMENT_BOOKING_UNIQUE_INDEX)) {
+            if (cause == null
+                    || !(cause.contains(PAYMENT_BOOKING_UNIQUE_INDEX) || cause.contains(PAYMENT_PACKAGE_UNIQUE_INDEX))) {
                 throw e;
             }
             throw alreadyReported();
@@ -523,6 +837,36 @@ public class PaymentService {
                 requireHoldNotExpired(booking, now);
                 return;
             }
+        }
+        throw notWaitingForPayment();
+    }
+
+    /**
+     * Báo đã thanh toán gói lần đầu: gói phải đang giữ chỗ và còn hạn 15 phút (P27). Đã báo rồi thì 409 (FR54).
+     */
+    private static void requireNotReportedYet(BookingStatus status, LocalDateTime holdExpiresAt, LocalDateTime now) {
+        switch (status) {
+            case HOLDING -> {
+                if (!holdExpiresAt.isAfter(now)) {
+                    throw holdExpired();
+                }
+            }
+            case EXPIRED -> throw holdExpired();
+            case AWAITING_CONFIRMATION, RESUBMIT_REQUESTED, CONFIRMED -> throw alreadyReported();
+            default -> throw notWaitingForPayment();
+        }
+    }
+
+    /** Gói đang chờ Player chuyển khoản: đang giữ chỗ còn hạn (lần đầu) hoặc chờ bổ sung. */
+    private static void requireWaitingForTransfer(BookingPackage pkg, LocalDateTime now) {
+        if (pkg.getStatus() == BookingStatus.RESUBMIT_REQUESTED) {
+            return;
+        }
+        if (pkg.getStatus() == BookingStatus.HOLDING && pkg.getHoldExpiresAt().isAfter(now)) {
+            return;
+        }
+        if (pkg.getStatus() == BookingStatus.HOLDING) {
+            throw holdExpired();
         }
         throw notWaitingForPayment();
     }

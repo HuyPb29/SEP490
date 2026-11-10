@@ -75,6 +75,7 @@ public class ComplaintService {
     private final NotificationRepository notificationRepository;
     private final com.sep490.bms.service.reschedule.BookingChangeSupport bookingChanges;
     private final jakarta.persistence.EntityManager entityManager;
+    private final com.sep490.bms.service.promotion.LoyaltyPointService loyalty;
 
     // ---------------------------------------------------------------- Gửi khiếu nại
 
@@ -87,6 +88,24 @@ public class ComplaintService {
         for (Account staff : accountRepository.findByRoleAndLocationId(Role.STAFF, complaint.getLocationId())) {
             notify(staff.getId(), "COMPLAINT_SUBMITTED", title, truncate(complaint.getContent(), 500), complaint);
         }
+        return toResponses(List.of(complaint)).get(0);
+    }
+
+    /** UC22 A3/BR43: a counter customer has no Player account; Staff creates the complaint. */
+    @Transactional
+    public ComplaintResponse createForWalkIn(UserPrincipal staff,CreateComplaintRequest request) {
+        if(staff.getRole()!=Role.STAFF) throw new AppException("Chỉ Staff tạo khiếu nại thay khách",HttpStatus.FORBIDDEN);
+        Booking booking=bookingChanges.booking(request.getBookingId());
+        if(!booking.getLocationId().equals(staff.getLocationId())) throw new AppException("Sai địa điểm",HttpStatus.FORBIDDEN);
+        if(booking.getBookingType()!=com.sep490.bms.entity.enums.BookingType.WALK_IN)
+            throw new AppException("Chức năng này dành cho khách tại quầy");
+        String type=request.getComplaintType().trim().toUpperCase();
+        if(!PLAYER_TYPES.contains(type) || Complaint.TYPE_LATE_PAYMENT_CONFIRMATION.equals(type)) throw new AppException("Loại khiếu nại không hợp lệ");
+        if(request.getPaymentId()!=null && !booking.getId().equals(findPayment(request.getPaymentId()).getBookingId()))
+            throw new AppException("Thanh toán không thuộc booking");
+        Complaint complaint=complaintRepository.saveAndFlush(Complaint.builder().locationId(booking.getLocationId())
+                .bookingId(booking.getId()).paymentId(request.getPaymentId()).createdBy(staff.getId())
+                .complaintType(type).content(request.getContent().trim()).build());
         return toResponses(List.of(complaint)).get(0);
     }
 
@@ -239,18 +258,16 @@ public class ComplaintService {
         Long compensated = entityManager.createQuery("select count(a) from AffectedBooking a where a.bookingId=:b and a.status='RESOLVED' and a.choice='POINTS'", Long.class)
                 .setParameter("b", booking.getId()).getSingleResult();
         if (compensated > 0) throw new AppException("Booking đã nhận điểm bồi hoàn, không thể chuyển sang hoàn tiền", HttpStatus.CONFLICT);
-        BigDecimal suggested = amount != null ? amount : booking.getFinalAmount();
-        if (suggested.signum() <= 0 || suggested.compareTo(booking.getFinalAmount()) > 0) {
+        BigDecimal available=bookingChanges.refundableAmount(booking);
+        BigDecimal requested=entityManager.createQuery("select coalesce(sum(case when r.refundedAmount is not null then r.refundedAmount else r.suggestedAmount end),0) from RefundRequest r where r.bookingId=:b",BigDecimal.class)
+                .setParameter("b",booking.getId()).getSingleResult();
+        BigDecimal suggested = amount != null ? amount : available.subtract(requested);
+        if (suggested.signum() <= 0 || suggested.compareTo(available.subtract(requested)) > 0) {
             throw new AppException("Số tiền hoàn phải lớn hơn 0 và không vượt quá số tiền booking");
         }
-        LocalDateTime paidAt = booking.getCreatedAt();
-        if (complaint.getPaymentId() != null) {
-            Payment payment = findPayment(complaint.getPaymentId());
-            paidAt = payment.getConfirmedAt() != null ? payment.getConfirmedAt() : payment.getCreatedAt();
-        }
-        LocalDate originalPaymentDate = paidAt.toLocalDate();
+        LocalDate originalPaymentDate = bookingChanges.originalPaymentDate(booking);
 
-        refundRequestRepository.save(RefundRequest.builder()
+        RefundRequest refund=refundRequestRepository.saveAndFlush(RefundRequest.builder()
                 .locationId(complaint.getLocationId())
                 .bookingId(booking.getId())
                 .complaintId(complaint.getId())
@@ -258,6 +275,7 @@ public class ComplaintService {
                 .originalPaymentDate(originalPaymentDate)
                 .reason(note != null ? note : "Hoàn tiền theo khiếu nại #" + complaint.getId())
                 .build());
+        loyalty.settleRefund(refund.getId(),suggested);
     }
 
     private void grantCompensationPoints(Long ownerId, Complaint complaint, Integer points, String note) {

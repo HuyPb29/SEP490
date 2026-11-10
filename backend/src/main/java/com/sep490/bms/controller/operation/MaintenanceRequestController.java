@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sep490.bms.common.ApiResponse;
+import com.sep490.bms.dto.location.CancelMaintenanceRequest;
 import com.sep490.bms.dto.location.CreateMaintenanceRequest;
 import com.sep490.bms.dto.location.MaintenanceRequestDto;
 import com.sep490.bms.dto.location.RejectMaintenanceRequest;
@@ -73,6 +74,21 @@ public class MaintenanceRequestController {
             @AuthenticationPrincipal UserPrincipal currentUser,
             @PathVariable("id") Long id) {
         return ResponseEntity.ok(ApiResponse.success(maintenanceService.detail(currentUser, id)));
+    }
+
+    /**
+     * UC10 – Quản lý bảo trì sân
+     * Feature: F2 – Quản lý địa điểm
+     * Owner: Minh Anh
+     * Status: IMPLEMENTED
+     */
+    @PostMapping("/api/staff/maintenance-requests/{id}/cancel")
+    public ResponseEntity<ApiResponse<MaintenanceRequestDto>> postStaffMaintenanceRequestsByIdCancel(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) @Valid CancelMaintenanceRequest request) {
+        MaintenanceRequestDto cancelled = maintenanceService.cancel(currentUser, id, request);
+        return ResponseEntity.ok(ApiResponse.success("Đã huỷ yêu cầu bảo trì", cancelled));
     }
 
     /**

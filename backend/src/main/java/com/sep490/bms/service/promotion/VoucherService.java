@@ -97,10 +97,16 @@ public class VoucherService {
     @Transactional
     public VoucherResponse update(UserPrincipal user,Long id,@Valid VoucherUpdateRequest request) {
         Voucher v=owned(user,id);
-        if(v.getStatus()!=VoucherStatus.DRAFT || v.getSource()!=VoucherSource.CAMPAIGN)
-            throw new AppException("Chỉ sửa được campaign DRAFT",HttpStatus.CONFLICT);
+        // F2/UC37: voucher đã hết hạn vẫn phải sửa được ngày để gia hạn, nếu không sẽ thành
+        // bản ghi không thể cứu: DRAFT mới được sửa, mà publish() lại chặn ngày đã qua.
+        boolean editable=v.getStatus()==VoucherStatus.DRAFT || v.getStatus()==VoucherStatus.EXPIRED;
+        if(!editable || v.getSource()!=VoucherSource.CAMPAIGN)
+            throw new AppException("Chỉ sửa được campaign DRAFT hoặc EXPIRED",HttpStatus.CONFLICT);
         if(v.getVersion()!=request.version()) throw new AppException("Voucher đã thay đổi; tải lại dữ liệu",HttpStatus.CONFLICT);
-        configure(v,request.voucher()); return VoucherResponse.from(vouchers.saveAndFlush(v));
+        configure(v,request.voucher());
+        // configure() đã bắt validTo >= hôm nay, nên gia hạn xong là dùng lại được ngay.
+        if(v.getStatus()==VoucherStatus.EXPIRED) v.setStatus(VoucherStatus.PUBLISHED);
+        return VoucherResponse.from(vouchers.saveAndFlush(v));
     }
     private void configure(Voucher v,VoucherWriteRequest r) {
         if(r.validTo().isBefore(LocalDate.now())) throw new AppException("Voucher đã hết hạn");
@@ -111,7 +117,7 @@ public class VoucherService {
         v.setDiscountValue(r.discountValue()); v.setMinOrderAmount(r.minOrderAmount()); v.setValidFrom(r.validFrom());
         v.setValidTo(r.validTo()); v.setGrantValidDays(r.grantValidDays()); v.setMaxUsesPerPlayer(r.maxUsesPerPlayer());
         v.setMaxTotalUses(r.maxTotalUses()); v.setBudget(r.budget());
-        v.setAllowPoints(Boolean.TRUE.equals(r.allowPoints())); v.setMaxPointPercent(r.maxPointPercent());
+        v.setAllowPoints(true); v.setMaxPointPercent(50); // P12/P13 fixed for every venue.
     }
     @Transactional
     public VoucherResponse publish(UserPrincipal user,Long id) {
@@ -125,6 +131,7 @@ public class VoucherService {
     @Transactional
     public VoucherResponse disable(UserPrincipal user,Long id) {
         role(user,Role.ADMIN); Voucher v=locked(id);
+        if(v.getStatus()!=VoucherStatus.PUBLISHED) throw new AppException("Chỉ vô hiệu voucher đã phát hành",HttpStatus.CONFLICT);
         v.setStatus(VoucherStatus.DISABLED); v.setDisabledBy(user.getId());
         return VoucherResponse.from(vouchers.saveAndFlush(v));
     }
@@ -180,9 +187,9 @@ public class VoucherService {
                     || g.getExpiresAt()!=null && !g.getExpiresAt().isAfter(now)) throw new AppException("Voucher cá nhân không khả dụng");
         } else if(selection.grantId()!=null) throw new AppException("Voucher công khai phải chọn bằng code");
         if(v.getTargetGroup()==VoucherTargetGroup.NEW_PLAYERS && em.createQuery(
-                "select count(b) from Booking b where b.playerId=:p and b.locationId=:l and b.status in :states",Long.class)
+                "select count(b) from Booking b where b.playerId=:p and b.locationId=:l and exists (select pay.id from Payment pay where pay.status=com.sep490.bms.entity.enums.PaymentStatus.CONFIRMED and (pay.bookingId=b.id or pay.packageId=b.packageId))",Long.class)
                 .setParameter("p",player).setParameter("l",location)
-                .setParameter("states",List.of(BookingStatus.CONFIRMED,BookingStatus.IN_USE,BookingStatus.COMPLETED)).getSingleResult()>0)
+                .getSingleResult()>0)
             throw new AppException("Voucher chỉ dành cho Player mới tại địa điểm");
         if(amount.compareTo(v.getMinOrderAmount())<0) throw new AppException("Chưa đạt giá trị đơn tối thiểu");
         if(v.getMaxTotalUses()!=null && v.getUsedCount()>=v.getMaxTotalUses()) throw new AppException("Voucher hết lượt");
@@ -223,18 +230,74 @@ public class VoucherService {
     }
     /** F3 failure/expiry/cancellation transaction; rollback of creation already restores all state automatically. */
     @Transactional(propagation=Propagation.MANDATORY)
+    public VoucherUsage consumeForPackage(Long packageId,@Valid VoucherSelection selection) {
+        var pkg=em.find(com.sep490.bms.entity.booking.BookingPackage.class,packageId,LockModeType.PESSIMISTIC_WRITE);
+        if(pkg==null || pkg.getStatus()!=BookingStatus.HOLDING || pkg.getHoldExpiresAt()==null || !pkg.getHoldExpiresAt().isAfter(LocalDateTime.now()))
+            throw new AppException("Gói không còn giữ chỗ");
+        Voucher voucher=resolve(pkg.getLocationId(),selection,true);
+        var old=usages.findByPackageId(packageId);
+        if(old.isPresent()) {
+            VoucherUsage usage=old.get();
+            if(usage.getStatus()!=VoucherUsageStatus.USED || !usage.getVoucherId().equals(voucher.getId()) || !Objects.equals(usage.getVoucherGrantId(),selection.grantId()))
+                throw new AppException("Gói đã có voucher",HttpStatus.CONFLICT);
+            return usage;
+        }
+        if(pkg.getPointsUsed()>0) throw new AppException("Áp voucher trước điểm");
+        var quote=evaluate(voucher,pkg.getPlayerId(),pkg.getLocationId(),pkg.getListAmount(),selection);
+        voucher.setUsedCount(voucher.getUsedCount()+1);voucher.setBudgetUsed(voucher.getBudgetUsed().add(quote.discountAmount()));
+        if(selection.grantId()!=null) grants.findById(selection.grantId()).orElseThrow().setStatus(VoucherGrantStatus.USED);
+        pkg.setVoucherDiscount(quote.discountAmount());pkg.setFinalAmount(quote.amountAfterVoucher());
+        return usages.saveAndFlush(VoucherUsage.builder().voucherId(voucher.getId()).voucherGrantId(selection.grantId())
+                .playerId(pkg.getPlayerId()).packageId(packageId).discountAmount(quote.discountAmount()).build());
+    }
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void restoreForFailedPackage(Long packageId) {
+        var pkg=em.find(com.sep490.bms.entity.booking.BookingPackage.class,packageId,LockModeType.PESSIMISTIC_WRITE);
+        if(pkg==null || !List.of(BookingStatus.EXPIRED,BookingStatus.PAYMENT_REJECTED,BookingStatus.CANCELLED_BY_FACILITY).contains(pkg.getStatus())) throw new AppException("Gói chưa thất bại");
+        usages.findByPackageId(packageId).ifPresent(this::restoreUsage);
+    }
+    @Transactional(propagation=Propagation.MANDATORY)
     public void restoreForFailedBooking(Long bookingId) {
         var b=em.find(com.sep490.bms.entity.booking.Booking.class,bookingId,LockModeType.PESSIMISTIC_WRITE);
         if(b==null) throw new AppException("Không tìm thấy booking",HttpStatus.NOT_FOUND);
         if(!List.of(BookingStatus.EXPIRED,BookingStatus.PAYMENT_REJECTED,BookingStatus.CANCELLED_BY_FACILITY).contains(b.getStatus()))
             throw new AppException("Booking chưa ở trạng thái thất bại được hoàn voucher");
-        var found=usages.findByBookingId(bookingId);
+        // BR14: a package has exactly one voucher usage. BR45 returns that usage once
+        // for an eligible court-cancelled session; never invent fractional voucher uses.
+        var found=b.getPackageId()==null?usages.findByBookingId(bookingId):usages.findByPackageId(b.getPackageId());
         if(found.isEmpty()) return;
-        VoucherUsage u=found.get(); Voucher v=locked(u.getVoucherId());
+        restoreUsage(found.get());
+    }
+    private void restoreUsage(VoucherUsage u) {
+        Voucher v=locked(u.getVoucherId());em.refresh(v,LockModeType.PESSIMISTIC_WRITE);
+        em.refresh(u,LockModeType.PESSIMISTIC_WRITE); // A different session may already have returned this package usage.
         if(u.getStatus()==VoucherUsageStatus.RETURNED) return;
         if(v.getUsedCount()<1 || v.getBudgetUsed().compareTo(u.getDiscountAmount())<0) throw new AppException("Dữ liệu lượt voucher không nhất quán",HttpStatus.CONFLICT);
         v.setUsedCount(v.getUsedCount()-1); v.setBudgetUsed(v.getBudgetUsed().subtract(u.getDiscountAmount()));
         if(u.getVoucherGrantId()!=null) grants.findById(u.getVoucherGrantId()).orElseThrow().setStatus(VoucherGrantStatus.AVAILABLE);
         u.setStatus(VoucherUsageStatus.RETURNED); u.setReturnedAt(LocalDateTime.now());
     }
+
+    /**
+     * UC15 #9, BR47, BR48: tặng voucher của chương trình theo lô cho Player khi thanh toán gói được xác nhận.
+     * Chỉ tặng được voucher Player được chỉ định (SPECIFIED) đã phát hành, còn hạn; hạn của lượt tặng tính như grant().
+     * F3 gọi trong giao dịch xác nhận thanh toán gói.
+     *
+     * @return false nếu voucher không tặng được (bị tắt, hết hạn, không phải loại được chỉ định)
+     */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public boolean grantForBatchOffer(Long voucherId,Long playerId,String note) {
+        Voucher v=locked(voucherId);
+        LocalDateTime now=LocalDateTime.now();
+        if(v.getStatus()!=VoucherStatus.PUBLISHED || v.getTargetGroup()!=VoucherTargetGroup.SPECIFIED
+                || v.getValidTo()!=null && v.getValidTo().isBefore(now.toLocalDate())) return false;
+        LocalDateTime expiry=v.getValidTo()==null ? null:v.getValidTo().plusDays(1).atStartOfDay();
+        if(v.getGrantValidDays()!=null) {
+            LocalDateTime relative=now.plusDays(v.getGrantValidDays());
+            if(expiry==null || relative.isBefore(expiry)) expiry=relative;
+        }
+        grants.saveAndFlush(VoucherGrant.builder().voucherId(voucherId).playerId(playerId).expiresAt(expiry).note(note).build());
+        return true;
+    }
+
 }

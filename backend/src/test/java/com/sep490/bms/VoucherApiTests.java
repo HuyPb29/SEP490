@@ -74,6 +74,7 @@ class VoucherApiTests {
             Long id=location.getId();
             jdbc.update("DELETE FROM voucher_usage WHERE voucher_id IN (SELECT id FROM voucher WHERE location_id=?)",id);
             jdbc.update("DELETE FROM voucher_grant WHERE voucher_id IN (SELECT id FROM voucher WHERE location_id=?)",id);
+            jdbc.update("DELETE FROM payment WHERE location_id=?",id);
             jdbc.update("DELETE FROM booking WHERE location_id=?",id);
             jdbc.update("DELETE FROM voucher WHERE location_id=?",id);
             jdbc.update("DELETE FROM court WHERE location_id=?",id);
@@ -167,7 +168,11 @@ class VoucherApiTests {
                 .isInstanceOf(AppException.class).hasMessageContaining("tối thiểu");
         Booking b=booking(player);
         assertThat(service.check(UserPrincipal.create(player),new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(1000),new VoucherSelection(v.getCode(),null))).discountAmount()).isEqualByComparingTo("100");
-        tx.executeWithoutResult(s -> em.find(Booking.class,b.getId()).setStatus(BookingStatus.CONFIRMED));
+        tx.executeWithoutResult(s -> {
+            em.find(Booking.class,b.getId()).setStatus(BookingStatus.CANCELLED_BY_PLAYER);
+            em.persist(com.sep490.bms.entity.payment.Payment.builder().locationId(location.getId()).bookingId(b.getId()).amountDue(b.getFinalAmount())
+                    .status(PaymentStatus.CONFIRMED).confirmedBy(owner.getId()).confirmedAt(LocalDateTime.now()).build());
+        });
         assertThatThrownBy(() -> service.check(UserPrincipal.create(player),new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(1000),new VoucherSelection(v.getCode(),null))))
                 .isInstanceOf(AppException.class).hasMessageContaining("Player mới");
     }

@@ -166,7 +166,7 @@ export default function OwnerReportPage() {
         </select>
 
         <nav className={styles.navigation} aria-label="Owner navigation">
-          {[ 
+          {[
             'Reports',
             'Courts & Pricing',
             'Opening Hours',

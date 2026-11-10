@@ -24,10 +24,10 @@ public record VoucherWriteRequest(
             BigDecimal discountValue, BigDecimal minOrderAmount, LocalDate validFrom, LocalDate validTo,
             Integer grantValidDays, Integer maxUsesPerPlayer, Integer maxTotalUses, BigDecimal budget) {
         this(code,name,targetGroup,discountType,discountValue,minOrderAmount,validFrom,validTo,grantValidDays,
-                maxUsesPerPlayer,maxTotalUses,budget,false,null);
+                maxUsesPerPlayer,maxTotalUses,budget,true,50);
     }
-    @AssertTrue(message="Kết hợp điểm yêu cầu tỷ lệ tối đa 1–100%; không kết hợp thì bỏ tỷ lệ")
-    public boolean isPointPolicyValid() { return Boolean.TRUE.equals(allowPoints) ? maxPointPercent!=null : maxPointPercent==null; }
+    @AssertTrue(message="P12/P13: luôn kết hợp điểm, tỷ lệ cố định 50%")
+    public boolean isPointPolicyValid() { return (allowPoints==null || allowPoints) && (maxPointPercent==null || maxPointPercent==50); }
     @AssertTrue(message="Ngày hết hạn phải từ ngày bắt đầu trở đi")
     public boolean isDateRangeValid() { return validFrom == null || validTo == null || !validTo.isBefore(validFrom); }
     @AssertTrue(message="SPECIFIED không có code; voucher công khai bắt buộc có code")

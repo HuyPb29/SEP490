@@ -165,7 +165,7 @@ public class LoyaltyPointService {
         Payment p=lock(Payment.class,paymentId);
         if(p.getStatus()!=PaymentStatus.CONFIRMED) throw new AppException("Thanh toán chưa xác nhận");
         if(accruals.existsByPaymentId(paymentId)) return;
-        Long player,booking=null,pkg=null; int sessions=0;
+        Long player,booking=null,pkg=null;
         if(p.getPackageId()!=null) {
             BookingPackage target=lock(BookingPackage.class,p.getPackageId());
             if(target.getStatus()!=BookingStatus.CONFIRMED || !p.getLocationId().equals(target.getLocationId()) || p.getAmountDue().compareTo(target.getFinalAmount())!=0)
@@ -174,7 +174,6 @@ public class LoyaltyPointService {
             List<Booking> children=em.createQuery("select b from Booking b where b.packageId=:p order by b.id",Booking.class).setParameter("p",pkg).getResultList();
             if(children.isEmpty() || children.stream().anyMatch(b -> b.getStatus()!=BookingStatus.CONFIRMED || !target.getPlayerId().equals(b.getPlayerId()) || !target.getLocationId().equals(b.getLocationId())))
                 throw new AppException("Các buổi của package chưa xác nhận đồng bộ");
-            sessions=children.size();
         } else {
             Booking b;
             if(p.getRescheduleRequestId()!=null) {
@@ -184,20 +183,21 @@ public class LoyaltyPointService {
                 b=lock(Booking.class,p.getBookingId());
                 if(b.getBookingType()==BookingType.WALK_IN) return;
                 if(b.getPackageId()!=null || p.getAmountDue().compareTo(b.getFinalAmount())!=0) throw new AppException("Phải xác nhận ở cấp package hoặc số tiền không khớp");
-                sessions=1;
             }
             if(b.getStatus()!=BookingStatus.CONFIRMED || !b.getLocationId().equals(p.getLocationId()) || b.getPlayerId()==null)
                 throw new AppException("Booking chưa xác nhận");
             booking=b.getId(); player=b.getPlayerId();
         }
         PlayerLocationBalance b=balance(player,p.getLocationId(),false);
-        int earned=p.getAmountDue().divideToIntegralValue(BigDecimal.valueOf(EARNING_RATE)).intValueExact();
-        if(earned>0) change(b,booking,pkg,PointTransactionType.EARN,earned,EARNING_RATE,"Thanh toán #"+p.getId(),p.getConfirmedBy());
+        int rate=em.find(Location.class,p.getLocationId()).getPointEarningRate();
+        if(rate<1000 || rate>100000) throw new AppException("Tỷ lệ tích điểm ngoài giới hạn P09");
+        int earned=p.getAmountDue().divideToIntegralValue(BigDecimal.valueOf(rate)).intValueExact();
+        if(earned>0) change(b,booking,pkg,PointTransactionType.EARN,earned,rate,"Thanh toán #"+p.getId(),p.getConfirmedBy());
         BigDecimal total=b.getTotalPaid().add(p.getAmountDue());
         if(total.precision()>14) throw new AppException("Tổng chi tiêu vượt giới hạn",HttpStatus.CONFLICT);
-        b.setTotalPaid(total); b.setLoyaltySessions(Math.addExact(b.getLoyaltySessions(),sessions)); b.setUpdatedAt(LocalDateTime.now());
-        accruals.saveAndFlush(LoyaltyAccrual.builder().paymentId(paymentId).balanceId(b.getId()).paidAmount(p.getAmountDue()).earnedPoints(earned).earningRate(EARNING_RATE).build());
-        if(sessions>0) milestones.reward(b);
+        b.setTotalPaid(total); b.setUpdatedAt(LocalDateTime.now());
+        accruals.saveAndFlush(LoyaltyAccrual.builder().paymentId(paymentId).balanceId(b.getId()).paidAmount(p.getAmountDue()).earnedPoints(earned).earningRate(rate).build());
+        milestones.reward(b);
     }
     /** F5 calls immediately after saving the Player's facility-affected choice and cancellation. */
     @Transactional(propagation=Propagation.MANDATORY)
@@ -218,10 +218,11 @@ public class LoyaltyPointService {
                 .setParameter("s",PaymentStatus.CONFIRMED).setParameter("b",b.getId()).getSingleResult();
         BigDecimal paid=b.getFinalAmount().add(extras);
         if(a.getChoice()==AffectedChoice.REFUND) {
-            int revoke=paid.divideToIntegralValue(BigDecimal.valueOf(EARNING_RATE)).min(BigDecimal.valueOf(balance.getPointBalance())).intValueExact();
-            if(revoke>0) change(balance,b.getId(),null,PointTransactionType.REVOKE,-revoke,null,"Thu hồi điểm khi chọn hoàn tiền",null);
-            balance.setLoyaltySessions(Math.max(0,balance.getLoyaltySessions()-1));
-            balance.setTotalPaid(balance.getTotalPaid().subtract(paid).max(BigDecimal.ZERO)); b.setLoyaltyRefundProcessed(true);
+            // The refund request is created in the same transaction; its receipt prevents double settlement.
+            RefundRequest refund=em.createQuery("select r from RefundRequest r where r.affectedBookingId=:a",RefundRequest.class)
+                    .setParameter("a",a.getId()).getSingleResult();
+            settleRefund(refund.getId(),refund.getSuggestedAmount());
+            b.setLoyaltyRefundProcessed(true);
         } else {
             int points=paid.divide(BigDecimal.valueOf(POINT_VALUE),0,RoundingMode.CEILING).intValueExact();
             change(balance,b.getId(),null,PointTransactionType.ADJUST,points,null,"Bồi hoàn khi sân hủy (BR54)",a.getCreatedBy());
@@ -230,5 +231,56 @@ public class LoyaltyPointService {
                     .content("Đã cộng "+points+" điểm bồi hoàn cho booking "+b.getBookingCode()).refType("BOOKING").refId(b.getId()).build());
         }
         balance.setUpdatedAt(LocalDateTime.now());
+    }
+
+    /** BR52: called on approval, and reconciled to the actual recorded amount in UC23. */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void settleRefund(Long refundId,BigDecimal amount) {
+        RefundRequest observed=em.find(RefundRequest.class,refundId);
+        if(observed==null) throw new AppException("Không tìm thấy yêu cầu hoàn tiền",HttpStatus.NOT_FOUND);
+        Booking booking=lock(Booking.class,observed.getBookingId());
+        RefundRequest refund=lock(RefundRequest.class,refundId);
+        if(booking.getPlayerId()==null) return; // Walk-in has no wallet.
+        BigDecimal old=refund.getLoyaltySettledAmount();
+        if(amount.compareTo(old)==0) return;
+        List<LoyaltyRefundCalculator.Receipt> receipts=refundReceipts(booking);
+        // Unconfirmed cash was never earned/reported as loyalty spend.
+        if(receipts.isEmpty()) return;
+        PlayerLocationBalance wallet=balance(booking.getPlayerId(),booking.getLocationId(),false);
+        BigDecimal prior=em.createQuery("select coalesce(sum(r.loyaltySettledAmount),0) from RefundRequest r where r.bookingId=:b and r.id<>:r",BigDecimal.class)
+                .setParameter("b",booking.getId()).setParameter("r",refundId).getSingleResult();
+        int delta=LoyaltyRefundCalculator.points(receipts,prior.add(amount))-LoyaltyRefundCalculator.points(receipts,prior.add(old));
+        if(delta>0) {
+            int revoked=Math.min(delta,wallet.getPointBalance());
+            if(revoked>0) change(wallet,booking.getId(),null,PointTransactionType.REVOKE,-revoked,null,"Thu hồi điểm hoàn tiền #"+refundId,refund.getRecordedBy());
+            refund.setLoyaltyRevokedPoints(refund.getLoyaltyRevokedPoints()+revoked);
+        } else if(delta<0) {
+            int returned=Math.min(-delta,refund.getLoyaltyRevokedPoints());
+            if(returned>0) change(wallet,booking.getId(),null,PointTransactionType.RETURN,returned,null,"Điều chỉnh số tiền hoàn thực tế #"+refundId,refund.getRecordedBy());
+            refund.setLoyaltyRevokedPoints(refund.getLoyaltyRevokedPoints()-returned);
+        }
+        wallet.setTotalPaid(wallet.getTotalPaid().subtract(amount.subtract(old)).max(BigDecimal.ZERO));
+        refund.setLoyaltySettledAmount(amount);
+    }
+
+    private List<LoyaltyRefundCalculator.Receipt> refundReceipts(Booking booking) {
+        List<Payment> payments=em.createQuery("select p from Payment p where p.status=:s and (p.bookingId=:b or (:pkg is not null and p.packageId=:pkg) or p.rescheduleRequestId in (select r.id from RescheduleRequest r where r.bookingId=:b)) order by p.id",Payment.class)
+                .setParameter("s",PaymentStatus.CONFIRMED).setParameter("b",booking.getId()).setParameter("pkg",booking.getPackageId()).getResultList();
+        List<LoyaltyRefundCalculator.Receipt> result=new ArrayList<>();
+        for(Payment payment:payments) {
+            LoyaltyAccrual accrual=accruals.findByPaymentId(payment.getId()).orElse(null);
+            if(accrual==null) continue; // Historical payment with no receipt did not accrue through this service.
+            BigDecimal cash=payment.getAmountDue(); int earned=accrual.getEarnedPoints();
+            if(payment.getPackageId()!=null) {
+                List<Booking> sessions=em.createQuery("select b from Booking b where b.packageId=:p order by b.id",Booking.class)
+                        .setParameter("p",payment.getPackageId()).getResultList();
+                BigDecimal before=BigDecimal.ZERO;
+                for(Booking session:sessions) { if(session.getId().equals(booking.getId())) break; before=before.add(session.getFinalAmount()); }
+                cash=booking.getFinalAmount();
+                earned=LoyaltyRefundCalculator.allocatedPoints(earned,before,cash,payment.getAmountDue());
+            }
+            result.add(new LoyaltyRefundCalculator.Receipt(cash,earned,accrual.getEarningRate()));
+        }
+        return result;
     }
 }
