@@ -3,6 +3,7 @@ package com.sep490.bms.service.operation;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,7 +63,8 @@ public class OperationService {
         Long locationId = staff.getLocationId();
         Location location = locationRepository.findById(locationId)
                 .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
-        LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
+        LocalDate today = now.toLocalDate();
 
         List<BookingDetailRow> rows = queryRepository.findBookingDetails(locationId, today, today);
         Map<String, Long> byStatus = new LinkedHashMap<>();
@@ -91,6 +93,9 @@ public class OperationService {
                 .complaintsToForward(queryRepository.countComplaintsByStatus(locationId, "SUBMITTED"))
                 .todayRevenue(todayRevenue)
                 .reconciledToday(queryRepository.existsReconciliation(locationId, today))
+                .courts(CourtStatusCalculator.calculate(queryRepository.findActiveCourts(locationId),
+                        queryRepository.findCourtBookingsOn(locationId, today),
+                        queryRepository.findApprovedMaintenanceAt(locationId, now), now))
                 .build();
     }
 
