@@ -31,6 +31,7 @@ import com.sep490.bms.repository.AccountRepository;
 import com.sep490.bms.repository.team.MatchJoinRequestRepository;
 import com.sep490.bms.repository.team.MatchQueryRepository;
 import com.sep490.bms.repository.team.MatchQueryRepository.BookingInfo;
+import com.sep490.bms.repository.team.MatchQueryRepository.MatchFilter;
 import com.sep490.bms.repository.team.MatchRepository;
 import com.sep490.bms.repository.team.TeamRepository;
 
@@ -175,16 +176,18 @@ public class MatchService {
 
     @Transactional(readOnly = true)
     public PageResponse<MatchResponse> getMatches(Long userId, String status, Long locationId, LocalDate playDate,
-                                                  int page, int size) {
+                                                  Integer fromMinute, Integer toMinute, int page, int size) {
         int pageNumber = Math.max(page, 0);
         int pageSize = Math.min(Math.max(size, 1), 50);
         String statusFilter = StringUtils.hasText(status) ? parseMatchStatus(status).name() : MatchStatus.OPEN.name();
         boolean upcomingOnly = MatchStatus.OPEN.name().equals(statusFilter);
+        validateMinuteRange(fromMinute, toMinute);
+        MatchFilter filter = new MatchFilter(statusFilter, locationId, playDate, fromMinute, toMinute, upcomingOnly);
 
         List<MatchResponse> content = matchQueryRepository
-                .searchMatches(statusFilter, locationId, playDate, upcomingOnly, pageNumber * pageSize, pageSize)
+                .searchMatches(filter, pageNumber * pageSize, pageSize)
                 .stream().map(m -> enrich(m, userId)).toList();
-        long total = matchQueryRepository.countMatches(statusFilter, locationId, playDate, upcomingOnly);
+        long total = matchQueryRepository.countMatches(filter);
         int totalPages = (int) Math.ceil((double) total / pageSize);
 
         return PageResponse.<MatchResponse>builder()
@@ -316,6 +319,17 @@ public class MatchService {
     private List<Long> playerIds(Long matchId, JoinRequestStatus status) {
         return matchJoinRequestRepository.findByMatchIdAndStatus(matchId, status).stream()
                 .map(MatchJoinRequest::getPlayerId).toList();
+    }
+
+    /** Khung giờ lọc tính theo phút trong ngày: 0 ≤ fromMinute < toMinute ≤ 1440. */
+    private static void validateMinuteRange(Integer fromMinute, Integer toMinute) {
+        if ((fromMinute != null && (fromMinute < 0 || fromMinute >= 1440))
+                || (toMinute != null && (toMinute <= 0 || toMinute > 1440))) {
+            throw new AppException("Khung giờ lọc phải nằm trong ngày (0–1440 phút)");
+        }
+        if (fromMinute != null && toMinute != null && fromMinute >= toMinute) {
+            throw new AppException("Giờ bắt đầu lọc phải trước giờ kết thúc lọc");
+        }
     }
 
     private MatchResponse view(Long matchId) {

@@ -96,10 +96,17 @@ public class MatchQueryRepository {
         return jdbcTemplate.query(MATCH_SELECT + " WHERE m.id = ?", MATCH_MAPPER, matchId).stream().findFirst();
     }
 
-    public List<MatchResponse> searchMatches(String status, Long locationId, LocalDate playDate, boolean upcomingOnly,
-                                             int offset, int size) {
+    /**
+     * Điều kiện lọc danh sách kèo (UC29). fromMinute/toMinute lọc theo giờ bắt đầu trong ngày,
+     * nửa mở [fromMinute, toMinute) để khung sáng/chiều/tối không trùng nhau.
+     */
+    public record MatchFilter(String status, Long locationId, LocalDate playDate,
+                              Integer fromMinute, Integer toMinute, boolean upcomingOnly) {
+    }
+
+    public List<MatchResponse> searchMatches(MatchFilter filter, int offset, int size) {
         List<Object> params = new ArrayList<>();
-        String where = buildWhere(status, locationId, playDate, upcomingOnly, params);
+        String where = buildWhere(filter, params);
         params.add(offset);
         params.add(size);
         return jdbcTemplate.query(
@@ -107,9 +114,9 @@ public class MatchQueryRepository {
                 MATCH_MAPPER, params.toArray());
     }
 
-    public long countMatches(String status, Long locationId, LocalDate playDate, boolean upcomingOnly) {
+    public long countMatches(MatchFilter filter) {
         List<Object> params = new ArrayList<>();
-        String where = buildWhere(status, locationId, playDate, upcomingOnly, params);
+        String where = buildWhere(filter, params);
         Long total = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM [match] m JOIN booking b ON b.id = m.booking_id" + where, Long.class, params.toArray());
         return total == null ? 0 : total;
@@ -133,21 +140,29 @@ public class MatchQueryRepository {
                 """, Long.class);
     }
 
-    private String buildWhere(String status, Long locationId, LocalDate playDate, boolean upcomingOnly, List<Object> params) {
+    private String buildWhere(MatchFilter filter, List<Object> params) {
         StringBuilder where = new StringBuilder(" WHERE 1 = 1");
-        if (status != null) {
+        if (filter.status() != null) {
             where.append(" AND m.status = ?");
-            params.add(status);
+            params.add(filter.status());
         }
-        if (locationId != null) {
+        if (filter.locationId() != null) {
             where.append(" AND b.location_id = ?");
-            params.add(locationId);
+            params.add(filter.locationId());
         }
-        if (playDate != null) {
+        if (filter.playDate() != null) {
             where.append(" AND b.play_date = ?");
-            params.add(Date.valueOf(playDate));
+            params.add(Date.valueOf(filter.playDate()));
         }
-        if (upcomingOnly) {
+        if (filter.fromMinute() != null) {
+            where.append(" AND b.start_minute >= ?");
+            params.add(filter.fromMinute());
+        }
+        if (filter.toMinute() != null) {
+            where.append(" AND b.start_minute < ?");
+            params.add(filter.toMinute());
+        }
+        if (filter.upcomingOnly()) {
             where.append(" AND b.play_date >= CAST(SYSDATETIME() AS DATE)");
         }
         return where.toString();
