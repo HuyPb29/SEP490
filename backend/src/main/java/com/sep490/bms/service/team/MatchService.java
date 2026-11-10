@@ -187,9 +187,41 @@ public class MatchService {
         List<MatchResponse> content = matchQueryRepository
                 .searchMatches(filter, pageNumber * pageSize, pageSize)
                 .stream().map(m -> enrich(m, userId)).toList();
-        long total = matchQueryRepository.countMatches(filter);
-        int totalPages = (int) Math.ceil((double) total / pageSize);
+        return toPage(content, matchQueryRepository.countMatches(filter), pageNumber, pageSize);
+    }
 
+    /**
+     * UC28, UC29 – "Kèo của tôi": kèo mình làm chủ và kèo mình đã xin vào (còn chờ hoặc đã được duyệt).
+     * role: HOSTED, JOINED hoặc bỏ trống để lấy cả hai; status bỏ trống để lấy mọi trạng thái.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<MatchResponse> getMyMatches(Long userId, String role, String status, int page, int size) {
+        int pageNumber = Math.max(page, 0);
+        int pageSize = Math.min(Math.max(size, 1), 50);
+        String roleFilter = parseMyMatchRole(role);
+        String statusFilter = StringUtils.hasText(status) ? parseMatchStatus(status).name() : null;
+
+        List<MatchResponse> content = matchQueryRepository
+                .findMyMatches(userId, roleFilter, statusFilter, pageNumber * pageSize, pageSize)
+                .stream().map(m -> enrich(m, userId)).toList();
+        return toPage(content, matchQueryRepository.countMyMatches(userId, roleFilter, statusFilter),
+                pageNumber, pageSize);
+    }
+
+    private static String parseMyMatchRole(String role) {
+        if (!StringUtils.hasText(role)) {
+            return null;
+        }
+        String value = role.trim().toUpperCase();
+        if (!value.equals("HOSTED") && !value.equals("JOINED")) {
+            throw new AppException("Vai trò lọc kèo không hợp lệ, chọn HOSTED hoặc JOINED");
+        }
+        return value;
+    }
+
+    private static PageResponse<MatchResponse> toPage(List<MatchResponse> content, long total, int pageNumber,
+            int pageSize) {
+        int totalPages = (int) Math.ceil((double) total / pageSize);
         return PageResponse.<MatchResponse>builder()
                 .content(content)
                 .pageNumber(pageNumber)

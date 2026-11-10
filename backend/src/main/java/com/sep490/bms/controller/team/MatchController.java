@@ -87,6 +87,19 @@ public class MatchController {
                         fromMinute, toMinute, page, size)));
     }
 
+    /** "Kèo của tôi": role = HOSTED | JOINED (bỏ trống = cả hai), status bỏ trống = mọi trạng thái. */
+    @GetMapping("/api/me/matches")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PageResponse<MatchResponse>>> getMyMatches(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(ApiResponse.success(
+                matchService.getMyMatches(currentUser.getId(), role, status, page, size)));
+    }
+
     @GetMapping("/api/matches/{id}")
     public ResponseEntity<ApiResponse<MatchResponse>> getMatchesById(
             @AuthenticationPrincipal UserPrincipal currentUser,
