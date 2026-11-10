@@ -1,8 +1,10 @@
 package com.sep490.bms.service.feedback;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
@@ -79,6 +81,23 @@ public class ReviewService {
                 .comment(comment)
                 .build());
         return toResponses(List.of(review)).get(0);
+    }
+
+    /**
+     * UC17, UC31 – trong các booking cho trước, những booking còn đánh giá được: đã hoàn thành và chưa có
+     * đánh giá (cùng điều kiện với createReview). Người gọi chỉ truyền booking của chính Player.
+     */
+    @Transactional(readOnly = true)
+    public Set<Long> reviewableBookingIds(Collection<Booking> bookings) {
+        List<Long> completed = bookings.stream()
+                .filter(b -> b.getStatus() == BookingStatus.COMPLETED)
+                .map(Booking::getId)
+                .toList();
+        if (completed.isEmpty()) {
+            return Set.of();
+        }
+        Set<Long> reviewed = new HashSet<>(reviewRepository.findReviewedBookingIds(completed));
+        return completed.stream().filter(id -> !reviewed.contains(id)).collect(Collectors.toSet());
     }
 
     /** UC12 – danh sách đánh giá công khai (không gồm đánh giá bị ẩn) của một sân. */

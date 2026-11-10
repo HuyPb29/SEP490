@@ -1,5 +1,6 @@
 package com.sep490.bms.repository.feedback;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
@@ -15,6 +16,10 @@ import com.sep490.bms.entity.feedback.Review;
 public interface ReviewRepository extends JpaRepository<Review, Long> {
 
     boolean existsByBookingId(Long bookingId);
+
+    /** Những booking trong danh sách đã có đánh giá (mỗi booking chỉ một đánh giá). */
+    @Query("SELECT r.bookingId FROM Review r WHERE r.bookingId IN :bookingIds")
+    List<Long> findReviewedBookingIds(@Param("bookingIds") Collection<Long> bookingIds);
 
     /** Đánh giá công khai (không bị ẩn) của các booking đã đặt trên một sân. */
     @Query("SELECT r FROM Review r, Booking b WHERE r.bookingId = b.id AND b.courtId = :courtId AND r.hidden = false")
