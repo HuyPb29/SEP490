@@ -35,6 +35,7 @@ import com.sep490.bms.repository.operation.OperationQueryRepository.BookingCount
 import com.sep490.bms.repository.operation.OperationQueryRepository.BookingDetailRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.CancellationRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.CourtRow;
+import com.sep490.bms.repository.operation.OperationQueryRepository.DiscountRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.OpeningRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.RescheduleRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.SlotRow;
@@ -317,9 +318,13 @@ public class OperationService {
             daily.add(RevenueReportResponse.DayItem.builder()
                     .date(d).revenue(revAmount).refunds(refAmount).net(revAmount.subtract(refAmount)).build());
         }
+        DiscountRow discounts = queryRepository.sumDiscountsOfConfirmedPayments(locationId, from, to);
         return RevenueReportResponse.builder()
                 .from(from).to(to)
                 .totalRevenue(totalRevenue)
+                .grossRevenue(totalRevenue.add(discounts.getVoucherDiscount()).add(discounts.getPointDiscount()))
+                .voucherDiscount(discounts.getVoucherDiscount())
+                .pointDiscount(discounts.getPointDiscount())
                 .totalRefunds(totalRefunds)
                 .netRevenue(totalRevenue.subtract(totalRefunds))
                 .paymentCount(paymentCount)
