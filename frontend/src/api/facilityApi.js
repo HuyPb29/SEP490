@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_DATA = true;
-// UC11 đã nối Backend thật; UC12, UC13 vẫn dùng USE_MOCK_DATA
+export const USE_MOCK_DATA = false;
+// UC11, UC12, and UC13 use the Backend when available and fall back to local demo data offline.
 export const USE_MOCK_SEARCH = false;
 
 const MOCK_FACILITIES = [
@@ -117,40 +117,51 @@ function mapLocationSummary(location) {
   };
 }
 
+function getMockFacilitySearch({ keyword, userLat, userLng, page, limit }) {
+  const normalizedKeyword = keyword.trim().toLowerCase();
+  let items = MOCK_FACILITIES.filter((item) => item.status === 'active');
+
+  if (normalizedKeyword) {
+    items = items.filter((item) =>
+      [item.facility_name, item.address, item.district, item.city]
+        .some((value) => value.toLowerCase().includes(normalizedKeyword))
+    );
+  }
+
+  if (userLat != null && userLng != null) {
+    items = items.map((item) => ({
+      ...item,
+      distance_km: calcHaversineKm(userLat, userLng, item.latitude, item.longitude),
+    }));
+  }
+
+  items.sort((a, b) => a.distance_km - b.distance_km);
+
+  return {
+    success: true,
+    isFallback: true,
+    code: 200,
+    data: {
+      items: items.slice((page - 1) * limit, page * limit).map((item) => ({
+        ...item,
+        display_address: item.facility_id === 1
+          ? '12 Tran Thai Tong, Cau Giay, Hanoi'
+          : `${item.address}, ${item.district}`,
+      })),
+      pagination: {
+        page,
+        limit,
+        total_items: items.length,
+        total_pages: Math.ceil(items.length / limit),
+      },
+    },
+  };
+}
+
 export async function searchFacilities({ keyword = '', userLat = null, userLng = null, page = 1, limit = 20 }) {
   if (USE_MOCK_SEARCH) {
     await new Promise((r) => setTimeout(r, 250));
-    const kw = keyword.trim().toLowerCase();
-
-    // BR62: Chỉ lấy địa điểm có status = 'active'
-    let items = MOCK_FACILITIES.filter((item) => item.status === 'active');
-
-    if (kw) {
-      items = items.filter(
-        (item) =>
-          item.facility_name.toLowerCase().includes(kw) ||
-          item.address.toLowerCase().includes(kw) ||
-          item.district.toLowerCase().includes(kw)
-      );
-    }
-
-    if (userLat != null && userLng != null) {
-      items = items.map((item) => ({
-        ...item,
-        distance_km: calcHaversineKm(userLat, userLng, item.latitude, item.longitude),
-      }));
-    }
-
-    items.sort((a, b) => a.distance_km - b.distance_km);
-
-    return {
-      success: true,
-      code: 200,
-      data: {
-        items,
-        pagination: { page, limit, total_items: items.length, total_pages: 1 },
-      },
-    };
+    return getMockFacilitySearch({ keyword, userLat, userLng, page, limit });
   }
 
   const params = {};
@@ -159,14 +170,22 @@ export async function searchFacilities({ keyword = '', userLat = null, userLng =
     params.lat = userLat;
     params.lng = userLng;
   }
-  const response = await axios.get('/api/locations', { params });
-  return {
-    success: response.data.success,
-    data: { items: (response.data.data || []).map(mapLocationSummary) },
-  };
+  try {
+    const response = await axios.get('/api/locations', { params });
+    return {
+      success: response.data.success,
+      data: { items: (response.data.data || []).map(mapLocationSummary) },
+    };
+  } catch (error) {
+    if (!error.response || error.response.status >= 500) {
+      console.warn('Facility search API is unavailable; showing demo facilities.', error);
+      return getMockFacilitySearch({ keyword, userLat, userLng, page, limit });
+    }
+    throw error;
+  }
 }
 
-// Mock data & API cho UC12 & UC13
+// Demo data used when the Backend is unavailable.
 const MOCK_FACILITY_DETAILS = {
   1: {
     facility_id: 1,
@@ -278,7 +297,7 @@ const MOCK_COURT_SCHEDULE = [
 export async function getFacilityDetailAndSchedule(facilityId = 1, playDate = '2026-10-24') {
   if (USE_MOCK_DATA) {
     await new Promise((r) => setTimeout(r, 200));
-    const detail = MOCK_FACILITY_DETAILS[facilityId] || MOCK_FACILITY_DETAILS[1];
+    const detail = getMockFacilityDetail(facilityId);
     return {
       success: true,
       data: {
@@ -348,11 +367,42 @@ export async function getFacilityDetailAndSchedule(facilityId = 1, playDate = '2
       },
     };
   } catch (error) {
-    console.error("Error loading facility data:", error);
+    if (!error.response || error.response.status >= 500) {
+      console.warn('Facility detail API is unavailable; showing demo facility details.', error);
+      return {
+        success: true,
+        data: {
+          facility: getMockFacilityDetail(facilityId),
+          play_date: playDate,
+          time_headers: TIME_HEADERS,
+          courts: MOCK_COURT_SCHEDULE,
+        },
+      };
+    }
+    console.error('Error loading facility data:', error);
     return {
       success: false,
       data: null,
       error: error.response?.data?.message || error.message || 'Could not load facility details.',
     };
   }
+}
+
+function getMockFacilityDetail(facilityId) {
+  const summary = MOCK_FACILITIES.find((item) => item.facility_id === facilityId);
+  const template = MOCK_FACILITY_DETAILS[1];
+  if (!summary) return template;
+
+  return {
+    ...template,
+    facility_id: summary.facility_id,
+    facility_name: summary.facility_name,
+    rating: summary.rating,
+    address: summary.facility_id === 1
+      ? '12 Tran Thai Tong, Cau Giay, Hanoi'
+      : `${summary.address}, ${summary.district}`,
+    open_hours: `${summary.open_hours} daily`,
+    courts_count: summary.courts_count,
+    contact_phone: summary.contact_phone,
+  };
 }

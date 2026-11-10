@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import styles from './AdminFacilitiesPage.module.css'
+import AdminPortalSidebar from './AdminPortalSidebar'
 
 const INITIAL_PENDING_REQUESTS = [
   {
@@ -308,29 +309,7 @@ export default function AdminFacilitiesPage() {
 
   return (
     <div className={styles.page}>
-      <aside className={styles.sidebar}>
-        <div className={styles.brand}>
-          <span className={styles.brandBolt} aria-hidden="true">⚡</span>
-          <span>Courtly</span>
-        </div>
-
-        <div className={styles.roleCard}>
-          <span>System Administration</span>
-          <strong>Admin</strong>
-        </div>
-
-        <nav className={styles.navigation} aria-label="Admin navigation">
-          <button className={`${styles.navItem} ${styles.navItemActive}`} type="button" aria-current="page">
-            <span>Facilities</span>
-            <span className={styles.pendingBadge} aria-label={`${pendingRequests.length} pending requests`}>
-              {pendingRequests.length}
-            </span>
-          </button>
-          <button className={styles.navItem} type="button">Accounts</button>
-          <button className={styles.navItem} type="button">Violating Vouchers</button>
-          <button className={styles.navItem} type="button">Violating Reviews</button>
-        </nav>
-      </aside>
+      <AdminPortalSidebar pendingRequestCount={pendingRequests.length} />
 
       <main className={styles.main}>
         <h1 className={styles.pageTitle}>Manage Service Facilities</h1>

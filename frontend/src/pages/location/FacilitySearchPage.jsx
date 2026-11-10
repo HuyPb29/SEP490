@@ -49,6 +49,7 @@ export default function FacilitySearchPage() {
   const [loading, setLoading] = useState(false);
   const [usingGps, setUsingGps] = useState(false);
   const [userInfo, setUserInfo] = useState(getSavedUserInfo);
+  const [isMockFallback, setIsMockFallback] = useState(false);
 
   useEffect(() => {
     const syncUserInfo = () => setUserInfo(getSavedUserInfo());
@@ -67,22 +68,25 @@ export default function FacilitySearchPage() {
     setLoadError(false);
     try {
       const res = await searchFacilities({ keyword: kw, userLat: lat, userLng: lng });
-      if (res?.success) {
-        const locations = Array.isArray(res.data) ? res.data : res.data?.items;
-        if (!Array.isArray(locations)) {
-          throw new Error('Unexpected locations response: expected an array in data.');
-        }
-
-        setFacilities(locations.map((location) => ({
-          ...location,
-          facility_id: location.id ?? location.facility_id,
-          facility_name: location.name ?? location.facility_name,
-          distance_km: location.distanceKm ?? location.distance_km,
-        })));
+      if (!res?.success) {
+        throw new Error('Facility search returned an unsuccessful response.');
       }
+      const locations = Array.isArray(res.data) ? res.data : res.data?.items;
+      if (!Array.isArray(locations)) {
+        throw new Error('Unexpected locations response: expected an array in data.');
+      }
+
+      setFacilities(locations.map((location) => ({
+        ...location,
+        facility_id: location.id ?? location.facility_id,
+        facility_name: location.name ?? location.facility_name,
+        distance_km: location.distanceKm ?? location.distance_km,
+      })));
+      setIsMockFallback(Boolean(res.isFallback));
     } catch (err) {
       console.error('Error loading facilities:', err);
       setFacilities([]);
+      setIsMockFallback(false);
       setLoadError(true);
     } finally {
       setLoading(false);
@@ -104,6 +108,7 @@ export default function FacilitySearchPage() {
         // Chỉ truyền tọa độ lúc truy vấn, không lưu vào CSDL
         const { latitude: lat, longitude: lng } = pos.coords;
         setPosition({ lat, lng });
+        setUsingGps(false);
         fetchList(keyword, lat, lng);
       },
       () => {
@@ -268,32 +273,31 @@ export default function FacilitySearchPage() {
           <div>
             <span className={styles.sectionTag}>SEARCH RESULTS</span>
             <h2 className={styles.resultsTitle}>
-              {sortedFacilities.length} {position ? 'facilities near you' : 'facilities'}
+              {sortedFacilities.length} {sortedFacilities.length === 1 ? 'facility' : 'facilities'} near you
             </h2>
             <p className={styles.resultsSubtitle}>
               {position
-                ? 'Sorted from nearest to farthest based on your current location.'
-                : 'Use your location to sort facilities from nearest to farthest.'}
+                ? 'Sorted by distance from your current location.'
+                : 'Explore active badminton courts around Cau Giay.'}
             </p>
           </div>
-          {hasRating && (
-            <div className={styles.sortGroup}>
-              <button
-                type="button"
-                className={`${styles.sortBtn} ${sortBy === 'nearest' ? styles.sortBtnActive : ''}`}
-                onClick={() => setSortBy('nearest')}
-              >
-                Nearest
-              </button>
-              <button
-                type="button"
-                className={`${styles.sortBtn} ${sortBy === 'rating' ? styles.sortBtnActive : ''}`}
-                onClick={() => setSortBy('rating')}
-              >
-                High Rating
-              </button>
-            </div>
-          )}
+          <div className={styles.sortGroup}>
+            <button
+              type="button"
+              className={`${styles.sortBtn} ${sortBy === 'nearest' ? styles.sortBtnActive : ''}`}
+              onClick={() => setSortBy('nearest')}
+            >
+              Nearest
+            </button>
+            <button
+              type="button"
+              className={`${styles.sortBtn} ${sortBy === 'rating' ? styles.sortBtnActive : ''}`}
+              onClick={() => setSortBy('rating')}
+              disabled={!hasRating}
+            >
+              Top Rated
+            </button>
+          </div>
         </div>
 
         <div className={styles.contentGrid}>
@@ -315,7 +319,7 @@ export default function FacilitySearchPage() {
                   <div className={`${styles.cardThumb} ${idx === 0 ? styles.thumbBlue : styles.thumbGreen}`}>
                     {item.available_slots != null && (
                       <span className={styles.slotBadge}>
-                        <span className={styles.dot} /> {item.available_slots} slots left today
+                        <span className={styles.dot} /> {item.available_slots} {item.available_slots === 1 ? 'slot' : 'slots'} left today
                       </span>
                     )}
                     <svg viewBox="0 0 200 110" className={styles.courtSvg}>
@@ -335,14 +339,12 @@ export default function FacilitySearchPage() {
                       )}
                     </div>
                     <p className={styles.cardAddress}>
-                      {item.address}
-                      {item.district && `, ${item.district}`}
-                      {idx === 0 && item.city && `, ${item.city}`}
+                      {item.display_address || [item.address, item.district, item.city].filter(Boolean).join(', ')}
                     </p>
                     {(item.distance_km != null || item.courts_count != null || item.open_hours) && (
                       <div className={styles.cardMeta}>
                         {item.distance_km != null && (
-                          <strong>{String(item.distance_km).replace('.', ',')} km</strong>
+                          <strong>{item.distance_km} km</strong>
                         )}
                         {(item.courts_count != null || item.open_hours) && (
                           <span>
@@ -367,19 +369,33 @@ export default function FacilitySearchPage() {
               <div className={styles.roadV1} />
               <div className={styles.roadV2} />
 
-              {position && (
-                <div className={styles.userDot} style={projectToMap(position)} title="Your location" />
+              {(position || isMockFallback) && (
+                <div
+                  className={styles.userDot}
+                  style={position ? projectToMap(position) : undefined}
+                  title="Your location"
+                  aria-label="Your location"
+                />
               )}
 
               {mappedFacilities.map((item) => (
                 <button
                   key={item.facility_id}
                   type="button"
-                  style={item.pin_pos || projectToMap({ lat: Number(item.latitude), lng: Number(item.longitude) })}
+                  style={item.pin_pos
+                    ? { top: item.pin_pos.top, left: item.pin_pos.left }
+                    : projectToMap({ lat: Number(item.latitude), lng: Number(item.longitude) })}
                   className={`${styles.mapPinWrapper} ${selectedId === item.facility_id ? styles.pinActive : ''}`}
-                  onClick={() => handleSelectFacility(item)}
+                  aria-label={`${item.facility_name}, ${item.display_address || item.address}`}
+                  onClick={() => setSelectedId(selectedId === item.facility_id ? null : item.facility_id)}
                 >
                   <span className={styles.pinLabel}>{item.pin_pos?.short_name || item.facility_name}</span>
+                  {selectedId === item.facility_id && (
+                    <span className={styles.pinInfo}>
+                      <strong>{item.facility_name}</strong>
+                      <span>{item.display_address || [item.address, item.district, item.city].filter(Boolean).join(', ')}</span>
+                    </span>
+                  )}
                   <span className={styles.pinIcon} />
                 </button>
               ))}

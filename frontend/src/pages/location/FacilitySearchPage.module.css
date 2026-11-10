@@ -9,7 +9,7 @@
 .navbar {
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
-  height: 68px;
+  height: 58px;
   display: flex;
   align-items: center;
 }
@@ -95,7 +95,7 @@
 /* Hero Banner */
 .heroSection {
   background: radial-gradient(circle at 80% 20%, #0d3b2e 0%, #07191e 65%);
-  padding: 44px 24px 52px;
+  padding: 36px 24px 40px;
   color: #ffffff;
 }
 
@@ -122,7 +122,7 @@
 }
 
 .heroTitle {
-  font-size: 42px;
+  font-size: 40px;
   font-weight: 800;
   margin: 0 0 10px;
   letter-spacing: -0.02em;
@@ -216,14 +216,14 @@
 .mainContent {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 36px 24px 60px;
+  padding: 30px 24px 60px;
 }
 
 .resultsHeader {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .sectionTag {
@@ -251,13 +251,18 @@
 }
 
 .sortBtn {
-  padding: 8px 18px;
-  border-radius: 999px;
+  padding: 8px 14px;
+  border-radius: 8px;
   border: 1px solid #cbd5e1;
   background: #ffffff;
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.sortBtn:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
 }
 
 .sortBtnActive {
@@ -269,20 +274,20 @@
 /* Grid Layout: Trái 3 cột Card, Phải Bản đồ */
 .contentGrid {
   display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: 22px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 28%);
+  gap: 16px;
   align-items: start;
 }
 
 .cardsGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
+  gap: 12px;
 }
 
 .card {
   background: #ffffff;
-  border-radius: 16px;
+  border-radius: 14px;
   border: 1px solid #e2e8f0;
   overflow: hidden;
   cursor: pointer;
@@ -297,7 +302,7 @@
 }
 
 .cardThumb {
-  height: 125px;
+  height: 96px;
   position: relative;
   display: flex;
   align-items: center;
@@ -318,9 +323,9 @@
   left: 10px;
   background: #ffffff;
   color: #0d8a52;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -341,7 +346,7 @@
 }
 
 .cardBody {
-  padding: 14px 16px 16px;
+  padding: 10px 12px 12px;
 }
 
 .cardTitleRow {
@@ -352,9 +357,9 @@
 }
 
 .cardName {
-  font-size: 15.5px;
+  font-size: 13px;
   font-weight: 800;
-  margin: 0 0 6px;
+  margin: 0 0 4px;
 }
 
 .rating {
@@ -369,14 +374,16 @@
 
 .cardAddress {
   color: #64748b;
-  font-size: 12.5px;
-  margin: 0 0 12px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  margin: 0 0 8px;
 }
 
 .cardMeta {
   display: flex;
   justify-content: space-between;
-  font-size: 12.5px;
+  gap: 6px;
+  font-size: 10.5px;
   color: #475569;
 }
 
@@ -384,14 +391,14 @@
 .mapCard {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  padding: 12px;
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .mapCanvas {
-  height: 360px;
+  height: clamp(280px, 36vw, 360px);
   background: linear-gradient(160deg, #e9f2ec 0%, #f1f5f3 100%);
-  border-radius: 12px;
+  border-radius: 16px 16px 0 0;
   position: relative;
   overflow: hidden;
 }
@@ -408,14 +415,15 @@
 
 .userDot {
   position: absolute;
-  top: 52%;
-  left: 48%;
+  top: 50%;
+  left: 50%;
   width: 16px;
   height: 16px;
   background: #2563eb;
   border: 3px solid #ffffff;
   border-radius: 50%;
   box-shadow: 0 0 0 8px rgba(37, 99, 235, 0.18);
+  transform: translate(-50%, -50%);
 }
 
 .mapPinWrapper {
@@ -441,6 +449,37 @@
   white-space: nowrap;
 }
 
+.pinInfo {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 6px);
+  left: 50%;
+  width: max-content;
+  max-width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid #dbe7df;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.14);
+  text-align: left;
+  white-space: normal;
+  transform: translateX(-50%);
+}
+
+.pinInfo span {
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.pinActive {
+  z-index: 3;
+}
+
 .pinIcon {
   width: 22px;
   height: 22px;
@@ -453,7 +492,60 @@
 .mapFooter {
   font-size: 12.5px;
   color: #64748b;
-  margin: 12px 4px 4px;
+  margin: 8px 6px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .mapCard {
+    grid-row: 1;
+  }
+
+  .mapCanvas {
+    height: 300px;
+  }
+}
+
+@media (max-width: 560px) {
+  .navContainer {
+    padding: 0 14px;
+  }
+
+  .navLinks {
+    display: none;
+  }
+
+  .heroSection {
+    padding: 28px 16px 32px;
+  }
+
+  .heroTitle {
+    font-size: 32px;
+  }
+
+  .mainContent {
+    padding: 24px 16px 44px;
+  }
+
+  .resultsHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cardsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 380px) {
+  .cardsGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* User Profile & Dropdown */

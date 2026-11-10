@@ -15,6 +15,9 @@ import StaffConfirmPaymentPage from './pages/staff/StaffConfirmPaymentPage'
 import OwnerReportPage from './pages/owner/OwnerReportPage'
 import OwnerCourtsPricingPage from './pages/owner/OwnerCourtsPricingPage'
 import AdminFacilitiesPage from './pages/admin/AdminFacilitiesPage'
+import AdminAccountsPage from './pages/admin/AdminAccountsPage'
+import AdminViolatingVouchersPage from './pages/admin/AdminViolatingVouchersPage'
+import AdminViolatingReviewsPage from './pages/admin/AdminViolatingReviewsPage'
 
 export default function App() {
   return (
@@ -35,7 +38,10 @@ function AppContent() {
     location.pathname === '/staff/confirm-payments' ||
     location.pathname === '/owner/reports' ||
     location.pathname === '/owner/courts-pricing' ||
-    location.pathname === '/admin/facilities'
+    location.pathname === '/admin/facilities' ||
+    location.pathname === '/admin/accounts' ||
+    location.pathname === '/admin/violating-vouchers' ||
+    location.pathname === '/admin/violating-reviews'
   const [status, setStatus] = useState(() => (isFrontendMockPage ? 'mock preview' : 'checking...'))
 
   useEffect(() => {
@@ -76,6 +82,12 @@ function AppContent() {
         <Route path="/owner/courts-pricing" element={<OwnerCourtsPricingPage />} />
         {/* UC06: Admin facilities mock preview */}
         <Route path="/admin/facilities" element={<AdminFacilitiesPage />} />
+        {/* UC04: Admin user accounts mock preview */}
+        <Route path="/admin/accounts" element={<AdminAccountsPage />} />
+        {/* UC24: Admin violating vouchers mock preview */}
+        <Route path="/admin/violating-vouchers" element={<AdminViolatingVouchersPage />} />
+        {/* UC32: Admin violating reviews mock preview */}
+        <Route path="/admin/violating-reviews" element={<AdminViolatingReviewsPage />} />
 
         {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
         <Route path="/login" element={<AuthPage />} />

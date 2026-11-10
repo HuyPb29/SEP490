@@ -635,3 +635,211 @@
     width: 100%;
   }
 }
+
+.adminToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 11px;
+}
+
+.toolbarControls {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  min-width: 0;
+}
+
+.filterField {
+  display: block;
+  width: 170px;
+  flex: 0 0 auto;
+}
+
+.filterSelect {
+  width: 100%;
+  height: 39px;
+  padding: 0 10px;
+  color: #354052;
+  background: #fff;
+  border: 1px solid #d5deea;
+  border-radius: 11px;
+  font: inherit;
+  font-size: 11px;
+}
+
+.filterSelect:focus,
+.modalField select:focus,
+.modalField textarea:focus {
+  border-color: #16a34a;
+  outline: 2px solid rgb(22 163 74 / 13%);
+}
+
+.roleBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.rolePlayer {
+  color: #365b88;
+  background: #e9f1fb;
+}
+
+.roleStaff {
+  color: #167445;
+  background: #e2f2eb;
+}
+
+.roleOwner {
+  color: #62607f;
+  background: #efedf7;
+}
+
+.roleAdmin {
+  color: #354052;
+  background: #e6ebf1;
+}
+
+.statusUnverified {
+  color: #536176;
+  background: #eef2f6;
+}
+
+.statusReported {
+  color: #9a5b05;
+  background: #fff2d6;
+}
+
+.cellStack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cellPrimary {
+  overflow: hidden;
+  color: #253148;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.cellSecondary {
+  overflow: hidden;
+  color: #8490a3;
+  font-size: 10px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.wrapCell {
+  color: #526078;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.accountActions,
+.adminRowActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.accountActions .lockButton,
+.accountActions .reopenButton,
+.adminRowActions .extendButton,
+.adminRowActions .lockButton,
+.adminRowActions .reopenButton {
+  width: auto;
+  min-height: 33px;
+  padding: 0 9px;
+}
+
+.ratingCell {
+  color: #b77911;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.reviewContent {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: #37445a;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.reviewContent small {
+  color: #8490a3;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.complianceBanner {
+  margin-bottom: 14px;
+  padding: 11px 13px;
+  color: #40536a;
+  background: #edf4f6;
+  border: 1px solid #dce8ec;
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.lockButton:disabled {
+  color: #8490a3;
+  background: #f5f7fa;
+  border-color: #e0e5ec;
+  cursor: not-allowed;
+}
+
+.modalField textarea {
+  width: 100%;
+  min-height: 92px;
+  padding: 9px 10px;
+  color: #202a3b;
+  background: #fff;
+  border: 1px solid #d5deea;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+}
+
+@media (max-width: 900px) {
+  .adminToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .toolbarControls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 620px) {
+  .toolbarControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .filterField {
+    width: 100%;
+  }
+}
