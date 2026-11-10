@@ -133,6 +133,29 @@ class OperationReportAndReviewHideTests {
     }
 
     @Test
+    void revenueReportBreaksDownVoucherAndPointDiscounts() {
+        long discounted = booking("CONFIRMED", 100000);
+        jdbc.update("""
+                UPDATE booking SET list_amount = 125000, voucher_discount = 15000, points_used = 10,
+                    point_discount = 10000 WHERE id = ?
+                """, discounted);
+        payment(discounted, 100000, null);
+        payment(booking("CONFIRMED", 50000), 50000, null);
+        long unpaid = booking("AWAITING_CONFIRMATION", 80000);
+        jdbc.update("UPDATE booking SET voucher_discount = 5000 WHERE id = ?", unpaid);
+
+        var report = operations.getRevenueReport(principal(owner), today, today);
+
+        assertThat(report.getTotalRevenue()).isEqualByComparingTo("150000");
+        assertThat(report.getVoucherDiscount()).isEqualByComparingTo("15000");
+        assertThat(report.getPointDiscount()).isEqualByComparingTo("10000");
+        assertThat(report.getGrossRevenue()).isEqualByComparingTo("175000");
+        assertThat(report.getGrossRevenue().subtract(report.getVoucherDiscount())
+                .subtract(report.getPointDiscount()).subtract(report.getTotalRefunds()))
+                .isEqualByComparingTo(report.getNetRevenue());
+    }
+
+    @Test
     void staffDashboardCountsOverduePaymentsAndListsActiveCourts() {
         awaiting(booking("AWAITING_CONFIRMATION", 100000), 20);
         awaiting(booking("AWAITING_CONFIRMATION", 80000), 5);
