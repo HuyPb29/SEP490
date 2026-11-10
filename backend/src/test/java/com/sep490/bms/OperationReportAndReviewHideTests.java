@@ -26,6 +26,7 @@ import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.feedback.ReviewService;
 import com.sep490.bms.service.operation.OperationService;
@@ -39,6 +40,7 @@ class OperationReportAndReviewHideTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired OperationService operations;
     @Autowired ReviewService reviews;
+    @Autowired BookingRepository bookings;
 
     TestUser owner;
     TestUser otherOwner;
@@ -150,6 +152,19 @@ class OperationReportAndReviewHideTests {
     void reportsRejectRangeLongerThanAYear() {
         assertThatThrownBy(() -> operations.getVoucherReport(principal(owner),
                 today.minusDays(400), today)).isInstanceOf(AppException.class);
+    }
+
+    @Test
+    void onlyCompletedBookingsWithoutReviewCanBeReviewed() {
+        long reviewed = booking("COMPLETED", 100000);
+        review(reviewed);
+        long open = booking("COMPLETED", 100000);
+        long upcoming = booking("CONFIRMED", 100000);
+
+        var reviewable = reviews.reviewableBookingIds(bookings.findAllById(List.of(reviewed, open, upcoming)));
+
+        assertThat(reviewable).containsExactly(open);
+        assertThat(reviews.reviewableBookingIds(List.of())).isEmpty();
     }
 
     @Test
