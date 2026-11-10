@@ -364,6 +364,58 @@ public class OperationQueryRepository {
         return n == null ? 0 : n;
     }
 
+    /** UC34: giao dịch chờ xác nhận đã gửi từ thời điểm cho trước trở về trước (quá hạn xử lý). */
+    public long countPaymentsAwaitingSince(Long locationId, LocalDateTime submittedBefore) {
+        Long n = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM payment
+                WHERE location_id = ? AND status = 'AWAITING_CONFIRMATION'
+                  AND COALESCE(submitted_at, created_at) <= ?
+                """, Long.class, locationId, Timestamp.valueOf(submittedBefore));
+        return n == null ? 0 : n;
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class CourtBookingRow {
+        private final Long courtId;
+        private final String bookingCode;
+        private final int startMinute;
+        private final int endMinute;
+        private final String status;
+    }
+
+    /** UC34: booking đang giữ sân trong ngày (chưa hủy, chưa hết hạn, chưa bị từ chối thanh toán). */
+    public List<CourtBookingRow> findCourtBookingsOn(Long locationId, LocalDate date) {
+        return jdbc.query("""
+                SELECT court_id, booking_code, start_minute, end_minute, status
+                FROM booking
+                WHERE location_id = ? AND play_date = ?
+                  AND status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','IN_USE','COMPLETED')
+                ORDER BY court_id, start_minute
+                """,
+                (rs, i) -> new CourtBookingRow(rs.getLong("court_id"), rs.getString("booking_code"),
+                        rs.getInt("start_minute"), rs.getInt("end_minute"), rs.getString("status")),
+                locationId, java.sql.Date.valueOf(date));
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class MaintenanceRow {
+        private final Long courtId;
+        private final LocalDateTime endAt;
+    }
+
+    /** UC34: bảo trì đã duyệt đang diễn ra tại thời điểm cho trước. */
+    public List<MaintenanceRow> findApprovedMaintenanceAt(Long locationId, LocalDateTime at) {
+        return jdbc.query("""
+                SELECT m.court_id, m.end_at
+                FROM maintenance m JOIN court c ON c.id = m.court_id
+                WHERE c.location_id = ? AND m.status = 'APPROVED' AND m.start_at <= ? AND m.end_at > ?
+                """,
+                (rs, i) -> new MaintenanceRow(rs.getLong("court_id"), rs.getTimestamp("end_at").toLocalDateTime()),
+                locationId, Timestamp.valueOf(at), Timestamp.valueOf(at));
+    }
+
     public long countComplaintsByStatus(Long locationId, String status) {
         Long n = jdbc.queryForObject("SELECT COUNT(*) FROM complaint WHERE location_id = ? AND status = ?",
                 Long.class, locationId, status);
