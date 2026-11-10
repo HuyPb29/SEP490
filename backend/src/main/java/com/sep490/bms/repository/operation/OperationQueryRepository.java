@@ -364,6 +364,31 @@ public class OperationQueryRepository {
         return n == null ? 0 : n;
     }
 
+    @Getter
+    @AllArgsConstructor
+    public static class DiscountRow {
+        private final BigDecimal voucherDiscount;
+        private final BigDecimal pointDiscount;
+    }
+
+    /**
+     * UC35: tổng giảm giá voucher và điểm của các khoản thu đã xác nhận trong kỳ (cùng cơ sở với doanh thu).
+     * Thanh toán gói lấy giảm giá của cả gói, không cộng lại từng buổi; tiền chênh lệch đổi lịch không có giảm giá.
+     */
+    public DiscountRow sumDiscountsOfConfirmedPayments(Long locationId, LocalDate from, LocalDate to) {
+        return jdbc.queryForObject("""
+                SELECT COALESCE(SUM(COALESCE(b.voucher_discount, pk.voucher_discount, 0)), 0) AS voucher_discount,
+                       COALESCE(SUM(COALESCE(b.point_discount, pk.point_discount, 0)), 0) AS point_discount
+                FROM payment p
+                LEFT JOIN booking b ON b.id = p.booking_id
+                LEFT JOIN booking_package pk ON pk.id = p.package_id
+                WHERE p.location_id = ? AND p.status = 'CONFIRMED'
+                  AND p.confirmed_at >= ? AND p.confirmed_at < ?
+                """,
+                (rs, i) -> new DiscountRow(rs.getBigDecimal("voucher_discount"), rs.getBigDecimal("point_discount")),
+                locationId, Timestamp.valueOf(from.atStartOfDay()), Timestamp.valueOf(to.plusDays(1).atStartOfDay()));
+    }
+
     /** UC34: giao dịch chờ xác nhận đã gửi từ thời điểm cho trước trở về trước (quá hạn xử lý). */
     public long countPaymentsAwaitingSince(Long locationId, LocalDateTime submittedBefore) {
         Long n = jdbc.queryForObject("""
