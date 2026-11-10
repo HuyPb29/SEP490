@@ -44,6 +44,7 @@ import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.booking.BookingRepository.PackageSessionCount;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.feedback.ReviewService;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.payment.PaymentService;
 
@@ -61,8 +62,9 @@ class BookingQueryServiceTests {
     private final LocationQueryService locations = mock(LocationQueryService.class);
     private final BookingService bookingService = mock(BookingService.class);
     private final PaymentService payments = mock(PaymentService.class);
+    private final ReviewService reviews = mock(ReviewService.class);
     private final BookingQueryService service =
-            new BookingQueryService(bookings, packages, courts, locations, bookingService, payments);
+            new BookingQueryService(bookings, packages, courts, locations, bookingService, payments, reviews);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 

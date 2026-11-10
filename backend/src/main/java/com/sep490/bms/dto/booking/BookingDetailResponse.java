@@ -64,4 +64,6 @@ public class BookingDetailResponse {
     private LocalDateTime resubmitDeadline;
     /** Số biên nhận, có khi Staff đã xác nhận (FR57). */
     private String receiptNo;
+    /** UC31: booking đã hoàn thành và chưa được đánh giá thì hiện nút Đánh giá. */
+    private boolean canReview;
 }
