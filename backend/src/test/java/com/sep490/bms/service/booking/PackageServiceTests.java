@@ -35,6 +35,7 @@ import org.springframework.http.HttpStatus;
 
 import com.sep490.bms.dto.booking.BatchOfferPublicResponse;
 import com.sep490.bms.dto.booking.BookingListItem;
+import com.sep490.bms.dto.booking.BookingOrderRequest;
 import com.sep490.bms.dto.booking.PackageDetailResponse;
 import com.sep490.bms.dto.booking.PackagePreviewResponse;
 import com.sep490.bms.dto.booking.PackagePreviewResponse.Conflict;
@@ -802,5 +803,92 @@ class PackageServiceTests {
         assertThatThrownBy(() -> service.preview(player, request, NOW))
                 .isInstanceOf(AppException.class)
                 .hasMessageContaining("(MSG41)");
+    }
+
+    // ===================== Đơn đặt lẻ (UC14, BR64, D164) =====================
+
+    private static final LocalDate ORDER_DAY = TODAY.plusDays(3);
+
+    private static BookingOrderRequest order(LocalDate date, String note, BookingOrderRequest.Range... ranges) {
+        return new BookingOrderRequest(date, List.of(ranges), null, null, null, note, null);
+    }
+
+    private static BookingOrderRequest.Range range(Long courtId, int start, int end) {
+        return new BookingOrderRequest.Range(courtId, start, end);
+    }
+
+    @Test
+    void orderPreviewPricesEachRangeOnOneDayWithoutBatchOffer() {
+        PackagePreviewResponse result = service.previewOrder(player, order(ORDER_DAY, null,
+                range(COURT, 1080, 1140), range(12L, 1200, 1260)), NOW);
+
+        assertThat(result.getPackageType()).isEqualTo(PackageType.DAY);
+        assertThat(result.getTotalSessions()).isEqualTo(2);
+        // Sân 1: 2 slot x 60.000; sân 2: 2 slot x 80.000.
+        assertThat(result.getListAmount()).isEqualByComparingTo("280000");
+        assertThat(result.getBatchOffer()).isNull();
+        assertThat(result.getSummary()).isEqualTo("Tổng 2 khung giờ, 0 khung giờ bị trùng.");
+    }
+
+    @Test
+    void orderNeedsTwoRangesOnOneDayWithinAdvanceLimit() {
+        assertThatThrownBy(() -> service.previewOrder(player, order(ORDER_DAY, null, range(COURT, 1080, 1140)), NOW))
+                .hasMessageContaining("đặt như booking lẻ");
+        // Mặc định đặt trước tối đa 30 ngày (BR02).
+        assertThatThrownBy(() -> service.previewOrder(player, order(TODAY.plusDays(31), null,
+                range(COURT, 1080, 1140), range(12L, 1080, 1140)), NOW))
+                .hasMessageContaining("(MSG31)");
+        assertThatThrownBy(() -> service.preview(player, new PackageRequest(PackageType.DAY, COURT, ORDER_DAY,
+                ORDER_DAY, null, List.of(session(ORDER_DAY, null, 1080, 1140), session(ORDER_DAY, 12L, 1080, 1140)),
+                null, null, null, null)))
+                .hasMessageContaining("đặt sân lẻ");
+    }
+
+    @Test
+    void orderMergesTouchingRangesOnTheSameCourt() {
+        PackagePreviewResponse result = service.previewOrder(player, order(ORDER_DAY, null,
+                range(COURT, 1140, 1200), range(COURT, 1080, 1140), range(12L, 1080, 1140)), NOW);
+
+        assertThat(result.getSessions()).extracting(PackagePreviewResponse.Session::getCourtName,
+                PackagePreviewResponse.Session::getStartTime, PackagePreviewResponse.Session::getEndTime)
+                .containsExactlyInAnyOrder(tuple("Sân 1", "18:00", "20:00"), tuple("Sân 2", "18:00", "19:00"));
+    }
+
+    @Test
+    void createOrderHoldsTenMinutesAndCopiesNoteToEveryBooking() {
+        PackageDetailResponse created = service.createOrder(player, order(ORDER_DAY, " Mượn vợt ",
+                range(COURT, 1080, 1140), range(12L, 1200, 1260)), NOW);
+
+        assertThat(savedPackage.getPackageType()).isEqualTo(PackageType.DAY);
+        assertThat(savedPackage.getHoldExpiresAt()).isEqualTo(NOW.plusMinutes(10));
+        assertThat(savedPackage.getBatchOfferId()).isNull();
+        assertThat(savedBookings).hasSize(2)
+                .allSatisfy(b -> {
+                    assertThat(b.getBookingType()).isEqualTo(BookingType.SESSION);
+                    assertThat(b.getNote()).isEqualTo("Mượn vợt");
+                    assertThat(b.getHoldExpiresAt()).isEqualTo(NOW.plusMinutes(10));
+                });
+        assertThat(created.getListAmount()).isEqualByComparingTo("280000");
+    }
+
+    @Test
+    void createOrderWithTakenRangeCreatesNothing() {
+        when(availability.findProblem(LOCATION, 12L, ORDER_DAY, 1200, 1260))
+                .thenReturn(Optional.of(SlotAvailabilityService.SlotProblem.TAKEN));
+
+        assertThatThrownBy(() -> service.createOrder(player, order(ORDER_DAY, null,
+                range(COURT, 1080, 1140), range(12L, 1200, 1260)), NOW))
+                .hasMessageContaining("20:00–21:00 Sân 2")
+                .hasMessageContaining("(MSG28)");
+        verify(packages, never()).save(any());
+    }
+
+    @Test
+    void deadlineIsEndOfTheEarliestFinishingBooking() {
+        Booking longFirst = Booking.builder().playDate(ORDER_DAY).startMinute(480).endMinute(660).build();
+        Booking shortLater = Booking.builder().playDate(ORDER_DAY).startMinute(540).endMinute(600).build();
+        when(bookings.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(50L)).thenReturn(List.of(longFirst, shortLater));
+
+        assertThat(service.firstSessionEnd(50L)).isEqualTo(ORDER_DAY.atTime(10, 0));
     }
 }

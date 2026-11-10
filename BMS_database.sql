@@ -246,7 +246,7 @@ CREATE TABLE maintenance (
 );
 CREATE INDEX ix_maint_court ON maintenance (court_id, start_at);
 
--- booking_package: Gói đặt nhiều buổi (booking tổng); các buổi con là booking loại SESSION (BR10, DR06).
+-- booking_package: Gói đặt nhiều buổi (booking tổng) hoặc đơn đặt lẻ (DAY); các booking con là loại SESSION (BR10, BR64, DR06, DR32).
 CREATE TABLE booking_package (
     id BIGINT IDENTITY(1,1) NOT NULL,
     location_id BIGINT NOT NULL,
@@ -266,7 +266,7 @@ CREATE TABLE booking_package (
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_booking_package_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_booking_package PRIMARY KEY (id),
     CONSTRAINT uk_pkg_id_location UNIQUE (id, location_id),
-    CONSTRAINT ck_pkg_type CHECK (package_type IN ('RECURRING','CUSTOM')),
+    CONSTRAINT ck_pkg_type CHECK (package_type IN ('RECURRING','CUSTOM','DAY')),  -- DAY: đơn đặt lẻ (BR64, D164)
     CONSTRAINT ck_pkg_status CHECK (status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','PAYMENT_REJECTED','EXPIRED')),
     CONSTRAINT ck_pkg_dates CHECK (end_date >= start_date),
     CONSTRAINT ck_pkg_amount CHECK (final_amount > 0 AND voucher_discount >= 0 AND point_discount >= 0 AND points_used >= 0),

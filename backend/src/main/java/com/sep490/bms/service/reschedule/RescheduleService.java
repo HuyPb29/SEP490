@@ -122,8 +122,9 @@ public class RescheduleService {
             throw new AppException("Sân phải hoạt động và thuộc cùng địa điểm");
         LocalDateTime newStart = slot.date().atStartOfDay().plusMinutes(slot.startMinute());
         if (!newStart.isAfter(LocalDateTime.now())) throw new AppException("Slot mới phải ở tương lai");
-        if (b.getPackageId()!=null) {
-            BookingPackage pkg = em.find(BookingPackage.class,b.getPackageId());
+        BookingPackage pkg = b.getPackageId()==null ? null : em.find(BookingPackage.class,b.getPackageId());
+        // BR31: buổi trong gói đổi trong thời hạn gói; booking lẻ và booking của đơn đặt lẻ (BR64) theo BR02.
+        if (pkg!=null && pkg.getPackageType()!=PackageType.DAY) {
             if (slot.date().isBefore(pkg.getStartDate()) || slot.date().isAfter(pkg.getEndDate()))
                 throw new AppException("Slot mới ngoài thời hạn gói");
         } else if (slot.date().isAfter(LocalDate.now().plusDays(l.getAdvanceBookingDays())))

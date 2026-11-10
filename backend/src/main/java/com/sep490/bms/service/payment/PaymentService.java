@@ -76,7 +76,6 @@ public class PaymentService {
     private static final int NOTIFICATION_CONTENT_MAX = 500;
     private static final DateTimeFormatter RECEIPT_DATE_FORMAT = DateTimeFormatter.ofPattern("yyMMdd");
     private static final DateTimeFormatter DEADLINE_FORMAT = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
-    private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final PaymentRepository paymentRepository;
     private final PaymentProofRepository paymentProofRepository;
@@ -690,9 +689,9 @@ public class PaymentService {
         return pkg;
     }
 
+    /** "gói đặt nhiều buổi từ … đến …" hoặc "đơn đặt sân ngày …" (BR64). */
     private static String packageLabel(BookingPackage pkg) {
-        return "gói đặt nhiều buổi từ " + pkg.getStartDate().format(DAY_FORMAT) + " đến "
-                + pkg.getEndDate().format(DAY_FORMAT);
+        return PackageService.label(pkg);
     }
 
     /**
