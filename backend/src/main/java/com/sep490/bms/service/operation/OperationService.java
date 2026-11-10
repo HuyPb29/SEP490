@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +58,10 @@ public class OperationService {
     private final LocationRepository locationRepository;
     private final LocationAccessService locationAccess;
 
+    /** UC34: giao dịch chờ xác nhận quá số phút này thì cảnh báo khẩn trên bảng điều hành. */
+    @Value("${bms.dashboard.payment-overdue-minutes:15}")
+    private int paymentOverdueMinutes;
+
     // ---------------------------------------------------------------- UC34 – Bảng điều hành Staff
 
     public StaffDashboardResponse getStaffDashboard(UserPrincipal staff) {
@@ -90,6 +95,9 @@ public class OperationService {
                         .finalAmount(r.getFinalAmount())
                         .build()).toList())
                 .paymentsAwaitingConfirmation(queryRepository.countPaymentsAwaitingConfirmation(locationId))
+                .overduePayments(queryRepository.countPaymentsAwaitingSince(locationId,
+                        now.minusMinutes(paymentOverdueMinutes)))
+                .paymentOverdueMinutes(paymentOverdueMinutes)
                 .complaintsToForward(queryRepository.countComplaintsByStatus(locationId, "SUBMITTED"))
                 .todayRevenue(todayRevenue)
                 .reconciledToday(queryRepository.existsReconciliation(locationId, today))

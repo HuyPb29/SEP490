@@ -28,6 +28,9 @@ public class StaffDashboardResponse {
     private List<BookingItem> todayBookings;
 
     private long paymentsAwaitingConfirmation;
+    /** Giao dịch chờ xác nhận đã gửi quá paymentOverdueMinutes phút, cần xử lý gấp. */
+    private long overduePayments;
+    private int paymentOverdueMinutes;
     private long complaintsToForward;
     private BigDecimal todayRevenue;
     private boolean reconciledToday;
