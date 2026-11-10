@@ -25,6 +25,8 @@ public class MatchResponse {
     private String hostName;
     /** Chỉ hiện với chủ kèo hoặc người đã được duyệt vào kèo. */
     private String hostPhone;
+    /** Trình độ tự khai của chủ kèo, FE hiển thị làm nhãn trình độ của kèo (UC29). */
+    private String hostSkillLevel;
     private Long locationId;
     private String locationName;
     private String courtName;

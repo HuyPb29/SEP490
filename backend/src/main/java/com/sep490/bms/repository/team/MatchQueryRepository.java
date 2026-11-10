@@ -27,7 +27,7 @@ public class MatchQueryRepository {
 
     private static final String MATCH_SELECT = """
             SELECT m.id, m.booking_id, b.booking_code, b.team_id, t.name AS team_name,
-                   t.captain_id AS host_id, a.full_name AS host_name, a.phone AS host_phone,
+                   t.captain_id AS host_id, a.full_name AS host_name, a.phone AS host_phone, a.skill_level AS host_skill_level,
                    b.location_id, l.name AS location_name, c.name AS court_name,
                    b.play_date, b.start_minute, b.end_minute,
                    m.current_players, m.needed_players, m.status, m.created_at, m.closed_at
@@ -50,6 +50,7 @@ public class MatchQueryRepository {
                 .hostId(rs.getLong("host_id"))
                 .hostName(rs.getString("host_name"))
                 .hostPhone(rs.getString("host_phone"))
+                .hostSkillLevel(rs.getString("host_skill_level"))
                 .locationId(rs.getLong("location_id"))
                 .locationName(rs.getString("location_name"))
                 .courtName(rs.getString("court_name"))
