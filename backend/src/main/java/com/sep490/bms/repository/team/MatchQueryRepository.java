@@ -122,6 +122,54 @@ public class MatchQueryRepository {
         return total == null ? 0 : total;
     }
 
+    /**
+     * "Kèo của tôi": kèo người chơi làm chủ (HOSTED), kèo họ đã gửi yêu cầu còn chờ hoặc đã được duyệt (JOINED),
+     * hoặc cả hai khi role = null. Mới nhất lên đầu.
+     */
+    public List<MatchResponse> findMyMatches(Long playerId, String role, String status, int offset, int size) {
+        List<Object> params = new ArrayList<>();
+        String where = buildMyWhere(playerId, role, status, params);
+        params.add(offset);
+        params.add(size);
+        return jdbcTemplate.query(
+                MATCH_SELECT + where + " ORDER BY b.play_date DESC, b.start_minute DESC, m.id DESC"
+                        + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+                MATCH_MAPPER, params.toArray());
+    }
+
+    public long countMyMatches(Long playerId, String role, String status) {
+        List<Object> params = new ArrayList<>();
+        String where = buildMyWhere(playerId, role, status, params);
+        Long total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM [match] m JOIN booking b ON b.id = m.booking_id JOIN team t ON t.id = b.team_id"
+                        + where, Long.class, params.toArray());
+        return total == null ? 0 : total;
+    }
+
+    private static final String JOINED_CONDITION = """
+            EXISTS (SELECT 1 FROM match_join_request r
+                    WHERE r.match_id = m.id AND r.player_id = ? AND r.status IN ('PENDING', 'APPROVED'))""";
+
+    private String buildMyWhere(Long playerId, String role, String status, List<Object> params) {
+        StringBuilder where = new StringBuilder(" WHERE ");
+        if ("HOSTED".equals(role)) {
+            where.append("t.captain_id = ?");
+            params.add(playerId);
+        } else if ("JOINED".equals(role)) {
+            where.append(JOINED_CONDITION);
+            params.add(playerId);
+        } else {
+            where.append("(t.captain_id = ? OR ").append(JOINED_CONDITION).append(")");
+            params.add(playerId);
+            params.add(playerId);
+        }
+        if (status != null) {
+            where.append(" AND m.status = ?");
+            params.add(status);
+        }
+        return where.toString();
+    }
+
     /** JOB10, UC28 A5: kèo vẫn đang tuyển mà giờ chơi đã bắt đầu. */
     public List<Long> findStartedOpenMatchIds() {
         return jdbcTemplate.queryForList("""
