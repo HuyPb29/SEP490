@@ -3,6 +3,7 @@ package com.sep490.bms.service.feedback;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
@@ -18,6 +19,7 @@ import com.sep490.bms.dto.feedback.CreateReviewRequest;
 import com.sep490.bms.dto.feedback.HideReviewRequest;
 import com.sep490.bms.dto.feedback.ReviewReplyRequest;
 import com.sep490.bms.dto.feedback.ReviewResponse;
+import com.sep490.bms.dto.feedback.ReviewSummaryResponse;
 import com.sep490.bms.entity.Account;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.booking.Booking;
@@ -86,6 +88,41 @@ public class ReviewService {
             throw new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND);
         }
         return toPage(reviewRepository.findVisibleByCourtId(courtId, pageable(page, size)));
+    }
+
+    /** UC12 – đánh giá công khai của cả địa điểm, mới nhất lên đầu. */
+    @Transactional(readOnly = true)
+    public PageResponse<ReviewResponse> listLocationReviews(Long locationId, int page, int size) {
+        requireLocation(locationId);
+        return toPage(reviewRepository.findByLocationIdAndHiddenFalse(locationId, pageable(page, size)));
+    }
+
+    /** UC12 – điểm trung bình, tổng số và phân bố số sao của đánh giá công khai tại địa điểm. */
+    @Transactional(readOnly = true)
+    public ReviewSummaryResponse getLocationReviewSummary(Long locationId) {
+        requireLocation(locationId);
+        Map<Integer, Long> counts = new TreeMap<>();
+        for (int star = 1; star <= 5; star++) {
+            counts.put(star, 0L);
+        }
+        for (Object[] row : reviewRepository.countVisibleByRating(locationId)) {
+            counts.put(((Number) row[0]).intValue(), ((Number) row[1]).longValue());
+        }
+        long total = counts.values().stream().mapToLong(Long::longValue).sum();
+        long stars = counts.entrySet().stream().mapToLong(e -> e.getKey() * e.getValue()).sum();
+        Double average = total == 0 ? null : Math.round(stars * 10.0 / total) / 10.0;
+        return ReviewSummaryResponse.builder()
+                .locationId(locationId)
+                .averageRating(average)
+                .reviewCount(total)
+                .ratingCounts(counts)
+                .build();
+    }
+
+    private void requireLocation(Long locationId) {
+        if (!locationRepository.existsById(locationId)) {
+            throw new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND);
+        }
     }
 
     // ---------------------------------------------------------------- UC32 – Quản lý đánh giá
