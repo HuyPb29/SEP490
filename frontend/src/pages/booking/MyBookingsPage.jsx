@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { getMyBookingsApi, cancelBookingApi, loadPaymentContextForItemApi } from '../../api/bookingApi';
+import { getMyBookingsApi, cancelBookingApi, cancelOrderApi, loadPaymentContextForItemApi } from '../../api/bookingApi';
 import { apiErrorMessage } from '../../api';
 import styles from './MyBookingsPage.module.css';
 
@@ -172,7 +172,10 @@ export default function MyBookingsPage() {
     setCancelling(true);
     setFeedbackBanner('');
     try {
-      const res = await cancelBookingApi(cancelTarget.booking_id);
+      // BR64: hủy đơn đặt lẻ là hủy cả đơn
+      const res = cancelTarget.is_order
+        ? await cancelOrderApi(cancelTarget.entity_id)
+        : await cancelBookingApi(cancelTarget.booking_id);
       if (res?.success) {
         setBookings((prev) =>
           prev.map((item) =>

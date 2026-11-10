@@ -120,6 +120,85 @@ export async function createBookingApi(params) {
   };
 }
 
+// ===================== UC14, BR64: đơn đặt lẻ nhiều dải trong một ngày =====================
+
+/**
+ * Gom các slot đã chọn (cùng một ngày) thành dải: các slot liền nhau trên cùng một sân là một dải (BR01).
+ * slots: [{ courtId, courtName, time: "HH:mm", price }]. Trả [{ courtId, courtName, startTime, endTime, slots }].
+ */
+export function groupSlotsIntoRanges(slots) {
+  const sorted = [...slots].sort((a, b) => a.courtId - b.courtId || toMinutes(a.time) - toMinutes(b.time));
+  const ranges = [];
+  sorted.forEach((slot) => {
+    const start = toMinutes(slot.time);
+    const last = ranges[ranges.length - 1];
+    if (last && last.courtId === slot.courtId && toMinutes(last.endTime) === start) {
+      last.endTime = toTimeLabel(start + 30);
+      last.slots.push(slot);
+    } else {
+      ranges.push({
+        courtId: slot.courtId,
+        courtName: slot.courtName,
+        startTime: slot.time,
+        endTime: toTimeLabel(start + 30),
+        slots: [slot],
+      });
+    }
+  });
+  return ranges;
+}
+
+function toOrderRequest({ date, ranges, voucherCode, pointsToUse, note, teamId }) {
+  return {
+    date,
+    ranges: ranges.map((range) => ({
+      courtId: range.courtId,
+      startMinute: toMinutes(range.startTime),
+      endMinute: toMinutes(range.endTime),
+    })),
+    voucherCode: voucherCode || null,
+    voucherGrantId: null,
+    pointsToUse: pointsToUse || 0,
+    note: note || null,
+    teamId: teamId || null,
+  };
+}
+
+/** UC14 #3–5 (đơn): tính tiền cả đơn, dải bị trùng (POST /api/booking-orders/preview). */
+export async function previewOrderApi(params) {
+  const res = await api.post('/booking-orders/preview', toOrderRequest(params));
+  const data = res.data?.data;
+  return {
+    success: true,
+    data: {
+      ...data,
+      listAmount: toNumber(data?.listAmount),
+      voucherDiscount: toNumber(data?.voucherDiscount),
+      pointDiscount: toNumber(data?.pointDiscount),
+      finalAmount: toNumber(data?.finalAmount),
+    },
+  };
+}
+
+/** UC14 #6–8 (đơn): tạo đơn giữ chỗ 10 phút (POST /api/booking-orders); trả dữ liệu màn thanh toán UC18. */
+export async function createOrderApi(params) {
+  const res = await api.post('/booking-orders', toOrderRequest(params));
+  const order = res.data?.data;
+  return {
+    success: true,
+    message: res.data?.message,
+    data: await loadPaymentContextApi({ kind: 'package', id: order.id, extra: { booking_code: orderCode(order.id) } }),
+  };
+}
+
+/** UC22, BR64: hủy cả đơn (POST /api/booking-orders/{id}/cancel). */
+export async function cancelOrderApi(orderId) {
+  const res = await api.post(`/booking-orders/${orderId}/cancel`);
+  return res.data;
+}
+
+const orderCode = (orderId) => `OD-${orderId}`;
+
 // ===================== UC15: đặt nhiều buổi =====================
 
 /** Danh sách sân của địa điểm (GET /api/locations/{id}/courts). */
@@ -231,23 +310,29 @@ function mapSingleBooking(item) {
 
 function mapPackage(item) {
   const status = lower(item.status);
+  // BR64: đơn đặt lẻ lưu như gói loại DAY
+  const isOrder = item.packageType === 'DAY';
   return {
     kind: 'package',
+    is_order: isOrder,
     entity_id: item.id,
     booking_id: `P${item.id}`,
-    booking_code: packageCode(item.id),
-    booking_type: 'recurring',
+    booking_code: isOrder ? orderCode(item.id) : packageCode(item.id),
+    booking_type: isOrder ? 'order' : 'recurring',
     status,
     status_name: STATUS_NAMES[status] || item.status,
     facility_id: item.locationId,
-    facility_name: `Package · ${item.locationName}`,
-    court_name: `${item.sessionCount} sessions`,
+    facility_name: isOrder ? `Order · ${item.locationName}` : `Package · ${item.locationName}`,
+    court_name: isOrder ? `${item.sessionCount} bookings` : `${item.sessionCount} sessions`,
     booking_date: item.startDate,
-    time_range: `${item.startDate} – ${item.endDate} · ${item.sessionCount} sessions`,
+    time_range: isOrder
+      ? `${item.startDate} · ${item.sessionCount} bookings`
+      : `${item.startDate} – ${item.endDate} · ${item.sessionCount} sessions`,
     final_amount: toNumber(item.finalAmount),
     hold_expires_at: item.holdExpiresAt,
     created_at: item.createdAt,
-    can_cancel: false,
+    // BR64: hủy đơn là hủy cả đơn
+    can_cancel: isOrder && status === 'confirmed',
     can_reschedule: false,
     can_open_match: false,
     can_complain: false,
@@ -329,17 +414,21 @@ function mapStaffPayment(detail) {
   const payment = detail.payment;
   const isPackage = payment.packageId != null;
   const sessions = detail.sessions || [];
-  const code = payment.bookingCode || packageCode(payment.packageId);
+  // Đơn đặt lẻ (BR64): mọi booking cùng một ngày; hiện từng dải thay vì số buổi
+  const oneDay = isPackage && sessions.length > 0 && sessions.every((s) => s.playDate === sessions[0].playDate);
+  const code = payment.bookingCode || (oneDay ? orderCode(payment.packageId) : packageCode(payment.packageId));
   const proofs = detail.proofs || [];
   return {
     id: payment.id,
     code,
     customer: detail.customerName,
-    court: isPackage ? `${sessions.length} sessions` : detail.courtName,
-    playDate: isPackage
+    court: isPackage ? (oneDay ? [...new Set(sessions.map((s) => s.courtName))].join(', ') : `${sessions.length} sessions`) : detail.courtName,
+    playDate: isPackage && !oneDay
       ? `${formatDayMonth(sessions[0]?.playDate)} – ${formatDayMonth(sessions[sessions.length - 1]?.playDate)}`
-      : formatDayMonth(detail.playDate),
-    playTime: isPackage ? `${sessions.length} sessions` : `${detail.startTime} – ${detail.endTime}`,
+      : formatDayMonth(isPackage ? sessions[0]?.playDate : detail.playDate),
+    playTime: isPackage
+      ? (oneDay ? sessions.map((s) => `${s.courtName} ${s.startTime}–${s.endTime}`).join('; ') : `${sessions.length} sessions`)
+      : `${detail.startTime} – ${detail.endTime}`,
     listTime: isPackage ? formatDayMonth(sessions[0]?.playDate) : detail.startTime,
     phone: detail.customerPhone,
     transferContent: code,

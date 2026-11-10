@@ -20,8 +20,8 @@ export default function FacilityDetailPage() {
 
   // Type: [{ courtId, courtName, timeIdx, time, price }]
   const [selectedSlots, setSelectedSlots] = useState([]);
-  const [ruleMessage, setRuleMessage] = useState(
-    'You can only select consecutive available slots on the same court. Each slot is 30 minutes.'
+  const [ruleMessage] = useState(
+    'Select any available slots on this day, on one or more courts. Each slot is 30 minutes; all selected slots are paid together.'
   );
 
   useEffect(() => {
@@ -57,31 +57,24 @@ export default function FacilityDetailPage() {
     loadData();
   }, [id, playDate]);
 
-  // UC13: Xử lý chọn/bỏ chọn slot (Yêu cầu liền kề trên cùng 1 sân)
+  // UC14, BR64 (D164): chọn tùy ý các slot trống trong ngày, trên một hoặc nhiều sân, liền nhau hay không.
+  // Các slot liền nhau trên một sân thành một booking; nhiều dải thì gom thành một đơn đặt lẻ.
   const handleToggleSlot = (court, slot, timeIdx) => {
     if (slot.status !== 'available') return;
 
     const isAlreadySelected = selectedSlots.some(
       (s) => s.courtId === court.court_id && s.timeIdx === timeIdx
     );
-
     if (isAlreadySelected) {
-      const indices = selectedSlots.map((s) => s.timeIdx).sort((a, b) => a - b);
-      const minIdx = indices[0];
-      const maxIdx = indices[indices.length - 1];
-
-      // Chỉ cho bỏ chọn ở 2 đầu mút để không làm đứt đoạn giữa
-      if (timeIdx === minIdx || timeIdx === maxIdx) {
-        setSelectedSlots(selectedSlots.filter((s) => s.timeIdx !== timeIdx));
-        setRuleMessage('You can only select consecutive available slots on the same court. Each slot is 30 minutes.');
-      } else {
-        setRuleMessage('⚠️ Please deselect from the outermost slot to keep the slots consecutive!');
-      }
+      setSelectedSlots(
+        selectedSlots.filter((s) => !(s.courtId === court.court_id && s.timeIdx === timeIdx))
+      );
       return;
     }
 
-    if (selectedSlots.length > 0 && selectedSlots[0].courtId !== court.court_id) {
-      setSelectedSlots([
+    setSelectedSlots(
+      [
+        ...selectedSlots,
         {
           courtId: court.court_id,
           courtName: court.court_name,
@@ -89,36 +82,8 @@ export default function FacilityDetailPage() {
           time: slot.time,
           price: slot.price,
         },
-      ]);
-      setRuleMessage(`Selection changed to ${court.court_name} (booking restricted to a single court).`);
-      return;
-    }
-
-    // Kiểm tra tính liền kề (Adjacent slots)
-    if (selectedSlots.length > 0) {
-      const indices = selectedSlots.map((s) => s.timeIdx).sort((a, b) => a - b);
-      const minIdx = indices[0];
-      const maxIdx = indices[indices.length - 1];
-
-      if (timeIdx !== minIdx - 1 && timeIdx !== maxIdx + 1) {
-        setRuleMessage('⚠️ You can only select consecutive available slots on the same court!');
-        return;
-      }
-    }
-
-    const updated = [
-      ...selectedSlots,
-      {
-        courtId: court.court_id,
-        courtName: court.court_name,
-        timeIdx,
-        time: slot.time,
-        price: slot.price,
-      },
-    ].sort((a, b) => a.timeIdx - b.timeIdx);
-
-    setSelectedSlots(updated);
-    setRuleMessage('You can only select consecutive available slots on the same court. Each slot is 30 minutes.');
+      ].sort((a, b) => a.courtId - b.courtId || a.timeIdx - b.timeIdx)
+    );
   };
 
   // Đã vá lỗi múi giờ UTC bằng .toLocaleDateString('en-CA')

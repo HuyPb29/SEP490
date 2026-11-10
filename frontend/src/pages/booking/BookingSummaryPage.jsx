@@ -6,8 +6,9 @@ import {
   applyVoucherApi,
   createBookingApi,
   previewBookingSummaryApi,
-  toMinutes,
-  toTimeLabel,
+  previewOrderApi,
+  createOrderApi,
+  groupSlotsIntoRanges,
 } from '../../api/bookingApi';
 import { apiErrorMessage } from '../../api';
 import styles from './BookingSummaryPage.module.css';
@@ -94,39 +95,35 @@ export default function BookingSummaryPage() {
     fetchInitialData();
   }, [bookingContext.facility?.facility_id]);
 
+  // BR01, BR64: các slot liền nhau trên một sân là một dải (một booking); từ 2 dải trở lên là đơn đặt lẻ
+  const ranges = useMemo(() => groupSlotsIntoRanges(bookingContext.selectedSlots || []), [bookingContext.selectedSlots]);
+  const isOrder = ranges.length > 1;
+
   // Tính toán thông tin hiển thị khung giờ & tiền sân niêm yết (DR05)
   const slotSummary = useMemo(() => {
     const slots = bookingContext.selectedSlots || [];
     const totalSlots = slots.length;
-    const unitPrice = slots[0]?.price || 0;
     const totalListPrice = slots.reduce((sum, s) => sum + s.price, 0);
-    const courtId = slots[0]?.courtId;
-    const courtName = slots[0]?.courtName || '';
-    const startTime = slots[0]?.time || '';
-    // Giờ kết thúc = slot cuối + 30 phút; slot 23:30 kết thúc lúc 24:00 (endMinute 1440)
-    const endTime = slots.length > 0 ? toTimeLabel(toMinutes(slots[slots.length - 1].time) + 30) : '';
-
+    const first = ranges[0];
     return {
       totalSlots,
-      unitPrice,
       totalListPrice,
-      courtId,
-      courtName,
-      startTime,
-      endTime,
-      timeRangeText: `${startTime} – ${endTime} (${totalSlots} slot)`,
+      courtName: [...new Set(ranges.map((range) => range.courtName))].join(', '),
+      timeRangeText: ranges.length === 1
+        ? `${first.startTime} – ${first.endTime} (${totalSlots} slot)`
+        : ranges.map((range) => `${range.courtName} ${range.startTime} – ${range.endTime}`).join('; '),
     };
-  }, [bookingContext.selectedSlots]);
+  }, [bookingContext.selectedSlots, ranges]);
 
-  // Lựa chọn gửi backend: một sân, các slot liền nhau (BR01)
+  // Booking lẻ một dải: một sân, các slot liền nhau (BR01)
   const selection = useMemo(
     () => ({
-      courtId: slotSummary.courtId,
+      courtId: ranges[0]?.courtId,
       date: bookingContext.playDate,
-      startTime: slotSummary.startTime,
-      endTime: slotSummary.endTime,
+      startTime: ranges[0]?.startTime,
+      endTime: ranges[0]?.endTime,
     }),
-    [slotSummary, bookingContext.playDate]
+    [ranges, bookingContext.playDate]
   );
 
   // Thứ tự trừ tiền (BR41, D161): giá niêm yết → voucher → điểm, điểm tối đa 50% số còn lại sau voucher
@@ -142,15 +139,18 @@ export default function BookingSummaryPage() {
   useEffect(() => {
     if (!hasSelection) return undefined;
     let cancelled = false;
-    previewBookingSummaryApi({
-      selection,
-      voucherCode: appliedVoucher?.voucher_code,
-      pointsToUse,
-    })
+    const request = isOrder
+      ? previewOrderApi({ date: bookingContext.playDate, ranges, voucherCode: appliedVoucher?.voucher_code, pointsToUse })
+      : previewBookingSummaryApi({ selection, voucherCode: appliedVoucher?.voucher_code, pointsToUse });
+    request
       .then((res) => {
         if (cancelled) return;
         setServerPricing(res.data);
-        setPricingError('');
+        // Đơn: dải vừa bị đặt hoặc không còn đặt được thì báo để chọn lại
+        const taken = (res.data.sessions || []).filter((session) => session.conflict);
+        setPricingError(taken.length
+          ? `Not available: ${taken.map((session) => `${session.courtName} ${session.startTime}–${session.endTime}`).join('; ')}. Please choose other slots.`
+          : '');
       })
       .catch((err) => {
         if (cancelled) return;
@@ -160,7 +160,7 @@ export default function BookingSummaryPage() {
     return () => {
       cancelled = true;
     };
-  }, [hasSelection, selection, appliedVoucher, pointsToUse]);
+  }, [hasSelection, isOrder, ranges, bookingContext.playDate, selection, appliedVoucher, pointsToUse]);
 
   const pricingSummary = useMemo(() => {
     if (serverPricing) {
@@ -211,7 +211,17 @@ export default function BookingSummaryPage() {
 
     setVoucherLoading(true);
     try {
-      const res = await applyVoucherApi({ selection, voucher_code: voucherInput.trim() });
+      const code = voucherInput.trim();
+      const res = isOrder
+        ? await previewOrderApi({ date: bookingContext.playDate, ranges, voucherCode: code, pointsToUse: 0 }).then((preview) => ({
+            success: true,
+            data: {
+              voucher_code: code,
+              discount_amount: preview.data.voucherDiscount,
+              description: `-${preview.data.voucherDiscount.toLocaleString('vi-VN')} VND`,
+            },
+          }))
+        : await applyVoucherApi({ selection, voucher_code: code });
       if (res?.success) {
         setAppliedVoucher(res.data);
       }
@@ -240,13 +250,16 @@ export default function BookingSummaryPage() {
 
     setSubmitting(true);
     try {
-      const res = await createBookingApi({
-        selection,
+      const discounts = {
         voucherCode: appliedVoucher?.voucher_code,
         pointsToUse,
         note: guestNote.trim(),
         teamId: selectedTeamId,
-      });
+      };
+      // BR64: nhiều dải thì tạo đơn đặt lẻ, một dải thì tạo booking lẻ
+      const res = isOrder
+        ? await createOrderApi({ date: bookingContext.playDate, ranges, ...discounts })
+        : await createBookingApi({ selection, ...discounts });
       if (res?.success) {
         // Dữ liệu giữ chỗ (BR03) và tài khoản nhận cho màn thanh toán UC18
         sessionStorage.setItem('active_holding_booking', JSON.stringify(res.data));
@@ -461,8 +474,7 @@ export default function BookingSummaryPage() {
 
               <div className={styles.priceLine}>
                 <span className={styles.priceLabel}>
-                  Court Fee ({slotSummary.totalSlots} ×{' '}
-                  {slotSummary.unitPrice.toLocaleString('vi-VN')} VND)
+                  Court Fee ({slotSummary.totalSlots} slots{isOrder ? `, ${ranges.length} bookings` : ''})
                 </span>
                 <strong className={styles.priceValue}>
                   {pricingSummary.listPrice.toLocaleString('vi-VN')} VND
