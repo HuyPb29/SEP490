@@ -325,13 +325,14 @@ public class MatchService {
 
     private MatchResponse enrich(MatchResponse match, Long userId) {
         boolean isHost = match.getHostId().equals(userId);
-        String myJoinStatus = userId == null ? null : matchJoinRequestRepository
+        MatchJoinRequest myRequest = userId == null ? null : matchJoinRequestRepository
                 .findFirstByMatchIdAndPlayerIdOrderByCreatedAtDesc(match.getId(), userId)
-                .map(r -> r.getStatus().name())
                 .orElse(null);
+        String myJoinStatus = myRequest == null ? null : myRequest.getStatus().name();
 
         match.setHost(isHost);
         match.setMyJoinStatus(myJoinStatus);
+        match.setMyJoinRequestId(myRequest == null ? null : myRequest.getId());
         if (!isHost && !JoinRequestStatus.APPROVED.name().equals(myJoinStatus)) {
             match.setHostPhone(null);
         }
