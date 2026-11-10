@@ -103,6 +103,26 @@ class BookingQueryServiceTests {
     }
 
     @Test
+    void listMyBookings_flagsOnlyBookingsThatCanStillBeReviewed() {
+        repositoryReturns(booking(1L, BookingStatus.COMPLETED, null), booking(2L, BookingStatus.COMPLETED, null),
+                booking(3L, BookingStatus.CONFIRMED, null));
+        when(reviews.reviewableBookingIds(any())).thenReturn(java.util.Set.of(1L));
+
+        PageResponse<BookingListItem> page = service.listMyBookings(player, null, 0, 20, NOW);
+
+        assertThat(page.getContent()).extracting(BookingListItem::isCanReview).containsExactly(true, false, false);
+    }
+
+    @Test
+    void getMyBooking_flagsCompletedUnreviewedBooking() {
+        Booking completed = booking(5L, BookingStatus.COMPLETED, null);
+        when(bookingService.getForPlayer(5L, PLAYER)).thenReturn(completed);
+        when(reviews.reviewableBookingIds(List.of(completed))).thenReturn(java.util.Set.of(5L));
+
+        assertThat(service.getMyBooking(player, 5L, NOW).isCanReview()).isTrue();
+    }
+
+    @Test
     void listMyBookings_mapsNamesAndTimes() {
         repositoryReturns(booking(1L, BookingStatus.CONFIRMED, NOW.minusMinutes(10)));
 
