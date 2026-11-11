@@ -195,6 +195,66 @@ const MOCK_MY_BOOKINGS = [
     created_at: '2026-10-22T11:20:00',
   },
   {
+    booking_id: 1012,
+    order_id: 7201,
+    order_code: 'ORD-7201',
+    booking_code: 'BK-7201-A',
+    booking_type: 'single',
+    status: 'confirmed',
+    status_name: 'Confirmed',
+    facility_id: 1,
+    facility_name: 'Smash Arena',
+    court_id: 102,
+    court_name: 'Court 2',
+    booking_date: '2026-11-18',
+    start_time: '18:00:00',
+    end_time: '19:00:00',
+    time_range: '18:00 – 19:00',
+    booker_label: 'Personal',
+    total_slots: 2,
+    total_list_price: 160000,
+    voucher_discount_amount: 0,
+    points_discount_amount: 0,
+    final_amount: 160000,
+    reschedule_count: 0,
+    can_reschedule: true,
+    can_cancel: true,
+    can_open_match: false,
+    can_review: false,
+    can_complain: false,
+    created_at: '2026-11-10T11:20:00',
+  },
+  {
+    booking_id: 1013,
+    order_id: 7201,
+    order_code: 'ORD-7201',
+    booking_code: 'BK-7201-B',
+    booking_type: 'single',
+    status: 'confirmed',
+    status_name: 'Confirmed',
+    facility_id: 1,
+    facility_name: 'Smash Arena',
+    court_id: 104,
+    court_name: 'Court 4',
+    booking_date: '2026-11-18',
+    start_time: '20:00:00',
+    end_time: '21:00:00',
+    time_range: '20:00 – 21:00',
+    booker_label: 'Personal',
+    total_slots: 2,
+    total_list_price: 160000,
+    voucher_discount_amount: 0,
+    points_discount_amount: 0,
+    final_amount: 160000,
+    reschedule_count: 1,
+    can_reschedule: false,
+    can_cancel: true,
+    can_open_match: false,
+    can_review: false,
+    can_complain: false,
+    created_at: '2026-11-10T11:20:00',
+  },
+  {
     booking_id: 1010,
     booking_code: 'BK-20102',
     booking_type: 'single',
@@ -931,5 +991,37 @@ export async function cancelBookingApi(bookingId) {
   }
 
   const res = await axios.post(`/api/v1/bookings/${bookingId}/cancel`);
+  return res.data;
+}
+
+export async function cancelBookingOrderApi(orderId) {
+  if (USE_MOCK_BOOKING) {
+    await new Promise((r) => setTimeout(r, 250));
+    const children = MOCK_MY_BOOKINGS.filter((booking) => String(booking.order_id) === String(orderId));
+    if (children.length === 0 || children.some((booking) => booking.status !== 'confirmed')) {
+      const msg = 'Only confirmed booking orders before play time can be cancelled.';
+      const err = new Error(msg);
+      err.response = { data: { code: 'MSG65', message: msg } };
+      throw err;
+    }
+
+    children.forEach((booking) => {
+      booking.status = 'cancelled_by_player';
+      booking.status_name = 'Cancelled by Player';
+      booking.can_cancel = false;
+      booking.can_reschedule = false;
+      booking.can_open_match = false;
+      booking.sub_note = 'Order cancelled by player (non-refundable per BR07)';
+    });
+
+    return {
+      success: true,
+      code: 200,
+      message: `Order ${orderId} and all ${children.length} bookings have been cancelled.`,
+      data: { order_id: orderId, bookings: children },
+    };
+  }
+
+  const res = await axios.post(`/api/booking-orders/${orderId}/cancel`);
   return res.data;
 }
