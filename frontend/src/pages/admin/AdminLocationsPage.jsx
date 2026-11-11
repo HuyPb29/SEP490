@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import styles from './AdminFacilitiesPage.module.css'
+import styles from './AdminLocationsPage.module.css'
 import AdminPortalSidebar from './AdminPortalSidebar'
 
 const INITIAL_PENDING_REQUESTS = [
@@ -16,7 +16,7 @@ const INITIAL_PENDING_REQUESTS = [
   {
     id: 'request-smash-2',
     name: 'Smash Arena 2',
-    type: 'Add Facility',
+    type: 'Add Location',
     address: '40 Quang Trung, Ha Dong',
     courts: 5,
     ownerName: 'Nguyen Van Hung',
@@ -114,7 +114,7 @@ function getErrorMessage(err) {
   return err.response?.data?.message || err.message
 }
 
-export default function AdminFacilitiesPage() {
+export default function AdminLocationsPage() {
   const [pendingRequests, setPendingRequests] = useState(INITIAL_PENDING_REQUESTS)
   const [facilities, setFacilities] = useState(INITIAL_FACILITIES)
   const [searchKeyword, setSearchKeyword] = useState('')
@@ -155,7 +155,7 @@ export default function AdminFacilitiesPage() {
       setPendingRequests((currentRequests) => currentRequests.filter((item) => item.id !== requestId))
       setStatusMessage(request.type === 'New Owner'
         ? `Owner account created for ${request.ownerName}. Activation email sent.`
-        : `Facility added to ${request.ownerName}'s existing owner account.`)
+        : `Location added to ${request.ownerName}'s existing owner account.`)
       setActionError('')
     } catch (err) {
       setActionError(getErrorMessage(err))
@@ -196,8 +196,8 @@ export default function AdminFacilitiesPage() {
   const handleLock = (facilityId) => {
     try {
       const facility = facilities.find((item) => item.id === facilityId)
-      if (!facility) throw new Error('The selected facility could not be found.')
-      const confirmed = window.confirm(`Lock facility ${facility.name}? The facility will no longer be displayed and will not accept new bookings. The system does not process unplayed bookings of the facility.`)
+      if (!facility) throw new Error('The selected location could not be found.')
+      const confirmed = window.confirm(`Lock location ${facility.name}? The location will no longer be displayed and will not accept new bookings. The system does not process unplayed bookings of the location.`)
       if (!confirmed) return
       setFacilities((currentFacilities) => currentFacilities.map((item) => (
         item.id === facilityId ? { ...item, status: 'Locked' } : item
@@ -213,7 +213,7 @@ export default function AdminFacilitiesPage() {
   const handleExtend = (facilityId, reopening = false) => {
     try {
       const facility = facilities.find((item) => item.id === facilityId)
-      if (!facility) throw new Error('The selected facility could not be found.')
+      if (!facility) throw new Error('The selected location could not be found.')
       setModal({ facilityId, months: 12, reopening })
       setActionError('')
     } catch (err) {
@@ -224,7 +224,7 @@ export default function AdminFacilitiesPage() {
   const handleReopen = (facilityId) => {
     try {
       const facility = facilities.find((item) => item.id === facilityId)
-      if (!facility) throw new Error('The selected facility could not be found.')
+      if (!facility) throw new Error('The selected location could not be found.')
       if (isExpired(facility.serviceEndDate)) {
         handleExtend(facilityId, true)
         return
@@ -243,9 +243,9 @@ export default function AdminFacilitiesPage() {
   const handleConfirmExtension = (event) => {
     event.preventDefault()
     try {
-      if (!modal) throw new Error('Choose a facility to extend.')
+      if (!modal) throw new Error('Choose a location to extend.')
       const facility = facilities.find((item) => item.id === modal.facilityId)
-      if (!facility) throw new Error('The selected facility could not be found.')
+      if (!facility) throw new Error('The selected location could not be found.')
       const option = EXTENSION_OPTIONS.find((item) => item.months === Number(modal.months))
       if (!option) throw new Error('Choose a valid extension period.')
       const serviceEndDate = addMonths(facility.serviceEndDate, option.months)
@@ -312,7 +312,7 @@ export default function AdminFacilitiesPage() {
       <AdminPortalSidebar pendingRequestCount={pendingRequests.length} />
 
       <main className={styles.main}>
-        <h1 className={styles.pageTitle}>Manage Service Facilities</h1>
+        <h1 className={styles.pageTitle}>Manage Service Locations</h1>
 
         {(statusMessage || (actionError && !modal)) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
@@ -335,7 +335,7 @@ export default function AdminFacilitiesPage() {
                   </div>
                   <p className={styles.requestAddress}>{request.address} · {request.courts} courts</p>
                   <p className={styles.requestMeta}>
-                    {request.ownerName}{request.type === 'Add Facility' ? ' (Existing Owner)' : ''}
+                    {request.ownerName}{request.type === 'Add Location' ? ' (Existing Owner)' : ''}
                     {request.contact ? ` · ${request.contact}` : ''} · submitted {request.submitted}
                   </p>
                 </div>
@@ -354,13 +354,13 @@ export default function AdminFacilitiesPage() {
         <section className={`${styles.panel} ${styles.facilitiesPanel}`} aria-labelledby="facilities-title">
           <div className={styles.facilitiesHeader}>
             <h2 className={styles.sectionTitle} id="facilities-title">
-              Facilities ({TOTAL_FACILITY_COUNT + facilities.length - INITIAL_FACILITIES.length})
+              Locations ({TOTAL_FACILITY_COUNT + facilities.length - INITIAL_FACILITIES.length})
             </h2>
             <label className={styles.searchField}>
-              <span className={styles.visuallyHidden}>Search by facility name</span>
+              <span className={styles.visuallyHidden}>Search by location name</span>
               <input
                 type="search"
-                placeholder="Search by facility name"
+                placeholder="Search by location name"
                 value={searchKeyword}
                 onChange={(event) => setSearchKeyword(event.target.value)}
               />
@@ -369,7 +369,7 @@ export default function AdminFacilitiesPage() {
 
           <div className={styles.tableScroller}>
             <div className={`${styles.facilityTable} ${styles.tableHeader}`} role="row">
-              <span role="columnheader">Facility</span>
+              <span role="columnheader">Location</span>
               <span role="columnheader">Status</span>
               <span role="columnheader">Service Period</span>
               <span role="columnheader">Courts</span>
@@ -408,7 +408,7 @@ export default function AdminFacilitiesPage() {
               </div>
             ))}
             {filteredFacilities.length === 0 && (
-              <p className={styles.emptyState}>No facilities match your search.</p>
+              <p className={styles.emptyState}>No locations match your search.</p>
             )}
           </div>
         </section>
@@ -421,12 +421,12 @@ export default function AdminFacilitiesPage() {
               <h2 id="extend-modal-title">
                 {modal.type === 'reject'
                   ? 'Reject Registration Request'
-                  : modal.reopening ? 'Extend and Reopen Facility' : 'Extend Service Period'}
+                  : modal.reopening ? 'Extend and Reopen Location' : 'Extend Service Period'}
               </h2>
               <p>
                 {modal.type === 'reject'
                   ? 'Provide a reason to include in the rejection email.'
-                  : 'Select the service period to add to this facility.'}
+                  : 'Select the service period to add to this location.'}
               </p>
               <form onSubmit={modal.type === 'reject' ? handleConfirmRejection : handleConfirmExtension}>
                 {actionError && <p className={styles.modalError} role="alert">{actionError}</p>}

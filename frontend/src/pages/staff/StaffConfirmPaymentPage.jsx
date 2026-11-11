@@ -284,7 +284,7 @@ export default function StaffConfirmPaymentPage() {
 
                   {selectedBooking.note && (
                     <p className={styles.ownerNote}>
-                      <strong>Note to facility owner:</strong> {selectedBooking.note}
+                      <strong>Note to location owner:</strong> {selectedBooking.note}
                     </p>
                   )}
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { searchFacilities } from '../../api/facilityApi';
-import styles from './FacilitySearchPage.module.css';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { searchLocations } from '../../api/locationApi';
+import styles from './LocationSearchPage.module.css';
 
 function getSavedUserInfo() {
   const savedUserInfo = localStorage.getItem('bms_user_info');
@@ -31,8 +31,9 @@ function buildMapProjection(points) {
   });
 }
 
-export default function FacilitySearchPage() {
+export default function LocationSearchPage() {
   const navigate = useNavigate();
+  const routeLocation = useLocation();
   const [keyword, setKeyword] = useState('Cau Giay');
   // Lấy đúng giờ Việt Nam (Local Time)
   const getLocalToday = () => {
@@ -67,9 +68,9 @@ export default function FacilitySearchPage() {
     setLoading(true);
     setLoadError(false);
     try {
-      const res = await searchFacilities({ keyword: kw, userLat: lat, userLng: lng });
+      const res = await searchLocations({ keyword: kw, userLat: lat, userLng: lng });
       if (!res?.success) {
-        throw new Error('Facility search returned an unsuccessful response.');
+        throw new Error('Location search returned an unsuccessful response.');
       }
       const locations = Array.isArray(res.data) ? res.data : res.data?.items;
       if (!Array.isArray(locations)) {
@@ -84,7 +85,7 @@ export default function FacilitySearchPage() {
       })));
       setIsMockFallback(Boolean(res.isFallback));
     } catch (err) {
-      console.error('Error loading facilities:', err);
+      console.error('Error loading locations:', err);
       setFacilities([]);
       setIsMockFallback(false);
       setLoadError(true);
@@ -140,7 +141,9 @@ export default function FacilitySearchPage() {
 
   const handleSelectFacility = (facility) => {
     sessionStorage.setItem('selected_facility_id', String(facility.facility_id));
-    navigate(`/facilities/${facility.facility_id}`, { state: { playDate } });
+    navigate(`/locations/${facility.facility_id}`, {
+      state: { playDate, bookingMode: routeLocation.state?.bookingMode || 'single' },
+    });
   };
   const userDisplayName = userInfo?.full_name || userInfo?.username || userInfo?.email;
 
@@ -214,7 +217,7 @@ export default function FacilitySearchPage() {
         <div className={styles.heroContainer}>
           <div className={styles.activeBadge}>
             <span className={styles.badgeCheck}>✓</span>
-            <span>Showing only active facilities</span>
+            <span>Showing only active locations</span>
           </div>
 
           <h1 className={styles.heroTitle}>Find Badminton Courts Near You</h1>
@@ -273,7 +276,7 @@ export default function FacilitySearchPage() {
           <div>
             <span className={styles.sectionTag}>SEARCH RESULTS</span>
             <h2 className={styles.resultsTitle}>
-              {sortedFacilities.length} {sortedFacilities.length === 1 ? 'facility' : 'facilities'} near you
+              {sortedFacilities.length} {sortedFacilities.length === 1 ? 'location' : 'locations'} near you
             </h2>
             <p className={styles.resultsSubtitle}>
               {position
@@ -303,11 +306,11 @@ export default function FacilitySearchPage() {
         <div className={styles.contentGrid}>
           <div className={styles.cardsGrid}>
             {loading ? (
-              <p>Loading facilities...</p>
+              <p>Loading locations...</p>
             ) : loadError ? (
-              <p>Cannot load facilities. Please try again.</p>
+              <p>Cannot load locations. Please try again.</p>
             ) : sortedFacilities.length === 0 ? (
-              <p>No facilities found.</p>
+              <p>No locations found.</p>
             ) : (
               sortedFacilities.map((item, idx) => (
                 <div
@@ -401,7 +404,7 @@ export default function FacilitySearchPage() {
               ))}
             </div>
             <p className={styles.mapFooter}>
-              Click a pin to view the facility's name and address.
+              Click a pin to view the location's name and address.
             </p>
           </aside>
         </div>

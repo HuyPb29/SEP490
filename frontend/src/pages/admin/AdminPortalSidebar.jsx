@@ -1,8 +1,8 @@
 import { NavLink } from 'react-router-dom'
-import styles from './AdminFacilitiesPage.module.css'
+import styles from './AdminLocationsPage.module.css'
 
 const NAV_ITEMS = [
-  { label: 'Facilities', to: '/admin/facilities' },
+  { label: 'Locations', to: '/admin/locations' },
   { label: 'Accounts', to: '/admin/accounts' },
   { label: 'Violating Vouchers', to: '/admin/violating-vouchers' },
   { label: 'Violating Reviews', to: '/admin/violating-reviews' },
@@ -29,7 +29,7 @@ export default function AdminPortalSidebar({ pendingRequestCount = 3 }) {
             key={item.to}
           >
             <span>{item.label}</span>
-            {item.to === '/admin/facilities' && (
+            {item.to === '/admin/locations' && (
               <span className={styles.pendingBadge} aria-label={`${pendingRequestCount} pending requests`}>
                 {pendingRequestCount}
               </span>

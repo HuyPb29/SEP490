@@ -167,7 +167,7 @@ export default function OwnerCourtsPricingPage() {
           <span>Courtly</span>
         </div>
 
-        <label className={styles.facilityLabel} htmlFor="owner-pricing-facility">Facility</label>
+        <label className={styles.facilityLabel} htmlFor="owner-pricing-facility">Location</label>
         <select
           className={styles.facilitySelect}
           id="owner-pricing-facility"
@@ -190,7 +190,7 @@ export default function OwnerCourtsPricingPage() {
             'Refunds',
             'Maintenance Approval',
             'Reviews',
-            'Facility Settings',
+            'Location Settings',
           ].map((item) => (
             item === 'Reports' || item === 'Courts & Pricing' ? (
               <Link

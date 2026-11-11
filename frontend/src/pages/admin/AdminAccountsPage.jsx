@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import styles from './AdminFacilitiesPage.module.css'
+import styles from './AdminLocationsPage.module.css'
 import AdminPortalSidebar from './AdminPortalSidebar'
 
 const INITIAL_ACCOUNTS = [
@@ -152,7 +152,7 @@ export default function AdminAccountsPage() {
       }
 
       const confirmationMessage = account.role === 'Owner'
-        ? `Lock Owner account ${account.name}? All facilities and staff accounts belonging to this Owner will also be locked. The Owner will have 30 days to sign in and download report data (UC36).`
+        ? `Lock Owner account ${account.name}? All locations and staff accounts belonging to this Owner will also be locked. The Owner will have 30 days to sign in and download report data (UC36).`
         : `Lock ${account.role} account ${account.name}? They will be blocked from signing in with "Account is locked. Please contact administrator." Historical data will be preserved (DR31).`
       if (!window.confirm(confirmationMessage)) return
 
@@ -232,7 +232,7 @@ export default function AdminAccountsPage() {
               <span role="columnheader">User</span>
               <span role="columnheader">Contact</span>
               <span role="columnheader">Role</span>
-              <span role="columnheader">Affiliated Facility</span>
+              <span role="columnheader">Affiliated Location</span>
               <span role="columnheader">Status</span>
               <span role="columnheader">Created At</span>
               <span role="columnheader">Actions</span>

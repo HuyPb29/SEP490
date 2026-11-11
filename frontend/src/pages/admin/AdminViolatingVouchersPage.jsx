@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import styles from './AdminFacilitiesPage.module.css'
+import styles from './AdminLocationsPage.module.css'
 import AdminPortalSidebar from './AdminPortalSidebar'
 
 const INITIAL_VOUCHERS = [
@@ -148,10 +148,10 @@ export default function AdminViolatingVouchersPage() {
                 </select>
               </label>
               <label className={styles.searchField}>
-                <span className={styles.visuallyHidden}>Search by voucher code or facility</span>
+                <span className={styles.visuallyHidden}>Search by voucher code or location</span>
                 <input
                   type="search"
-                  placeholder="Search by voucher code or facility"
+                  placeholder="Search by voucher code or location"
                   value={searchKeyword}
                   onChange={handleSearchChange}
                 />

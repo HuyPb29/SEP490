@@ -158,7 +158,7 @@ function getMockFacilitySearch({ keyword, userLat, userLng, page, limit }) {
   };
 }
 
-export async function searchFacilities({ keyword = '', userLat = null, userLng = null, page = 1, limit = 20 }) {
+export async function searchLocations({ keyword = '', userLat = null, userLng = null, page = 1, limit = 20 }) {
   if (USE_MOCK_SEARCH) {
     await new Promise((r) => setTimeout(r, 250));
     return getMockFacilitySearch({ keyword, userLat, userLng, page, limit });
@@ -178,7 +178,7 @@ export async function searchFacilities({ keyword = '', userLat = null, userLng =
     };
   } catch (error) {
     if (!error.response || error.response.status >= 500) {
-      console.warn('Facility search API is unavailable; showing demo facilities.', error);
+      console.warn('Location search API is unavailable; showing demo locations.', error);
       return getMockFacilitySearch({ keyword, userLat, userLng, page, limit });
     }
     throw error;
@@ -294,7 +294,7 @@ const MOCK_COURT_SCHEDULE = [
   },
 ];
 
-export async function getFacilityDetailAndSchedule(facilityId = 1, playDate = '2026-10-24') {
+export async function getLocationDetailAndSchedule(facilityId = 1, playDate = '2026-10-24') {
   if (USE_MOCK_DATA) {
     await new Promise((r) => setTimeout(r, 200));
     const detail = getMockFacilityDetail(facilityId);
@@ -321,7 +321,7 @@ export async function getFacilityDetailAndSchedule(facilityId = 1, playDate = '2
     const detail = detailRes.data?.data;
     const schedule = scheduleRes.data?.data;
     if (!detail || !Array.isArray(schedule?.courts)) {
-      throw new Error('Unexpected facility detail or schedule response.');
+      throw new Error('Unexpected location detail or schedule response.');
     }
 
     const mappedCourts = schedule.courts.map((court) => ({
@@ -368,7 +368,7 @@ export async function getFacilityDetailAndSchedule(facilityId = 1, playDate = '2
     };
   } catch (error) {
     if (!error.response || error.response.status >= 500) {
-      console.warn('Facility detail API is unavailable; showing demo facility details.', error);
+      console.warn('Location detail API is unavailable; showing demo location details.', error);
       return {
         success: true,
         data: {
@@ -379,11 +379,11 @@ export async function getFacilityDetailAndSchedule(facilityId = 1, playDate = '2
         },
       };
     }
-    console.error('Error loading facility data:', error);
+    console.error('Error loading location data:', error);
     return {
       success: false,
       data: null,
-      error: error.response?.data?.message || error.message || 'Could not load facility details.',
+      error: error.response?.data?.message || error.message || 'Could not load location details.',
     };
   }
 }

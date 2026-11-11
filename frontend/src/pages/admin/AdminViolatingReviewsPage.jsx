@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import styles from './AdminFacilitiesPage.module.css'
+import styles from './AdminLocationsPage.module.css'
 import AdminPortalSidebar from './AdminPortalSidebar'
 
 const INITIAL_REVIEWS = [
@@ -178,7 +178,7 @@ export default function AdminViolatingReviewsPage() {
                 <span className={styles.visuallyHidden}>Search by player, facility, or review content</span>
                 <input
                   type="search"
-                  placeholder="Search by player, facility, or review content"
+                  placeholder="Search by player, location, or review content"
                   value={searchKeyword}
                   onChange={handleSearchChange}
                 />
@@ -189,7 +189,7 @@ export default function AdminViolatingReviewsPage() {
           <div className={styles.tableScroller}>
             <div className={`${styles.facilityTable} ${styles.tableHeader}`} role="row" style={{ gridTemplateColumns: 'minmax(120px, .9fr) minmax(160px, 1.15fr) minmax(55px, .4fr) minmax(330px, 2.4fr) minmax(90px, .65fr) minmax(180px, 1.3fr)', minWidth: '980px' }}>
               <span role="columnheader">Player</span>
-              <span role="columnheader">Facility</span>
+              <span role="columnheader">Location</span>
               <span role="columnheader">Rating</span>
               <span role="columnheader">Review Content &amp; Flag Reason</span>
               <span role="columnheader">Status</span>

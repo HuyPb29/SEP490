@@ -250,6 +250,32 @@
   background: #f0fdf4;
 }
 
+.bookingModeSelector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.bookingModeButton {
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bookingModeButtonActive {
+  border-color: #0d8a52;
+  background: #e9f5ee;
+  color: #075d3a;
+}
+
 /* Schedule Card (UC13) */
 .scheduleCard {
   background: #ffffff;
@@ -276,6 +302,43 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.packageModeControls {
+  margin: 0 0 18px;
+}
+
+.packageModeHint {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+}
+
+.weekdayPicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.weekdayButton {
+  min-width: 42px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.weekdayButtonActive {
+  border-color: #0d8a52;
+  background: #0d8a52;
+  color: #ffffff;
 }
 
 .navArrowBtn {
@@ -456,6 +519,12 @@
   color: #475569;
 }
 
+.bookingErrorText {
+  color: #b42318;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .continueBookingBtn {
   background: #0d8a52;
   color: #ffffff;
@@ -546,4 +615,26 @@
   font-weight: 600;
   padding: 8px 12px;
   border-radius: 8px;
+}
+
+@media (max-width: 760px) {
+  .bookingModeSelector {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduleHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .dateControls {
+    flex-wrap: wrap;
+  }
+
+  .summaryBar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
 }

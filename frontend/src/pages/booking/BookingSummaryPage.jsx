@@ -5,6 +5,11 @@ import {
   getMyOwnedTeams,
   applyVoucherApi,
   createBookingApi,
+  previewBookingSummaryApi,
+  previewBookingOrderApi,
+  createBookingOrderApi,
+  previewBookingPackageApi,
+  createBookingPackageApi,
 } from '../../api/bookingApi';
 import styles from './BookingSummaryPage.module.css';
 
@@ -21,8 +26,40 @@ function addThirtyMinutes(timeStr) {
   return `${nextH}:${nextM}`;
 }
 
+function groupSlotsByCourtAndRange(slots, bookingDate) {
+  const ordered = [...slots].sort((a, b) => Number(a.courtId) - Number(b.courtId) || a.timeIdx - b.timeIdx);
+  const ranges = [];
+  ordered.forEach((slot) => {
+    const previous = ranges[ranges.length - 1];
+    const endTime = addThirtyMinutes(slot.time);
+    if (previous && previous.court_id === slot.courtId && previous.slots.at(-1).end_time === `${slot.time}:00`) {
+      previous.slots.push({ start_time: `${slot.time}:00`, end_time: `${endTime}:00` });
+      previous.total_list_price += slot.price;
+    } else {
+      ranges.push({
+        court_id: slot.courtId,
+        court_name: slot.courtName,
+        booking_date: slot.date || bookingDate,
+        slots: [{ start_time: `${slot.time}:00`, end_time: `${endTime}:00` }],
+        total_list_price: slot.price,
+      });
+    }
+  });
+  return ranges;
+}
+
+function localDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 export default function BookingSummaryPage() {
   const navigate = useNavigate();
+  const [dateLimits] = useState(() => {
+    const today = new Date();
+    const maxDate = new Date(today);
+    maxDate.setMonth(maxDate.getMonth() + 3);
+    return { today: localDateKey(today), max: localDateKey(maxDate) };
+  });
 
   // 1. Load dữ liệu các slot đã chọn từ UC13 (hoặc khởi tạo chuẩn theo Mockup để dễ test)
   const [bookingContext] = useState(() => {
@@ -30,12 +67,13 @@ export default function BookingSummaryPage() {
       const saved = sessionStorage.getItem('pending_booking_selection');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed?.selectedSlots?.length > 0) return parsed;
+        if (parsed?.selectedSlots?.length > 0) return { mode: 'single', ...parsed };
       }
     } catch {
       // Fallback nếu JSON lỗi
     }
     return {
+      mode: 'single',
       facility: {
         facility_id: 1,
         facility_name: 'Smash Arena',
@@ -92,6 +130,11 @@ export default function BookingSummaryPage() {
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [createdBooking, setCreatedBooking] = useState(null);
+  const [previewError, setPreviewError] = useState('');
+  const [previewData, setPreviewData] = useState(null);
+  const [packageSessions, setPackageSessions] = useState(() => bookingContext.packagePayload?.sessions || []);
+  const [conflictedSessions, setConflictedSessions] = useState([]);
+  const [replacementInputs, setReplacementInputs] = useState({});
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -112,7 +155,9 @@ export default function BookingSummaryPage() {
 
   // Tính toán thông tin hiển thị khung giờ & tiền sân niêm yết (DR05)
   const slotSummary = useMemo(() => {
-    const slots = bookingContext.selectedSlots || [];
+    const slots = [...(bookingContext.selectedSlots || [])].sort((a, b) => (
+      Number(a.courtId) - Number(b.courtId) || a.timeIdx - b.timeIdx
+    ));
     const totalSlots = slots.length;
     const unitPrice = slots[0]?.price || 80000;
     const totalListPrice = slots.reduce((sum, s) => sum + s.price, 0);
@@ -131,11 +176,17 @@ export default function BookingSummaryPage() {
     };
   }, [bookingContext.selectedSlots]);
 
+  const singleRanges = useMemo(
+    () => groupSlotsByCourtAndRange(bookingContext.selectedSlots || [], bookingContext.playDate),
+    [bookingContext.selectedSlots, bookingContext.playDate]
+  );
+  const isPackageBooking = bookingContext.mode === 'custom' || bookingContext.mode === 'recurring';
+
   // Thuật toán tính thứ tự trừ tiền (Discount Calculation Order - BR15, BR41, P10, P11, P13):
   // Giá niêm yết -> Trừ Voucher -> Trừ Điểm thưởng (tối đa 50% phần còn lại) -> Thực trả (> 0đ)
   const pricingSummary = useMemo(() => {
-    const listPrice = slotSummary.totalListPrice;
-    const voucherDiscount = appliedVoucher ? appliedVoucher.discount_amount : 0;
+    const listPrice = Number(previewData?.listAmount ?? previewData?.total_list_price ?? slotSummary.totalListPrice);
+    const voucherDiscount = Number(previewData?.voucherDiscount ?? (appliedVoucher ? appliedVoucher.discount_amount : 0));
     const remainingAfterVoucher = Math.max(0, listPrice - voucherDiscount);
 
     let pointsUsed = 0;
@@ -169,7 +220,61 @@ export default function BookingSummaryPage() {
       pointsDiscount,
       finalAmount,
     };
-  }, [slotSummary.totalListPrice, appliedVoucher, usePoints, availablePoints]);
+  }, [slotSummary.totalListPrice, appliedVoucher, usePoints, availablePoints, previewData]);
+
+  useEffect(() => {
+    let active = true;
+    const loadPreview = async () => {
+      setPreviewError('');
+      try {
+        const common = {
+          facility_id: bookingContext.facility?.facility_id || 1,
+          facility_name: bookingContext.facility?.facility_name || 'Smash Arena',
+          booking_date: bookingContext.playDate,
+          voucher_code: appliedVoucher?.voucher_code || null,
+          points_used: pricingSummary.pointsUsed,
+          team_id: selectedTeamId,
+          total_list_price: pricingSummary.listPrice,
+        };
+        let response;
+        if (bookingContext.mode === 'custom' || bookingContext.mode === 'recurring') {
+          const packageRequest = {
+            ...bookingContext.packagePayload,
+            voucherCode: appliedVoucher?.voucher_code || null,
+            pointsToUse: pricingSummary.pointsUsed,
+            teamId: selectedTeamId,
+          };
+          response = await previewBookingPackageApi(packageRequest);
+          const sessions = response?.data?.sessions || packageRequest.sessions || [];
+          if (active) {
+            const mappedSessions = sessions.map((session) => ({
+              ...session,
+              is_conflicted: Boolean(session.is_conflicted || session.conflict),
+            }));
+            setPackageSessions(mappedSessions);
+            setConflictedSessions(mappedSessions.filter((session) => session.is_conflicted));
+          }
+        } else if (singleRanges.length === 1) {
+          response = await previewBookingSummaryApi({
+            ...common,
+            court_id: singleRanges[0].court_id,
+            slots: singleRanges[0].slots,
+          });
+        } else {
+          response = await previewBookingOrderApi({
+            ...common,
+            bookings: singleRanges,
+          });
+        }
+        if (!response?.success) throw new Error('Booking preview could not be calculated.');
+        if (active) setPreviewData(response.data || null);
+      } catch (error) {
+        if (active) setPreviewError(error.response?.data?.message || error.message || 'Booking preview could not be calculated.');
+      }
+    };
+    loadPreview();
+    return () => { active = false; };
+  }, [bookingContext, singleRanges, appliedVoucher, pricingSummary.listPrice, pricingSummary.pointsUsed, selectedTeamId]);
 
   const formatDate = (dateStr) => {
     const d = new Date(dateStr);
@@ -200,7 +305,7 @@ export default function BookingSummaryPage() {
     try {
       const res = await applyVoucherApi({
         facility_id: bookingContext.facility?.facility_id || 1,
-        total_list_price: slotSummary.totalListPrice,
+        total_list_price: pricingSummary.listPrice,
         voucher_code: voucherInput.trim(),
       });
       if (res?.success) {
@@ -218,12 +323,78 @@ export default function BookingSummaryPage() {
     }
   };
 
-  // Xử lý bấm "Xác nhận đặt sân" (POST /api/v1/bookings)
+  const removeConflictedSessions = () => {
+    setPackageSessions((sessions) => sessions.filter((session) => !session.is_conflicted && !session.conflict));
+    setConflictedSessions([]);
+    setSubmitError('');
+  };
+
+  const handleReplaceConflictedSession = async (conflictSession) => {
+    const sessionIndex = packageSessions.indexOf(conflictSession);
+    if (sessionIndex < 0) return;
+    const key = `${conflictSession.date}-${conflictSession.startMinute}-${sessionIndex}`;
+    const input = replacementInputs[key] || {};
+    const replacementDate = input.date || conflictSession.date;
+    const startTime = input.startTime || conflictSession.startTime || '19:00';
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const startMinute = hours * 60 + minutes;
+    const duration = Math.max(30, (conflictSession.endMinute || startMinute + 30) - (conflictSession.startMinute || startMinute));
+    const maxDate = new Date();
+    maxDate.setMonth(maxDate.getMonth() + 3);
+    const maxDateKey = `${maxDate.getFullYear()}-${String(maxDate.getMonth() + 1).padStart(2, '0')}-${String(maxDate.getDate()).padStart(2, '0')}`;
+    if (replacementDate > maxDateKey) {
+      setSubmitError('MSG115: Buổi đặt không được vượt quá 3 tháng kể từ ngày đặt.');
+      return;
+    }
+
+    const candidateSessions = packageSessions.map((session, index) => index === sessionIndex
+      ? {
+        date: replacementDate,
+        courtId: session.courtId || bookingContext.packagePayload.courtId,
+        startMinute,
+        endMinute: Math.min(1440, startMinute + duration),
+        is_conflicted: false,
+        conflict: null,
+      }
+      : session);
+    const request = {
+      ...bookingContext.packagePayload,
+      sessions: candidateSessions.map(({ date, courtId, startMinute: sessionStart, endMinute }) => ({
+        date,
+        courtId,
+        startMinute: sessionStart,
+        endMinute,
+      })),
+      voucherCode: appliedVoucher?.voucher_code || null,
+      pointsToUse: pricingSummary.pointsUsed,
+      teamId: selectedTeamId,
+    };
+
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      const response = await previewBookingPackageApi(request);
+      if (!response?.success) throw new Error('Replacement session preview failed.');
+      const sessions = (response.data?.sessions || candidateSessions).map((session) => ({
+        ...session,
+        is_conflicted: Boolean(session.is_conflicted || session.conflict),
+      }));
+      setPackageSessions(sessions);
+      setConflictedSessions(sessions.filter((session) => session.is_conflicted));
+      setPreviewData(response.data || null);
+    } catch (error) {
+      setSubmitError(error.response?.data?.message || error.message || 'Replacement session preview failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Preview is read-only; only these create calls hold slots and consume discounts.
   const handleConfirmBooking = async () => {
     setSubmitError('');
 
     if (guestNote.length > 200) {
-      setSubmitError('Note to facility owner cannot exceed 200 characters (MSG109).');
+      setSubmitError('Note to location owner cannot exceed 200 characters (MSG109).');
       return;
     }
 
@@ -232,23 +403,61 @@ export default function BookingSummaryPage() {
       return;
     }
 
-    // Format danh sách slot chuẩn "HH:mm:00" cho Backend
-    const formattedSlots = (bookingContext.selectedSlots || []).map((s) => ({
-      start_time: `${s.time}:00`,
-      end_time: `${addThirtyMinutes(s.time)}:00`,
-    }));
-
-    const payload = {
+    const isPackage = bookingContext.mode === 'custom' || bookingContext.mode === 'recurring';
+    const packageRequest = isPackage ? {
+      ...bookingContext.packagePayload,
       facility_id: bookingContext.facility?.facility_id || 1,
-      court_id: slotSummary.courtId,
-      booking_date: bookingContext.playDate,
-      booking_type: 'single',
-      slots: formattedSlots,
+      facility_name: bookingContext.facility?.facility_name || 'Smash Arena',
+      sessions: packageSessions.map(({ date, courtId, startMinute, endMinute }) => ({
+        date,
+        courtId,
+        startMinute,
+        endMinute,
+      })),
+      voucherCode: appliedVoucher?.voucher_code || null,
+      pointsToUse: pricingSummary.pointsUsed,
+      teamId: selectedTeamId,
+      total_amount: pricingSummary.listPrice,
+      total_list_price: pricingSummary.listPrice,
+      voucher_discount_amount: pricingSummary.voucherDiscount,
+      points_discount_amount: pricingSummary.pointsDiscount,
+      final_amount: pricingSummary.finalAmount,
+    } : null;
+
+    if (isPackage) {
+      const conflicted = packageSessions.filter((session) => session.is_conflicted || session.conflict);
+      if (conflicted.length) {
+        const conflictList = conflicted.map((session) => `${session.date} (${session.startTime || ''}–${session.endTime || ''})`).join(', ');
+        setSubmitError(`MSG44: Bạn có ${conflicted.length} buổi vừa bị đặt trùng: ${conflictList}. Các buổi này đã được đánh dấu trên lịch, vui lòng chọn slot bù hoặc bỏ buổi.`);
+        return;
+      }
+      if (bookingContext.mode === 'custom') {
+        const distinctDays = new Set(packageRequest.sessions.map((session) => session.date)).size;
+        if (packageRequest.sessions.length < 2) {
+          setSubmitError('MSG91: Gói phải có ít nhất 2 buổi nằm trong ít nhất 2 ngày khác nhau.');
+          return;
+        }
+        if (distinctDays < 2) {
+          setSubmitError('MSG92: Gói phải có ít nhất 2 buổi nằm trong ít nhất 2 ngày khác nhau.');
+          return;
+        }
+      }
+      const maxDate = new Date();
+      maxDate.setMonth(maxDate.getMonth() + 3);
+      const latestDate = `${maxDate.getFullYear()}-${String(maxDate.getMonth() + 1).padStart(2, '0')}-${String(maxDate.getDate()).padStart(2, '0')}`;
+      if (packageRequest.sessions.some((session) => session.date > latestDate) || packageRequest.endDate > latestDate) {
+        setSubmitError('MSG115: Buổi đặt không được vượt quá 3 tháng kể từ ngày đặt.');
+        return;
+      }
+    }
+
+    const commonPayload = {
+      facility_id: bookingContext.facility?.facility_id || 1,
+      facility_name: bookingContext.facility?.facility_name || 'Smash Arena',
       team_id: selectedTeamId,
-      voucher_code: appliedVoucher ? appliedVoucher.voucher_code : null,
+      voucher_code: appliedVoucher?.voucher_code || null,
       points_used: pricingSummary.pointsUsed,
       guest_note: guestNote.trim() || null,
-      // Các trường hỗ trợ hiển thị Mock Response
       total_list_price: pricingSummary.listPrice,
       voucher_discount_amount: pricingSummary.voucherDiscount,
       final_amount: pricingSummary.finalAmount,
@@ -256,12 +465,35 @@ export default function BookingSummaryPage() {
 
     setSubmitting(true);
     try {
-      const res = await createBookingApi(payload);
+      let res;
+      let fallbackType = 'single';
+      let fallbackSlots = slotSummary.totalSlots;
+      if (isPackage) {
+        res = await createBookingPackageApi(packageRequest);
+        fallbackType = 'package';
+        fallbackSlots = packageRequest.sessions.length;
+      } else if (singleRanges.length > 1) {
+        res = await createBookingOrderApi({
+          ...commonPayload,
+          booking_date: bookingContext.playDate,
+          bookings: singleRanges,
+        });
+        fallbackType = 'order';
+      } else {
+        const range = singleRanges[0];
+        res = await createBookingApi({
+          ...commonPayload,
+          court_id: range.court_id,
+          booking_date: range.booking_date,
+          booking_type: 'single',
+          slots: range.slots,
+        });
+      }
       if (res?.success) {
         const paymentBooking = {
           ...res.data,
-          booking_type: res.data.booking_type || payload.booking_type,
-          total_slots: res.data.total_slots ?? formattedSlots.length,
+          booking_type: res.data.booking_type || fallbackType,
+          total_slots: res.data.total_slots ?? fallbackSlots,
         };
         sessionStorage.setItem('active_holding_booking', JSON.stringify(paymentBooking));
         setCreatedBooking(paymentBooking);
@@ -269,7 +501,20 @@ export default function BookingSummaryPage() {
       }
     } catch (err) {
       const message = err.response?.data?.message;
-      if (message?.includes('MSG37')) {
+      const code = err.response?.data?.code;
+      if (code === 'MSG28' || message?.includes('MSG28')) {
+        const conflicts = Array.isArray(err.response?.data?.conflicts) ? err.response.data.conflicts : [];
+        const ranges = conflicts.map((conflict) => typeof conflict === 'string'
+          ? conflict
+          : `${conflict.booking_date || conflict.date} ${conflict.start_time || conflict.startTime || ''}–${conflict.end_time || conflict.endTime || ''} (${conflict.court_name || conflict.courtName || ''})`).join(', ');
+        setSubmitError(`MSG28: Slot vừa có người giữ hoặc đặt. Vui lòng chọn slot khác.${ranges ? ` Dải bị trùng: ${ranges}` : message ? ` ${message}` : ''}`);
+      } else if (code === 'MSG44' || message?.includes('MSG44')) {
+        const conflicts = Array.isArray(err.response?.data?.conflicts) ? err.response.data.conflicts : conflictedSessions;
+        const rangeList = conflicts.map((session) => typeof session === 'string' ? session : `${session.date} (${session.startTime || ''}–${session.endTime || ''})`).join(', ');
+        setSubmitError(`MSG44: Bạn có ${conflicts.length} buổi vừa bị đặt trùng: ${rangeList}. Các buổi này đã được đánh dấu trên lịch, vui lòng chọn slot bù hoặc bỏ buổi.`);
+      } else if (code === 'MSG91' || code === 'MSG92' || code === 'MSG115') {
+        setSubmitError(message || `${code}: Lịch đặt không đáp ứng điều kiện.`);
+      } else if (message?.includes('MSG37')) {
         setSubmitError(
           'Điểm thưởng của bạn không đủ để thực hiện giao dịch này. Vui lòng tải lại trang để cập nhật số điểm.'
         );
@@ -313,7 +558,7 @@ export default function BookingSummaryPage() {
       <main className={styles.mainContainer}>
         {/* Nút quay lại lịch sân */}
         <Link
-          to={`/facilities/${bookingContext.facility?.facility_id || 1}`}
+          to={`/locations/${bookingContext.facility?.facility_id || 1}`}
           className={styles.backLink}
         >
           ‹ Back to schedule
@@ -359,7 +604,7 @@ export default function BookingSummaryPage() {
 
               <div className={styles.infoGrid}>
                 <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Facility</span>
+                  <span className={styles.infoLabel}>Location</span>
                   <strong className={styles.infoValue}>
                     {bookingContext.facility?.facility_name || 'Smash Arena'}
                   </strong>
@@ -367,19 +612,31 @@ export default function BookingSummaryPage() {
 
                 <div className={styles.infoItem}>
                   <span className={styles.infoLabel}>Court</span>
-                  <strong className={styles.infoValue}>{slotSummary.courtName}</strong>
+                  <strong className={styles.infoValue}>
+                    {isPackageBooking
+                      ? `${bookingContext.mode === 'recurring' ? 'Recurring' : 'Custom'} package`
+                      : singleRanges.length > 1 ? `${singleRanges.length} booking ranges` : slotSummary.courtName}
+                  </strong>
                 </div>
 
                 <div className={styles.infoItem}>
                   <span className={styles.infoLabel}>Date</span>
                   <strong className={styles.infoValue}>
-                    {formatDate(bookingContext.playDate)}
+                    {isPackageBooking
+                      ? bookingContext.mode === 'recurring'
+                        ? `${formatDate(bookingContext.packagePayload.startDate)} – ${formatDate(bookingContext.packagePayload.endDate)}`
+                        : `${new Set(packageSessions.map((session) => session.date)).size || new Set(bookingContext.packagePayload.sessions.map((session) => session.date)).size} session dates`
+                      : formatDate(bookingContext.playDate)}
                   </strong>
                 </div>
 
                 <div className={styles.infoItem}>
                   <span className={styles.infoLabel}>Play Time</span>
-                  <strong className={styles.infoValue}>{slotSummary.timeRangeText}</strong>
+                  <strong className={styles.infoValue}>
+                    {isPackageBooking
+                      ? `${packageSessions.length || bookingContext.packagePayload.sessions?.length || bookingContext.packagePayload.weeklySlots?.length || 0} sessions`
+                      : singleRanges.length > 1 ? `${slotSummary.totalSlots} slots across ${singleRanges.length} ranges` : slotSummary.timeRangeText}
+                  </strong>
                 </div>
 
                 <div className={styles.infoItem}>
@@ -394,7 +651,7 @@ export default function BookingSummaryPage() {
               </div>
 
               <div className={styles.noteGroup}>
-                <label className={styles.noteLabel}>Note to facility owner (optional)</label>
+                <label className={styles.noteLabel}>Note to location owner (optional)</label>
                 <textarea
                   rows={3}
                   maxLength={200}
@@ -469,13 +726,67 @@ export default function BookingSummaryPage() {
 
               <div className={styles.priceLine}>
                 <span className={styles.priceLabel}>
-                  Court Fee ({slotSummary.totalSlots} ×{' '}
-                  {slotSummary.unitPrice.toLocaleString('vi-VN')} VND)
+                  {isPackageBooking
+                    ? `Package booking (${packageSessions.length} sessions)`
+                    : singleRanges.length > 1
+                      ? `Court fee (${slotSummary.totalSlots} slots across ${singleRanges.length} ranges)`
+                      : `Court Fee (${slotSummary.totalSlots} × ${slotSummary.unitPrice.toLocaleString('vi-VN')} VND)`}
                 </span>
                 <strong className={styles.priceValue}>
                   {pricingSummary.listPrice.toLocaleString('vi-VN')} VND
                 </strong>
               </div>
+
+              {previewError && <p className={styles.errorText} role="alert">{previewError}</p>}
+              {conflictedSessions.length > 0 && (
+                <div className={styles.conflictPanel} role="alert">
+                  <strong>MSG44: Bạn có {conflictedSessions.length} buổi vừa bị đặt trùng:</strong>
+                  <ul>
+                    {conflictedSessions.map((session, index) => (
+                      <li className={styles.conflictSession} key={`${session.date}-${session.startMinute}-${index}`}>
+                        <span>
+                          {session.date} · {session.startTime || (session.startMinute != null ? `${String(Math.floor(session.startMinute / 60)).padStart(2, '0')}:${String(session.startMinute % 60).padStart(2, '0')}` : '')}–{session.endTime || (session.endMinute != null ? `${String(Math.floor(session.endMinute / 60)).padStart(2, '0')}:${String(session.endMinute % 60).padStart(2, '0')}` : '')} · {session.courtName || ''}
+                        </span>
+                        <div className={styles.replacementControls}>
+                          <input
+                            type="date"
+                            aria-label={`Replacement date for session ${index + 1}`}
+                            min={dateLimits.today}
+                            max={dateLimits.max}
+                            value={replacementInputs[`${session.date}-${session.startMinute}-${packageSessions.indexOf(session)}`]?.date || session.date}
+                            onChange={(event) => setReplacementInputs((inputs) => ({
+                              ...inputs,
+                              [`${session.date}-${session.startMinute}-${packageSessions.indexOf(session)}`]: {
+                                ...inputs[`${session.date}-${session.startMinute}-${packageSessions.indexOf(session)}`],
+                                date: event.target.value,
+                              },
+                            }))}
+                          />
+                          <input
+                            type="time"
+                            aria-label={`Replacement time for session ${index + 1}`}
+                            step="1800"
+                            value={replacementInputs[`${session.date}-${session.startMinute}-${packageSessions.indexOf(session)}`]?.startTime || session.startTime || '19:00'}
+                            onChange={(event) => setReplacementInputs((inputs) => ({
+                              ...inputs,
+                              [`${session.date}-${session.startMinute}-${packageSessions.indexOf(session)}`]: {
+                                ...inputs[`${session.date}-${session.startMinute}-${packageSessions.indexOf(session)}`],
+                                startTime: event.target.value,
+                              },
+                            }))}
+                          />
+                          <button type="button" className={styles.removeConflictButton} onClick={() => handleReplaceConflictedSession(session)}>
+                            Preview replacement
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <button type="button" className={styles.removeConflictButton} onClick={removeConflictedSessions}>
+                    Remove conflicting sessions
+                  </button>
+                </div>
+              )}
 
               <div className={styles.priceLine}>
                 <span className={styles.priceLabel}>Voucher</span>
@@ -530,7 +841,7 @@ export default function BookingSummaryPage() {
               </button>
 
               <p className={styles.holdNotice}>
-                After confirmation, the slot will be held for 5 minutes for you to transfer funds and upload the receipt.
+                After confirmation, {isPackageBooking ? 'the package' : 'your booking'} will be held for {isPackageBooking ? 15 : 10} minutes for payment.
               </p>
 
               {/* Hiển thị thông báo xác nhận giữ chỗ thành công (Chuẩn bị nối sang UC18) */}

@@ -51,7 +51,7 @@ function formatDisplayDate(date) {
 
 function loadReportData(facilityId, startDate, endDate) {
   const facilityReport = FACILITY_REPORTS[facilityId]
-  if (!facilityReport) throw new Error('The selected facility could not be found.')
+  if (!facilityReport) throw new Error('The selected location could not be found.')
 
   const dayCount = getDayCount(startDate, endDate)
   const periodScale = dayCount / 24
@@ -107,7 +107,7 @@ export default function OwnerReportPage() {
     try {
       const rows = [
         ['Report', 'Operational & Revenue Reports'],
-        ['Facility', selectedFacility?.name ?? ''],
+        ['Location', selectedFacility?.name ?? ''],
         ['Start date', startDate],
         ['End date', endDate],
         ['Tab', activeTab],
@@ -149,7 +149,7 @@ export default function OwnerReportPage() {
           <span>Courtly</span>
         </div>
 
-        <label className={styles.facilityLabel} htmlFor="owner-facility">Facility</label>
+        <label className={styles.facilityLabel} htmlFor="owner-facility">Location</label>
         <select
           className={styles.facilitySelect}
           id="owner-facility"
@@ -176,7 +176,7 @@ export default function OwnerReportPage() {
             'Refunds',
             'Maintenance Approval',
             'Reviews',
-            'Facility Settings',
+            'Location Settings',
           ].map((item) => (
             item === 'Reports' || item === 'Courts & Pricing' ? (
               <Link

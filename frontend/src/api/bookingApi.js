@@ -33,6 +33,8 @@ const MOCK_VOUCHERS = {
   },
 };
 
+const MOCK_PACKAGE_CONFLICT_DATES = ['2026-11-12', '2026-11-24'];
+
 // UC17: Danh sách 7 booking mẫu khớp 100% với Mockup 6_Player_UC17_Lich_su_booking.png
 const MOCK_MY_BOOKINGS = [
   {
@@ -340,7 +342,7 @@ export async function createBookingApi(payload) {
 
     // MSG109: Kiểm tra ghi chú quá 200 ký tự
     if (payload.guest_note && payload.guest_note.length > 200) {
-      const msg = 'Note to facility owner cannot exceed 200 characters.';
+      const msg = 'Note to location owner cannot exceed 200 characters.';
       const err = new Error(msg);
       err.response = { data: { code: 'MSG109', message: msg } };
       throw err;
@@ -353,7 +355,7 @@ export async function createBookingApi(payload) {
     return {
       success: true,
       code: 201,
-      message: 'Booking created successfully. Please complete payment within 5 minutes.',
+      message: 'Booking created successfully. Please complete payment within 10 minutes.',
       data: {
         booking_id: 1005,
         booking_code: bookingCode,
@@ -396,6 +398,8 @@ export async function createBookingApi(payload) {
     voucherCode: payload.voucher_code || null,
     voucherGrantId: null,
     pointsToUse: payload.points_used || 0,
+    note: payload.guest_note || null,
+    teamId: payload.team_id || null,
   };
 
   try {
@@ -413,14 +417,153 @@ export async function createBookingApi(payload) {
   }
 }
 
+export async function previewBookingSummaryApi(payload) {
+  if (USE_MOCK_BOOKING) {
+    await new Promise((r) => setTimeout(r, 150));
+    return { success: true, code: 200, data: payload };
+  }
+
+  const [startHour, startMinute] = (payload.slots?.[0]?.start_time || '00:00').split(':').map(Number);
+  const lastSlotTime = payload.slots?.[payload.slots.length - 1]?.end_time || '00:30';
+  const [endHour, endMinute] = lastSlotTime.split(':').map(Number);
+  const res = await axios.post('/api/bookings/summary', {
+    courtId: payload.court_id,
+    date: payload.booking_date,
+    startMinute: startHour * 60 + startMinute,
+    endMinute: endHour * 60 + endMinute,
+    voucherCode: payload.voucher_code || null,
+    pointsToUse: payload.points_used || 0,
+    note: payload.guest_note || null,
+    teamId: payload.team_id || null,
+  });
+  return res.data;
+}
+
+export async function previewBookingOrderApi(payload) {
+  if (USE_MOCK_BOOKING) {
+    await new Promise((r) => setTimeout(r, 150));
+    return { success: true, code: 200, data: payload };
+  }
+
+  const res = await axios.post('/api/booking-orders/preview', payload);
+  return res.data;
+}
+
+export async function createBookingOrderApi(payload) {
+  if (USE_MOCK_BOOKING) {
+    await new Promise((r) => setTimeout(r, 350));
+    const holdExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const totalSlots = (payload.bookings || []).reduce(
+      (total, booking) => total + (booking.slots?.length || 0),
+      0
+    );
+    return {
+      success: true,
+      code: 201,
+      data: {
+        booking_id: Date.now(),
+        booking_code: 'BO-26113',
+        booking_type: 'order',
+        total_slots: totalSlots,
+        status: 'holding',
+        hold_expires_at: holdExpires,
+        pricing_summary: {
+          total_list_price: payload.total_list_price || 0,
+          voucher_discount_amount: payload.voucher_discount_amount || 0,
+          points_discount_amount: (payload.points_used || 0) * 500,
+          final_amount: payload.final_amount || 0,
+          points_used: payload.points_used || 0,
+        },
+        bank_info: {
+          bank_name: 'Vietcombank',
+          bank_account_number: '0011 0023 4567',
+          bank_account_holder: 'NGUYEN VAN HUNG',
+          qr_image_url: null,
+          transfer_content: 'BO26113 0987654321',
+        },
+      },
+    };
+  }
+
+  const res = await axios.post('/api/booking-orders', payload);
+  return res.data;
+}
+
 // UC15: Kiểm tra lịch & buổi trùng trước khi chốt gói (POST /api/booking-packages/preview)
 export async function previewBookingPackageApi(payload) {
   if (USE_MOCK_BOOKING) {
     await new Promise((r) => setTimeout(r, 200));
+    let sessions = payload.sessions || [];
+    if (payload.packageType === 'RECURRING' && (!payload.sessions || payload.sessions.length === 0)) {
+      sessions = [];
+      const current = new Date(`${payload.startDate}T00:00:00`);
+      const end = new Date(`${payload.endDate}T00:00:00`);
+      while (current <= end) {
+        const dayOfWeek = current.getDay() === 0 ? 7 : current.getDay();
+        (payload.weeklySlots || []).filter((slot) => slot.dayOfWeek === dayOfWeek).forEach((slot) => {
+          sessions.push({
+            date: `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`,
+            courtId: payload.courtId,
+            startMinute: slot.startMinute,
+            endMinute: slot.endMinute,
+            startTime: `${String(Math.floor(slot.startMinute / 60)).padStart(2, '0')}:${String(slot.startMinute % 60).padStart(2, '0')}`,
+            endTime: `${String(Math.floor(slot.endMinute / 60)).padStart(2, '0')}:${String(slot.endMinute % 60).padStart(2, '0')}`,
+          });
+        });
+        current.setDate(current.getDate() + 1);
+      }
+    }
+    sessions = sessions.map((session) => ({
+      ...session,
+      is_conflicted: Boolean(
+        session.is_conflicted || session.mock_conflict || session.conflict ||
+        MOCK_PACKAGE_CONFLICT_DATES.includes(session.date)
+      ),
+    }));
+    const maxDate = new Date();
+    maxDate.setMonth(maxDate.getMonth() + 3);
+    const latestAllowedDate = new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate());
+    const hasLateSession = sessions.some((session) => {
+      const [year, month, day] = session.date.split('-').map(Number);
+      return new Date(year, month - 1, day) > latestAllowedDate;
+    });
+    if (hasLateSession) {
+      const msg = 'MSG115: Buổi đặt không được vượt quá 3 tháng kể từ ngày đặt.';
+      const err = new Error(msg);
+      err.response = { data: { code: 'MSG115', message: msg } };
+      throw err;
+    }
+
+    const listAmount = sessions.reduce((total, session) => (
+      total + (session.is_conflicted ? 0 : Math.max(0, session.endMinute - session.startMinute) / 30 * 80000)
+    ), 0);
+    const voucherCode = (payload.voucherCode || '').trim().toUpperCase();
+    const voucher = voucherCode ? MOCK_VOUCHERS[voucherCode] : null;
+    if (voucherCode && (!voucher?.is_active || listAmount < voucher.min_order_amount)) {
+      const msg = `MSG34: Mã voucher ${voucherCode} không hợp lệ hoặc đơn hàng chưa đạt giá trị tối thiểu.`;
+      const err = new Error(msg);
+      err.response = { data: { code: 'MSG34', message: msg } };
+      throw err;
+    }
+    const voucherDiscount = voucher?.discount_amount || 0;
+    const remaining = Math.max(0, listAmount - voucherDiscount);
+    const pointsUsed = Math.min(payload.pointsToUse || 0, Math.floor(remaining * 0.5 / 500));
+    const pointDiscount = pointsUsed * 500;
+    const finalAmount = Math.max(0, remaining - pointDiscount);
     return {
       success: true,
       code: 200,
-      data: payload,
+      data: {
+        ...payload,
+        sessions,
+        totalSessions: sessions.length,
+        conflictSessions: sessions.filter((session) => session.is_conflicted).length,
+        listAmount,
+        voucherDiscount,
+        pointsUsed,
+        pointDiscount,
+        finalAmount,
+      },
     };
   }
 
@@ -433,38 +576,61 @@ export async function createBookingPackageApi(payload) {
   if (USE_MOCK_BOOKING) {
     await new Promise((r) => setTimeout(r, 350));
 
-    const validSessions = payload.sessions?.filter((s) => !s.is_conflicted) || [];
-    const conflictedSessions = payload.sessions?.filter((s) => s.is_conflicted) || [];
+    const validSessions = payload.sessions?.filter((s) => !s.is_conflicted && !s.conflict) || [];
+    const conflictedSessions = payload.sessions?.filter((s) => s.is_conflicted || s.conflict) || [];
 
     // BR50 / MSG44: Chặn nếu vẫn còn buổi bị trùng chưa chọn slot bù hoặc chưa bấm bỏ
     if (conflictedSessions.length > 0) {
       const conflictList = conflictedSessions
-        .map((s) => `${s.display_date} (${s.time_label}, ${s.court_name})`)
+        .map((s) => `${s.date || s.display_date} (${s.startTime || s.time_label || ''}–${s.endTime || ''}, ${s.courtName || s.court_name || ''})`)
         .join(', ');
-      const msg = `MSG44: You have ${conflictedSessions.length} conflicted session(s): ${conflictList}. Please choose a compensation slot or remove conflicted sessions.`;
+      const msg = `MSG44: Bạn có ${conflictedSessions.length} buổi vừa bị đặt trùng: ${conflictList}. Các buổi này đã được đánh dấu trên lịch, vui lòng chọn slot bù hoặc bỏ buổi.`;
       const err = new Error(msg);
       err.response = { data: { code: 'MSG44', message: msg } };
       throw err;
     }
 
     // BR27 / MSG92: Sau khi xử lý buổi trùng, gói bắt buộc phải còn ít nhất 2 buổi
-    if (validSessions.length < 2) {
-      const msg =
-        'MSG92: Package must have at least 2 sessions remaining. Please choose a compensation slot instead of removing.';
+    const distinctDays = new Set(validSessions.map((session) => session.date)).size;
+    if (payload.packageType === 'CUSTOM' && validSessions.length < 2) {
+      const msg = 'MSG91: Gói phải có ít nhất 2 buổi nằm trong ít nhất 2 ngày khác nhau.';
+      const err = new Error(msg);
+      err.response = { data: { code: 'MSG91', message: msg } };
+      throw err;
+    }
+    if (payload.packageType === 'CUSTOM' && distinctDays < 2) {
+      const msg = 'MSG92: Gói phải có ít nhất 2 buổi nằm trong ít nhất 2 ngày khác nhau.';
       const err = new Error(msg);
       err.response = { data: { code: 'MSG92', message: msg } };
+      throw err;
+    }
+
+    const maxDate = new Date();
+    maxDate.setMonth(maxDate.getMonth() + 3);
+    const latestAllowedDate = new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate());
+    const outsideThreeMonths = validSessions.some((session) => {
+      const [year, month, day] = session.date.split('-').map(Number);
+      return new Date(year, month - 1, day) > latestAllowedDate;
+    });
+    if (outsideThreeMonths) {
+      const msg = 'MSG115: Buổi đặt không được vượt quá 3 tháng kể từ ngày đặt.';
+      const err = new Error(msg);
+      err.response = { data: { code: 'MSG115', message: msg } };
       throw err;
     }
 
     // BR53 / P27: Giữ chỗ gói cố định 15 phút
     const holdExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const packageCode = 'PK-26113';
-    const totalAmount = payload.total_amount || validSessions.length * 4 * 80000;
+    const totalAmount = payload.total_amount || payload.total_list_price || validSessions.length * 4 * 80000;
+    const voucherDiscount = payload.voucher_discount_amount || 0;
+    const pointsDiscount = payload.points_discount_amount || (payload.points_used || payload.pointsToUse || 0) * 500;
+    const finalAmount = payload.final_amount ?? Math.max(0, totalAmount - voucherDiscount - pointsDiscount);
 
     const newPackageRecord = {
       booking_id: 1099,
       booking_code: packageCode,
-      booking_type: 'recurring',
+      booking_type: payload.packageType?.toLowerCase() || 'package',
       status: 'holding',
       status_name: 'Holding',
       facility_id: payload.facility_id || 1,
@@ -476,11 +642,13 @@ export async function createBookingPackageApi(payload) {
       end_time: `${payload.end_time || '21:00'}:00`,
       time_range: `${payload.start_time || '19:00'} – ${payload.end_time || '21:00'} · ${validSessions.length} sessions`,
       booker_label: payload.booker_label || 'Cau Giay Smashers',
-      total_slots: validSessions.length * (payload.slots_per_session || 4),
+      total_slots: validSessions.reduce((total, session) => (
+        total + Math.max(1, (session.endMinute - session.startMinute) / 30)
+      ), 0),
       total_list_price: totalAmount,
-      voucher_discount_amount: 0,
-      points_discount_amount: 0,
-      final_amount: totalAmount,
+      voucher_discount_amount: voucherDiscount,
+      points_discount_amount: pointsDiscount,
+      final_amount: finalAmount,
       hold_expires_at: holdExpires,
       resubmit_attempts_left: 3,
       bank_info: {
@@ -504,17 +672,17 @@ export async function createBookingPackageApi(payload) {
       data: {
         booking_id: newPackageRecord.booking_id,
         booking_code: packageCode,
-        booking_type: 'recurring',
+        booking_type: payload.packageType?.toLowerCase() || 'package',
         total_slots: newPackageRecord.total_slots,
         status: 'holding',
         hold_expires_at: holdExpires,
         resubmit_attempts_left: 3,
         pricing_summary: {
           total_list_price: totalAmount,
-          voucher_discount_amount: 0,
-          points_discount_amount: 0,
-          final_amount: totalAmount,
-          points_used: 0,
+          voucher_discount_amount: voucherDiscount,
+          points_discount_amount: pointsDiscount,
+          final_amount: finalAmount,
+          points_used: payload.points_used || payload.pointsToUse || 0,
         },
         bank_info: newPackageRecord.bank_info,
       },

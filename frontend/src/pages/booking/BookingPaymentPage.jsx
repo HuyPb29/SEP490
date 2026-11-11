@@ -477,7 +477,7 @@ export default function BookingPaymentPage() {
             <div className={styles.afterSubmitBox}>
               <strong className={styles.afterSubmitTitle}>After submitting</strong>
               <p className={styles.afterSubmitDesc}>
-                Facility staff will verify the transfer and confirm your booking. If the receipt is
+                Location staff will verify the transfer and confirm your booking. If the receipt is
                 unclear, you have up to {bookingData.resubmit_attempts_left ?? 3} resubmission
                 attempts.
               </p>

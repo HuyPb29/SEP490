@@ -314,7 +314,7 @@ export default function AuthPage() {
                 {loginLoading ? 'Signing in...' : 'Sign in'}
               </button>
               <p className={styles.cardFooterText}>
-                Are you a facility owner?{' '}
+                Are you a location owner?{' '}
                 <Link to="/owner/register" className={styles.greenLinkBold}>
                   Register your facility
                 </Link>

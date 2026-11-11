@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useParams, Navigate } from 'react-router-dom'
 import api from './api'
 
-import FacilitySearchPage from './pages/location/FacilitySearchPage'
-import FacilityDetailPage from './pages/location/FacilityDetailPage'
+import LocationSearchPage from './pages/location/LocationSearchPage'
+import LocationDetailPage from './pages/location/LocationDetailPage'
 import AuthPage from './pages/auth/AuthPage'
 import BookingSummaryPage from './pages/booking/BookingSummaryPage'
 import BookingPaymentPage from './pages/booking/BookingPaymentPage'
 import MyBookingsPage from './pages/booking/MyBookingsPage'
-import MultiSessionBookingPage from './pages/booking/MultiSessionBookingPage'
 import OpenMatchesPage from './pages/matches/OpenMatchesPage'
 import StaffDashboardPage from './pages/staff/StaffDashboardPage'
 import StaffConfirmPaymentPage from './pages/staff/StaffConfirmPaymentPage'
 import OwnerReportPage from './pages/owner/OwnerReportPage'
 import OwnerCourtsPricingPage from './pages/owner/OwnerCourtsPricingPage'
-import AdminFacilitiesPage from './pages/admin/AdminFacilitiesPage'
+import AdminLocationsPage from './pages/admin/AdminLocationsPage'
 import AdminAccountsPage from './pages/admin/AdminAccountsPage'
 import AdminViolatingVouchersPage from './pages/admin/AdminViolatingVouchersPage'
 import AdminViolatingReviewsPage from './pages/admin/AdminViolatingReviewsPage'
@@ -38,6 +37,7 @@ function AppContent() {
     location.pathname === '/staff/confirm-payments' ||
     location.pathname === '/owner/reports' ||
     location.pathname === '/owner/courts-pricing' ||
+    location.pathname === '/admin/locations' ||
     location.pathname === '/admin/facilities' ||
     location.pathname === '/admin/accounts' ||
     location.pathname === '/admin/violating-vouchers' ||
@@ -63,12 +63,14 @@ function AppContent() {
 
       <Routes>
         {/* UC11: Tìm kiếm địa điểm (GET /api/v1/facilities/search) */}
-        <Route path="/" element={<FacilitySearchPage />} />
+        <Route path="/" element={<LocationSearchPage />} />
 
-        {/* UC12-13: Thông tin & Lịch sân (GET /api/v1/facilities/:id & /court-schedule) */}
-        <Route path="/facilities/:id" element={<FacilityDetailPage />} />
-        {/* UC15: Đặt nhiều buổi */}
-        <Route path="/facilities/:id/package-booking" element={<MultiSessionBookingPage />} />
+        {/* UC12-13: Location details and shared booking flow. */}
+        <Route path="/locations/:id" element={<LocationDetailPage />} />
+        <Route path="/locations/:id/package-booking" element={<LocationDetailPage />} />
+        <Route path="/facilities/:id" element={<LegacyLocationRedirect />} />
+        <Route path="/facilities/:id/package-booking" element={<LegacyLocationRedirect bookingMode="custom" />} />
+        <Route path="/admin/facilities" element={<Navigate to="/admin/locations" replace />} />
         {/* UC29-30: Open matches */}
         <Route path="/open-matches" element={<OpenMatchesPage />} />
 
@@ -80,8 +82,8 @@ function AppContent() {
         <Route path="/owner/reports" element={<OwnerReportPage />} />
         {/* UC07-09: Owner courts and pricing mock preview */}
         <Route path="/owner/courts-pricing" element={<OwnerCourtsPricingPage />} />
-        {/* UC06: Admin facilities mock preview */}
-        <Route path="/admin/facilities" element={<AdminFacilitiesPage />} />
+        {/* UC06: Admin locations mock preview */}
+        <Route path="/admin/locations" element={<AdminLocationsPage />} />
         {/* UC04: Admin user accounts mock preview */}
         <Route path="/admin/accounts" element={<AdminAccountsPage />} />
         {/* UC24: Admin violating vouchers mock preview */}
@@ -96,7 +98,7 @@ function AppContent() {
         <Route path="/booking/summary" element={<BookingSummaryPage />} />
 
         {/* UC15: Đặt nhiều buổi định kỳ hoặc tự chọn (POST /api/booking-packages/preview & /api/booking-packages) */}
-        <Route path="/booking/multi" element={<MultiSessionBookingPage />} />
+        <Route path="/booking/multi" element={<Navigate to="/" replace state={{ bookingMode: 'custom' }} />} />
 
         {/* UC18: Thanh toán chuyển khoản & Gửi chứng từ (POST /api/v1/bookings/:id/payment-proof) */}
         <Route path="/booking/payment" element={<BookingPaymentPage />} />
@@ -106,4 +108,9 @@ function AppContent() {
       </Routes>
     </>
   )
+}
+
+function LegacyLocationRedirect({ bookingMode }) {
+  const { id } = useParams()
+  return <Navigate to={`/locations/${id}`} replace state={bookingMode ? { bookingMode } : undefined} />
 }
