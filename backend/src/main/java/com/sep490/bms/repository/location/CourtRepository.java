@@ -1,5 +1,6 @@
 package com.sep490.bms.repository.location;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,4 +24,11 @@ public interface CourtRepository extends JpaRepository<Court, Long> {
 
     /** F2 - UC07: kiểm tra trùng tên sân trong cùng một địa điểm. */
     Optional<Court> findByLocationIdAndNameIgnoreCase(Long locationId, String name);
+
+    /**
+     * F2 - UC07: sân của nhiều địa điểm trong một câu truy vấn.
+     * Dùng cho danh sách địa điểm của Owner để tránh N+1 khi mỗi địa điểm lại
+     * phải gọi findAllByLocationIdOrderByNameAsc.
+     */
+    List<Court> findAllByLocationIdInOrderByNameAsc(Collection<Long> locationIds);
 }
