@@ -47,7 +47,8 @@ function formatSlotTime(min) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-const TODAY_DATE = TODAY_DATE;
+// Ngày hôm nay theo giờ Việt Nam, dạng YYYY-MM-DD (min của ô chọn ngày đổi lịch)
+const TODAY_DATE = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
 const TIME_OPTIONS = [];
 for (let min = 360; min <= 1380; min += 30) {
   TIME_OPTIONS.push({ value: min, label: formatSlotTime(min) });

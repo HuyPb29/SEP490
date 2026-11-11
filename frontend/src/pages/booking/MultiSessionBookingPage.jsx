@@ -288,7 +288,7 @@ export default function MultiSessionBookingPage() {
       // UC15 #11: giữ chỗ gói 15 phút (P27) rồi sang thanh toán UC18
       const res = await createBookingPackageApi(finalRequest)
       sessionStorage.setItem('active_holding_booking', JSON.stringify(res.data))
-      navigate('/booking/payment')
+      navigate(`/booking/payment?packageId=${res.data.booking_id}`)
     } catch (err) {
       setNotice(apiErrorMessage(err, 'Could not confirm the package.'))
     } finally {

@@ -265,7 +265,8 @@ export default function BookingSummaryPage() {
         sessionStorage.setItem('active_holding_booking', JSON.stringify(res.data));
         sessionStorage.removeItem('pending_booking_selection');
         setCreatedBooking(res.data);
-        navigate('/booking/payment');
+        // Màn thanh toán đọc loại và mã trên URL (đơn đặt lẻ nhiều dải thanh toán như gói, BR64)
+        navigate(`/booking/payment?${res.data.kind === 'package' ? 'packageId' : 'bookingId'}=${res.data.booking_id}`);
       }
     } catch (err) {
       setSubmitError(

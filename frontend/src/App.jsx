@@ -114,6 +114,12 @@ function AppContent() {
           <Route path="/owner/courts-pricing" element={<RequireRole roles={['owner']} selectedVenue><OwnerCourtsPricingPage /></RequireRole>} />
           {/* UC06: Admin facilities mock preview */}
           <Route path="/admin/facilities" element={<RequireRole roles={['admin']}><AdminFacilitiesPage /></RequireRole>} />
+          {/* UC08: Giờ mở cửa, cấu hình slot, ngày ngoại lệ */}
+          <Route path="/owner/opening-hours" element={<RequireRole roles={['owner']} selectedVenue><OwnerOpeningHoursPage /></RequireRole>} />
+          {/* UC07: Hồ sơ địa điểm */}
+          <Route path="/owner/facility-settings" element={<RequireRole roles={['owner']} selectedVenue><OwnerFacilitySettingsPage /></RequireRole>} />
+          {/* UC10: Bảo trì sân: Staff tạo/hủy, Owner duyệt/từ chối */}
+          <Route path="/maintenance" element={<RequireRole roles={['staff', 'owner']} selectedVenue><MaintenanceRequestsPage /></RequireRole>} />
 
           {/* UC01-02: Đăng ký Player, xác minh OTP và quản lý phiên đăng nhập */}
           <Route path="/login" element={<AuthPage />} />
