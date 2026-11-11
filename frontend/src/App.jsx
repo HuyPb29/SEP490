@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Routes, Route, useLocation } from 'react-route
 import api from './api'
 import { getSavedUser, getSelectedLocation, getToken, roleHome } from './api/session'
 import { AccountPage, AdminWorkspace } from './pages/account/AccountPages'
+import { AdminVouchers, PersonalRewardsPage } from './pages/promotion/PromotionPages'
 import NotificationsPage from './pages/NotificationsPage'
 
 import FacilitySearchPage from './pages/location/FacilitySearchPage'
@@ -108,8 +109,9 @@ function AppContent() {
           <Route path="/login" element={<AuthPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/owner/workspace" element={<OwnerWorkspace />} />
-          <Route path="/admin/workspace" element={<AdminWorkspace />} />
+          <Route path="/admin/workspace" element={<AdminWorkspace><AdminVouchers /></AdminWorkspace>} />
           <Route path="/my-complaints" element={<PlayerComplaintsPage />} />
+          <Route path="/my-rewards" element={<PersonalRewardsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
 
           {/* UC14 và F6: Tóm tắt, voucher, điểm và xác nhận đặt sân lẻ */}

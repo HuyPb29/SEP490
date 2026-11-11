@@ -171,6 +171,8 @@ export default function FacilitySearchPage() {
                   <button type="button" className={styles.dropdownItem} onClick={() => navigate('/notifications')}>Thông báo</button>
                   {['player', 'owner'].includes(userInfo.role_code) &&
                     <button type="button" className={styles.dropdownItem} onClick={() => navigate('/account')}>Tài khoản của tôi</button>}
+                  {userInfo.role_code === 'player' &&
+                    <button type="button" className={styles.dropdownItem} onClick={() => navigate('/my-rewards')}>Ưu đãi của tôi</button>}
                   {userInfo.role_code === 'owner' &&
                     <button type="button" className={styles.dropdownItem} onClick={() => navigate('/owner/workspace')}>Quản lý địa điểm</button>}
                   {userInfo.role_code === 'admin' &&

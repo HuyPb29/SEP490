@@ -150,15 +150,6 @@ export default function OwnerCourtsPricingPage() {
     }
   }
 
-  const handleEditProgram = () => {
-    try {
-      window.alert('Bulk booking offer settings are available in this mock preview.')
-      setActionError('')
-    } catch (err) {
-      setActionError(getErrorMessage(err))
-    }
-  }
-
   return (
     <div className={styles.page}>
       <aside className={styles.sidebar}>
@@ -330,10 +321,9 @@ export default function OwnerCourtsPricingPage() {
         <section className={`${styles.panel} ${styles.offerPanel}`} aria-label="Bulk booking offer">
           <div className={styles.offerCopy}>
             <p className={styles.offerEyebrow}>BULK BOOKING OFFER</p>
-            <h2>Packages from 1,000,000 VND get a 100,000 VND voucher</h2>
-            <p className={styles.offerMeta}>01/10/2026 – 31/12/2026 · 37 packages received voucher</p>
+            <h2>Ưu đãi đặt nhiều buổi</h2>
           </div>
-          <button className={styles.secondaryButton} type="button" onClick={handleEditProgram}>Edit Program</button>
+          <Link className={styles.secondaryButton} to="/owner/workspace?tab=rewards#batch-offers">Quản lý ưu đãi</Link>
         </section>
         <span className={styles.facilityContext} aria-live="polite">{selectedFacility?.name}</span>
       </main>

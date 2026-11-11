@@ -7,6 +7,7 @@ import WorkspaceLayout, { ActionForm, Field, Section } from '../WorkspaceLayout'
 import { money, today, useResource } from '../workspaceSupport'
 import { OwnerCourtComplaints } from '../feedback/CourtComplaintsPage'
 import { StaffAccounts } from '../account/AccountPages'
+import { OwnerPromotions } from '../promotion/PromotionPages'
 
 const loadRefunds = (signal) => api.get('/owner/refunds', { signal }).then((response) => response.data.data)
 const clock = (minute) => String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0')
@@ -75,7 +76,7 @@ function OwnerLocation() {
   const [selected, setSelected] = useState(() => getSelectedLocation() || '')
   const tab = params.get('tab') || 'staff'
   const location = locations.data?.find((item) => String(item.id) === selected)
-  const tabs = [['staff', 'Nhân viên'], ['cancel', 'Hủy booking'], ['refund', 'Hoàn tiền'], ['complaints', 'Khiếu nại']]
+  const tabs = [['staff', 'Nhân viên'], ['cancel', 'Hủy booking'], ['refund', 'Hoàn tiền'], ['complaints', 'Khiếu nại'], ['rewards', 'Ưu đãi và điểm']]
   return <>
     <Section title="Địa điểm làm việc" resource={locations}>
       <Field label="Địa điểm" value={location ? selected : ''} onChange={(event) => {
@@ -99,6 +100,7 @@ function OwnerLocation() {
         {tab === 'cancel' && <Cancellations />}
         {tab === 'refund' && <Refunds />}
         {tab === 'complaints' && <OwnerCourtComplaints />}
+        {tab === 'rewards' && <OwnerPromotions location={location} refreshLocation={locations.reload} />}
       </div>
     </>}
   </>

@@ -1,390 +1,205 @@
-import { useMemo, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import styles from './MultiSessionBookingPage.module.css'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import {
+  createBookingPackageApi, getCheckoutVouchers, getLocationCourtsApi, getMyOwnedTeams, getPublicBatchOffers,
+  getMyPointsAtFacility, previewBookingPackageApi,
+} from '../../api/bookingApi'
+import WorkspaceLayout, { Field, Section } from '../WorkspaceLayout'
+import { errorMessage, money, today } from '../workspaceSupport'
 
-const WEEKDAYS = [
-  { value: 1, label: 'Mon' },
-  { value: 2, label: 'Tue' },
-  { value: 3, label: 'Wed' },
-  { value: 4, label: 'Thu' },
-  { value: 5, label: 'Fri' },
-  { value: 6, label: 'Sat' },
-  { value: 0, label: 'Sun' },
-]
-const COURTS = ['Court 1', 'Court 2', 'Court 3', 'Court 4', 'Court 5']
-const TIMES = ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00']
-const CONFLICT_DATES = ['2026-11-12', '2026-11-24']
-const INITIAL_CUSTOM_DATES = [
-  '2026-11-03',
-  '2026-11-05',
-  '2026-11-10',
-  '2026-11-12',
-  '2026-11-17',
-  '2026-11-19',
-  '2026-11-24',
-  '2026-11-26',
-]
-const SLOT_PRICE = 80000
+const weekdays = ['Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy', 'Chủ nhật']
+const formatTime = (minute) => String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0')
+const timeChoices = Array.from({ length: 49 }, (_, index) => [index * 30, formatTime(index * 30)])
+const emptySession = () => ({ date: today(), courtId: '', startMinute: 1080, endMinute: 1140 })
+const sessionRequest = ({ date, courtId, startMinute, endMinute }) =>
+  ({ date, courtId: courtId ? Number(courtId) : null, startMinute: Number(startMinute), endMinute: Number(endMinute) })
 
-const toDateKey = (date) => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+function Times({ session, update }) {
+  return <>
+    <Field label="Bắt đầu" options={timeChoices.slice(0, -1)} value={session.startMinute}
+      onChange={(event) => update({ startMinute: Number(event.target.value) })} />
+    <Field label="Kết thúc" options={timeChoices.slice(1)} value={session.endMinute}
+      onChange={(event) => update({ endMinute: Number(event.target.value) })} />
+  </>
 }
 
-const formatCurrency = (amount) => `${new Intl.NumberFormat('en-US').format(amount)} VND`
+function PackageEditor({ locationId }) {
+  const navigate = useNavigate()
+  const [catalog, setCatalog] = useState(null)
+  const [courtId, setCourtId] = useState('')
+  const [teamId, setTeamId] = useState('')
+  const [type, setType] = useState('RECURRING')
+  const [from, setFrom] = useState(today)
+  const [to, setTo] = useState('')
+  const [weekly, setWeekly] = useState([{ dayOfWeek: 1, startMinute: 1080, endMinute: 1140 }])
+  const [custom, setCustom] = useState(() => [emptySession(), emptySession()])
+  const [resolved, setResolved] = useState(null)
+  const [voucher, setVoucher] = useState('')
+  const [grant, setGrant] = useState('')
+  const [points, setPoints] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    const controller = new AbortController()
+    Promise.all([
+      getLocationCourtsApi(locationId), getMyOwnedTeams(),
+      getCheckoutVouchers(Number(locationId)), getMyPointsAtFacility(Number(locationId)),
+      getPublicBatchOffers(locationId, controller.signal).catch(() => []),
+    ]).then(([courts, teams, vouchers, balance, offers]) => {
+      if (!active) return
+      setCatalog({ courts, teams, vouchers, balance, offers })
+      setCourtId(String(courts[0]?.id ?? ''))
+    }).catch((failure) => { if (active) setError(errorMessage(failure)) })
+    return () => { active = false; controller.abort() }
+  }, [locationId])
+
+  function updateBase(setter, value) {
+    setter(value)
+    setPreview(null)
+    setResolved(null)
+  }
+
+  const courts = catalog?.courts.map((court) => [court.id, court.name]) ?? []
+  const sessions = resolved ?? (type === 'CUSTOM' ? custom : null)
+  const requestedPoints = Number(points)
+  const pointsValid = Number.isInteger(requestedPoints) &&
+    (requestedPoints === 0 || (requestedPoints >= 2 && requestedPoints <= (catalog?.balance ?? 0)))
+  const payload = {
+    packageType: type, courtId: Number(courtId), teamId: teamId ? Number(teamId) : null,
+    startDate: type === 'RECURRING' ? from : null, endDate: type === 'RECURRING' ? to : null,
+    weeklySlots: type === 'RECURRING' ? weekly : null, sessions: sessions?.map(sessionRequest) ?? null,
+    voucherCode: voucher.trim().toUpperCase() || null, voucherGrantId: grant ? Number(grant) : null,
+    pointsToUse: requestedPoints,
+  }
+
+  async function send(create = false) {
+    if (busy || !courtId || !pointsValid) return
+    setBusy(true)
+    setError('')
+    try {
+      if (create) {
+        const refreshed = await previewBookingPackageApi(payload)
+        if (refreshed.conflictSessions || refreshed.finalAmount !== preview.finalAmount ||
+          refreshed.voucherDiscount !== preview.voucherDiscount || refreshed.pointDiscount !== preview.pointDiscount) {
+          setPreview(refreshed)
+          setError('Lịch hoặc giá đã thay đổi. Kiểm tra lại trước khi xác nhận.')
+          return
+        }
+        const bookingPackage = await createBookingPackageApi(payload)
+        navigate('/booking/payment?packageId=' + bookingPackage.id)
+      } else {
+        setPreview(await previewBookingPackageApi(payload))
+      }
+    } catch (failure) {
+      setPreview(null)
+      setError(errorMessage(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function editSchedule() {
+    setResolved(preview.sessions.map(sessionRequest))
+    setPreview(null)
+  }
+
+  function editSessions(next) {
+    if (resolved) setResolved(next)
+    else setCustom(next)
+    setPreview(null)
+  }
+
+  return <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); send() }}>
+    {error && <p role="alert">{error}</p>}
+    {!catalog && !error && <p role="status">Đang tải địa điểm…</p>}
+    {catalog && <fieldset disabled={busy} className="space-y-5">
+      <Section title="Lịch đặt">
+        <div className="flex flex-wrap gap-3">
+          <Field label="Sân" options={courts} value={courtId} onChange={(event) => updateBase(setCourtId, event.target.value)} />
+          <Field label="Loại gói" options={[[ 'RECURRING', 'Định kỳ' ], [ 'CUSTOM', 'Tự chọn' ]]}
+            value={type} onChange={(event) => updateBase(setType, event.target.value)} />
+          <Field label="Đặt cho" options={[[ '', 'Cá nhân' ], ...catalog.teams.map((team) => [team.id, team.name])]}
+            value={teamId} onChange={(event) => { setTeamId(event.target.value); setPreview(null) }} />
+        </div>
+        {type === 'RECURRING' && <>
+          <div className="flex gap-3">
+            <Field label="Từ ngày" type="date" min={today()} value={from} required onChange={(event) => updateBase(setFrom, event.target.value)} />
+            <Field label="Đến ngày" type="date" min={from} value={to} required onChange={(event) => updateBase(setTo, event.target.value)} />
+          </div>
+          {weekly.map((slot, index) => {
+            const update = (patch) => updateBase(setWeekly, weekly.map((item, i) => i === index ? { ...item, ...patch } : item))
+            return <div key={index} className="flex flex-wrap items-end gap-3">
+              <Field label="Ngày trong tuần" options={weekdays.map((day, i) => [i + 1, day])} value={slot.dayOfWeek}
+                onChange={(event) => update({ dayOfWeek: Number(event.target.value) })} />
+              <Times session={slot} update={update} />
+              <button type="button" disabled={weekly.length === 1} onClick={() =>
+                updateBase(setWeekly, weekly.filter((_, i) => i !== index))}>Bỏ khung giờ</button>
+            </div>
+          })}
+          <button type="button" className="underline" onClick={() =>
+            updateBase(setWeekly, [...weekly, { dayOfWeek: 1, startMinute: 1080, endMinute: 1140 }])}>Thêm khung giờ mỗi tuần</button>
+        </>}
+        {sessions && <>
+          {resolved && <h3 className="font-semibold">Lịch sau khi xử lý buổi trùng</h3>}
+          {sessions.map((slot, index) => {
+            const update = (patch) => editSessions(sessions.map((item, i) => i === index ? { ...item, ...patch } : item))
+            return <div key={index} className="flex flex-wrap items-end gap-3">
+              <Field label="Ngày chơi" type="date" min={today()} value={slot.date} required onChange={(event) => update({ date: event.target.value })} />
+              <Field label="Sân" options={[[ '', 'Sân của gói' ], ...courts]} value={slot.courtId ?? ''}
+                onChange={(event) => update({ courtId: event.target.value })} />
+              <Times session={slot} update={update} />
+              <button type="button" disabled={sessions.length <= 2} onClick={() => editSessions(sessions.filter((_, i) => i !== index))}>Bỏ buổi</button>
+            </div>
+          })}
+          <button type="button" className="underline" onClick={() => editSessions([...sessions, emptySession()])}>Thêm buổi</button>
+        </>}
+      </Section>
+      {catalog.offers.length > 0 && <Section title="Ưu đãi đặt theo lô">
+        <ul className="space-y-2">{catalog.offers.map((offer) => <li key={offer.id}>
+          <strong>{offer.name}</strong> · Gói thực trả từ {money(offer.minPackageAmount)} nhận {offer.voucherName}.
+          <span className="block text-sm">{offer.startDate} – {offer.endDate}</span>
+        </li>)}</ul>
+      </Section>}
+      <Section title="Ưu đãi cho cả gói">
+        <div className="flex flex-wrap gap-3">
+          <Field label="Mã voucher" list="package-vouchers" maxLength={20} value={voucher}
+            onChange={(event) => { setVoucher(event.target.value); setGrant(''); setPreview(null) }} />
+          <datalist id="package-vouchers">{catalog.vouchers.publicVouchers.map((item) =>
+            <option key={item.id} value={item.code}>{item.name}</option>)}</datalist>
+          <Field label="Voucher cá nhân" value={grant}
+            options={[[ '', 'Không chọn' ], ...catalog.vouchers.grants.map((entry) => [entry.grantId, entry.voucher.name])]}
+            onChange={(event) => { setGrant(event.target.value); setVoucher(''); setPreview(null) }} />
+          <Field label={'Điểm dùng · số dư ' + catalog.balance} type="number" min={0} max={catalog.balance} value={points}
+            onChange={(event) => { setPoints(event.target.value); setPreview(null) }} />
+        </div>
+        <p>500 đ/điểm, tối thiểu 2 điểm khi sử dụng, tối đa 50% giá còn lại sau voucher.</p>
+        {!pointsValid && <p role="alert">Kiểm tra lại số điểm muốn dùng.</p>}
+      </Section>
+      <button className="action" type="submit" disabled={!courtId || !pointsValid}>{busy ? 'Đang xử lý…' : 'Xem lịch và giá'}</button>
+      {preview && <Section title={preview.locationName + ' · ' + preview.totalSessions + ' buổi'}>
+        <ul className="space-y-1">{preview.sessions.map((session, index) => <li key={index}>
+          {session.date} · {session.courtName} · {session.startTime}–{session.endTime}
+          {session.conflict && ' · Trùng lịch (' + session.conflict + ')'}
+        </li>)}</ul>
+        <p>Giá {money(preview.listAmount)} · Voucher −{money(preview.voucherDiscount)} · Điểm −{money(preview.pointDiscount)}</p>
+        <p className="font-semibold">Cần thanh toán {money(preview.finalAmount)}</p>
+        {preview.batchOffer && <p>{preview.batchOffer.reached
+          ? 'Đủ điều kiện nhận ' + preview.batchOffer.voucherName
+          : preview.batchOffer.message}</p>}
+        {preview.conflictSessions > 0
+          ? <button type="button" className="action" onClick={editSchedule}>Chọn buổi bù hoặc bỏ buổi trùng</button>
+          : <button type="button" className="action" onClick={() => send(true)}>Xác nhận đặt gói và thanh toán</button>}
+      </Section>}
+    </fieldset>}
+  </form>
+}
 
 export default function MultiSessionBookingPage() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const facilityName = location.state?.facilityName || 'Smash Arena'
-  const [mode, setMode] = useState('recurring')
-  const [court, setCourt] = useState('Court 3')
-  const [fromDate, setFromDate] = useState('2026-11-01')
-  const [toDate, setToDate] = useState('2026-11-30')
-  const [selectedWeekdays, setSelectedWeekdays] = useState([2, 4])
-  const [startTime, setStartTime] = useState('19:00')
-  const [endTime, setEndTime] = useState('21:00')
-  const [bookFor, setBookFor] = useState('Personal')
-  const [customDates, setCustomDates] = useState(INITIAL_CUSTOM_DATES)
-  const [removedDates, setRemovedDates] = useState([])
-  const [compensatedDates, setCompensatedDates] = useState([])
-  const [showCompensation, setShowCompensation] = useState(false)
-  const [compensationCourt, setCompensationCourt] = useState('Court 2')
-  const [compensationTime, setCompensationTime] = useState('19:00')
-  const [notice, setNotice] = useState('')
-
-  const monthStart = useMemo(() => new Date(2026, 10, 1), [])
-
-  const calendarDays = useMemo(() => {
-    const leadingDays = (monthStart.getDay() + 6) % 7
-    const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate()
-    const cells = Array.from({ length: leadingDays }, () => null)
-
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day)
-      const dateKey = toDateKey(date)
-      const inRange = (!fromDate || dateKey >= fromDate) && (!toDate || dateKey <= toDate)
-      const selectedByRule =
-        mode === 'recurring'
-          ? selectedWeekdays.includes(date.getDay())
-          : customDates.includes(dateKey)
-      const isSelected = inRange && selectedByRule && !removedDates.includes(dateKey)
-      const isConflicted =
-        isSelected && CONFLICT_DATES.includes(dateKey) && !compensatedDates.includes(dateKey)
-
-      cells.push({ dateKey, day, isSelected, isConflicted })
-    }
-
-    return cells
-  }, [
-    monthStart,
-    fromDate,
-    toDate,
-    mode,
-    selectedWeekdays,
-    customDates,
-    removedDates,
-    compensatedDates,
-  ])
-
-  const selectedSessions = calendarDays.filter((day) => day?.isSelected)
-  const conflictedSessions = selectedSessions.filter((day) => day.isConflicted)
-  const validSessions = selectedSessions.length - conflictedSessions.length
-  const durationMinutes = (() => {
-    const [startHour, startMinute] = startTime.split(':').map(Number)
-    const [endHour, endMinute] = endTime.split(':').map(Number)
-    return endHour * 60 + endMinute - (startHour * 60 + startMinute)
-  })()
-  const slotsPerSession = durationMinutes > 0 ? Math.ceil(durationMinutes / 30) : 0
-  const totalPrice = validSessions * slotsPerSession * SLOT_PRICE
-  const shortTime = `${Number(startTime.slice(0, 2))}–${Number(endTime.slice(0, 2))}h`
-
-  const toggleWeekday = (weekday) => {
-    setSelectedWeekdays((current) =>
-      current.includes(weekday)
-        ? current.filter((day) => day !== weekday)
-        : [...current, weekday]
-    )
-    setRemovedDates([])
-    setNotice('')
-  }
-
-  const toggleCustomDate = (dateKey) => {
-    if (mode !== 'custom') return
-    setCustomDates((current) =>
-      current.includes(dateKey)
-        ? current.filter((date) => date !== dateKey)
-        : [...current, dateKey]
-    )
-    setRemovedDates((current) => current.filter((date) => date !== dateKey))
-    setNotice('')
-  }
-
-  const removeAllConflicts = () => {
-    setRemovedDates((current) => [
-      ...new Set([...current, ...conflictedSessions.map((day) => day.dateKey)]),
-    ])
-    setNotice(`Removed ${conflictedSessions.length} conflicting sessions from your schedule.`)
-  }
-
-  const applyCompensation = () => {
-    setCompensatedDates((current) => [
-      ...new Set([...current, ...conflictedSessions.map((day) => day.dateKey)]),
-    ])
-    setShowCompensation(false)
-    setNotice(
-      `Replacement slot ${compensationCourt} · ${compensationTime} selected for ${conflictedSessions.length} sessions.`
-    )
-  }
-
-  const confirmSchedule = () => {
-    if (durationMinutes <= 0) {
-      setNotice('The end time must be after the start time.')
-    } else if (conflictedSessions.length > 0) {
-      setNotice('Please resolve all conflicting sessions before confirming your schedule.')
-    } else if (validSessions < 2) {
-      setNotice('A booking package must include at least 2 valid sessions.')
-    } else {
-      setNotice('Your schedule preview is ready. This is mock data; no booking has been submitted.')
-    }
-  }
-
-  return (
-    <div className={styles.pageWrapper}>
-      <header className={styles.navbar}>
-        <div className={styles.navContainer}>
-          <button type="button" className={styles.brand} onClick={() => navigate('/')}>
-            <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>Courtly</span>
-          </button>
-          <nav className={styles.navLinks} aria-label="Main navigation">
-            <Link to="/" className={styles.activeLink}>Find Courts</Link>
-            <Link to="/open-matches">Open Matches</Link>
-            <Link to="/my-bookings">My Bookings</Link>
-          </nav>
-          <div className={styles.userProfile}>
-            <span className={styles.avatar}>MA</span>
-            <span className={styles.userName}>Minh Anh</span>
-          </div>
-        </div>
-      </header>
-
-      <main className={styles.mainContainer}>
-        <h1 className={styles.pageTitle}>Multi-Session Booking · {facilityName}</h1>
-
-        <div className={styles.layoutGrid}>
-          <aside className={styles.configCard}>
-            <div className={styles.modeSwitch} role="tablist" aria-label="Booking mode">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'recurring'}
-                className={`${styles.modeTab} ${mode === 'recurring' ? styles.modeTabActive : ''}`}
-                onClick={() => {
-                  setMode('recurring')
-                  setNotice('')
-                }}
-              >
-                Recurring
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'custom'}
-                className={`${styles.modeTab} ${mode === 'custom' ? styles.modeTabActive : ''}`}
-                onClick={() => {
-                  setMode('custom')
-                  setNotice('')
-                }}
-              >
-                Custom Sessions
-              </button>
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="court">Court</label>
-              <select id="court" className={styles.selectInput} value={court} onChange={(event) => setCourt(event.target.value)}>
-                {COURTS.map((option) => <option key={option}>{option}</option>)}
-              </select>
-            </div>
-
-            <div className={styles.twoColRow}>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel} htmlFor="from-date">From date</label>
-                <input id="from-date" type="date" className={styles.dateInput} value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-              </div>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel} htmlFor="to-date">To date</label>
-                <input id="to-date" type="date" className={styles.dateInput} min={fromDate} value={toDate} onChange={(event) => setToDate(event.target.value)} />
-              </div>
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <span className={styles.fieldLabel}>Days of week</span>
-              <div className={styles.weekdayRow}>
-                {WEEKDAYS.map((day) => (
-                  <button
-                    key={day.value}
-                    type="button"
-                    aria-pressed={selectedWeekdays.includes(day.value)}
-                    disabled={mode === 'custom'}
-                    className={`${styles.weekdayBtn} ${selectedWeekdays.includes(day.value) ? styles.weekdayBtnActive : ''}`}
-                    onClick={() => toggleWeekday(day.value)}
-                  >
-                    {day.label}
-                  </button>
-                ))}
-              </div>
-              {mode === 'custom' && (
-                <p className={styles.customModeHint}>Click dates on the calendar to select custom sessions.</p>
-              )}
-            </div>
-
-            <div className={styles.twoColRow}>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel} htmlFor="start-time">Start time</label>
-                <select id="start-time" className={styles.selectInput} value={startTime} onChange={(event) => setStartTime(event.target.value)}>
-                  {TIMES.slice(0, -1).map((time) => <option key={time}>{time}</option>)}
-                </select>
-              </div>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel} htmlFor="end-time">End time</label>
-                <select id="end-time" className={styles.selectInput} value={endTime} onChange={(event) => setEndTime(event.target.value)}>
-                  {TIMES.slice(1).map((time) => <option key={time}>{time}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="book-for">Book for</label>
-              <select id="book-for" className={styles.selectInput} value={bookFor} onChange={(event) => setBookFor(event.target.value)}>
-                <option>Personal</option>
-                <option>Team</option>
-              </select>
-            </div>
-
-            <p className={styles.ruleHintText}>
-              Recurring: minimum 1 session/week, from 1 to 3 months.
-            </p>
-          </aside>
-
-          <div className={styles.rightColumn}>
-            <div className={styles.promoBanner}>
-              <strong>Batch booking offer: packages from 1,000,000 VND get a 100,000 VND voucher</strong>
-              <span>Your package qualifies for this reward</span>
-            </div>
-
-            <section className={styles.calendarCard} aria-label="November 2026 booking calendar">
-              <div className={styles.calendarHeader}>
-                <h2 className={styles.monthTitle}>November 2026</h2>
-                <div className={styles.legendGroup}>
-                  <span className={styles.legendItem}>
-                    <i className={styles.dotSelected} />
-                    Selected · {selectedSessions.length}
-                  </span>
-                  <span className={styles.legendItem}>
-                    <i className={styles.dotConflicted} />
-                    Conflict · {conflictedSessions.length}
-                  </span>
-                </div>
-              </div>
-
-              <div className={styles.weekdayHeaderGrid}>
-                {WEEKDAYS.map((day) => <span key={day.value} className={styles.weekdayHeaderCell}>{day.label}</span>)}
-              </div>
-              <div className={styles.calendarGrid}>
-                {calendarDays.map((day, index) => {
-                  if (!day) return <span key={`empty-${index}`} className={styles.emptyDayCell} />
-                  const className = [
-                    styles.dayCell,
-                    day.isSelected && !day.isConflicted ? styles.dayCellSelected : '',
-                    day.isConflicted ? styles.dayCellConflicted : '',
-                  ].filter(Boolean).join(' ')
-
-                  return (
-                    <button
-                      type="button"
-                      key={day.dateKey}
-                      disabled={mode !== 'custom' || day.dateKey < fromDate || day.dateKey > toDate}
-                      aria-pressed={day.isSelected}
-                      aria-label={`${day.day}${day.isConflicted ? ', conflict' : day.isSelected ? ', selected' : ''}`}
-                      className={className}
-                      onClick={() => toggleCustomDate(day.dateKey)}
-                    >
-                      <strong className={styles.dayNumber}>{day.day}</strong>
-                      {day.isConflicted
-                        ? <span className={styles.conflictTag}>Conflict</span>
-                        : day.isSelected && <span className={styles.timeSubTag}>{shortTime}</span>}
-                    </button>
-                  )
-                })}
-              </div>
-
-              {conflictedSessions.length > 0 && (
-                <div className={styles.conflictResolutionBox} role="status">
-                  <strong className={styles.conflictBoxTitle}>
-                    {conflictedSessions.length} conflicting sessions: {conflictedSessions.map((day) => `${String(day.day).padStart(2, '0')}/11`).join(' and ')} ({startTime} – {endTime} already booked)
-                  </strong>
-                  <div className={styles.conflictActionRow}>
-                    <button type="button" className={styles.compensateBtn} onClick={() => setShowCompensation(true)}>
-                      Choose replacement slot
-                    </button>
-                    <button type="button" className={styles.removeConflictsBtn} onClick={removeAllConflicts}>
-                      Remove all conflicts
-                    </button>
-                  </div>
-                </div>
-              )}
-              {notice && <p className={styles.notice} role="status">{notice}</p>}
-            </section>
-
-            <section className={styles.summaryFooterCard}>
-              <div className={styles.summaryLeft}>
-                <span className={styles.formulaText}>
-                  {validSessions} valid sessions × {slotsPerSession} slots × {formatCurrency(SLOT_PRICE)}
-                </span>
-                <strong className={styles.totalPriceText}>{formatCurrency(totalPrice)}</strong>
-                <span className={styles.holdNoteText}>
-                  One-time payment. After confirming, your package is held for 15 minutes.
-                </span>
-              </div>
-              <button type="button" className={styles.confirmScheduleBtn} onClick={confirmSchedule}>
-                Confirm Schedule
-              </button>
-            </section>
-          </div>
-        </div>
-      </main>
-
-      {showCompensation && (
-        <div className={styles.modalOverlay} role="presentation" onClick={() => setShowCompensation(false)}>
-          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className={styles.modalClose} aria-label="Close" onClick={() => setShowCompensation(false)}>×</button>
-            <h2 id="modal-title" className={styles.modalTitle}>Choose replacement slot</h2>
-            <p className={styles.modalSub}>
-              Select an alternative court and time for {conflictedSessions.length} conflicting sessions.
-            </p>
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="replacement-court">Alternative court</label>
-              <select id="replacement-court" className={styles.selectInput} value={compensationCourt} onChange={(event) => setCompensationCourt(event.target.value)}>
-                {COURTS.filter((option) => option !== court).map((option) => <option key={option}>{option}</option>)}
-              </select>
-            </div>
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="replacement-time">Start time</label>
-              <select id="replacement-time" className={styles.selectInput} value={compensationTime} onChange={(event) => setCompensationTime(event.target.value)}>
-                {TIMES.slice(0, -1).map((time) => <option key={time}>{time}</option>)}
-              </select>
-            </div>
-            <div className={styles.modalActions}>
-              <button type="button" className={styles.removeConflictsBtn} onClick={() => setShowCompensation(false)}>Cancel</button>
-              <button type="button" className={styles.confirmScheduleBtn} onClick={applyCompensation}>Apply replacement slot</button>
-            </div>
-          </section>
-        </div>
-      )}
-    </div>
-  )
+  const { id } = useParams()
+  return <WorkspaceLayout title="Đặt sân nhiều buổi" role="player">
+    {id ? <PackageEditor key={id} locationId={id} /> : <Link className="underline" to="/">Chọn địa điểm để đặt gói</Link>}
+  </WorkspaceLayout>
 }

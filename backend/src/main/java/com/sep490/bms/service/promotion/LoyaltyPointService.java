@@ -27,6 +27,9 @@ import jakarta.persistence.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Quản lý số dư và lịch sử điểm, xử lý tích, dùng, trả lại và thu hồi điểm theo giao dịch.
+ */
 @Service @Validated @RequiredArgsConstructor @Transactional(readOnly=true)
 public class LoyaltyPointService {
     public static final int POINT_VALUE=500;
@@ -255,7 +258,13 @@ public class LoyaltyPointService {
         int delta=LoyaltyRefundCalculator.points(receipts,prior.add(amount))-LoyaltyRefundCalculator.points(receipts,prior.add(old));
         if(delta>0) {
             int revoked=Math.min(delta,wallet.getPointBalance());
-            if(revoked>0) change(wallet,booking.getId(),null,PointTransactionType.REVOKE,-revoked,null,"Thu hồi điểm hoàn tiền #"+refundId,refund.getRecordedBy());
+            if (revoked > 0) {
+                change(wallet,booking.getId(),null,PointTransactionType.REVOKE,-revoked,null,"Thu hồi điểm hoàn tiền #"+refundId,refund.getRecordedBy());
+                em.persist(Notification.builder().recipientId(booking.getPlayerId()).type("REFUND_POINTS_REVOKED")
+                        .title("Đã thu hồi điểm tích lũy")
+                        .content("Đã thu hồi " + revoked + " điểm của khoản hoàn cho " + booking.getBookingCode())
+                        .refType("BOOKING").refId(booking.getId()).build());
+            }
             refund.setLoyaltyRevokedPoints(refund.getLoyaltyRevokedPoints()+revoked);
         } else if(delta<0) {
             int returned=Math.min(-delta,refund.getLoyaltyRevokedPoints());
