@@ -8,7 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.sep490.bms.dto.location.SlotSettingDto;
 import com.sep490.bms.dto.location.UpdateSlotSettingRequest;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.location.LocationSlotSetting;
 import com.sep490.bms.exception.AppException;

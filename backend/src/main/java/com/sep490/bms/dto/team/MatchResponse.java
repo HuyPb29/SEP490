@@ -9,6 +9,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Trả thông tin kèo, lịch chơi, chủ kèo, số người và trạng thái tham gia của người xem.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -41,6 +44,7 @@ public class MatchResponse {
     /** Id yêu cầu tham gia gần nhất của người đang xem, dùng để rút yêu cầu (UC30); null nếu chưa gửi. */
     private Long myJoinRequestId;
     private boolean host;
+    private boolean reschedulePending;
     private LocalDateTime createdAt;
     private LocalDateTime closedAt;
 }

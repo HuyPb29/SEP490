@@ -67,6 +67,13 @@ public class ReschedulePaymentController {
         return ApiResponse.success(service.submit(user, id, proof));
     }
 
+    @GetMapping("/api/reschedule-requests/{id}/payment")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ApiResponse<RescheduleService.PaymentProgress> paymentForRequest(
+            @AuthenticationPrincipal UserPrincipal user, @PathVariable Long id) {
+        return ApiResponse.success(service.paymentForRequest(user, id));
+    }
+
     @GetMapping("/api/reschedule-payments/{id}")
     @PreAuthorize("hasAnyRole('PLAYER', 'STAFF', 'OWNER')")
     public ApiResponse<RescheduleService.PaymentView> detail(

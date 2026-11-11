@@ -19,8 +19,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
-import com.sep490.bms.entity.Location;
-import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.repository.location.LocationRepository;
 
 /** F8 UC12 – đánh giá công khai theo địa điểm: khách chưa đăng nhập xem được, đánh giá bị ẩn không tính. */
 @SpringBootTest

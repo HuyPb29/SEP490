@@ -20,14 +20,15 @@ import com.sep490.bms.dto.team.JoinRequestCreateRequest;
 import com.sep490.bms.dto.team.JoinRequestResponse;
 import com.sep490.bms.dto.team.MatchResponse;
 import com.sep490.bms.dto.team.UpdateMatchRequest;
-import com.sep490.bms.entity.Account;
+import com.sep490.bms.entity.account.Account;
 import com.sep490.bms.entity.team.JoinRequestStatus;
 import com.sep490.bms.entity.team.Match;
 import com.sep490.bms.entity.team.MatchJoinRequest;
 import com.sep490.bms.entity.team.MatchStatus;
 import com.sep490.bms.entity.team.Team;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.account.AccountRepository;
+import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.team.MatchJoinRequestRepository;
 import com.sep490.bms.repository.team.MatchQueryRepository;
 import com.sep490.bms.repository.team.MatchQueryRepository.BookingInfo;
@@ -37,6 +38,9 @@ import com.sep490.bms.repository.team.TeamRepository;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Quản lý kèo từ booking, xét yêu cầu tham gia và xử lý kèo sau khi đổi lịch.
+ */
 @Service
 @RequiredArgsConstructor
 public class MatchService {
@@ -50,6 +54,7 @@ public class MatchService {
     private final TeamRepository teamRepository;
     private final AccountRepository accountRepository;
     private final MatchNotifier matchNotifier;
+    private final BookingRepository bookingRepository;
 
     // ---------------------------------------------------------------- UC28 – Quản lý kèo
 
@@ -119,13 +124,42 @@ public class MatchService {
 
     @Transactional
     public MatchResponse cancelMatch(Long userId, Long matchId) {
-        Match match = findMatch(matchId);
-        requireHost(userId, matchId);
+        Match match = lockMatchForHost(userId, matchId);
         if (match.getStatus() != MatchStatus.OPEN && match.getStatus() != MatchStatus.CLOSED) {
             throw new AppException("Kèo này đã kết thúc, không thể hủy");
         }
         endMatch(match, MatchStatus.CANCELLED, true);
         return getMatch(userId, matchId);
+    }
+
+    @Transactional
+    public MatchResponse keepRescheduledMatch(Long userId, Long matchId) {
+        Match match = lockMatchForHost(userId, matchId);
+        if (!match.isReschedulePending() || !Set.of(MatchStatus.OPEN, MatchStatus.CLOSED).contains(match.getStatus())) {
+            throw new AppException("Kèo không chờ quyết định sau đổi lịch", HttpStatus.CONFLICT);
+        }
+        MatchResponse current = view(matchId);
+        if (hasStarted(current.getPlayDate(), current.getStartMinute())) {
+            throw new AppException("Kèo đã đến giờ bắt đầu", HttpStatus.CONFLICT);
+        }
+        match.setReschedulePending(false);
+        matchRepository.saveAndFlush(match);
+        MatchResponse updated = getMatch(userId, matchId);
+        matchNotifier.rescheduledMatchKept(updated, playerIds(matchId, JoinRequestStatus.APPROVED));
+        return updated;
+    }
+
+    private Match lockMatchForHost(Long userId, Long matchId) {
+        MatchResponse observed = view(matchId);
+        if (!userId.equals(observed.getHostId())) {
+            throw new AppException("Chỉ chủ kèo được thực hiện thao tác này", HttpStatus.FORBIDDEN);
+        }
+        // Same lock order as UC21 and UC22.
+        bookingRepository.findByIdForUpdate(observed.getBookingId())
+                .orElseThrow(() -> new AppException("Không tìm thấy booking", HttpStatus.NOT_FOUND));
+        requireHost(userId, matchId);
+        return matchRepository.findByIdForUpdate(matchId)
+                .orElseThrow(() -> new AppException("Không tìm thấy kèo", HttpStatus.NOT_FOUND));
     }
 
     @Transactional(readOnly = true)
@@ -306,10 +340,15 @@ public class MatchService {
     @Transactional
     public void onBookingRescheduled(Long bookingId) {
         matchRepository.findFirstByBookingIdAndStatusIn(bookingId, Set.of(MatchStatus.OPEN, MatchStatus.CLOSED))
-                .ifPresent(match -> matchQueryRepository.findMatch(match.getId())
-                        .ifPresent(view -> matchNotifier.matchRescheduled(view,
-                                playerIds(match.getId(), JoinRequestStatus.APPROVED),
-                                playerIds(match.getId(), JoinRequestStatus.PENDING))));
+                .ifPresent(match -> {
+                    // Chủ kèo phải chọn giữ kèo theo giờ mới hay hủy kèo (FR90).
+                    match.setReschedulePending(true);
+                    matchRepository.saveAndFlush(match);
+                    matchQueryRepository.findMatch(match.getId())
+                            .ifPresent(view -> matchNotifier.matchRescheduled(view,
+                                    playerIds(match.getId(), JoinRequestStatus.APPROVED),
+                                    playerIds(match.getId(), JoinRequestStatus.PENDING)));
+                });
     }
 
     /**
@@ -331,6 +370,7 @@ public class MatchService {
      */
     private void endMatch(Match match, MatchStatus status, boolean notifyApproved) {
         match.setStatus(status);
+        if (status != MatchStatus.CLOSED) match.setReschedulePending(false);
         match.setClosedAt(LocalDateTime.now());
         matchRepository.saveAndFlush(match);
 

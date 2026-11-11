@@ -1,7 +1,7 @@
 package com.sep490.bms.scheduler;
 
 import java.time.LocalDateTime;
-import com.sep490.bms.service.AccountMaintenanceService;
+import com.sep490.bms.service.account.AccountMaintenanceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

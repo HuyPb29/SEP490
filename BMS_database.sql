@@ -53,7 +53,7 @@ CREATE TABLE account (
     CONSTRAINT ck_account_email CHECK (role NOT IN ('PLAYER','OWNER') OR email IS NOT NULL),
     CONSTRAINT ck_account_phone CHECK (role NOT IN ('PLAYER','OWNER') OR phone IS NOT NULL),
     CONSTRAINT ck_account_phone_digits CHECK (phone IS NULL OR (LEN(phone) = 10 AND phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
-    CONSTRAINT ck_account_username CHECK (LEN(username) BETWEEN 6 AND 32 AND username COLLATE Latin1_General_BIN LIKE '[a-z]%' AND username COLLATE Latin1_General_BIN NOT LIKE '%[^a-z0-9._]%')
+    CONSTRAINT ck_account_username CHECK (LEN(username) BETWEEN 4 AND 20 AND username COLLATE Latin1_General_BIN LIKE '[a-z]%' AND username COLLATE Latin1_General_BIN NOT LIKE '%[^a-z0-9._]%')
 );
 CREATE UNIQUE INDEX ux_account_email ON account (email) WHERE email IS NOT NULL;
 CREATE UNIQUE INDEX ux_account_phone ON account (phone) WHERE phone IS NOT NULL;
@@ -704,6 +704,7 @@ CREATE TABLE match (
     status VARCHAR(10) NOT NULL CONSTRAINT df_match_status DEFAULT 'OPEN',
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_match_created_at DEFAULT SYSDATETIME(),
     closed_at DATETIME2(0) NULL,
+    reschedule_pending BIT NOT NULL CONSTRAINT df_match_reschedule_pending DEFAULT 0,
     CONSTRAINT pk_match PRIMARY KEY (id),
     CONSTRAINT ck_match_players CHECK (current_players >= 1 AND needed_players >= 0 AND current_players + needed_players <= 8),
     CONSTRAINT ck_match_status CHECK (status IN ('OPEN','CLOSED','CANCELLED','EXPIRED'))

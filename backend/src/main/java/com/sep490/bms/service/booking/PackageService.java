@@ -37,7 +37,7 @@ import com.sep490.bms.dto.booking.PackageRequest;
 import com.sep490.bms.dto.booking.PackageRequest.WeeklySlot;
 import com.sep490.bms.dto.promotion.VoucherCheckRequest;
 import com.sep490.bms.dto.promotion.VoucherSelection;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;

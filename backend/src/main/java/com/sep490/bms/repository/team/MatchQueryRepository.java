@@ -30,7 +30,7 @@ public class MatchQueryRepository {
                    t.captain_id AS host_id, a.full_name AS host_name, a.phone AS host_phone, a.skill_level AS host_skill_level,
                    b.location_id, l.name AS location_name, c.name AS court_name,
                    b.play_date, b.start_minute, b.end_minute,
-                   m.current_players, m.needed_players, m.status, m.created_at, m.closed_at
+                   m.current_players, m.needed_players, m.status, m.created_at, m.closed_at, m.reschedule_pending
             FROM [match] m
             JOIN booking b ON b.id = m.booking_id
             JOIN team t ON t.id = b.team_id
@@ -60,6 +60,7 @@ public class MatchQueryRepository {
                 .currentPlayers(rs.getInt("current_players"))
                 .neededPlayers(rs.getInt("needed_players"))
                 .status(rs.getString("status"))
+                .reschedulePending(rs.getBoolean("reschedule_pending"))
                 .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
                 .closedAt(closedAt == null ? null : closedAt.toLocalDateTime())
                 .build();

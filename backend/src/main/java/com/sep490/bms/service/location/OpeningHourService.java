@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.sep490.bms.dto.location.OpeningHourDto;
 import com.sep490.bms.dto.location.OpeningHourItemRequest;
 import com.sep490.bms.dto.location.UpdateOpeningHoursRequest;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.OpeningHour;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.location.OpeningHourRepository;

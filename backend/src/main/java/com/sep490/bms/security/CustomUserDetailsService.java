@@ -6,8 +6,8 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.sep490.bms.entity.Account;
-import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.repository.account.AccountRepository;
 
 import lombok.RequiredArgsConstructor;
 

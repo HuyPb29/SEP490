@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.sep490.bms.dto.location.CreateOpeningExceptionRequest;
 import com.sep490.bms.dto.location.OpeningExceptionDto;
 import com.sep490.bms.dto.location.UpdateOpeningExceptionRequest;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.OpeningException;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.location.OpeningExceptionRepository;

@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.sep490.bms.dto.location.BatchOfferDto;
 import com.sep490.bms.dto.location.CreateBatchOfferRequest;
 import com.sep490.bms.dto.location.UpdateBatchOfferRequest;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.enums.VoucherStatus;
 import com.sep490.bms.entity.location.BatchOffer;
 import com.sep490.bms.entity.promotion.Voucher;

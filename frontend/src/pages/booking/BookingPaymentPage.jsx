@@ -1,18 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { uploadPaymentProofApi } from '../../api/bookingApi';
-import { apiErrorMessage, fetchProtectedImage } from '../../api';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, Link, Navigate, useSearchParams } from 'react-router-dom';
+import { loadPayment, loadPaymentImage, submitPaymentProof } from '../../api/bookingPaymentApi';
+import { getSavedUser } from '../../api/session';
+import { ReschedulePaymentDetail } from './RescheduleHistoryPage';
 import styles from './BookingPaymentPage.module.css';
-
-// Mở trang khi chưa có booking nào đang chờ thanh toán
-const NO_BOOKING = {
-  booking_id: null,
-  booking_code: '',
-  status: 'none',
-  hold_expires_at: null,
-  pricing_summary: { final_amount: 0 },
-  bank_info: {},
-};
 
 // DR21: Dung lượng ảnh tối đa 5MB & chỉ nhận JPG, PNG
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -34,46 +25,40 @@ export default function BookingPaymentPage() {
     };
   }, []);
 
-  // 1. Load thông tin giữ chỗ từ UC14 (BR03: Giữ nguyên mốc hold_expires_at khi F5 hoặc thoát ra vào lại)
-  const [bookingData, setBookingData] = useState(() => {
-    try {
-      const saved = sessionStorage.getItem('active_holding_booking');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed?.booking_id) return parsed;
-      }
-    } catch {
-      // JSON lỗi thì coi như chưa có booking
-    }
-    return NO_BOOKING;
-  });
+  const [params] = useSearchParams();
+  const kind = params.has('rescheduleId') ? 'reschedule' : params.has('packageId') ? 'package' : 'booking';
+  const id = params.get(kind + 'Id');
+  const validId = /^[1-9]\d*$/.test(id || '');
+  const user = getSavedUser();
+  const isPlayer = user?.role_code === 'player';
+  const [bookingData, setBookingData] = useState(null);
+  const [loadError, setLoadError] = useState('');
+  const [qrUrl, setQrUrl] = useState('');
+  const [remainingSeconds, setRemainingSeconds] = useState(null);
 
-  // State đếm ngược (BR03 / P02 / MSG33)
-  const [remainingSeconds, setRemainingSeconds] = useState(() => {
-    if (!bookingData.hold_expires_at) return 0;
-    const expiresMs = new Date(bookingData.hold_expires_at).getTime();
-    return Math.max(0, Math.floor((expiresMs - Date.now()) / 1000));
-  });
-
-  // FR55: ảnh QR của địa điểm cần JWT nên tải thành object URL; không có QR thì giữ hình minh họa
-  const [qrObjectUrl, setQrObjectUrl] = useState(null);
-  const qrImageUrl = bookingData.bank_info?.qr_image_url;
   useEffect(() => {
-    if (!qrImageUrl) return undefined;
-    let objectUrl = null;
-    let cancelled = false;
-    fetchProtectedImage(qrImageUrl)
-      .then((url) => {
-        objectUrl = url;
-        if (cancelled) URL.revokeObjectURL(url);
-        else setQrObjectUrl(url);
-      })
-      .catch(() => setQrObjectUrl(null));
+    if (!isPlayer || !validId) return undefined;
+    const controller = new AbortController();
+    let objectUrl;
+    loadPayment({ kind, id }, controller.signal).then(async (data) => {
+      if (controller.signal.aborted) return;
+      setBookingData(data);
+      const qrPath = data.instructions?.qrImageUrl;
+      if (qrPath) {
+        const image = await loadPaymentImage(qrPath, controller.signal).catch(() => null);
+        if (!controller.signal.aborted && image) {
+          objectUrl = URL.createObjectURL(image);
+          setQrUrl(objectUrl);
+        }
+      }
+    }).catch((error) => {
+      if (!controller.signal.aborted) setLoadError(error.response?.data?.message || 'Không tải được thông tin thanh toán.');
+    });
     return () => {
-      cancelled = true;
+      controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [qrImageUrl]);
+  }, [id, isPlayer, kind, validId]);
 
   // State chọn file ảnh chứng từ (DR21 / MSG106)
   const [selectedFile, setSelectedFile] = useState(null);
@@ -82,29 +67,15 @@ export default function BookingPaymentPage() {
   const [toastSuccess, setToastSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // BR03: Đồng hồ đếm ngược theo mốc thời gian thực hold_expires_at
+  const deadline = bookingData?.deadline;
   useEffect(() => {
-    if (bookingData.status === 'awaiting_confirmation' || !bookingData.hold_expires_at) return undefined;
-
-    const updateTimer = () => {
-      const expiresMs = new Date(bookingData.hold_expires_at).getTime();
-      const secs = Math.max(0, Math.floor((expiresMs - Date.now()) / 1000));
-      setRemainingSeconds(secs);
-
-      // MSG33: Khi đồng hồ về 0 mà chưa báo thanh toán -> chuyển sang expired & nhả slot
-      if (secs === 0 && bookingData.status === 'holding') {
-        setBookingData((prev) => {
-          const updated = { ...prev, status: 'expired' };
-          sessionStorage.setItem('active_holding_booking', JSON.stringify(updated));
-          return updated;
-        });
-      }
-    };
-
-    updateTimer();
-    const timerId = setInterval(updateTimer, 1000);
+    if (!deadline) return undefined;
+    const endsAt = Date.parse(/Z$|[+-]\d{2}:\d{2}$/.test(deadline) ? deadline : deadline + '+07:00');
+    const update = () => setRemainingSeconds(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    update();
+    const timerId = setInterval(update, 1000);
     return () => clearInterval(timerId);
-  }, [bookingData.hold_expires_at, bookingData.status]);
+  }, [deadline]);
 
   const formatCountdown = (totalSecs) => {
     const mins = String(Math.floor(totalSecs / 60)).padStart(2, '0');
@@ -164,93 +135,50 @@ export default function BookingPaymentPage() {
     validateAndSetFile(file);
   };
 
-  // FR55 / D145: Tải mã QR về máy (Đã vá lỗi thiếu xmlns của SVG)
-  const handleDownloadQr = () => {
-    if (qrObjectUrl) {
-      const link = document.createElement('a');
-      link.href = qrObjectUrl;
-      link.download = `QR_${bookingData.booking_code}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      return;
-    }
-    const svgElement = document.getElementById('bms-vietqr-svg');
-    if (!svgElement) return;
-    const serializer = new XMLSerializer();
-    const svgString = serializer.serializeToString(svgElement);
-    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `QR_${bookingData.booking_code}.svg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  // UC18: Gửi ảnh chứng từ & Báo đã thanh toán (DR07, BR06 chống bấm lặp)
   const handleSubmitPayment = async () => {
-    if (submitting) return;
+    if (submitting || !bookingData?.canPay || remainingSeconds === 0) return;
     setErrorMessage('');
-    setToastSuccess('');
-
-    // BR03 / MSG33: Chặn nếu đã hết thời gian giữ chỗ
-    if (remainingSeconds <= 0 || bookingData.status === 'expired') {
-      setErrorMessage(
-        `Hold time expired (MSG33): Booking ${bookingData.booking_code} has expired because payment proof was not submitted in time. The slot has been released.`
-      );
-      return;
-    }
-
-    // MSG106: Bắt buộc đính kèm ảnh chứng từ chuyển khoản
     if (!selectedFile) {
       setErrorMessage('Please attach a payment receipt image (MSG106).');
       return;
     }
-
     setSubmitting(true);
     try {
-      const res = await uploadPaymentProofApi({ context: bookingData, file: selectedFile });
-
-      if (res?.success) {
-        // BR03 / OI02: Chuyển sang awaiting_confirmation (Khóa slot an toàn, dừng đếm ngược)
-        const updatedBooking = {
-          ...bookingData,
-          status: 'awaiting_confirmation',
-        };
-        setBookingData(updatedBooking);
-        sessionStorage.setItem('active_holding_booking', JSON.stringify(updatedBooking));
-
-        // MSG48: Hiển thị thông báo đã gửi chứng từ thành công
-        setToastSuccess(
-          res.message || 'Payment proof submitted. Please wait for staff verification (MSG48).'
-        );
+      const result = await submitPaymentProof({ kind, id }, bookingData, selectedFile);
+      setBookingData((current) => ({
+        ...current,
+        canPay: false,
+        awaiting: result.status === 'AWAITING_CONFIRMATION',
+        status: result.status,
+      }));
+      if (result.status === 'EXPIRED') {
+        setErrorMessage('Đã hết hạn thanh toán. Vui lòng kiểm tra trạng thái booking.');
+        return;
       }
-    } catch (err) {
-      setErrorMessage(apiErrorMessage(err, 'Không thể tải ảnh lên. Vui lòng kiểm tra lại.'));
+      setToastSuccess('Đã gửi chứng từ. Vui lòng chờ xác nhận.');
+      if (kind === 'reschedule') {
+        const refreshed = await loadPayment({ kind, id }).catch(() => null);
+        if (refreshed) setBookingData(refreshed);
+      }
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || 'Không thể tải ảnh lên. Vui lòng kiểm tra lại.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const isExpired = remainingSeconds <= 0 && bookingData.status !== 'awaiting_confirmation';
-  const isConfirmedWait = bookingData.status === 'awaiting_confirmation';
-  const finalAmount = bookingData.pricing_summary?.final_amount || 0;
-  const bankInfo = bookingData.bank_info || {};
+  if (!validId) return <Navigate to="/my-bookings" replace />;
+  if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/payment?' + params.toString() }} replace />;
+  if (!isPlayer) return <p role="alert">Chỉ tài khoản Player được thanh toán booking.</p>;
+  if (!bookingData) return <main className={styles.mainContainer}>
+    <p role={loadError ? 'alert' : 'status'}>{loadError || 'Đang tải thông tin thanh toán…'}</p>
+    {loadError && <Link to="/my-bookings">Quay lại lịch sử booking</Link>}
+  </main>;
 
-  if (!bookingData.booking_id) {
-    return (
-      <div className={styles.pageWrapper}>
-        <main className={styles.mainContainer}>
-          <h1 className={styles.pageTitle}>Payment</h1>
-          <p>No booking is waiting for payment.</p>
-          <Link to="/my-bookings">‹ My Bookings</Link>
-        </main>
-      </div>
-    );
-  }
+  const isExpired = bookingData.status === 'EXPIRED' || (bookingData.canPay && remainingSeconds === 0);
+  const isConfirmedWait = bookingData.awaiting;
+  const finalAmount = bookingData.amount;
+  const bankInfo = bookingData.instructions ?? {};
 
   return (
     <div className={styles.pageWrapper}>
@@ -271,18 +199,18 @@ export default function BookingPaymentPage() {
           </nav>
 
           <div className={styles.userProfile}>
-            <span className={styles.avatar}>MA</span>
-            <span className={styles.userName}>Minh Anh</span>
+            <span className={styles.avatar}>{user.full_name?.charAt(0)}</span>
+            <span className={styles.userName}>{user.full_name}</span>
           </div>
         </div>
       </header>
 
       <main className={styles.mainContainer}>
-        {/* BR03 / P02 / MSG32 / MSG33: Thanh đếm ngược thời gian giữ chỗ */}
+        {/* BR03 / P02 / MSG32 / MSG33: Thanh đếm ngược thời gian giữ chỗ 5 phút */}
         {isConfirmedWait ? (
           <div className={styles.confirmedBanner}>
             <span>
-              ✅ <strong>MSG48:</strong> {toastSuccess} (Status: <strong>Awaiting Confirmation</strong>)
+              ✅ <strong>MSG48:</strong> {toastSuccess || 'Đang chờ nhân viên xác nhận.'} (Status: <strong>Awaiting Confirmation</strong>)
             </span>
             <button
               type="button"
@@ -295,28 +223,30 @@ export default function BookingPaymentPage() {
         ) : isExpired ? (
           <div className={styles.expiredBanner}>
             <span>
-              ⚠️ <strong>Hold time expired (MSG33):</strong> Booking #{bookingData.booking_code} has
-              expired because payment proof was not submitted within the holding time. Your slot has been
-              released and any applied points/vouchers have been refunded.
+              ⚠️ <strong>Payment deadline:</strong> {bookingData.code}
+              has passed its payment deadline. Return to My Bookings to check the current status.
             </span>
             <span className={styles.countdownText}>00:00</span>
           </div>
-        ) : (
+        ) : bookingData.canPay ? (
           <div className={styles.holdBanner}>
             <div className={styles.holdBannerLeft}>
               <span className={styles.clockIcon}>🕒</span>
               <span>
-                Your court is currently being held. Please transfer funds and upload the receipt
-                before time runs out.
+                {bookingData.reason || 'Please transfer funds and upload the receipt before the deadline.'}
+                {bookingData.resubmitting && bookingData.resubmitsLeft != null &&
+                  ` · Còn ${bookingData.resubmitsLeft} lượt gửi lại`}
               </span>
             </div>
-            <strong className={styles.countdownText}>{formatCountdown(remainingSeconds)}</strong>
+            {remainingSeconds !== null && <strong className={styles.countdownText}>{formatCountdown(remainingSeconds)}</strong>}
           </div>
-        )}
+        ) : <p role="status">Trạng thái: {bookingData.status}</p>}
 
-        <h1 className={styles.pageTitle}>Payment for booking #{bookingData.booking_code}</h1>
+        <h1 className={styles.pageTitle}>Payment · {bookingData.code}</h1>
+        {kind === 'reschedule' && bookingData.paymentId &&
+          <ReschedulePaymentDetail paymentId={bookingData.paymentId} />}
 
-        <div className={styles.contentGrid}>
+        {bookingData.canPay && !isExpired && <div className={styles.contentGrid}>
           {/* CỘT TRÁI: Mã QR & Thông tin tài khoản nhận (DR28, FR17, FR55) */}
           <section className={styles.qrCard}>
             <span className={styles.amountLabel}>Amount to transfer</span>
@@ -324,53 +254,12 @@ export default function BookingPaymentPage() {
               {finalAmount.toLocaleString('vi-VN')} VND
             </strong>
 
-            <div className={styles.qrBox}>
-              {qrObjectUrl ? (
-                <img src={qrObjectUrl} alt="Facility QR code" className={styles.qrSvg} />
-              ) : (
-              <svg
-                id="bms-vietqr-svg"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 200 200"
-                className={styles.qrSvg}
-                aria-label="VietQR Code"
-              >
-                <rect width="200" height="200" fill="#ffffff" />
-                {/* 3 cụm định vị góc chuẩn QR */}
-                <path
-                  d="M20,20 h50 v50 h-50 z M30,30 v30 h30 v-30 z M38,38 h14 v14 h-14 z"
-                  fill="#0b172a"
-                />
-                <path
-                  d="M130,20 h50 v50 h-50 z M140,30 v30 h30 v-30 z M148,38 h14 v14 h-14 z"
-                  fill="#0b172a"
-                />
-                <path
-                  d="M20,130 h50 v50 h-50 z M30,140 v30 h30 v-30 z M38,148 h14 v14 h-14 z"
-                  fill="#0b172a"
-                />
-                {/* Các điểm dữ liệu QR mô phỏng */}
-                <rect x="82" y="20" width="12" height="24" fill="#0b172a" />
-                <rect x="104" y="32" width="14" height="14" fill="#0b172a" />
-                <rect x="82" y="56" width="24" height="12" fill="#0b172a" />
-                <rect x="20" y="84" width="24" height="12" fill="#0b172a" />
-                <rect x="56" y="84" width="14" height="26" fill="#0b172a" />
-                <rect x="82" y="82" width="28" height="14" fill="#0b172a" />
-                <rect x="122" y="84" width="14" height="28" fill="#0b172a" />
-                <rect x="150" y="84" width="30" height="12" fill="#0b172a" />
-                <rect x="96" y="108" width="16" height="28" fill="#0b172a" />
-                <rect x="136" y="124" width="28" height="14" fill="#0b172a" />
-                <rect x="82" y="148" width="14" height="32" fill="#0b172a" />
-                <rect x="110" y="152" width="26" height="14" fill="#0b172a" />
-                <rect x="136" y="166" width="16" height="14" fill="#0b172a" />
-                <rect x="164" y="144" width="16" height="24" fill="#0b172a" />
-              </svg>
-              )}
-            </div>
-
-            <button type="button" className={styles.saveQrBtn} onClick={handleDownloadQr}>
-              Save QR code to device
-            </button>
+            {qrUrl && <>
+              <div className={styles.qrBox}>
+                <img className={styles.qrSvg} src={qrUrl} alt="Mã QR nhận thanh toán" />
+              </div>
+              <a className={styles.saveQrBtn} href={qrUrl} download={'QR_' + id}>Save QR code to device</a>
+            </>}
 
             <hr className={styles.divider} />
 
@@ -378,25 +267,25 @@ export default function BookingPaymentPage() {
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Bank</span>
                 <strong className={styles.bankValue}>
-                  {bankInfo.bank_name || '—'}
+                  {bankInfo.bankName || '—'}
                 </strong>
               </div>
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Account number</span>
                 <strong className={styles.bankValue}>
-                  {bankInfo.bank_account_number || '—'}
+                  {bankInfo.bankAccountNo || '—'}
                 </strong>
               </div>
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Account holder</span>
                 <strong className={styles.bankValue}>
-                  {bankInfo.bank_account_holder || '—'}
+                  {bankInfo.bankAccountHolder || '—'}
                 </strong>
               </div>
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Transfer content</span>
                 <strong className={styles.bankValue}>
-                  {bankInfo.transfer_content || bookingData.booking_code}
+                  {bookingData.code}
                 </strong>
               </div>
             </div>
@@ -461,7 +350,7 @@ export default function BookingPaymentPage() {
               <strong className={styles.afterSubmitTitle}>After submitting</strong>
               <p className={styles.afterSubmitDesc}>
                 Facility staff will verify the transfer and confirm your booking. If the receipt is
-                unclear, you have up to {bookingData.resubmit_attempts_left ?? 3} resubmission
+                unclear, the facility may request a new receipt within the allowed number of
                 attempts.
               </p>
             </div>
@@ -479,7 +368,7 @@ export default function BookingPaymentPage() {
                   : 'Submit Payment Proof'}
             </button>
           </section>
-        </div>
+        </div>}
       </main>
     </div>
   );

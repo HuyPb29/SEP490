@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.PaymentStatus;

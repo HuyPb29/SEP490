@@ -27,6 +27,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API xem và quản lý kèo, gồm quyết định giữ kèo sau khi đổi lịch.
+ *
  * Feature: F7 – Đội và kèo
  * Owner: Hoàng
  * UC: UC28 – Quản lý kèo (chủ kèo); UC29 – Xem thông tin kèo
@@ -70,6 +72,13 @@ public class MatchController {
             @AuthenticationPrincipal UserPrincipal currentUser,
             @PathVariable("id") Long id) {
         return ResponseEntity.ok(ApiResponse.success("Đã hủy kèo", matchService.cancelMatch(currentUser.getId(), id)));
+    }
+
+    @PostMapping("/api/matches/{id}/keep-after-reschedule")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ApiResponse<MatchResponse> keepAfterReschedule(@AuthenticationPrincipal UserPrincipal player,
+            @PathVariable("id") Long id) {
+        return ApiResponse.success(matchService.keepRescheduledMatch(player.getId(), id));
     }
 
     @GetMapping("/api/matches")

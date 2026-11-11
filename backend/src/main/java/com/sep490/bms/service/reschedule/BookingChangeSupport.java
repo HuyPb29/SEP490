@@ -3,7 +3,7 @@ package com.sep490.bms.service.reschedule;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.List;
-import com.sep490.bms.entity.*;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.booking.*;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.notification.Notification;
@@ -82,5 +82,9 @@ public class BookingChangeSupport {
         em.flush();
         if (cancel) matchService.onBookingCancelled(b.getId());
         else matchService.onBookingRescheduled(b.getId());
+    }
+    /** Tên cũ ở luồng hủy booking (F5): kèo của booking bị hủy thì hết hạn, do MatchService xử lý. */
+    public void expireMatches(Booking b) {
+        matches(b, true);
     }
 }

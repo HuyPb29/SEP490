@@ -6,6 +6,7 @@ import com.sep490.bms.entity.reschedule.RescheduleRequest;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.reschedule.RescheduleService;
 import jakarta.validation.Valid;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -13,11 +14,19 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Cho Player xem trước chênh lệch giá, tạo và tra cứu yêu cầu đổi lịch.
+ */
 @RestController
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('PLAYER')")
 public class RescheduleRequestController {
     private final RescheduleService service;
+    @GetMapping("/api/bookings/{id}/reschedule-deadline")
+    public ApiResponse<LocalDateTime> deadline(@AuthenticationPrincipal UserPrincipal user, @PathVariable Long id) {
+        return ApiResponse.success(service.playerDeadline(user, id));
+    }
+
     @PostMapping("/api/bookings/{id}/reschedule-requests/preview")
     public ApiResponse<RescheduleService.Quote> preview(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id,@Valid @RequestBody ReschedulePreviewRequest r) {
         return ApiResponse.success(service.preview(u,id,r));

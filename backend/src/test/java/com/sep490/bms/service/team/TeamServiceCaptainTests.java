@@ -9,7 +9,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import com.sep490.bms.entity.team.Team;
-import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.repository.team.TeamJoinRequestRepository;
 import com.sep490.bms.repository.team.TeamMemberRepository;
 import com.sep490.bms.repository.team.TeamRepository;

@@ -129,7 +129,7 @@ export default function StaffDashboardPage() {
           </button>
           <button className={styles.navItem} type="button">Daily Reconciliation</button>
           <button className={styles.navItem} type="button">Maintenance Requests</button>
-          <button className={styles.navItem} type="button">Complaints</button>
+          <button className={styles.navItem} type="button" onClick={() => navigate('/staff/complaints')}>Khiếu nại</button>
         </nav>
       </aside>
 

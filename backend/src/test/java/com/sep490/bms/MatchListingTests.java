@@ -16,9 +16,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sep490.bms.dto.team.MatchResponse;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.service.team.MatchService;
 
 /** F7 – danh sách kèo: kèo của tôi, lọc khung giờ, trình độ chủ kèo (UC28, UC29); chạy trong transaction rollback. */
