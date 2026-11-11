@@ -5,8 +5,10 @@ import {
   registerPlayerApi,
   verifyOtpApi,
   resendOtpApi,
-  USE_MOCK_AUTH,
+  forgotPasswordApi,
+  resetPasswordApi,
 } from '../../api/authApi';
+import { roleHome } from '../../api/session';
 import styles from './AuthPage.module.css';
 
 export default function AuthPage() {
@@ -36,6 +38,11 @@ export default function AuthPage() {
 
   // State DR25: Xác thực OTP & Cooldown 60s
   const [otpEmail, setOtpEmail] = useState('');
+  const [otpPurpose, setOtpPurpose] = useState('REGISTER');
+  const [otpSending, setOtpSending] = useState(false);
+  const [resetCodeSent, setResetCodeSent] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const resettingPassword = otpPurpose === 'RESET_PASSWORD';
   const [otpCode, setOtpCode] = useState('');
   const [otpMessage, setOtpMessage] = useState('');
   const [otpError, setOtpError] = useState('');
@@ -62,46 +69,18 @@ export default function AuthPage() {
 
     setLoginLoading(true);
     try {
-      const response = await loginApi({
-        username_or_email: loginIdentity,
-        password: loginPassword,
-      });
-
-      if (response?.success) {
-        // Lưu JWT token và thông tin người dùng trả về từ backend.
-        localStorage.setItem('bms_access_token', response.data.access_token);
-        localStorage.removeItem('bms_refresh_token');
-        localStorage.setItem('bms_user_info', JSON.stringify(response.data.user_info));
-        window.dispatchEvent(new Event('bms-auth-change'));
-        navigate('/');
-      }
+      const user = await loginApi({ username_or_email: loginIdentity, password: loginPassword });
+      const home = roleHome[user.role.toLowerCase()] ?? '/';
+      const returnTo = location.state?.returnTo;
+      navigate(typeof returnTo === 'string' && /^\/(?!\/)/.test(returnTo) ? returnTo : home, { replace: true });
     } catch (error) {
-      const code = error.response?.data?.code || error.code;
-      const status = error.response?.status;
-      const serverMessage = error.response?.data?.message;
-      const message = status === 401 || code === 'MSG10'
-        ? 'The username or password is incorrect. Please check and try again.'
-        : serverMessage && serverMessage !== 'No message available'
-          ? serverMessage
-          : 'We couldn’t sign you in. Please try again.';
-
-      // MSG95: Tài khoản chưa xác thực OTP (status = 'unverified') -> chuyển sang tab OTP
-      if (code === 'MSG95') {
-        setOtpEmail(error.email || loginIdentity);
-        setOtpMessage(message);
-        setOtpError('');
-        setCooldown(60);
-        setActiveTab('otp');
-      } else {
-        // MSG10 (Sai thông tin) hoặc MSG11 (Tài khoản bị khóa)
-        setLoginError(message);
-      }
+      setLoginError(error.response?.data?.message || 'We couldn’t sign you in. Please try again.');
     } finally {
       setLoginLoading(false);
     }
   };
 
-  // UC01: Kiểm tra dữ liệu đăng ký theo chuẩn SRS v18
+  // UC01: Kiểm tra dữ liệu đăng ký theo chuẩn v19
   const validateRegisterForm = () => {
     const { username, full_name, email, phone_number, password } = registerForm;
 
@@ -134,7 +113,7 @@ export default function AuthPage() {
     return '';
   };
 
-  // UC01: Xử lý đăng ký Player (POST /api/v1/auth/register/player)
+  // UC01: Xử lý đăng ký Player (POST /api/auth/register)
   const handleRegisterSubmit = async (event) => {
     event.preventDefault();
     setRegisterError('');
@@ -148,8 +127,9 @@ export default function AuthPage() {
     try {
       const response = await registerPlayerApi(registerForm);
       if (response?.success) {
-        // DR25 / MSG08: Tự động chuyển sang tab OTP sau khi tạo tài khoản 'unverified'
-        setOtpEmail(registerForm.email.trim());
+        setOtpPurpose('REGISTER');
+        setOtpEmail(response.data.email);
+        setRegisterForm((form) => ({ ...form, password: '' }));
         setOtpMessage(response.message || 'A verification code has been sent to your email.');
         setOtpCode('');
         setOtpError('');
@@ -165,10 +145,11 @@ export default function AuthPage() {
     }
   };
 
-  // Xác thực mã OTP 6 chữ số (POST /api/v1/auth/verify-otp)
+  // Xác thực mã OTP 6 chữ số (POST /api/auth/verify-email)
   const handleVerifyOtpSubmit = async (event) => {
     event.preventDefault();
     setOtpError('');
+    if (resettingPassword && !resetCodeSent) return;
     if (!/^\d{6}$/.test(otpCode.trim())) {
       setOtpError('The verification code must be exactly 6 digits.');
       return;
@@ -176,18 +157,16 @@ export default function AuthPage() {
 
     setOtpLoading(true);
     try {
-      const response = await verifyOtpApi({
-        email: otpEmail,
-        otp_code: otpCode.trim(),
-        purpose: 'register',
-      });
-      if (response?.success) {
-        // MSG94: Kích hoạt status = 'active' thành công -> quay về tab Đăng nhập
-        setLoginIdentity(otpEmail);
-        setLoginPassword('');
-        setLoginNotice(response.message || 'Email verified. You can now sign in.');
-        setActiveTab('login');
-      }
+      const email = otpEmail.trim();
+      const response = resettingPassword
+        ? await resetPasswordApi({ email, otp: otpCode.trim(), newPassword })
+        : await verifyOtpApi({ email, otp_code: otpCode.trim() });
+      setLoginIdentity(email);
+      setLoginPassword('');
+      setNewPassword('');
+      setOtpCode('');
+      setLoginNotice(response.message || (resettingPassword ? 'Password reset. You can now sign in.' : 'Email verified. You can now sign in.'));
+      setActiveTab('login');
     } catch (error) {
       setOtpError(
         error.response?.data?.message || error.message || 'Invalid verification code.'
@@ -197,20 +176,38 @@ export default function AuthPage() {
     }
   };
 
-  // Gửi lại mã OTP (POST /api/v1/auth/resend-otp)
-  const handleResendOtp = async () => {
-    if (cooldown > 0 || !otpEmail.trim()) return;
+  const openOtpForm = (purpose) => {
+    setOtpPurpose(purpose);
+    setOtpEmail(purpose === 'RESET_PASSWORD' && loginIdentity.includes('@') ? loginIdentity.trim() : '');
+    setOtpCode('');
+    setNewPassword('');
+    setResetCodeSent(false);
+    setOtpMessage('');
     setOtpError('');
+    setCooldown(0);
+    setActiveTab('otp');
+  };
+
+  const handleSendOtp = async () => {
+    if (cooldown > 0 || otpSending || otpLoading) return;
+    const email = otpEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setOtpError('Enter a valid email address.');
+      return;
+    }
+    setOtpError('');
+    setOtpSending(true);
     try {
-      const response = await resendOtpApi({ email: otpEmail.trim(), purpose: 'register' });
-      setOtpMessage(response.message || 'A new verification code has been sent.');
+      const response = resettingPassword && !resetCodeSent
+        ? await forgotPasswordApi(email)
+        : await resendOtpApi({ email, purpose: otpPurpose });
+      if (resettingPassword) setResetCodeSent(true);
+      setOtpMessage(response.message || 'Check your email for the verification code.');
       setCooldown(60);
     } catch (error) {
-      setOtpError(
-        error.response?.data?.message ||
-          error.message ||
-          'Could not resend the verification code.'
-      );
+      setOtpError(error.response?.data?.message || 'Could not send the verification code.');
+    } finally {
+      setOtpSending(false);
     }
   };
 
@@ -260,7 +257,7 @@ export default function AuthPage() {
               role="tab"
               aria-selected={activeTab === 'otp'}
               className={`${styles.tabBtn} ${activeTab === 'otp' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('otp')}
+              onClick={() => openOtpForm('REGISTER')}
             >
               Verify email
             </button>
@@ -306,9 +303,9 @@ export default function AuthPage() {
                 {loginError && <p className={styles.errorText}>{loginError}</p>}
               </div>
               <div className={styles.forgotRow}>
-                <a href="#forgot-password" className={styles.greenLink}>
+                <button type="button" className={styles.inlineSwitchBtn} onClick={() => openOtpForm('RESET_PASSWORD')}>
                   Forgot password?
-                </a>
+                </button>
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={loginLoading}>
                 {loginLoading ? 'Signing in...' : 'Sign in'}
@@ -414,13 +411,8 @@ export default function AuthPage() {
 
           {activeTab === 'otp' && (
             <form className={styles.formContainer} onSubmit={handleVerifyOtpSubmit}>
-              <h2 className={styles.cardTitle}>Verify your email</h2>
+              <h2 className={styles.cardTitle}>{resettingPassword ? 'Reset your password' : 'Verify your email'}</h2>
               {otpMessage && <div className={styles.infoBanner}>{otpMessage}</div>}
-              {USE_MOCK_AUTH && (
-                <div className={styles.testOtpHint}>
-                  Local test code: <strong>123456</strong>
-                </div>
-              )}
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="otp-email">
                   Email address
@@ -430,42 +422,50 @@ export default function AuthPage() {
                   className={styles.input}
                   type="email"
                   value={otpEmail}
+                  readOnly={resettingPassword && resetCodeSent}
+                  required
                   onChange={(event) => setOtpEmail(event.target.value)}
                   autoComplete="email"
                 />
               </div>
-              <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="otp-code">
-                  6-digit verification code
-                </label>
-                <input
-                  id="otp-code"
-                  className={`${styles.input} ${styles.otpInput} ${
-                    otpError ? styles.inputError : ''
-                  }`}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={otpCode}
-                  onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))}
-                  autoComplete="one-time-code"
-                />
-                {otpError && <p className={styles.errorText}>{otpError}</p>}
-              </div>
-              <button className={styles.primaryBtn} type="submit" disabled={otpLoading}>
-                {otpLoading ? 'Verifying...' : 'Verify code'}
+              {(!resettingPassword || resetCodeSent) && (
+                <>
+                  <div className={styles.formGroup}>
+                    <label className={styles.label} htmlFor="otp-code">
+                      6-digit verification code
+                    </label>
+                    <input
+                      id="otp-code"
+                      className={`${styles.input} ${styles.otpInput} ${
+                        otpError ? styles.inputError : ''
+                      }`}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))}
+                      autoComplete="one-time-code"
+                    />
+                  </div>
+                  {resettingPassword && (
+                    <div className={styles.formGroup}>
+                      <label className={styles.label} htmlFor="reset-password">New password</label>
+                      <input id="reset-password" className={styles.input} type="password"
+                        autoComplete="new-password" value={newPassword} required
+                        minLength={8} maxLength={32} onChange={(event) => setNewPassword(event.target.value)} />
+                    </div>
+                  )}
+                  <button className={styles.primaryBtn} type="submit" disabled={otpLoading || otpSending}>
+                    {otpLoading ? 'Verifying...' : resettingPassword ? 'Reset password' : 'Verify code'}
+                  </button>
+                </>
+              )}
+              {otpError && <p role="alert" className={styles.errorText}>{otpError}</p>}
+              <button type="button" className={styles.inlineSwitchBtn}
+                disabled={cooldown > 0 || otpLoading || otpSending} onClick={handleSendOtp}>
+                {otpSending ? 'Sending...' : cooldown > 0 ? `Resend in ${cooldown}s`
+                  : resettingPassword && !resetCodeSent ? 'Send reset code' : 'Resend code'}
               </button>
-              <p className={styles.cardFooterText}>
-                Didn't receive a code?{' '}
-                <button
-                  type="button"
-                  className={styles.inlineSwitchBtn}
-                  disabled={cooldown > 0}
-                  onClick={handleResendOtp}
-                >
-                  {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
-                </button>
-              </p>
             </form>
           )}
         </section>

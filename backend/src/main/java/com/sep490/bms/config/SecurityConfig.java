@@ -26,10 +26,13 @@ import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.security.JwtAuthenticationFilter;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.LocationScopeFilter;
-
+import com.sep490.bms.security.SecurityErrorWriter;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Thiết lập chuỗi lọc JWT, phân quyền HTTP, CORS và cơ chế băm mật khẩu.
+ */
 @Configuration
 @EnableMethodSecurity
 @RequiredArgsConstructor
@@ -38,6 +41,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final LocationAccessService locationAccess;
     private final LocationRepository locations;
+    private final SecurityErrorWriter securityErrors;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -70,10 +74,12 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
             .exceptionHandling(errors -> errors
-                .authenticationEntryPoint((req, res, ex) -> res.sendError(401))
-                .accessDeniedHandler((req, res, ex) -> res.sendError(403)))
+                .authenticationEntryPoint((req, res, ex) -> securityErrors.write(res, HttpStatus.UNAUTHORIZED,
+                        "Vui lòng đăng nhập hoặc đăng nhập lại"))
+                .accessDeniedHandler((req, res, ex) -> securityErrors.write(res, HttpStatus.FORBIDDEN,
+                        "Bạn không có quyền thực hiện thao tác này")))
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterAfter(new LocationScopeFilter(locationAccess, locations), JwtAuthenticationFilter.class);
+            .addFilterAfter(new LocationScopeFilter(locationAccess, locations, securityErrors), JwtAuthenticationFilter.class);
 
         return http.build();
     }

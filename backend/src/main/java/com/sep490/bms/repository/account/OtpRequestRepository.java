@@ -11,6 +11,9 @@ import org.springframework.stereotype.Repository;
 import com.sep490.bms.entity.account.OtpPurpose;
 import com.sep490.bms.entity.account.OtpRequest;
 
+/**
+ * Tra cứu OTP mới nhất, đếm lượt gửi và vô hiệu hóa mã hoặc đăng ký chờ.
+ */
 @Repository
 public interface OtpRequestRepository extends JpaRepository<OtpRequest, Long> {
 
@@ -26,7 +29,7 @@ public interface OtpRequestRepository extends JpaRepository<OtpRequest, Long> {
     long countByEmailAndCreatedAtAfter(String email, java.time.LocalDateTime since);
 
     @Modifying(flushAutomatically=true)
-    @Query("update OtpRequest o set o.pendingData=null,o.usedAt=coalesce(o.usedAt,:now) where o.email=:email and o.purpose=com.sep490.bms.entity.OtpPurpose.REGISTER")
+    @Query("update OtpRequest o set o.pendingData=null,o.usedAt=coalesce(o.usedAt,:now) where o.email=:email and o.purpose=com.sep490.bms.entity.account.OtpPurpose.REGISTER")
     int discardRegistration(@Param("email") String email,@Param("now") java.time.LocalDateTime now);
 
     @Modifying(flushAutomatically = true)

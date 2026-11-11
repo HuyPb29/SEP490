@@ -9,6 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Mở khóa tài khoản hết hạn khóa tạm thời và dọn nhật ký, dữ liệu đăng ký chờ.
+ */
 @Service @RequiredArgsConstructor
 public class AccountMaintenanceService {
     private final AccountRepository accounts;
@@ -32,7 +35,7 @@ public class AccountMaintenanceService {
     }
     @Transactional
     public int discardExpiredRegistrations(LocalDateTime now) {
-        return em.createQuery("update OtpRequest o set o.pendingData=null,o.usedAt=:now where o.purpose=com.sep490.bms.entity.OtpPurpose.REGISTER and o.pendingData is not null and o.expiresAt<=:now")
+        return em.createQuery("update OtpRequest o set o.pendingData=null,o.usedAt=:now where o.purpose=com.sep490.bms.entity.account.OtpPurpose.REGISTER and o.pendingData is not null and o.expiresAt<=:now")
                 .setParameter("now",now).executeUpdate();
     }
 }

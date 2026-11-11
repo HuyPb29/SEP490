@@ -43,6 +43,9 @@ import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.repository.account.OtpRequestRepository;
 import com.sep490.bms.security.JwtTokenProvider;
 
+/**
+ * Kiểm thử tích hợp các API tài khoản, quyền truy cập công khai và quyền thao tác trong đội.
+ */
 @SpringBootTest
 @Transactional
 class AuthAndUserApiTests {

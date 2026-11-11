@@ -1,19 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { searchFacilities } from '../../api/facilityApi';
+import { logoutApi } from '../../api/authApi';
+import { getSavedUser } from '../../api/session';
 import styles from './FacilitySearchPage.module.css';
-
-function getSavedUserInfo() {
-  const savedUserInfo = localStorage.getItem('bms_user_info');
-  if (!savedUserInfo) return null;
-
-  try {
-    return JSON.parse(savedUserInfo);
-  } catch (error) {
-    console.error('Error reading saved user information:', error);
-    return null;
-  }
-}
 
 // Bản đồ CSS tĩnh: quy đổi tọa độ về % trong khung, cách mép 25% để nhãn tên không bị cắt
 function scaleToMap(value, min, max) {
@@ -48,10 +38,12 @@ export default function FacilitySearchPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [usingGps, setUsingGps] = useState(false);
-  const [userInfo, setUserInfo] = useState(getSavedUserInfo);
+  const [userInfo, setUserInfo] = useState(getSavedUser);
+  const [logoutPending, setLogoutPending] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
 
   useEffect(() => {
-    const syncUserInfo = () => setUserInfo(getSavedUserInfo());
+    const syncUserInfo = () => setUserInfo(getSavedUser());
     window.addEventListener('bms-auth-change', syncUserInfo);
     window.addEventListener('storage', syncUserInfo);
     return () => {
@@ -139,6 +131,18 @@ export default function FacilitySearchPage() {
   };
   const userDisplayName = userInfo?.full_name || userInfo?.username || userInfo?.email;
 
+  const handleLogout = async () => {
+    setLogoutPending(true);
+    setLogoutError('');
+    try {
+      await logoutApi();
+    } catch (error) {
+      setLogoutError(error.response?.data?.message || 'Không thể đăng xuất. Vui lòng thử lại.');
+    } finally {
+      setLogoutPending(false);
+    }
+  };
+
   return (
     <div className={styles.pageWrapper}>
       <header className={styles.navbar}>
@@ -164,22 +168,29 @@ export default function FacilitySearchPage() {
 
                 {/* Dropdown Menu thả xuống */}
                 <div className={styles.dropdownMenu}>
-                  <div
+                  {['player', 'owner'].includes(userInfo.role_code) &&
+                    <button type="button" className={styles.dropdownItem} onClick={() => navigate('/account')}>Tài khoản của tôi</button>}
+                  {userInfo.role_code === 'owner' &&
+                    <button type="button" className={styles.dropdownItem} onClick={() => navigate('/owner/workspace')}>Quản lý địa điểm</button>}
+                  {userInfo.role_code === 'admin' &&
+                    <button type="button" className={styles.dropdownItem} onClick={() => navigate('/admin/workspace')}>Quản trị hệ thống</button>}
+                  {userInfo.role_code === 'staff' &&
+                    <button type="button" className={styles.dropdownItem} onClick={() => navigate('/staff/confirm-payments')}>Xác nhận thanh toán</button>}
+                  {userInfo.role_code === 'player' && <div
                     className={styles.dropdownItem}
                     onClick={() => navigate('/my-bookings')}
                   >
                     🏸 My Bookings
-                  </div>
-                  <div
+                  </div>}
+                  <button
+                    type="button"
                     className={`${styles.dropdownItem} ${styles.logoutItem}`}
-                    onClick={() => {
-                      localStorage.removeItem('bms_user_info');
-                      localStorage.removeItem('token');
-                      window.dispatchEvent(new Event('bms-auth-change'));
-                    }}
+                    onClick={handleLogout}
+                    disabled={logoutPending}
                   >
-                    Đăng xuất
-                  </div>
+                    {logoutPending ? 'Đang đăng xuất…' : 'Đăng xuất'}
+                  </button>
+                  {logoutError && <p className={styles.dropdownItem} role="alert">{logoutError}</p>}
                 </div>
               </div>
             ) : (

@@ -14,6 +14,9 @@ import org.springframework.stereotype.Repository;
 import com.sep490.bms.entity.account.Account;
 import com.sep490.bms.entity.account.Role;
 
+/**
+ * Tra cứu tài khoản theo định danh, kiểm tra trùng thông tin và khóa bản ghi khi cập nhật.
+ */
 @Repository
 public interface AccountRepository extends JpaRepository<Account, Long>, JpaSpecificationExecutor<Account> {
 

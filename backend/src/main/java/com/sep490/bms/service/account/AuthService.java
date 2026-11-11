@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sep490.bms.dto.account.LoginResponse;
-
+import com.sep490.bms.dto.account.RegistrationResponse;
 import com.sep490.bms.dto.account.UserDto;
 import com.sep490.bms.dto.request.ForgotPasswordRequest;
 import com.sep490.bms.dto.request.LoginRequest;
@@ -41,6 +41,9 @@ import com.sep490.bms.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Xử lý đăng ký và OTP, đăng nhập, thu hồi phiên và khôi phục mật khẩu.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -62,7 +65,7 @@ public class AuthService {
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
-    public Map<String, Object> register(RegisterRequest request) {
+    public RegistrationResponse register(RegisterRequest request) {
         String email = request.getEmail().trim().toLowerCase();
         otpLock.acquire(email);
         String phone = request.getPhone().trim();
@@ -115,11 +118,7 @@ public class AuthService {
 
         emailService.sendVerificationOtp(email, otpCode);
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("message", "Đăng ký thành công! Mã xác thực đã được gửi tới email của bạn (MSG08).");
-        result.put("email", email);
-        result.put("username", username);
-        return result;
+        return new RegistrationResponse(email, username, "Mã xác thực đã được gửi tới email của bạn (MSG08).");
     }
 
     @Transactional(noRollbackFor = InvalidOtpException.class)
@@ -132,21 +131,23 @@ public class AuthService {
                 .findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER)
                 .orElseThrow(() -> new AppException("Yêu cầu xác thực không tồn tại hoặc đã hết hạn (MSG96)"));
 
-        if (otpRequest.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (!otpRequest.getExpiresAt().isAfter(LocalDateTime.now())) {
             otpRequest.setPendingData(null);otpRequest.setUsedAt(LocalDateTime.now());
             otpRequestRepository.discardRegistration(email,LocalDateTime.now());
             throw new InvalidOtpException("Mã xác thực đã hết hạn. Vui lòng đăng ký lại (MSG96)");
         }
 
         if (otpRequest.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
-            throw new AppException("Bạn đã nhập sai mã xác thực quá số lần quy định. Vui lòng gửi lại mã mới");
+            throw new AppException("Bạn đã nhập sai mã xác thực quá số lần quy định. Vui lòng gửi lại mã mới (MSG95)");
         }
 
         if (!passwordEncoder.matches(otp, otpRequest.getCodeHash())) {
-            otpRequest.setFailedAttempts(otpRequest.getFailedAttempts() + 1);
-            otpRequest.setUsedAt(LocalDateTime.now());otpRequest.setPendingData(null);
+            int attempts = otpRequest.getFailedAttempts() + 1;
+            otpRequest.setFailedAttempts(attempts);
             otpRequestRepository.save(otpRequest);
-            otpRequestRepository.discardRegistration(email,LocalDateTime.now());
+            if (attempts == MAX_FAILED_ATTEMPTS) {
+                throw new InvalidOtpException("Bạn đã nhập sai mã xác thực quá số lần quy định. Vui lòng gửi lại mã mới (MSG95)");
+            }
             throw new InvalidOtpException();
         }
 
@@ -245,9 +246,10 @@ public class AuthService {
                     .codeHash(codeHash)
                     .pendingData(latest.getPendingData())
                     .failedAttempts(0)
-                    .expiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES))
+                    .expiresAt(latest.getExpiresAt())
                     .build();
 
+            latest.setPendingData(null);
             otpRequestRepository.invalidateUnused(email, purpose, LocalDateTime.now());
             otpRequestRepository.save(newOtpRequest);
             emailService.sendVerificationOtp(email, newOtp);

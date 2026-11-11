@@ -27,6 +27,7 @@ public class LocationScopeFilter extends OncePerRequestFilter {
 
     private final LocationAccessService locationAccess;
     private final LocationRepository locations;
+    private final SecurityErrorWriter errors;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -36,7 +37,7 @@ public class LocationScopeFilter extends OncePerRequestFilter {
             try {
                 checkAccess(request, user);
             } catch (AppException ex) {
-                response.sendError(ex.getStatus().value(), ex.getMessage());
+                errors.write(response, ex.getStatus(), ex.getMessage());
                 return;
             }
         }

@@ -33,14 +33,27 @@ import com.sep490.bms.service.integration.EmailService;
 /** No outer test transaction: assertions observe real service commits/rollbacks. */
 @SpringBootTest
 class OtpLifecycleTests {
-    @Test void wrongRegistrationCodeCommitsDiscardAndDoesNotCreateAccount() {
+    @Test void fifthWrongRegistrationCodeRequiresResendWithinTheOriginalDeadline() {
         auth.register(RegisterRequest.builder().email(email).username("p"+suffix)
                 .phone("0"+String.format("%09d",Math.floorMod((long)suffix.hashCode(),1000000000L))).fullName("Test Player").password("Original123").build());
         OtpRequest pending=otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email,OtpPurpose.REGISTER).orElseThrow();
         pending.setCodeHash(encoder.encode("123456"));otps.saveAndFlush(pending);
-        assertThatThrownBy(()->auth.verifyEmail(new VerifyEmailRequest(email,"000000"))).isInstanceOf(AppException.class);
-        OtpRequest discarded=otps.findById(pending.getId()).orElseThrow();
-        assertThat(discarded.getPendingData()).isNull();assertThat(discarded.getUsedAt()).isNotNull();assertThat(accounts.findByEmail(email)).isEmpty();
+        for (int i = 1; i <= 5; i++) {
+            assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "000000")).isInstanceOf(AppException.class);
+            assertThat(otps.findById(pending.getId()).orElseThrow().getFailedAttempts()).isEqualTo(i);
+        }
+        assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "123456")).hasMessageContaining("MSG95");
+        assertThat(accounts.findByEmail(email)).isEmpty();
+
+        jdbc.update("update otp_request set created_at=? where id=?", LocalDateTime.now().minusMinutes(2), pending.getId());
+        auth.resendOtp(new ResendOtpRequest(email, OtpPurpose.REGISTER));
+        OtpRequest replacement = otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER).orElseThrow();
+        assertThat(replacement.getExpiresAt()).isEqualTo(otps.findById(pending.getId()).orElseThrow().getExpiresAt());
+        assertThat(otps.findById(pending.getId()).orElseThrow().getPendingData()).isNull();
+        replacement.setCodeHash(encoder.encode("654321"));
+        otps.saveAndFlush(replacement);
+        verify(OtpPurpose.REGISTER, "654321");
+        assertThat(accounts.findByEmail(email)).isPresent();
     }
     @Test void expiredRegistrationCannotBeRevivedByResendAndDiscardCommits() {
         auth.register(RegisterRequest.builder().email(email).username("p"+suffix)

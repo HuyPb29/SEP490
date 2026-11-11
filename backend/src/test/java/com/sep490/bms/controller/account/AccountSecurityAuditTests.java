@@ -283,28 +283,48 @@ class AccountSecurityAuditTests {
         assertThat(history(player)).isEmpty();
     }
 
+    @Test void v19ContractsExposeAccountAndBookingChangeRoutes() throws Exception {
+        var accountsDoc = call("GET", "/v3/api-docs/f1-accounts", null, null, null);
+        assertThat(accountsDoc.statusCode()).isEqualTo(200);
+        var paths = json.readTree(accountsDoc.body()).path("paths");
+        assertThat(paths.path("/api/auth/register").path("post").path("security").isEmpty()).isTrue();
+        assertThat(paths.path("/api/auth/register").path("post").path("responses").has("429")).isTrue();
+        assertThat(paths.has("/api/owner/staff-members")).isTrue();
+
+        var bookingDoc = call("GET", "/v3/api-docs/f5-booking-changes", null, null, null);
+        assertThat(bookingDoc.statusCode()).isEqualTo(200);
+        var bookingPaths = json.readTree(bookingDoc.body()).path("paths");
+        assertThat(bookingPaths.has("/api/bookings/{id}/reschedule-requests")).isTrue();
+        assertThat(bookingPaths.has("/api/owner/refunds/{id}/record")).isTrue();
+        assertThat(bookingPaths.has("/api/matches/{id}/keep-after-reschedule")).isTrue();
+        assertThat(bookingPaths.has("/api/bookings")).isFalse();
+
+        var unauthorized = call("GET", "/api/users/me", null, null, null);
+        assertThat(unauthorized.statusCode()).isEqualTo(401);
+        assertThat(json.readTree(unauthorized.body()).path("success").asBoolean(true)).isFalse();
+    }
+
     @Test void databaseRejectsInvalidNewUsernamesEvenWithLegacyAccountsPresent() {
         String original=player.getUsername();
-        for (String invalid : List.of("abcde", "a".repeat(33))) {
+        for (String invalid : List.of("abc", "a".repeat(21))) {
             Throwable failure=catchThrowable(()->jdbc.update("UPDATE account SET username=? WHERE id=?",invalid,player.getId()));
             assertThat(failure).isInstanceOf(org.springframework.dao.DataAccessException.class)
                     .hasRootCauseInstanceOf(java.sql.SQLException.class);
             java.sql.SQLException sqlError=(java.sql.SQLException)((org.springframework.dao.DataAccessException)failure).getMostSpecificCause();
-            if (invalid.length()<6) assertThat(sqlError.getErrorCode()).isEqualTo(547); // CHECK constraint
-            else assertThat(sqlError.getErrorCode()).isIn(2628,8152); // SQL Server truncation errors
+            assertThat(sqlError.getErrorCode()).isEqualTo(547); // DR22 CHECK constraint
             assertThat(fresh(player).getUsername()).isEqualTo(original);
         }
     }
 
     @Test void usernameBoundariesAreEnforcedByBothAccountCreationEndpoints() throws Exception {
-        for (int length : new int[] {5,33}) {
+        for (int length : new int[] {3,21}) {
             String username="a".repeat(length);
             var fields=Map.of("username",username,"email","boundary@example.com","phone","0987654321",
                     "fullName","Test Player","password","Original123");
             assertThat(call("POST","/api/auth/register",null,json.writeValueAsString(fields),null).statusCode()).isEqualTo(400);
             assertThat(call("POST","/api/owner/staff-members",token(owner),json.writeValueAsString(fields),location.getId()).statusCode()).isEqualTo(400);
         }
-        for (int length : new int[] {6,32}) {
+        for (int length : new int[] {4,20}) {
             String username="r"+UUID.randomUUID().toString().replace("-","").substring(0,length-1);
             String email=username+"@example.com";
             pendingEmails.add(email);
@@ -345,7 +365,7 @@ class AccountSecurityAuditTests {
     }
 
     @Test void staffCreationIsAuditedAndLongReasonIsRejectedBeforeMutation() throws Exception {
-        String username = "a" + UUID.randomUUID().toString().replace("-", "").substring(0, 31);
+        String username = "a" + UUID.randomUUID().toString().replace("-", "").substring(0, 19);
         var result = call("POST", "/api/owner/staff-members", token(owner), json.writeValueAsString(
                 Map.of("username", username, "fullName", "Test Staff", "password", "StaffCreate123", "phone", "0"+String.format("%09d",Math.floorMod(UUID.randomUUID().getMostSignificantBits(),1000000000L)))), location.getId());
         assertThat(result.statusCode()).isEqualTo(201);

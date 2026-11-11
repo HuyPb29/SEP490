@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.dto.account.LoginResponse;
-import java.util.Map;
+import com.sep490.bms.dto.account.RegistrationResponse;
 import com.sep490.bms.dto.request.ForgotPasswordRequest;
 import com.sep490.bms.dto.request.LoginRequest;
 import com.sep490.bms.dto.request.RegisterRequest;
@@ -24,6 +24,9 @@ import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Cung cấp API đăng ký, xác minh OTP, quản lý phiên và khôi phục mật khẩu.
+ */
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -32,8 +35,8 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/register")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> register(@Valid @RequestBody RegisterRequest request) {
-        Map<String, Object> result = authService.register(request);
+    public ResponseEntity<ApiResponse<RegistrationResponse>> register(@Valid @RequestBody RegisterRequest request) {
+        RegistrationResponse result = authService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Đăng ký thành công. Vui lòng kiểm tra email để lấy mã xác thực (MSG08).", result));
     }

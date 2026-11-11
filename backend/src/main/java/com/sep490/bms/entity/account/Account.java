@@ -17,6 +17,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu hồ sơ, thông tin xác thực, vai trò và trạng thái truy cập của tài khoản.
+ */
 @Entity
 @Table(name = "account")
 @Getter
@@ -30,7 +33,7 @@ public class Account {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 32)
+    @Column(nullable = false, unique = true, length = 32, updatable = false)
     private String username;
 
     @Column(length = 100)
