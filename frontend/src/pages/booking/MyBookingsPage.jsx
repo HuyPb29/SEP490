@@ -155,12 +155,18 @@ export default function MyBookingsPage() {
       return;
     }
 
+    const isPackageBooking =
+      booking.booking_type === 'recurring' ||
+      booking.booking_type === 'package' ||
+      Number(booking.total_slots ?? 0) > 1;
     const payloadForPayment = {
-      booking_id: booking.booking_id,
+      booking_id: booking.booking_id ?? booking.id,
       booking_code: booking.booking_code,
+      booking_type: booking.booking_type || 'single',
+      total_slots: booking.total_slots ?? 1,
       status: booking.status,
       hold_expires_at:
-        booking.hold_expires_at || new Date(Date.now() + 4 * 60 * 1000).toISOString(),
+        booking.hold_expires_at || new Date(Date.now() + (isPackageBooking ? 15 : 10) * 60 * 1000).toISOString(),
       resubmit_attempts_left: booking.resubmit_attempts_left ?? 3,
       pricing_summary: {
         final_amount: booking.final_amount,

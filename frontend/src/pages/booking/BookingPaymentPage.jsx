@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { uploadPaymentProofApi } from '../../api/bookingApi';
+import {
+  getBookingPaymentInstructionsApi,
+  getBookingPaymentQrApi,
+  uploadPaymentProofApi,
+} from '../../api/bookingApi';
 import styles from './BookingPaymentPage.module.css';
 
 // DR21: Dung lượng ảnh tối đa 5MB & chỉ nhận JPG, PNG
@@ -35,12 +39,14 @@ export default function BookingPaymentPage() {
       // Fallback nếu JSON lỗi
     }
 
-    // Khởi tạo mốc giữ chỗ 5 phút cố định (P02 = 5 phút) nếu mở trực tiếp trang để test
+    // Fallback cho booking lẻ nếu mở trực tiếp trang để test.
     const fallbackBooking = {
       booking_id: 1005,
       booking_code: 'BK-24102',
       status: 'holding',
-      hold_expires_at: new Date(Date.now() + 4 * 60 * 1000 + 12 * 1000).toISOString(), // 04:12 theo Mockup
+      booking_type: 'single',
+      total_slots: 1,
+      hold_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       resubmit_attempts_left: 3, // P06 = 3 lần
       pricing_summary: {
         final_amount: 80000,
@@ -56,6 +62,39 @@ export default function BookingPaymentPage() {
     sessionStorage.setItem('active_holding_booking', JSON.stringify(fallbackBooking));
     return fallbackBooking;
   });
+  const isPackageBooking =
+    bookingData.booking_type === 'recurring' ||
+    bookingData.booking_type === 'package' ||
+    Number(bookingData.total_slots ?? bookingData.slots?.length ?? 0) > 1;
+  const bookingTotalSlots = bookingData.total_slots ?? bookingData.slots?.length ?? 1;
+  const paymentBookingId = bookingData.booking_id ?? bookingData.id;
+  const [paymentQrUrl, setPaymentQrUrl] = useState(bookingData.bank_info?.qr_image_url || null);
+
+  useEffect(() => {
+    let isCurrent = true;
+    const paymentRequest = {
+      bookingId: paymentBookingId,
+      bookingType: isPackageBooking ? 'package' : bookingData.booking_type,
+      totalSlots: bookingTotalSlots,
+    };
+    Promise.all([
+      getBookingPaymentInstructionsApi(paymentRequest),
+      getBookingPaymentQrApi(paymentRequest),
+    ]).then(([instructions, qr]) => {
+      if (!isCurrent) return;
+      const instructionData = instructions?.data?.bank_info || instructions?.data;
+      if (instructionData && typeof instructionData === 'object') {
+        setBookingData((current) => ({ ...current, bank_info: { ...current.bank_info, ...instructionData } }));
+      }
+      const qrData = qr?.data?.qr_image_url ?? qr?.data?.image_url ?? qr?.data;
+      if (typeof qrData === 'string') setPaymentQrUrl(qrData);
+    }).catch((error) => {
+      console.error('Error loading payment instructions:', error);
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [bookingData.booking_type, bookingTotalSlots, isPackageBooking, paymentBookingId]);
 
   // State đếm ngược (BR03 / P02 / MSG33)
   const [remainingSeconds, setRemainingSeconds] = useState(() => {
@@ -192,7 +231,9 @@ export default function BookingPaymentPage() {
     setSubmitting(true);
     try {
       const res = await uploadPaymentProofApi({
-        bookingId: bookingData.booking_id,
+        bookingId: paymentBookingId,
+        bookingType: isPackageBooking ? 'package' : bookingData.booking_type,
+        totalSlots: bookingTotalSlots,
         file: selectedFile,
         resubmitAttemptsLeft: bookingData.resubmit_attempts_left ?? 3,
       });
@@ -301,6 +342,9 @@ export default function BookingPaymentPage() {
             </strong>
 
             <div className={styles.qrBox}>
+              {paymentQrUrl ? (
+                <img src={paymentQrUrl} alt="Payment QR code" className={styles.qrSvg} />
+              ) : (
               <svg
                 id="bms-vietqr-svg"
                 xmlns="http://www.w3.org/2000/svg"
@@ -338,6 +382,7 @@ export default function BookingPaymentPage() {
                 <rect x="136" y="166" width="16" height="14" fill="#0b172a" />
                 <rect x="164" y="144" width="16" height="24" fill="#0b172a" />
               </svg>
+              )}
             </div>
 
             <button type="button" className={styles.saveQrBtn} onClick={handleDownloadQr}>

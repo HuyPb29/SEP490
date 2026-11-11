@@ -258,9 +258,13 @@ export default function BookingSummaryPage() {
     try {
       const res = await createBookingApi(payload);
       if (res?.success) {
-        // Lưu thông tin giữ chỗ 5 phút (BR03) và VietQR vào sessionStorage cho màn UC18 (Thanh toán)
-        sessionStorage.setItem('active_holding_booking', JSON.stringify(res.data));
-        setCreatedBooking(res.data);
+        const paymentBooking = {
+          ...res.data,
+          booking_type: res.data.booking_type || payload.booking_type,
+          total_slots: res.data.total_slots ?? formattedSlots.length,
+        };
+        sessionStorage.setItem('active_holding_booking', JSON.stringify(paymentBooking));
+        setCreatedBooking(paymentBooking);
         navigate('/booking/payment');
       }
     } catch (err) {

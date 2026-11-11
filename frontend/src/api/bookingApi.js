@@ -55,7 +55,7 @@ const MOCK_MY_BOOKINGS = [
     voucher_discount_amount: 20000,
     points_discount_amount: 60000,
     final_amount: 80000,
-    hold_expires_at: new Date(Date.now() + 4 * 60 * 1000 + 12 * 1000).toISOString(),
+    hold_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     resubmit_attempts_left: 3,
     resubmit_deadline: null,
     can_reschedule: false,
@@ -346,8 +346,8 @@ export async function createBookingApi(payload) {
       throw err;
     }
 
-    // BR03 / P02: Giữ chỗ đếm ngược 5 phút cố định
-    const holdExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    // BR03 / P02: Giữ chỗ đặt lẻ 10 phút
+    const holdExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     const bookingCode = 'BK-24102';
 
     return {
@@ -357,6 +357,8 @@ export async function createBookingApi(payload) {
       data: {
         booking_id: 1005,
         booking_code: bookingCode,
+        booking_type: 'single',
+        total_slots: payload.slots?.length || 1,
         status: 'holding',
         hold_expires_at: holdExpires,
         resubmit_attempts_left: 3, // P06: Tối đa 3 lần gửi lại chứng từ
@@ -502,6 +504,8 @@ export async function createBookingPackageApi(payload) {
       data: {
         booking_id: newPackageRecord.booking_id,
         booking_code: packageCode,
+        booking_type: 'recurring',
+        total_slots: newPackageRecord.total_slots,
         status: 'holding',
         hold_expires_at: holdExpires,
         resubmit_attempts_left: 3,
@@ -521,8 +525,71 @@ export async function createBookingPackageApi(payload) {
   return res.data;
 }
 
-// UC18: Tải lên ảnh chứng từ chuyển khoản (POST /api/v1/bookings/{booking_id}/payment-proof)
-export async function uploadPaymentProofApi({ bookingId, file, note = '', resubmitAttemptsLeft = 3 }) {
+function isPackagePayment({ bookingType, totalSlots }) {
+  return bookingType === 'recurring' || bookingType === 'package' || Number(totalSlots) > 1;
+}
+
+const MOCK_PAYMENT_INFO = {
+  bank_name: 'Vietcombank',
+  bank_account_number: '0011 0023 4567',
+  bank_account_holder: 'NGUYEN VAN HUNG',
+  qr_image_url: null,
+};
+
+// UC18: Lấy hướng dẫn chuyển khoản theo loại booking.
+export async function getBookingPaymentInstructionsApi({ bookingId, bookingType, totalSlots = 1 }) {
+  if (USE_MOCK_BOOKING) {
+    await new Promise((r) => setTimeout(r, 200));
+    let activeBooking = {};
+    try {
+      activeBooking = JSON.parse(sessionStorage.getItem('active_holding_booking') || '{}');
+    } catch {
+      // Ignore invalid session data
+    }
+    return {
+      success: true,
+      code: 200,
+      data: {
+        ...MOCK_PAYMENT_INFO,
+        ...(activeBooking.booking_id === bookingId ? activeBooking.bank_info : {}),
+      },
+    };
+  }
+
+  let res;
+  if (isPackagePayment({ bookingType, totalSlots })) {
+    res = await axios.get(`/api/booking-packages/${bookingId}/payment-instructions`);
+  } else {
+    res = await axios.get(`/api/bookings/${bookingId}/payment-instructions`);
+  }
+  return res.data;
+}
+
+// UC18: Lấy QR thanh toán theo loại booking.
+export async function getBookingPaymentQrApi({ bookingId, bookingType, totalSlots = 1 }) {
+  if (USE_MOCK_BOOKING) {
+    await new Promise((r) => setTimeout(r, 200));
+    return { success: true, code: 200, data: { qr_image_url: null } };
+  }
+
+  let res;
+  if (isPackagePayment({ bookingType, totalSlots })) {
+    res = await axios.get(`/api/booking-packages/${bookingId}/payment-instructions/qr`);
+  } else {
+    res = await axios.get(`/api/bookings/${bookingId}/payment-instructions/qr`);
+  }
+  return res.data;
+}
+
+// UC18: Tải lên ảnh chứng từ theo loại booking.
+export async function uploadPaymentProofApi({
+  bookingId,
+  bookingType,
+  totalSlots = 1,
+  file,
+  note = '',
+  resubmitAttemptsLeft = 3,
+}) {
   if (USE_MOCK_BOOKING) {
     await new Promise((r) => setTimeout(r, 400));
 
@@ -568,12 +635,22 @@ export async function uploadPaymentProofApi({ bookingId, file, note = '', resubm
     formData.append('note', note.trim());
   }
 
-  const res = await axios.post(`/api/v1/bookings/${bookingId}/payment-proof`, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-      Authorization: 'Bearer ' + localStorage.getItem('token'),
-    },
-  });
+  let res;
+  if (isPackagePayment({ bookingType, totalSlots })) {
+    res = await axios.post(`/api/booking-packages/${bookingId}/payments`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        Authorization: 'Bearer ' + localStorage.getItem('token'),
+      },
+    });
+  } else {
+    res = await axios.post(`/api/v1/bookings/${bookingId}/payment-proof`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        Authorization: 'Bearer ' + localStorage.getItem('token'),
+      },
+    });
+  }
   return res.data;
 }
 
