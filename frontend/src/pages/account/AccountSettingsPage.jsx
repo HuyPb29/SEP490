@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import Header from '../../components/layout/Header';
 import { changePasswordApi } from '../../api/authApi';
 import styles from '../auth/AuthPage.module.css';
 
@@ -55,8 +56,10 @@ export default function AccountSettingsPage() {
   };
 
   return (
-    <div className={styles.splitLayout}>
-      <aside className={styles.leftPanel}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f8fafc' }}>
+      <Header />
+      <div className={styles.splitLayout} style={{ flex: 1 }}>
+        <aside className={styles.leftPanel}>
         <div className={styles.brandHeader}>
           <span className={styles.brandIcon}>⚡</span>
           <span className={styles.brandName}>Courtly</span>
@@ -138,6 +141,7 @@ export default function AccountSettingsPage() {
           <p className={styles.cardFooterText}><Link className={styles.greenLinkBold} to="/">Back to locations</Link></p>
         </section>
       </main>
+      </div>
     </div>
   );
 }

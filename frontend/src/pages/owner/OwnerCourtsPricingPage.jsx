@@ -55,7 +55,8 @@ function getErrorMessage(err) {
 }
 
 export default function OwnerCourtsPricingPage({ embedded = false }) {
-  const { id: urlId } = embedded ? useParams() : { id: undefined }
+  const params = useParams()
+  const urlId = embedded ? params.id : undefined
   const derivedFacilityId = urlId === '2' ? 'green-shuttle-club' : 'smash-arena'
   const [selectedFacilityId, setSelectedFacilityId] = useState(
     embedded ? derivedFacilityId : 'smash-arena',

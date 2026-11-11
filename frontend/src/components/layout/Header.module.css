@@ -1,4 +1,4 @@
-/* Header.module.css — Shared top navigation bar */
+/* Header.module.css — Shared top navigation bar across all pages */
 
 .navbar {
   position: sticky;
@@ -15,6 +15,8 @@
 
 .navContainer {
   width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
   padding: 0 24px;
   display: flex;
   align-items: center;
@@ -69,37 +71,85 @@
   letter-spacing: 0.4px;
 }
 
-/* ── Nav Links ───────────────────────────────────────────────────────────── */
+/* ── Nav Links (Active: green text + green underline indicator) ─────────── */
 
 .navLinks {
+  height: 58px;
   display: flex;
   align-items: center;
-  gap: 24px;
-  font-size: 13.5px;
-  font-weight: 550;
+  gap: 26px;
 }
 
 .navLinks a {
-  text-decoration: none;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
   color: #475569;
-  transition: color 120ms ease;
+  font-size: 13.5px;
+  font-weight: 550;
+  text-decoration: none;
+  padding: 0 4px;
+  transition: all 120ms ease;
+  white-space: nowrap;
 }
 
 .navLinks a:hover {
-  color: #0f172a;
+  color: #16a34a;
 }
 
+.navLinks a.activeLink,
 .activeLink {
   color: #16a34a !important;
-  font-weight: 700;
+  border-bottom-color: #16a34a !important;
+  font-weight: 700 !important;
 }
 
-/* ── User Area ───────────────────────────────────────────────────────────── */
+/* ── User Area & Auth Buttons ────────────────────────────────────────────── */
 
 .userArea {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.authButtons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.loginBtn {
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.loginBtn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.registerBtn {
+  background: #16a34a;
+  color: #ffffff;
+  border: none;
+  padding: 7px 16px;
+  border-radius: 7px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.registerBtn:hover {
+  background: #15803d;
 }
 
 .bellBtn {
@@ -206,6 +256,9 @@
   font-size: 13px;
   font-weight: 700;
   color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dropdownRole {
@@ -255,7 +308,7 @@
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .navLinks {
     display: none;
   }

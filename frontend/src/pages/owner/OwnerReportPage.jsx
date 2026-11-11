@@ -82,7 +82,8 @@ function formatCurrency(value) {
  */
 export default function OwnerReportPage({ embedded = false }) {
   // When embedded, use URL :id to pick the report; fall back to 'smash-arena'
-  const { id: urlId } = embedded ? useParams() : { id: undefined }
+  const params = useParams()
+  const urlId = embedded ? params.id : undefined
   const derivedFacilityId = urlId === '2' ? 'green-shuttle-club' : 'smash-arena'
 
   const [selectedFacilityId, setSelectedFacilityId] = useState(

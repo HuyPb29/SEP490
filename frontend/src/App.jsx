@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, useLocation, useParams, Navigate } from 'react-router-dom'
 import api from './api'
+import AuthProvider from './contexts/AuthContext'
+import ProtectedRoute from './routes/ProtectedRoute'
 
 import LocationSearchPage from './pages/location/LocationSearchPage'
 import LocationDetailPage from './pages/location/LocationDetailPage'
@@ -37,7 +39,9 @@ const DEFAULT_OWNER_LOCATION_ID = 1
 export default function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </BrowserRouter>
   )
 }
@@ -84,6 +88,8 @@ function AppContent() {
       <Routes>
         {/* UC11: Tìm kiếm địa điểm (GET /api/v1/facilities/search) */}
         <Route path="/" element={<LocationSearchPage />} />
+        <Route path="/locations" element={<LocationSearchPage />} />
+        <Route path="/register-service" element={<Navigate to="/owner" replace />} />
 
         {/* UC12-13: Location details and shared booking flow. */}
         <Route path="/locations/:id" element={<LocationDetailPage />} />
@@ -96,9 +102,23 @@ function AppContent() {
         <Route path="/open-matches" element={<OpenMatchesPage />} />
 
         {/* UC34: Staff dashboard mock preview */}
-        <Route path="/staff/dashboard" element={<StaffDashboardPage />} />
+        <Route
+          path="/staff/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['STAFF', 'OWNER', 'ADMIN']}>
+              <StaffDashboardPage />
+            </ProtectedRoute>
+          }
+        />
         {/* UC19: Staff payment confirmation mock preview */}
-        <Route path="/staff/confirm-payments" element={<StaffConfirmPaymentPage />} />
+        <Route
+          path="/staff/confirm-payments"
+          element={
+            <ProtectedRoute allowedRoles={['STAFF', 'OWNER', 'ADMIN']}>
+              <StaffConfirmPaymentPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* ── Legacy Owner routes — redirect to new :id-based structure ── */}
         {/* UC35: redirect to new layout (default location 1) */}
@@ -109,7 +129,14 @@ function AppContent() {
         <Route path="/owner" element={<Navigate to={`/owner/locations/${DEFAULT_OWNER_LOCATION_ID}/reports`} replace />} />
 
         {/* ── Owner Portal (new layout with sidebar) ── */}
-        <Route path="/owner/locations/:id" element={<OwnerLayout />}>
+        <Route
+          path="/owner/locations/:id"
+          element={
+            <ProtectedRoute allowedRoles={['OWNER', 'ADMIN']}>
+              <OwnerLayout />
+            </ProtectedRoute>
+          }
+        >
           {/* Default tab: redirect to reports */}
           <Route index element={<Navigate to="reports" replace />} />
 
@@ -131,13 +158,41 @@ function AppContent() {
         </Route>
 
         {/* UC06: Admin locations mock preview */}
-        <Route path="/admin/locations" element={<AdminLocationsPage />} />
+        <Route
+          path="/admin/locations"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminLocationsPage />
+            </ProtectedRoute>
+          }
+        />
         {/* UC04: Admin user accounts mock preview */}
-        <Route path="/admin/accounts" element={<AdminAccountsPage />} />
+        <Route
+          path="/admin/accounts"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminAccountsPage />
+            </ProtectedRoute>
+          }
+        />
         {/* UC24: Admin violating vouchers mock preview */}
-        <Route path="/admin/violating-vouchers" element={<AdminViolatingVouchersPage />} />
+        <Route
+          path="/admin/violating-vouchers"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminViolatingVouchersPage />
+            </ProtectedRoute>
+          }
+        />
         {/* UC32: Admin violating reviews mock preview */}
-        <Route path="/admin/violating-reviews" element={<AdminViolatingReviewsPage />} />
+        <Route
+          path="/admin/violating-reviews"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminViolatingReviewsPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
         <Route path="/login" element={<AuthPage />} />

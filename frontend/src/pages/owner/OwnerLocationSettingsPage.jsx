@@ -117,10 +117,10 @@ export default function OwnerLocationSettingsPage() {
 
   // ── Load settings ───────────────────────────────────────────────────────────
   useEffect(() => {
-    setLoading(true)
-    setPageErr('')
+    let isCancelled = false
     getLocationSettings(locationId)
       .then((data) => {
+        if (isCancelled) return
         setForm({
           facility_name:   data.facility_name   ?? '',
           address:         data.address         ?? '',
@@ -144,8 +144,16 @@ export default function OwnerLocationSettingsPage() {
         })
         if (data.qr_image_url) setQrPreview(data.qr_image_url)
       })
-      .catch((err) => setPageErr(getErrMsg(err)))
-      .finally(() => setLoading(false))
+      .catch((err) => {
+        if (isCancelled) return
+        setPageErr(getErrMsg(err))
+      })
+      .finally(() => {
+        if (!isCancelled) setLoading(false)
+      })
+    return () => {
+      isCancelled = true
+    }
   }, [locationId])
 
   function set(field, value) {

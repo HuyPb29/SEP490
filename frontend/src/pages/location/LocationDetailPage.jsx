@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import Header from '../../components/layout/Header';
 import { getLocationDetailAndSchedule } from '../../api/locationApi';
 import BookingModeSelector from '../../components/booking/BookingModeSelector';
 import CourtScheduleGrid from '../../components/booking/CourtScheduleGrid';
@@ -266,26 +267,7 @@ export default function LocationDetailPage() {
 
   return (
     <div className={styles.pageWrapper}>
-      <header className={styles.navbar}>
-        <div className={styles.navContainer}>
-          <div className={styles.brand} onClick={() => navigate('/')}>
-            <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>Courtly</span>
-          </div>
-          <nav className={styles.navLinks}>
-            <Link to="/" className={styles.activeLink}>Find Court</Link>
-            <Link to="/open-matches">Open Matches</Link>
-            <Link to="/my-bookings">My Bookings</Link>
-          </nav>
-          <div className={styles.userArea}>
-            <button type="button" className={styles.bellBtn} aria-label="Notifications">🔔</button>
-            <div className={styles.userProfile}>
-              <span className={styles.avatar}>MA</span>
-              <span className={styles.userName}>Minh Anh</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header />
 
       <main className={styles.mainContainer}>
         <button type="button" className={styles.backButton} onClick={() => navigate('/')}>

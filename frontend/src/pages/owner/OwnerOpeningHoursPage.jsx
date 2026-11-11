@@ -57,11 +57,10 @@ export default function OwnerOpeningHoursPage() {
   const [pendingPayload, setPendingPayload] = useState(null)
 
   useEffect(() => {
-    setLoading(true)
-    setPageError('')
-    setErrorMessage('')
+    let isCancelled = false
     getOpeningHoursApi(locationId)
       .then((data) => {
+        if (isCancelled) return
         if (data?.standard_hours && Array.isArray(data.standard_hours)) {
           setStandardHours(data.standard_hours)
         } else {
@@ -77,9 +76,15 @@ export default function OwnerOpeningHoursPage() {
         setExceptionDates(data?.exception_dates || [])
       })
       .catch((err) => {
+        if (isCancelled) return
         setPageError(err?.response?.data?.message || err?.message || 'Failed to load opening hours.')
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!isCancelled) setLoading(false)
+      })
+    return () => {
+      isCancelled = true
+    }
   }, [locationId])
 
   function showToast(msg) {

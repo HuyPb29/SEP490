@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
+import Header from '../../components/layout/Header'
 import styles from './MultiSessionBookingPage.module.css'
 
 const WEEKDAYS = [
@@ -36,7 +37,6 @@ const toDateKey = (date) => {
 const formatCurrency = (amount) => `${new Intl.NumberFormat('en-US').format(amount)} VND`
 
 export default function MultiSessionBookingPage() {
-  const navigate = useNavigate()
   const location = useLocation()
   const facilityName = location.state?.facilityName || 'Smash Arena'
   const [mode, setMode] = useState('recurring')
@@ -153,23 +153,7 @@ export default function MultiSessionBookingPage() {
 
   return (
     <div className={styles.pageWrapper}>
-      <header className={styles.navbar}>
-        <div className={styles.navContainer}>
-          <button type="button" className={styles.brand} onClick={() => navigate('/')}>
-            <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>Courtly</span>
-          </button>
-          <nav className={styles.navLinks} aria-label="Main navigation">
-            <Link to="/" className={styles.activeLink}>Find Courts</Link>
-            <Link to="/open-matches">Open Matches</Link>
-            <Link to="/my-bookings">My Bookings</Link>
-          </nav>
-          <div className={styles.userProfile}>
-            <span className={styles.avatar}>MA</span>
-            <span className={styles.userName}>Minh Anh</span>
-          </div>
-        </div>
-      </header>
+      <Header />
 
       <main className={styles.mainContainer}>
         <h1 className={styles.pageTitle}>Multi-Session Booking · {facilityName}</h1>

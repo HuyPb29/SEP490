@@ -41,21 +41,21 @@ export default function OwnerMaintenancePage() {
   const [rejectionNote, setRejectionNote] = useState('')
 
   useEffect(() => {
-    loadRequests()
-  }, [locationId])
-
-  async function loadRequests() {
-    setLoading(true)
-    setPageError('')
-    try {
-      const data = await getMaintenanceRequestsApi(locationId)
-      setRequests(Array.isArray(data) ? data : [])
-    } catch (err) {
-      setPageError(err?.response?.data?.message || err?.message || 'Failed to load maintenance requests.')
-    } finally {
-      setLoading(false)
+    let isCancelled = false
+    getMaintenanceRequestsApi(locationId)
+      .then((data) => {
+        if (!isCancelled) setRequests(Array.isArray(data) ? data : [])
+      })
+      .catch((err) => {
+        if (!isCancelled) setPageError(err?.response?.data?.message || err?.message || 'Failed to load maintenance requests.')
+      })
+      .finally(() => {
+        if (!isCancelled) setLoading(false)
+      })
+    return () => {
+      isCancelled = true
     }
-  }
+  }, [locationId])
 
   function showToast(msg) {
     setToastMessage(msg)

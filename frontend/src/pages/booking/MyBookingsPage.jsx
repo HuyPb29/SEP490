@@ -1,7 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Header from '../../components/layout/Header';
 import { getMyBookingsApi, cancelBookingApi, cancelBookingOrderApi } from '../../api/bookingApi';
 import styles from './MyBookingsPage.module.css';
+
+function calculateDefaultHoldExpiry(isPackage) {
+  return new Date(Date.now() + (isPackage ? 15 : 10) * 60 * 1000).toISOString();
+}
 
 // Phân nhóm 10 trạng thái chính thức theo chuẩn SRS v18 (Sheet Trang_thai)
 const PENDING_STATUSES = ['holding', 'resubmit_requested', 'awaiting_confirmation'];
@@ -66,41 +71,43 @@ export default function MyBookingsPage() {
   // State theo dõi các booking đã đánh giá (DR13 / BR21: chỉ đánh giá 1 lần)
   const [reviewedIds, setReviewedIds] = useState([]);
 
-  const loadBookings = async () => {
-    setLoading(true);
-    setFetchError('');
-    try {
-      const res = await getMyBookingsApi({ tab: 'all' });
-      if (res?.success) {
-        // VÁ LỖI HOLDING FLASH: Ép trạng thái expired ngay từ lúc nhận dữ liệu nếu đã quá giờ
-        const currentNow = Date.now();
-        const sanitizedItems = (res.data.items || []).map((item) => {
-          if (item.status === 'holding' && item.hold_expires_at) {
-            const left = Math.floor((new Date(item.hold_expires_at).getTime() - currentNow) / 1000);
-            if (left <= 0) {
-              return {
-                ...item,
-                status: 'expired',
-                status_name: 'Expired',
-                sub_note: 'Unpaid within holding time',
-              };
-            }
-          }
-          return item;
-        });
-        setBookings(sanitizedItems);
-      } else {
-        setFetchError('Could not load your bookings.');
-      }
-    } catch (err) {
-      setFetchError(err.response?.data?.message || err.message || 'Error loading bookings.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadBookings();
+    let isCancelled = false;
+    getMyBookingsApi({ tab: 'all' })
+      .then((res) => {
+        if (isCancelled) return;
+        if (res?.success) {
+          // VÁ LỖI HOLDING FLASH: Ép trạng thái expired ngay từ lúc nhận dữ liệu nếu đã quá giờ
+          const currentNow = Date.now();
+          const sanitizedItems = (res.data.items || []).map((item) => {
+            if (item.status === 'holding' && item.hold_expires_at) {
+              const left = Math.floor((new Date(item.hold_expires_at).getTime() - currentNow) / 1000);
+              if (left <= 0) {
+                return {
+                  ...item,
+                  status: 'expired',
+                  status_name: 'Expired',
+                  sub_note: 'Unpaid within holding time',
+                };
+              }
+            }
+            return item;
+          });
+          setBookings(sanitizedItems);
+        } else {
+          setFetchError('Could not load your bookings.');
+        }
+      })
+      .catch((err) => {
+        if (isCancelled) return;
+        setFetchError(err.response?.data?.message || err.message || 'Error loading bookings.');
+      })
+      .finally(() => {
+        if (!isCancelled) setLoading(false);
+      });
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   // BR03: Đếm lùi thời gian thực cho các booking đang giữ chỗ (holding)
@@ -177,43 +184,46 @@ export default function MyBookingsPage() {
   };
 
   // Điều hướng sang UC18 khi bấm "Continue Payment" (holding) hoặc "Resubmit Receipt" (resubmit_requested)
-  const handleGoToPayment = (booking) => {
-    setFeedbackBanner('');
+  const handleGoToPayment = useCallback(
+    (booking) => {
+      setFeedbackBanner('');
 
-    // BR34 / P06 / MSG52: Chặn nếu đã hết lượt gửi lại chứng từ
-    if (booking.status === 'resubmit_requested' && (booking.resubmit_attempts_left ?? 0) <= 0) {
-      setFeedbackBanner('MSG52: You have reached the maximum resubmission attempts or the deadline has passed.');
-      return;
-    }
+      // BR34 / P06 / MSG52: Chặn nếu đã hết lượt gửi lại chứng từ
+      if (booking.status === 'resubmit_requested' && (booking.resubmit_attempts_left ?? 0) <= 0) {
+        setFeedbackBanner('MSG52: You have reached the maximum resubmission attempts or the deadline has passed.');
+        return;
+      }
 
-    const isPackageBooking =
-      booking.booking_type === 'recurring' ||
-      booking.booking_type === 'package' ||
-      Number(booking.total_slots ?? 0) > 1;
-    const payloadForPayment = {
-      booking_id: booking.booking_id ?? booking.id,
-      booking_code: booking.booking_code,
-      booking_type: booking.booking_type || 'single',
-      total_slots: booking.total_slots ?? 1,
-      status: booking.status,
-      hold_expires_at:
-        booking.hold_expires_at || new Date(Date.now() + (isPackageBooking ? 15 : 10) * 60 * 1000).toISOString(),
-      resubmit_attempts_left: booking.resubmit_attempts_left ?? 3,
-      pricing_summary: {
-        final_amount: booking.final_amount,
-      },
-      bank_info: booking.bank_info || {
-        bank_name: 'Vietcombank',
-        bank_account_number: '0011 0023 4567',
-        bank_account_holder: 'NGUYEN VAN HUNG',
-        qr_image_url: null,
-        transfer_content: `${booking.booking_code} 0987654321`,
-      },
-    };
+      const isPackageBooking =
+        booking.booking_type === 'recurring' ||
+        booking.booking_type === 'package' ||
+        Number(booking.total_slots ?? 0) > 1;
+      const payloadForPayment = {
+        booking_id: booking.booking_id ?? booking.id,
+        booking_code: booking.booking_code,
+        booking_type: booking.booking_type || 'single',
+        total_slots: booking.total_slots ?? 1,
+        status: booking.status,
+        hold_expires_at:
+          booking.hold_expires_at || calculateDefaultHoldExpiry(isPackageBooking),
+        resubmit_attempts_left: booking.resubmit_attempts_left ?? 3,
+        pricing_summary: {
+          final_amount: booking.final_amount,
+        },
+        bank_info: booking.bank_info || {
+          bank_name: 'Vietcombank',
+          bank_account_number: '0011 0023 4567',
+          bank_account_holder: 'NGUYEN VAN HUNG',
+          qr_image_url: null,
+          transfer_content: `${booking.booking_code} 0987654321`,
+        },
+      };
 
-    sessionStorage.setItem('active_holding_booking', JSON.stringify(payloadForPayment));
-    navigate('/booking/payment');
-  };
+      sessionStorage.setItem('active_holding_booking', JSON.stringify(payloadForPayment));
+      navigate('/booking/payment');
+    },
+    [navigate]
+  );
 
   // BR07 / MSG66: Xác nhận hủy booking (Không hoàn tiền, không trả lại điểm & voucher)
   const handleConfirmCancel = async () => {
@@ -419,27 +429,7 @@ export default function MyBookingsPage() {
   return (
     <div className={styles.pageWrapper}>
       {/* Top Navbar */}
-      <header className={styles.navbar}>
-        <div className={styles.navContainer}>
-          <div className={styles.brand} onClick={() => navigate('/')}>
-            <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>Courtly</span>
-          </div>
-
-          <nav className={styles.navLinks}>
-            <Link to="/">Find Courts</Link>
-            <Link to="/open-matches">Open Matches</Link>
-            <Link to="/my-bookings" className={styles.activeLink}>
-              My Bookings
-            </Link>
-          </nav>
-
-          <div className={styles.userProfile}>
-            <span className={styles.avatar}>MA</span>
-            <span className={styles.userName}>Minh Anh</span>
-          </div>
-        </div>
-      </header>
+      <Header />
 
       <main className={styles.mainContainer}>
         {/* Header Row: Tiêu đề + Nút Đặt nhiều buổi */}

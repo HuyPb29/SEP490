@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
 import {
   loginApi,
   registerPlayerApi,
@@ -14,6 +15,7 @@ import styles from './AuthPage.module.css';
 export default function AuthPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { login } = useAuth();
 
   // Tab: 'login' (UC02) | 'register' (UC01) | 'otp' (DR25)
   const [activeTab, setActiveTab] = useState(location.state?.isSignUp ? 'register' : 'login');
@@ -33,7 +35,14 @@ export default function AuthPage() {
     phone_number: '',
     password: '',
   });
-  const [registerError, setRegisterError] = useState('');
+  const [registerErrors, setRegisterErrors] = useState({
+    username: '',
+    fullName: '',
+    email: '',
+    phone: '',
+    password: '',
+  });
+  const [registerApiError, setRegisterApiError] = useState('');
   const [registerLoading, setRegisterLoading] = useState(false);
 
   // State DR25: Xác thực OTP & Cooldown 60s
@@ -92,12 +101,10 @@ export default function AuthPage() {
       });
 
       if (response?.success) {
-        // Lưu JWT token và thông tin người dùng trả về từ backend.
-        localStorage.setItem('bms_access_token', response.data.access_token);
-        localStorage.removeItem('bms_refresh_token');
-        localStorage.setItem('bms_user_info', JSON.stringify(response.data.user_info));
-        window.dispatchEvent(new Event('bms-auth-change'));
-        navigate('/');
+        // Save auth session via useAuth / authStorage
+        login(response.data.access_token, response.data.user_info);
+        const fromPath = location.state?.from || '/';
+        navigate(fromPath);
       }
     } catch (error) {
       const code = error.response?.data?.code || error.code;
@@ -127,23 +134,25 @@ export default function AuthPage() {
 
   // UC01: Kiểm tra dữ liệu đăng ký theo chuẩn SRS v18
   const validateRegisterForm = () => {
+    const errors = {};
     const { username, full_name, email, phone_number, password } = registerForm;
 
     // DR22: 4-20 ký tự, bắt đầu bằng chữ thường a-z, chỉ chứa a-z, 0-9, ., _
     if (!/^[a-z][a-z0-9._]{3,19}$/.test(username.trim())) {
-      return 'Username must be 4-20 characters, start with a lowercase letter, and contain only letters, numbers, periods, or underscores.';
+      errors.username =
+        'Username must be 4-20 characters, start with a lowercase letter, and contain only letters, numbers, periods, or underscores.';
     }
     // DR24: Họ tên 2-50 ký tự, chỉ chứa chữ cái và khoảng trắng
     if (!/^[\p{L}\s]{2,50}$/u.test(full_name.trim())) {
-      return 'Full name must be 2-50 characters and contain only letters and spaces.';
+      errors.fullName = 'Full name must be 2-50 characters and contain only letters and spaces.';
     }
     // DR17: Định dạng email hợp lệ
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return 'Enter a valid email address.';
+      errors.email = 'Enter a valid email address.';
     }
     // DR01: Số điện thoại đúng 10 chữ số, bắt đầu bằng số 0
     if (!/^0\d{9}$/.test(phone_number.trim())) {
-      return 'Phone number must contain 10 digits and start with 0.';
+      errors.phone = 'Phone number must contain 10 digits and start with 0.';
     }
     // DR23: Mật khẩu 8-32 ký tự, ít nhất 1 chữ cái, 1 chữ số, không khoảng trắng
     if (
@@ -153,18 +162,27 @@ export default function AuthPage() {
       !/\d/.test(password) ||
       /\s/.test(password)
     ) {
-      return 'Password must be 8-32 characters, include at least one letter and one number, and contain no spaces.';
+      errors.password =
+        'Password must be 8-32 characters, include at least one letter and one number, and contain no spaces.';
     }
-    return '';
+    return errors;
   };
 
   // UC01: Xử lý đăng ký Player (POST /api/v1/auth/register/player)
   const handleRegisterSubmit = async (event) => {
     event.preventDefault();
-    setRegisterError('');
-    const validationError = validateRegisterForm();
-    if (validationError) {
-      setRegisterError(validationError);
+    setRegisterErrors({
+      username: '',
+      fullName: '',
+      email: '',
+      phone: '',
+      password: '',
+    });
+    setRegisterApiError('');
+
+    const errors = validateRegisterForm();
+    if (Object.keys(errors).length > 0) {
+      setRegisterErrors(errors);
       return;
     }
 
@@ -181,7 +199,7 @@ export default function AuthPage() {
         setActiveTab('otp');
       }
     } catch (error) {
-      setRegisterError(
+      setRegisterApiError(
         error.response?.data?.message || error.message || 'Could not create your account.'
       );
     } finally {
@@ -323,7 +341,9 @@ export default function AuthPage() {
 
   const updateRegisterField = (field, value) => {
     setRegisterForm((current) => ({ ...current, [field]: value }));
-    setRegisterError('');
+    const errorKey = field === 'full_name' ? 'fullName' : field === 'phone_number' ? 'phone' : field;
+    setRegisterErrors((prev) => ({ ...prev, [errorKey]: '' }));
+    setRegisterApiError('');
   };
 
   return (
@@ -362,15 +382,6 @@ export default function AuthPage() {
               onClick={() => setActiveTab('register')}
             >
               Sign up
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'otp'}
-              className={`${styles.tabBtn} ${activeTab === 'otp' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('otp')}
-            >
-              Verify email
             </button>
           </div>
           )}
@@ -553,18 +564,28 @@ export default function AuthPage() {
           {activeTab === 'register' && (
             <form className={styles.formContainer} onSubmit={handleRegisterSubmit}>
               <h2 className={styles.cardTitle}>Create your account</h2>
+              {registerApiError && (
+                <p className={styles.errorText} role="alert">
+                  {registerApiError}
+                </p>
+              )}
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="register-username">
                   Username
                 </label>
                 <input
                   id="register-username"
-                  className={styles.input}
+                  className={`${styles.input} ${registerErrors.username ? styles.inputError : ''}`}
                   value={registerForm.username}
                   onChange={(event) => updateRegisterField('username', event.target.value)}
                   autoComplete="username"
                   placeholder="e.g. player_01"
                 />
+                {registerErrors.username && (
+                  <p className={styles.errorText} role="alert">
+                    {registerErrors.username}
+                  </p>
+                )}
               </div>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="register-name">
@@ -572,12 +593,17 @@ export default function AuthPage() {
                 </label>
                 <input
                   id="register-name"
-                  className={styles.input}
+                  className={`${styles.input} ${registerErrors.fullName ? styles.inputError : ''}`}
                   value={registerForm.full_name}
                   onChange={(event) => updateRegisterField('full_name', event.target.value)}
                   autoComplete="name"
                   placeholder="e.g. Nguyen Minh Anh"
                 />
+                {registerErrors.fullName && (
+                  <p className={styles.errorText} role="alert">
+                    {registerErrors.fullName}
+                  </p>
+                )}
               </div>
               <div className={styles.twoColRow}>
                 <div className={styles.formGroup}>
@@ -586,13 +612,18 @@ export default function AuthPage() {
                   </label>
                   <input
                     id="register-email"
-                    className={styles.input}
+                    className={`${styles.input} ${registerErrors.email ? styles.inputError : ''}`}
                     type="email"
                     value={registerForm.email}
                     onChange={(event) => updateRegisterField('email', event.target.value)}
                     autoComplete="email"
                     placeholder="minhanh@gmail.com"
                   />
+                  {registerErrors.email && (
+                    <p className={styles.errorText} role="alert">
+                      {registerErrors.email}
+                    </p>
+                  )}
                 </div>
                 <div className={styles.formGroup}>
                   <label className={styles.label} htmlFor="register-phone">
@@ -600,13 +631,18 @@ export default function AuthPage() {
                   </label>
                   <input
                     id="register-phone"
-                    className={styles.input}
+                    className={`${styles.input} ${registerErrors.phone ? styles.inputError : ''}`}
                     type="tel"
                     value={registerForm.phone_number}
                     onChange={(event) => updateRegisterField('phone_number', event.target.value)}
                     autoComplete="tel"
                     placeholder="0912345678"
                   />
+                  {registerErrors.phone && (
+                    <p className={styles.errorText} role="alert">
+                      {registerErrors.phone}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className={styles.formGroup}>
@@ -615,14 +651,18 @@ export default function AuthPage() {
                 </label>
                 <input
                   id="register-password"
-                  className={`${styles.input} ${registerError ? styles.inputError : ''}`}
+                  className={`${styles.input} ${registerErrors.password ? styles.inputError : ''}`}
                   type="password"
                   value={registerForm.password}
                   onChange={(event) => updateRegisterField('password', event.target.value)}
                   autoComplete="new-password"
                   placeholder="8-32 chars, letters & numbers"
                 />
-                {registerError && <p className={styles.errorText}>{registerError}</p>}
+                {registerErrors.password && (
+                  <p className={styles.errorText} role="alert">
+                    {registerErrors.password}
+                  </p>
+                )}
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={registerLoading}>
                 {registerLoading ? 'Creating account...' : 'Create account and get code'}

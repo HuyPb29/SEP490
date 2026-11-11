@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import Header from '../../components/layout/Header';
 import {
   getBookingPaymentInstructionsApi,
   getBookingPaymentQrApi,
@@ -272,27 +273,7 @@ export default function BookingPaymentPage() {
   return (
     <div className={styles.pageWrapper}>
       {/* Top Navbar */}
-      <header className={styles.navbar}>
-        <div className={styles.navContainer}>
-          <div className={styles.brand} onClick={() => navigate('/')}>
-            <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>Courtly</span>
-          </div>
-
-          <nav className={styles.navLinks}>
-            <Link to="/">Find Courts</Link>
-            <Link to="/open-matches">Open Matches</Link>
-            <Link to="/my-bookings" className={styles.activeLink}>
-              My Bookings
-            </Link>
-          </nav>
-
-          <div className={styles.userProfile}>
-            <span className={styles.avatar}>MA</span>
-            <span className={styles.userName}>Minh Anh</span>
-          </div>
-        </div>
-      </header>
+      <Header />
 
       <main className={styles.mainContainer}>
         {/* BR03 / P02 / MSG32 / MSG33: Thanh đếm ngược thời gian giữ chỗ 5 phút */}

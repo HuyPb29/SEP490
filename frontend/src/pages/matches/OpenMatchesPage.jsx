@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import Header from '../../components/layout/Header'
 import styles from './OpenMatchesPage.module.css'
 
 const INITIAL_MATCHES = [
@@ -153,23 +153,7 @@ export default function OpenMatchesPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.navbar}>
-        <div className={styles.navInner}>
-          <Link className={styles.brand} to="/" aria-label="Courtly home">
-            <span className={styles.brandIcon}>⚡</span>
-            <span>Courtly</span>
-          </Link>
-          <nav className={styles.navLinks} aria-label="Main navigation">
-            <Link to="/">Find Courts</Link>
-            <Link to="/open-matches" className={styles.activeLink}>Open Matches</Link>
-            <Link to="/my-bookings">My Bookings</Link>
-          </nav>
-          <div className={styles.profile}>
-            <span className={styles.avatar}>MA</span>
-            <span className={styles.profileName}>Minh Anh</span>
-          </div>
-        </div>
-      </header>
+      <Header />
 
       <main className={styles.main}>
         <div className={styles.pageHeading}>

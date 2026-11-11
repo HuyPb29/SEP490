@@ -312,12 +312,20 @@ export default function OwnerStaffPage() {
 
   // ── Load staff ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    setLoading(true)
-    setPageError('')
+    let isCancelled = false
     getStaffByLocation(locationId)
-      .then((data) => dispatch({ type: 'SET', payload: data }))
-      .catch((err) => setPageError(getErrMsg(err)))
-      .finally(() => setLoading(false))
+      .then((data) => {
+        if (!isCancelled) dispatch({ type: 'SET', payload: data })
+      })
+      .catch((err) => {
+        if (!isCancelled) setPageError(getErrMsg(err))
+      })
+      .finally(() => {
+        if (!isCancelled) setLoading(false)
+      })
+    return () => {
+      isCancelled = true
+    }
   }, [locationId])
 
   function showToast(msg) {

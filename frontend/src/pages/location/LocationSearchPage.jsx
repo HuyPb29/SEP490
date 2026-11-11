@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import Header from '../../components/layout/Header';
 import { searchLocations } from '../../api/locationApi';
 import styles from './LocationSearchPage.module.css';
 
-function getSavedUserInfo() {
-  const savedUserInfo = localStorage.getItem('bms_user_info');
-  if (!savedUserInfo) return null;
-
-  try {
-    return JSON.parse(savedUserInfo);
-  } catch (error) {
-    console.error('Error reading saved user information:', error);
-    return null;
-  }
+// Lấy đúng ngày hôm nay theo giờ địa phương
+function getLocalToday() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // Bản đồ CSS tĩnh: quy đổi tọa độ về % trong khung, cách mép 25% để nhãn tên không bị cắt
@@ -35,32 +33,13 @@ export default function LocationSearchPage() {
   const navigate = useNavigate();
   const routeLocation = useLocation();
   const [keyword, setKeyword] = useState('Cau Giay');
-  // Lấy đúng giờ Việt Nam (Local Time)
-  const getLocalToday = () => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-  const [playDate, setPlayDate] = useState(getLocalToday());
+  const [playDate, setPlayDate] = useState(() => getLocalToday());
   const [facilities, setFacilities] = useState([]);
   const [sortBy, setSortBy] = useState('nearest'); // 'nearest' | 'rating'
   const [selectedId, setSelectedId] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [usingGps, setUsingGps] = useState(false);
-  const [userInfo, setUserInfo] = useState(getSavedUserInfo);
   const [isMockFallback, setIsMockFallback] = useState(false);
-
-  useEffect(() => {
-    const syncUserInfo = () => setUserInfo(getSavedUserInfo());
-    window.addEventListener('bms-auth-change', syncUserInfo);
-    window.addEventListener('storage', syncUserInfo);
-    return () => {
-      window.removeEventListener('bms-auth-change', syncUserInfo);
-      window.removeEventListener('storage', syncUserInfo);
-    };
-  }, []);
   const [position, setPosition] = useState(null);
   const [loadError, setLoadError] = useState(false);
 
@@ -95,7 +74,41 @@ export default function LocationSearchPage() {
   };
 
   useEffect(() => {
-    fetchList('');
+    let isCancelled = false;
+    async function init() {
+      try {
+        const res = await searchLocations({ keyword: '', userLat: null, userLng: null });
+        if (isCancelled) return;
+        if (!res?.success) {
+          throw new Error('Location search returned an unsuccessful response.');
+        }
+        const locations = Array.isArray(res.data) ? res.data : res.data?.items;
+        if (!Array.isArray(locations)) {
+          throw new Error('Unexpected locations response: expected an array in data.');
+        }
+        setFacilities(
+          locations.map((loc) => ({
+            ...loc,
+            facility_id: loc.id ?? loc.facility_id,
+            facility_name: loc.name ?? loc.facility_name,
+            distance_km: loc.distanceKm ?? loc.distance_km,
+          }))
+        );
+        setIsMockFallback(Boolean(res.isFallback));
+      } catch (err) {
+        if (isCancelled) return;
+        console.error('Error loading locations:', err);
+        setFacilities([]);
+        setIsMockFallback(false);
+        setLoadError(true);
+      } finally {
+        if (!isCancelled) setLoading(false);
+      }
+    }
+    init();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   const handleUseMyLocation = () => {
@@ -145,79 +158,10 @@ export default function LocationSearchPage() {
       state: { playDate, bookingMode: routeLocation.state?.bookingMode || 'single' },
     });
   };
-  const userDisplayName = userInfo?.full_name || userInfo?.username || userInfo?.email;
 
   return (
     <div className={styles.pageWrapper}>
-      <header className={styles.navbar}>
-        <div className={styles.navContainer}>
-          <div className={styles.brand}>
-            <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>Courtly</span>
-          </div>
-          <nav className={styles.navLinks}>
-            <a href="#search" className={styles.activeLink}>Find Court</a>
-            <Link to="/open-matches">Open Matches</Link>
-            <a href="#register-service">Register Service</a>
-          </nav>
-          <div className={styles.authActions}>
-            {userDisplayName ? (
-              <div className={styles.userProfileWrapper}>
-                <div className={styles.userProfileHover}>
-                  <div className={styles.avatar}>
-                    {userDisplayName.charAt(0).toUpperCase()}
-                  </div>
-                  <span className={styles.userName}>{userDisplayName}</span>
-                </div>
-
-                {/* Dropdown Menu thả xuống */}
-                <div className={styles.dropdownMenu}>
-                  <div
-                    className={styles.dropdownItem}
-                    onClick={() => navigate('/account/settings')}
-                  >
-                    Account Settings
-                  </div>
-                  <div
-                    className={styles.dropdownItem}
-                    onClick={() => navigate('/my-bookings')}
-                  >
-                    🏸 My Bookings
-                  </div>
-                  <div
-                    className={`${styles.dropdownItem} ${styles.logoutItem}`}
-                    onClick={() => {
-                      localStorage.removeItem('bms_user_info');
-                      localStorage.removeItem('token');
-                      window.dispatchEvent(new Event('bms-auth-change'));
-                    }}
-                  >
-                    Đăng xuất
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className={styles.loginBtn}
-                  onClick={() => navigate('/login')}
-                >
-                  Login
-                </button>
-                <button
-                  type="button"
-                  className={styles.registerBtn}
-                  // Gắn thêm state: { isSignUp: true } để báo cho AuthPage biết
-                  onClick={() => navigate('/login', { state: { isSignUp: true } })}
-                >
-                  Sign Up
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+      <Header />
 
       <section className={styles.heroSection}>
         <div className={styles.heroContainer}>

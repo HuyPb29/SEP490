@@ -287,11 +287,11 @@ function getDefaultSettings(locationId) {
   }
 }
 
-function getDefaultStaff(locationId) {
+function getDefaultStaff() {
   return []
 }
 
-function getDefaultOpeningHours(locationId) {
+function getDefaultOpeningHours() {
   return {
     standard_hours: [
       { day_of_week: 'Monday', open_time: '05:00', close_time: '23:00', is_closed: false },
@@ -309,10 +309,6 @@ function getDefaultOpeningHours(locationId) {
 /** Simulate async network delay (mock only) */
 function delay(ms = 150) {
   return new Promise((r) => setTimeout(r, ms))
-}
-
-function getErrorMsg(err) {
-  return err?.response?.data?.message || err?.message || 'Unknown error'
 }
 
 // ─── Owner Locations ───────────────────────────────────────────────────────────
