@@ -26,6 +26,7 @@ import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.feedback.ReviewService;
 import com.sep490.bms.service.operation.OperationService;
@@ -39,6 +40,7 @@ class OperationReportAndReviewHideTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired OperationService operations;
     @Autowired ReviewService reviews;
+    @Autowired BookingRepository bookings;
 
     TestUser owner;
     TestUser otherOwner;
@@ -131,9 +133,61 @@ class OperationReportAndReviewHideTests {
     }
 
     @Test
+    void revenueReportBreaksDownVoucherAndPointDiscounts() {
+        long discounted = booking("CONFIRMED", 100000);
+        jdbc.update("""
+                UPDATE booking SET list_amount = 125000, voucher_discount = 15000, points_used = 10,
+                    point_discount = 10000 WHERE id = ?
+                """, discounted);
+        payment(discounted, 100000, null);
+        payment(booking("CONFIRMED", 50000), 50000, null);
+        long unpaid = booking("AWAITING_CONFIRMATION", 80000);
+        jdbc.update("UPDATE booking SET voucher_discount = 5000 WHERE id = ?", unpaid);
+
+        var report = operations.getRevenueReport(principal(owner), today, today);
+
+        assertThat(report.getTotalRevenue()).isEqualByComparingTo("150000");
+        assertThat(report.getVoucherDiscount()).isEqualByComparingTo("15000");
+        assertThat(report.getPointDiscount()).isEqualByComparingTo("10000");
+        assertThat(report.getGrossRevenue()).isEqualByComparingTo("175000");
+        assertThat(report.getGrossRevenue().subtract(report.getVoucherDiscount())
+                .subtract(report.getPointDiscount()).subtract(report.getTotalRefunds()))
+                .isEqualByComparingTo(report.getNetRevenue());
+    }
+
+    @Test
+    void staffDashboardCountsOverduePaymentsAndListsActiveCourts() {
+        awaiting(booking("AWAITING_CONFIRMATION", 100000), 20);
+        awaiting(booking("AWAITING_CONFIRMATION", 80000), 5);
+        jdbc.update("INSERT INTO court (location_id, name, is_active) VALUES (?, 'S2 off', 0)", location.getId());
+        UserPrincipal staff = UserPrincipal.builder().id(owner.id()).username("staff").role(Role.STAFF)
+                .locationId(location.getId()).status(AccountStatus.ACTIVE).authorities(List.of()).build();
+
+        var dashboard = operations.getStaffDashboard(staff);
+
+        assertThat(dashboard.getPaymentsAwaitingConfirmation()).isEqualTo(2);
+        assertThat(dashboard.getOverduePayments()).isEqualTo(1);
+        assertThat(dashboard.getPaymentOverdueMinutes()).isEqualTo(15);
+        assertThat(dashboard.getCourts()).extracting("courtName").containsExactly("S1");
+    }
+
+    @Test
     void reportsRejectRangeLongerThanAYear() {
         assertThatThrownBy(() -> operations.getVoucherReport(principal(owner),
                 today.minusDays(400), today)).isInstanceOf(AppException.class);
+    }
+
+    @Test
+    void onlyCompletedBookingsWithoutReviewCanBeReviewed() {
+        long reviewed = booking("COMPLETED", 100000);
+        review(reviewed);
+        long open = booking("COMPLETED", 100000);
+        long upcoming = booking("CONFIRMED", 100000);
+
+        var reviewable = reviews.reviewableBookingIds(bookings.findAllById(List.of(reviewed, open, upcoming)));
+
+        assertThat(reviewable).containsExactly(open);
+        assertThat(reviews.reviewableBookingIds(List.of())).isEmpty();
     }
 
     @Test
@@ -215,6 +269,14 @@ class OperationReportAndReviewHideTests {
                 INSERT INTO payment (location_id, booking_id, amount_due, received_amount, status, confirmed_at)
                 VALUES (?, ?, ?, ?, 'CONFIRMED', SYSDATETIME())
                 """, location.getId(), booking, due, received);
+    }
+
+    /** Giao dịch chờ xác nhận, Player báo đã chuyển khoản cách đây minutesAgo phút. */
+    private void awaiting(long booking, int minutesAgo) {
+        jdbc.update("""
+                INSERT INTO payment (location_id, booking_id, amount_due, status, submitted_at)
+                VALUES (?, ?, 100000, 'AWAITING_CONFIRMATION', DATEADD(MINUTE, ?, SYSDATETIME()))
+                """, location.getId(), booking, -minutesAgo);
     }
 
     private void reschedule(long booking, String status, long extra, boolean free) {

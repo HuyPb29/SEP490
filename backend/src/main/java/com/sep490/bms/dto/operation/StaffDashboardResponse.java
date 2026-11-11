@@ -2,6 +2,7 @@ package com.sep490.bms.dto.operation;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -27,9 +28,36 @@ public class StaffDashboardResponse {
     private List<BookingItem> todayBookings;
 
     private long paymentsAwaitingConfirmation;
+    /** Giao dịch chờ xác nhận đã gửi quá paymentOverdueMinutes phút, cần xử lý gấp. */
+    private long overduePayments;
+    private int paymentOverdueMinutes;
     private long complaintsToForward;
     private BigDecimal todayRevenue;
     private boolean reconciledToday;
+
+    /** Trạng thái từng sân đang hoạt động tại thời điểm xem (UC34). */
+    private List<CourtItem> courts;
+
+    @Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+    public static class CourtItem {
+        private Long courtId;
+        private String courtName;
+        /** AVAILABLE, IN_USE (booking đã xác nhận đang chơi), HOLDING (booking chờ thanh toán), MAINTENANCE. */
+        private String status;
+        /** Booking đang chiếm sân (IN_USE, HOLDING). */
+        private String bookingCode;
+        /** Phút trong ngày booking đang chiếm sân kết thúc. */
+        private Integer untilMinute;
+        /** Thời điểm bảo trì kết thúc (MAINTENANCE), có thể sang ngày khác. */
+        private LocalDateTime maintenanceUntil;
+        /** Booking kế tiếp trong ngày của sân, null nếu hết booking. */
+        private String nextBookingCode;
+        private Integer nextStartMinute;
+    }
 
     @Getter
 @Setter

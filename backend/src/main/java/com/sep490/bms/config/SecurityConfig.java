@@ -61,7 +61,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/health", "/actuator/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/locations", "/api/locations/*", "/api/locations/*/courts",
                     "/api/locations/*/schedules", "/api/locations/*/batch-offers", "/api/locations/*/vouchers", "/api/courts/*",
-                    "/api/courts/*/reviews", "/api/matches", "/api/matches/*").permitAll()
+                    "/api/courts/*/reviews", "/api/locations/*/reviews", "/api/locations/*/review-summary",
+                    "/api/matches", "/api/matches/*").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/owner/**").hasRole("OWNER")
                 .requestMatchers("/api/staff/**").hasAnyRole("STAFF", "OWNER")

@@ -37,4 +37,6 @@ public class BookingListItem {
     /** Chỉ có khi đang giữ chỗ: màn hình đếm ngược đến mốc này (FR52, MSG32). */
     private LocalDateTime holdExpiresAt;
     private LocalDateTime createdAt;
+    /** UC31: booking đã hoàn thành và chưa được đánh giá thì hiện nút Đánh giá. */
+    private boolean canReview;
 }

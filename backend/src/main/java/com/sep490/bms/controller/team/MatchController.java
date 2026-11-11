@@ -78,10 +78,26 @@ public class MatchController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long locationId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate playDate,
+            @RequestParam(required = false) Integer fromMinute,
+            @RequestParam(required = false) Integer toMinute,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(ApiResponse.success(
-                matchService.getMatches(currentUser == null ? null : currentUser.getId(), status, locationId, playDate, page, size)));
+                matchService.getMatches(currentUser == null ? null : currentUser.getId(), status, locationId, playDate,
+                        fromMinute, toMinute, page, size)));
+    }
+
+    /** "Kèo của tôi": role = HOSTED | JOINED (bỏ trống = cả hai), status bỏ trống = mọi trạng thái. */
+    @GetMapping("/api/me/matches")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PageResponse<MatchResponse>>> getMyMatches(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(ApiResponse.success(
+                matchService.getMyMatches(currentUser.getId(), role, status, page, size)));
     }
 
     @GetMapping("/api/matches/{id}")

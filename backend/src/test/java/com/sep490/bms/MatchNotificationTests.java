@@ -15,7 +15,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.service.reschedule.BookingChangeSupport;
 import com.sep490.bms.service.team.MatchService;
 
 /** F7 – thông báo kèo MSG75/MSG76 (FR90, FR100, FR102, FR124); chạy trong transaction rollback. */
@@ -26,6 +28,7 @@ class MatchNotificationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired LocationRepository locations;
     @Autowired MatchService matches;
+    @Autowired BookingChangeSupport bookingChanges;
 
     Long hostId;
     Long memberId;
@@ -99,6 +102,46 @@ class MatchNotificationTests {
         assertThat(types(hostId)).containsExactly("MATCH_RESCHEDULED_HOST");
         assertThat(types(memberId)).containsExactly("MATCH_RESCHEDULED");
         assertThat(types(applicantId)).containsExactly("MATCH_RESCHEDULED");
+        assertThat(jdbc.queryForObject("SELECT status FROM [match] WHERE id = ?", String.class, match))
+                .isEqualTo("OPEN");
+    }
+
+    @Test
+    void bookingCancelledThroughF5ExpiresMatchWithMsg76() {
+        long booking = booking("CONFIRMED", LocalDate.now().plusDays(2));
+        long match = match(booking, "CLOSED");
+        request(match, memberId, "APPROVED");
+        request(match, applicantId, "PENDING");
+
+        bookingChanges.matches(bookingChanges.booking(booking), true);
+
+        assertThat(jdbc.queryForObject("SELECT status FROM [match] WHERE id = ?", String.class, match))
+                .isEqualTo("EXPIRED");
+        assertThat(types(memberId)).containsExactly("MATCH_EXPIRED");
+        assertThat(types(applicantId)).containsExactly("MATCH_REQUEST_CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT status FROM match_join_request WHERE player_id = ?", String.class,
+                applicantId)).isEqualTo("CANCELLED");
+        // Job quét sau đó không gửi lại thông báo lần hai.
+        matches.sweepEndedMatches();
+        assertThat(types(memberId)).hasSize(1);
+    }
+
+    @Test
+    void bookingRescheduledThroughF5NotifiesNewTimeAndKeepsMatch() {
+        long booking = booking("CONFIRMED", LocalDate.now().plusDays(2));
+        long match = match(booking, "OPEN");
+        request(match, memberId, "APPROVED");
+        request(match, applicantId, "PENDING");
+        Booking entity = bookingChanges.booking(booking);
+        entity.setStartMinute(600);
+        entity.setEndMinute(660);
+
+        bookingChanges.matches(entity, false);
+
+        assertThat(types(hostId)).containsExactly("MATCH_RESCHEDULED_HOST");
+        assertThat(types(applicantId)).containsExactly("MATCH_RESCHEDULED");
+        assertThat(jdbc.queryForObject("SELECT content FROM notification WHERE recipient_id = ?", String.class,
+                memberId)).contains("10:00–11:00");
         assertThat(jdbc.queryForObject("SELECT status FROM [match] WHERE id = ?", String.class, match))
                 .isEqualTo("OPEN");
     }

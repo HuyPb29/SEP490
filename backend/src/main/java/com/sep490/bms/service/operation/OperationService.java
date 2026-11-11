@@ -3,6 +3,7 @@ package com.sep490.bms.service.operation;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +35,7 @@ import com.sep490.bms.repository.operation.OperationQueryRepository.BookingCount
 import com.sep490.bms.repository.operation.OperationQueryRepository.BookingDetailRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.CancellationRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.CourtRow;
+import com.sep490.bms.repository.operation.OperationQueryRepository.DiscountRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.OpeningRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.RescheduleRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.SlotRow;
@@ -56,13 +59,18 @@ public class OperationService {
     private final LocationRepository locationRepository;
     private final LocationAccessService locationAccess;
 
+    /** UC34: giao dịch chờ xác nhận quá số phút này thì cảnh báo khẩn trên bảng điều hành. */
+    @Value("${bms.dashboard.payment-overdue-minutes:15}")
+    private int paymentOverdueMinutes;
+
     // ---------------------------------------------------------------- UC34 – Bảng điều hành Staff
 
     public StaffDashboardResponse getStaffDashboard(UserPrincipal staff) {
         Long locationId = staff.getLocationId();
         Location location = locationRepository.findById(locationId)
                 .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
-        LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
+        LocalDate today = now.toLocalDate();
 
         List<BookingDetailRow> rows = queryRepository.findBookingDetails(locationId, today, today);
         Map<String, Long> byStatus = new LinkedHashMap<>();
@@ -88,9 +96,15 @@ public class OperationService {
                         .finalAmount(r.getFinalAmount())
                         .build()).toList())
                 .paymentsAwaitingConfirmation(queryRepository.countPaymentsAwaitingConfirmation(locationId))
+                .overduePayments(queryRepository.countPaymentsAwaitingSince(locationId,
+                        now.minusMinutes(paymentOverdueMinutes)))
+                .paymentOverdueMinutes(paymentOverdueMinutes)
                 .complaintsToForward(queryRepository.countComplaintsByStatus(locationId, "SUBMITTED"))
                 .todayRevenue(todayRevenue)
                 .reconciledToday(queryRepository.existsReconciliation(locationId, today))
+                .courts(CourtStatusCalculator.calculate(queryRepository.findActiveCourts(locationId),
+                        queryRepository.findCourtBookingsOn(locationId, today),
+                        queryRepository.findApprovedMaintenanceAt(locationId, now), now))
                 .build();
     }
 
@@ -304,9 +318,13 @@ public class OperationService {
             daily.add(RevenueReportResponse.DayItem.builder()
                     .date(d).revenue(revAmount).refunds(refAmount).net(revAmount.subtract(refAmount)).build());
         }
+        DiscountRow discounts = queryRepository.sumDiscountsOfConfirmedPayments(locationId, from, to);
         return RevenueReportResponse.builder()
                 .from(from).to(to)
                 .totalRevenue(totalRevenue)
+                .grossRevenue(totalRevenue.add(discounts.getVoucherDiscount()).add(discounts.getPointDiscount()))
+                .voucherDiscount(discounts.getVoucherDiscount())
+                .pointDiscount(discounts.getPointDiscount())
                 .totalRefunds(totalRefunds)
                 .netRevenue(totalRevenue.subtract(totalRefunds))
                 .paymentCount(paymentCount)
