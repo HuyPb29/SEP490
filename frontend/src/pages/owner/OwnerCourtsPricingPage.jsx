@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import styles from './OwnerCourtsPricingPage.module.css'
 
 const FACILITIES = [
@@ -54,8 +54,12 @@ function getErrorMessage(err) {
   return err.response?.data?.message || err.message
 }
 
-export default function OwnerCourtsPricingPage() {
-  const [selectedFacilityId, setSelectedFacilityId] = useState('smash-arena')
+export default function OwnerCourtsPricingPage({ embedded = false }) {
+  const { id: urlId } = embedded ? useParams() : { id: undefined }
+  const derivedFacilityId = urlId === '2' ? 'green-shuttle-club' : 'smash-arena'
+  const [selectedFacilityId, setSelectedFacilityId] = useState(
+    embedded ? derivedFacilityId : 'smash-arena',
+  )
   const [courts, setCourts] = useState(INITIAL_COURTS)
   const [priceRules, setPriceRules] = useState(INITIAL_PRICE_RULES)
   const [form, setForm] = useState(INITIAL_FORM)
@@ -160,7 +164,8 @@ export default function OwnerCourtsPricingPage() {
   }
 
   return (
-    <div className={styles.page}>
+    <div className={embedded ? styles.embeddedPage : styles.page}>
+      {!embedded && (
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
           <span className={styles.brandBolt} aria-hidden="true">⚡</span>
@@ -209,6 +214,7 @@ export default function OwnerCourtsPricingPage() {
           ))}
         </nav>
       </aside>
+      )}
 
       <main className={styles.main}>
         <h1 className={styles.pageTitle}>Courts &amp; Pricing</h1>

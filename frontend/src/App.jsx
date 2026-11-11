@@ -12,12 +12,27 @@ import MyBookingsPage from './pages/booking/MyBookingsPage'
 import OpenMatchesPage from './pages/matches/OpenMatchesPage'
 import StaffDashboardPage from './pages/staff/StaffDashboardPage'
 import StaffConfirmPaymentPage from './pages/staff/StaffConfirmPaymentPage'
+
+// Owner Portal — new layout-based structure
+import OwnerLayout from './pages/owner/OwnerLayout'
+import OwnerStaffPage from './pages/owner/OwnerStaffPage'
+import OwnerLocationSettingsPage from './pages/owner/OwnerLocationSettingsPage'
+import OwnerOpeningHoursPage from './pages/owner/OwnerOpeningHoursPage'
+import OwnerMaintenancePage from './pages/owner/OwnerMaintenancePage'
+import OwnerPlaceholderPage from './pages/owner/OwnerPlaceholderPage'
+
+// Legacy Owner pages (kept intact; redirect shims below)
 import OwnerReportPage from './pages/owner/OwnerReportPage'
 import OwnerCourtsPricingPage from './pages/owner/OwnerCourtsPricingPage'
+
+// Admin pages
 import AdminLocationsPage from './pages/admin/AdminLocationsPage'
 import AdminAccountsPage from './pages/admin/AdminAccountsPage'
 import AdminViolatingVouchersPage from './pages/admin/AdminViolatingVouchersPage'
 import AdminViolatingReviewsPage from './pages/admin/AdminViolatingReviewsPage'
+
+/** Default owner location id used when redirecting legacy routes */
+const DEFAULT_OWNER_LOCATION_ID = 1
 
 export default function App() {
   return (
@@ -29,6 +44,9 @@ export default function App() {
 
 function AppContent() {
   const location = useLocation()
+
+  const isOwnerPortal    = location.pathname.startsWith('/owner/locations/')
+  const isLegacyOwner    = location.pathname === '/owner/reports' || location.pathname === '/owner/courts-pricing'
   const isMultiSessionBooking =
     location.pathname === '/booking/multi' || location.pathname.endsWith('/package-booking')
   const isFrontendMockPage =
@@ -36,13 +54,14 @@ function AppContent() {
     location.pathname === '/open-matches' ||
     location.pathname === '/staff/dashboard' ||
     location.pathname === '/staff/confirm-payments' ||
-    location.pathname === '/owner/reports' ||
-    location.pathname === '/owner/courts-pricing' ||
+    isLegacyOwner ||
     location.pathname === '/admin/locations' ||
     location.pathname === '/admin/facilities' ||
     location.pathname === '/admin/accounts' ||
     location.pathname === '/admin/violating-vouchers' ||
-    location.pathname === '/admin/violating-reviews'
+    location.pathname === '/admin/violating-reviews' ||
+    isOwnerPortal
+
   const [status, setStatus] = useState(() => (isFrontendMockPage ? 'mock preview' : 'checking...'))
 
   useEffect(() => {
@@ -72,6 +91,7 @@ function AppContent() {
         <Route path="/facilities/:id" element={<LegacyLocationRedirect />} />
         <Route path="/facilities/:id/package-booking" element={<LegacyLocationRedirect bookingMode="custom" />} />
         <Route path="/admin/facilities" element={<Navigate to="/admin/locations" replace />} />
+
         {/* UC29-30: Open matches */}
         <Route path="/open-matches" element={<OpenMatchesPage />} />
 
@@ -79,10 +99,37 @@ function AppContent() {
         <Route path="/staff/dashboard" element={<StaffDashboardPage />} />
         {/* UC19: Staff payment confirmation mock preview */}
         <Route path="/staff/confirm-payments" element={<StaffConfirmPaymentPage />} />
-        {/* UC35: Owner operational and revenue reports mock preview */}
-        <Route path="/owner/reports" element={<OwnerReportPage />} />
-        {/* UC07-09: Owner courts and pricing mock preview */}
-        <Route path="/owner/courts-pricing" element={<OwnerCourtsPricingPage />} />
+
+        {/* ── Legacy Owner routes — redirect to new :id-based structure ── */}
+        {/* UC35: redirect to new layout (default location 1) */}
+        <Route path="/owner/reports" element={<Navigate to={`/owner/locations/${DEFAULT_OWNER_LOCATION_ID}/reports`} replace />} />
+        {/* UC07-09: redirect to new layout */}
+        <Route path="/owner/courts-pricing" element={<Navigate to={`/owner/locations/${DEFAULT_OWNER_LOCATION_ID}/courts`} replace />} />
+        {/* /owner → redirect to default location reports */}
+        <Route path="/owner" element={<Navigate to={`/owner/locations/${DEFAULT_OWNER_LOCATION_ID}/reports`} replace />} />
+
+        {/* ── Owner Portal (new layout with sidebar) ── */}
+        <Route path="/owner/locations/:id" element={<OwnerLayout />}>
+          {/* Default tab: redirect to reports */}
+          <Route index element={<Navigate to="reports" replace />} />
+
+          {/* Implemented tabs */}
+          <Route path="staff"       element={<OwnerStaffPage />} />
+          <Route path="settings"    element={<OwnerLocationSettingsPage />} />
+          <Route path="hours"       element={<OwnerOpeningHoursPage />} />
+          <Route path="maintenance" element={<OwnerMaintenancePage />} />
+
+          {/* Legacy pages served inside the new layout */}
+          <Route path="reports" element={<OwnerReportPage embedded />} />
+          <Route path="courts"  element={<OwnerCourtsPricingPage embedded />} />
+
+          {/* Placeholder tabs for future sprints */}
+          <Route path="vouchers"    element={<OwnerPlaceholderPage tab="vouchers" />} />
+          <Route path="complaints"  element={<OwnerPlaceholderPage tab="complaints" />} />
+          <Route path="refunds"     element={<OwnerPlaceholderPage tab="refunds" />} />
+          <Route path="reviews"     element={<OwnerPlaceholderPage tab="reviews" />} />
+        </Route>
+
         {/* UC06: Admin locations mock preview */}
         <Route path="/admin/locations" element={<AdminLocationsPage />} />
         {/* UC04: Admin user accounts mock preview */}

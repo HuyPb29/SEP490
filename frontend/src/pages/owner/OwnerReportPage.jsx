@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import styles from './OwnerReportPage.module.css'
 
 const FACILITIES = [
@@ -76,8 +76,18 @@ function formatCurrency(value) {
   return `${value.toLocaleString('en-US')} VND`
 }
 
-export default function OwnerReportPage() {
-  const [selectedFacilityId, setSelectedFacilityId] = useState('smash-arena')
+/**
+ * embedded=true  → rendered inside OwnerLayout (no sidebar shell)
+ * embedded=false → standalone page (legacy /owner/reports route, keeps sidebar)
+ */
+export default function OwnerReportPage({ embedded = false }) {
+  // When embedded, use URL :id to pick the report; fall back to 'smash-arena'
+  const { id: urlId } = embedded ? useParams() : { id: undefined }
+  const derivedFacilityId = urlId === '2' ? 'green-shuttle-club' : 'smash-arena'
+
+  const [selectedFacilityId, setSelectedFacilityId] = useState(
+    embedded ? derivedFacilityId : 'smash-arena',
+  )
   const [startDate, setStartDate] = useState('2026-10-01')
   const [endDate, setEndDate] = useState('2026-10-24')
   const [activeTab, setActiveTab] = useState('Revenue')
@@ -142,7 +152,8 @@ export default function OwnerReportPage() {
   }
 
   return (
-    <div className={styles.page}>
+    <div className={embedded ? styles.embeddedPage : styles.page}>
+      {!embedded && (
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
           <span className={styles.brandBolt} aria-hidden="true">⚡</span>
@@ -200,6 +211,7 @@ export default function OwnerReportPage() {
           ))}
         </nav>
       </aside>
+      )}
 
       <main className={styles.main}>
         <header className={styles.header}>
