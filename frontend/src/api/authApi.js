@@ -1,7 +1,9 @@
 import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_AUTH = true;
+// Đã tắt mock để đăng nhập bằng tài khoản thật trong DB BMS (owner1, admin01, staff1...).
+// Muốn quay lại chế độ demo mock (player01/Password123) thì đổi lại thành true.
+export const USE_MOCK_AUTH = false;
 
 // In-memory DB giả lập
 const mockUsers = [
