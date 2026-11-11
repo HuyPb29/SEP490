@@ -206,7 +206,7 @@ class BookingChangeApiTests {
         // UC18–19 retain Minh's booking contract; UC21 uses its own routes and payment type.
         Long originalPay=jdbc.queryForObject("select id from payment where booking_id=?",Long.class,booking.getId());
         mvc.perform(get("/api/payments/"+originalPay).header("Authorization",token(player)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.payment.id").value(originalPay));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(originalPay));
         mvc.perform(get("/api/payments/"+pay).header("Authorization",token(player))).andExpect(status().isNotFound());
         mvc.perform(get("/api/reschedule-payments/"+originalPay).header("Authorization",token(player))).andExpect(status().isNotFound());
         mvc.perform(get("/api/reschedule-payments/"+pay).header("Authorization",token(player)))
