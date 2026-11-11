@@ -71,8 +71,14 @@ export async function decideReschedulePayment(paymentId, decision, payload) {
 }
 
 export async function listPendingStaffBookingPayments(signal) {
+  // Danh sách chỉ có thông tin thanh toán phẳng; màn Staff cần khách, sân, giờ chơi, chứng từ
+  // nên tải thêm chi tiết từng giao dịch: { payment, customerName, courtName, ..., proofs }.
   const { data } = await api.get('/staff/payments?status=AWAITING_CONFIRMATION&size=50', { signal });
-  return data.data.content;
+  const payments = data.data.content;
+  return Promise.all(payments.map(async (payment) => {
+    const res = await api.get('/staff/payments/' + payment.id, { signal });
+    return res.data.data;
+  }));
 }
 
 export async function getStaffBookingProofImage(paymentId, proofId, signal) {
