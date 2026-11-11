@@ -8,7 +8,7 @@ import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import com.sep490.bms.entity.Account;
+import com.sep490.bms.entity.account.Account;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;

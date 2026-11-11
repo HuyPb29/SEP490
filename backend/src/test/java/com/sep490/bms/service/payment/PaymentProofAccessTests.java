@@ -1,6 +1,6 @@
 package com.sep490.bms.service.payment;
 import java.util.Optional;
-import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.payment.*;
 import com.sep490.bms.entity.reschedule.RescheduleRequest;
 import com.sep490.bms.repository.payment.*;

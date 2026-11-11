@@ -1,7 +1,5 @@
 package com.sep490.bms.controller.account;
 
-import java.util.Map;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -10,14 +8,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sep490.bms.common.ApiResponse;
-import com.sep490.bms.dto.LoginResponse;
+import com.sep490.bms.dto.account.LoginResponse;
+import java.util.Map;
 import com.sep490.bms.dto.request.ForgotPasswordRequest;
 import com.sep490.bms.dto.request.LoginRequest;
 import com.sep490.bms.dto.request.RegisterRequest;
 import com.sep490.bms.dto.request.ResendOtpRequest;
 import com.sep490.bms.dto.request.ResetPasswordRequest;
 import com.sep490.bms.dto.request.VerifyEmailRequest;
-import com.sep490.bms.service.AuthService;
+import com.sep490.bms.service.account.AuthService;
 import com.sep490.bms.security.UserPrincipal;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 

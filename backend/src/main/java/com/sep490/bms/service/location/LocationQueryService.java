@@ -18,9 +18,9 @@ import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.dto.location.LocationDetailResponse;
 import com.sep490.bms.dto.location.LocationSummaryResponse;
 import com.sep490.bms.dto.location.OpeningHourItem;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.repository.location.OpeningHourRepository;
 
 import lombok.RequiredArgsConstructor;

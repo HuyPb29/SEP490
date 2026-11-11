@@ -17,7 +17,7 @@ import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.booking.WalkInBookingItem;
 import com.sep490.bms.dto.booking.WalkInBookingRequest;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.BookingType;

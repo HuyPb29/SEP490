@@ -1,6 +1,6 @@
 package com.sep490.bms.dto.request;
 
-import com.sep490.bms.entity.OtpPurpose;
+import com.sep490.bms.entity.account.OtpPurpose;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

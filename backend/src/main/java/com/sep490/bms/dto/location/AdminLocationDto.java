@@ -4,8 +4,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import com.sep490.bms.entity.Account;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.location.Location;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
