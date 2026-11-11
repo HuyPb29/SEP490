@@ -5,6 +5,7 @@ import api from './api'
 import LocationSearchPage from './pages/location/LocationSearchPage'
 import LocationDetailPage from './pages/location/LocationDetailPage'
 import AuthPage from './pages/auth/AuthPage'
+import AccountSettingsPage from './pages/account/AccountSettingsPage'
 import BookingSummaryPage from './pages/booking/BookingSummaryPage'
 import BookingPaymentPage from './pages/booking/BookingPaymentPage'
 import MyBookingsPage from './pages/booking/MyBookingsPage'
@@ -93,6 +94,7 @@ function AppContent() {
 
         {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
         <Route path="/login" element={<AuthPage />} />
+        <Route path="/account/settings" element={<AccountSettingsPage />} />
 
         {/* UC14: Tóm tắt & Xác nhận đặt sân lẻ (POST /api/v1/vouchers/apply & POST /api/bookings) */}
         <Route path="/booking/summary" element={<BookingSummaryPage />} />

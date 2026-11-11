@@ -174,6 +174,12 @@ export default function LocationSearchPage() {
                 <div className={styles.dropdownMenu}>
                   <div
                     className={styles.dropdownItem}
+                    onClick={() => navigate('/account/settings')}
+                  >
+                    Account Settings
+                  </div>
+                  <div
+                    className={styles.dropdownItem}
                     onClick={() => navigate('/my-bookings')}
                   >
                     🏸 My Bookings

@@ -5,6 +5,8 @@ import {
   registerPlayerApi,
   verifyOtpApi,
   resendOtpApi,
+  requestOtpApi,
+  resetPasswordApi,
   USE_MOCK_AUTH,
 } from '../../api/authApi';
 import styles from './AuthPage.module.css';
@@ -42,12 +44,34 @@ export default function AuthPage() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
+  const [forgotStep, setForgotStep] = useState(1);
+  const [forgotIdentity, setForgotIdentity] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotOtpExpiresAt, setForgotOtpExpiresAt] = useState('');
+  const [forgotNowMs, setForgotNowMs] = useState(() => Date.now());
+  const [forgotResetToken, setForgotResetToken] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotError, setForgotError] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+
   // DR25: Bộ đếm ngược 60s giữa 2 lần gửi lại OTP
   useEffect(() => {
     if (cooldown <= 0) return undefined;
     const timer = setInterval(() => setCooldown((value) => value - 1), 1000);
     return () => clearInterval(timer);
   }, [cooldown]);
+
+  useEffect(() => {
+    if (activeTab !== 'forgot' || forgotStep !== 2 || !forgotOtpExpiresAt) return undefined;
+    const timer = setInterval(() => setForgotNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [activeTab, forgotStep, forgotOtpExpiresAt]);
+
+  const forgotSecondsLeft = forgotOtpExpiresAt
+    ? Math.max(0, Math.ceil((new Date(forgotOtpExpiresAt).getTime() - forgotNowMs) / 1000))
+    : 0;
+  const forgotCountdown = `${String(Math.floor(forgotSecondsLeft / 60)).padStart(2, '0')}:${String(forgotSecondsLeft % 60).padStart(2, '0')}`;
 
   // UC02: Xử lý đăng nhập (POST /api/auth/login)
   const handleLoginSubmit = async (event) => {
@@ -214,6 +238,89 @@ export default function AuthPage() {
     }
   };
 
+  const handleRequestPasswordOtp = async (event) => {
+    event.preventDefault();
+    setForgotError('');
+    if (!forgotIdentity.trim()) {
+      setForgotError('Enter your username or email.');
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const response = await requestOtpApi({ username_or_email: forgotIdentity.trim() });
+      const expiresAt = response.data?.otp_expires_at;
+      if (!expiresAt) throw new Error('The OTP expiry time was not returned. Please try again.');
+      setForgotOtpExpiresAt(expiresAt);
+      setForgotNowMs(Date.now());
+      setForgotOtp('');
+      setForgotStep(2);
+    } catch (error) {
+      setForgotError(error.response?.data?.message || error.message || 'Could not request a password reset code.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleVerifyPasswordOtp = async (event) => {
+    event.preventDefault();
+    setForgotError('');
+    if (!/^\d{6}$/.test(forgotOtp)) {
+      setForgotError('The OTP must contain exactly 6 digits.');
+      return;
+    }
+    if (forgotSecondsLeft <= 0) {
+      setForgotError('This OTP has expired. Request a new code to continue.');
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const response = await verifyOtpApi({
+        username_or_email: forgotIdentity.trim(),
+        otp_code: forgotOtp,
+        purpose: 'password_reset',
+      });
+      setForgotResetToken(response.data?.reset_token || '');
+      setForgotStep(3);
+    } catch (error) {
+      setForgotError(error.response?.data?.message || error.message || 'Could not verify the OTP.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (event) => {
+    event.preventDefault();
+    setForgotError('');
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError('New Password and Confirm New Password must match.');
+      return;
+    }
+    if (
+      forgotNewPassword.length < 8 || forgotNewPassword.length > 32 ||
+      !/[A-Za-z]/.test(forgotNewPassword) || !/\d/.test(forgotNewPassword) || /\s/.test(forgotNewPassword)
+    ) {
+      setForgotError('Password must be 8-32 characters, include at least one letter and one number, and contain no spaces.');
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const response = await resetPasswordApi({
+        username_or_email: forgotIdentity.trim(),
+        reset_token: forgotResetToken,
+        new_password: forgotNewPassword,
+      });
+      setLoginIdentity(forgotIdentity.trim());
+      setLoginPassword('');
+      setLoginNotice(response.message || 'Password reset successfully. You can now sign in.');
+      setActiveTab('login');
+      setForgotStep(1);
+    } catch (error) {
+      setForgotError(error.response?.data?.message || error.message || 'Could not reset the password.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   const updateRegisterField = (field, value) => {
     setRegisterForm((current) => ({ ...current, [field]: value }));
     setRegisterError('');
@@ -236,6 +343,7 @@ export default function AuthPage() {
 
       <main className={styles.rightPanel}>
         <section className={styles.authCard}>
+          {activeTab !== 'forgot' && (
           <div className={styles.tabGroup} role="tablist" aria-label="Account">
             <button
               type="button"
@@ -265,6 +373,113 @@ export default function AuthPage() {
               Verify email
             </button>
           </div>
+          )}
+
+          {activeTab === 'forgot' && (
+            <section className={styles.formContainer} aria-live="polite">
+              {forgotStep === 1 && (
+                <form onSubmit={handleRequestPasswordOtp}>
+                  <h2 className={styles.cardTitle}>Forgot Password · Step 1 of 3</h2>
+                  <p className={styles.stepDescription}>Enter the username or email linked to your account.</p>
+                  <div className={styles.formGroup}>
+                    <label className={styles.label} htmlFor="forgot-identity">Username or Email</label>
+                    <input
+                      id="forgot-identity"
+                      className={`${styles.input} ${forgotError ? styles.inputError : ''}`}
+                      type="text"
+                      autoComplete="username"
+                      value={forgotIdentity}
+                      onChange={(event) => {
+                        setForgotIdentity(event.target.value);
+                        setForgotError('');
+                      }}
+                      placeholder="Username or Email"
+                    />
+                    {forgotError && <p className={styles.errorText} role="alert">{forgotError}</p>}
+                  </div>
+                  <button className={styles.primaryBtn} type="submit" disabled={forgotLoading}>
+                    {forgotLoading ? 'Requesting code...' : 'Send OTP'}
+                  </button>
+                  <p className={styles.cardFooterText}>
+                    <button type="button" className={styles.inlineSwitchBtn} onClick={() => setActiveTab('login')}>
+                      Back to sign in
+                    </button>
+                  </p>
+                </form>
+              )}
+
+              {forgotStep === 2 && (
+                <form onSubmit={handleVerifyPasswordOtp}>
+                  <h2 className={styles.cardTitle}>Verify OTP · Step 2 of 3</h2>
+                  <p className={styles.stepDescription}>Enter the 6-digit code sent for {forgotIdentity}.</p>
+                  {USE_MOCK_AUTH && <div className={styles.testOtpHint}>Local test code: <strong>123456</strong></div>}
+                  <div className={styles.otpExpiry} role="timer">
+                    {forgotSecondsLeft > 0 ? `Code expires in ${forgotCountdown}` : 'Code expired'}
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.label} htmlFor="forgot-otp">6-digit OTP</label>
+                    <input
+                      id="forgot-otp"
+                      className={`${styles.input} ${styles.otpInput} ${forgotError ? styles.inputError : ''}`}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      value={forgotOtp}
+                      onChange={(event) => {
+                        setForgotOtp(event.target.value.replace(/\D/g, ''));
+                        setForgotError('');
+                      }}
+                      placeholder="000000"
+                    />
+                    {forgotError && <p className={styles.errorText} role="alert">{forgotError}</p>}
+                  </div>
+                  <button className={styles.primaryBtn} type="submit" disabled={forgotLoading || forgotSecondsLeft <= 0}>
+                    {forgotLoading ? 'Verifying code...' : 'Verify OTP'}
+                  </button>
+                  <p className={styles.cardFooterText}>
+                    <button type="button" className={styles.inlineSwitchBtn} onClick={() => { setForgotStep(1); setForgotError(''); }}>
+                      Request a new code
+                    </button>
+                  </p>
+                </form>
+              )}
+
+              {forgotStep === 3 && (
+                <form onSubmit={handleResetPassword}>
+                  <h2 className={styles.cardTitle}>Reset Password · Step 3 of 3</h2>
+                  <div className={styles.formGroup}>
+                    <label className={styles.label} htmlFor="forgot-new-password">New Password</label>
+                    <input
+                      id="forgot-new-password"
+                      className={`${styles.input} ${forgotError ? styles.inputError : ''}`}
+                      type="password"
+                      autoComplete="new-password"
+                      value={forgotNewPassword}
+                      onChange={(event) => { setForgotNewPassword(event.target.value); setForgotError(''); }}
+                      placeholder="8-32 chars, letters & numbers"
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.label} htmlFor="forgot-confirm-password">Confirm New Password</label>
+                    <input
+                      id="forgot-confirm-password"
+                      className={`${styles.input} ${forgotError ? styles.inputError : ''}`}
+                      type="password"
+                      autoComplete="new-password"
+                      value={forgotConfirmPassword}
+                      onChange={(event) => { setForgotConfirmPassword(event.target.value); setForgotError(''); }}
+                      placeholder="Re-enter your new password"
+                    />
+                    {forgotError && <p className={styles.errorText} role="alert">{forgotError}</p>}
+                  </div>
+                  <button className={styles.primaryBtn} type="submit" disabled={forgotLoading}>
+                    {forgotLoading ? 'Saving password...' : 'Reset Password'}
+                  </button>
+                </form>
+              )}
+            </section>
+          )}
 
           {activeTab === 'login' && (
             <form className={styles.formContainer} onSubmit={handleLoginSubmit}>
@@ -272,7 +487,7 @@ export default function AuthPage() {
               {loginNotice && <div className={styles.infoBanner}>{loginNotice}</div>}
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="login-identity">
-                  Username or email
+                  Username or Email
                 </label>
                 <input
                   id="login-identity"
@@ -284,7 +499,7 @@ export default function AuthPage() {
                     setLoginIdentity(event.target.value);
                     setLoginError('');
                   }}
-                  placeholder="Enter your username or email"
+                  placeholder="Username or Email"
                 />
               </div>
               <div className={styles.formGroup}>
@@ -306,9 +521,22 @@ export default function AuthPage() {
                 {loginError && <p className={styles.errorText}>{loginError}</p>}
               </div>
               <div className={styles.forgotRow}>
-                <a href="#forgot-password" className={styles.greenLink}>
+                <button
+                  type="button"
+                  className={`${styles.inlineSwitchBtn} ${styles.greenLink}`}
+                  onClick={() => {
+                    setForgotStep(1);
+                    setForgotIdentity(loginIdentity);
+                    setForgotError('');
+                    setForgotOtp('');
+                    setForgotOtpExpiresAt('');
+                    setForgotNewPassword('');
+                    setForgotConfirmPassword('');
+                    setActiveTab('forgot');
+                  }}
+                >
                   Forgot password?
-                </a>
+                </button>
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={loginLoading}>
                 {loginLoading ? 'Signing in...' : 'Sign in'}

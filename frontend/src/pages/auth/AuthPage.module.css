@@ -288,3 +288,19 @@
     gap: 0;
   }
 }
+
+.stepDescription {
+  margin: -10px 0 20px;
+  color: #64748b;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.otpExpiry {
+  margin: -6px 0 16px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
