@@ -14,7 +14,13 @@ import StaffDashboardPage from './pages/staff/StaffDashboardPage'
 import StaffConfirmPaymentPage from './pages/staff/StaffConfirmPaymentPage'
 import OwnerReportPage from './pages/owner/OwnerReportPage'
 import OwnerCourtsPricingPage from './pages/owner/OwnerCourtsPricingPage'
+import OwnerOpeningHoursPage from './pages/owner/OwnerOpeningHoursPage'
+import OwnerFacilitySettingsPage from './pages/owner/OwnerFacilitySettingsPage'
 import AdminFacilitiesPage from './pages/admin/AdminFacilitiesPage'
+import MaintenanceRequestsPage from './pages/operation/MaintenanceRequestsPage'
+import NotificationsPage from './pages/notification/NotificationsPage'
+import NotificationBell from './components/notification/NotificationBell'
+import WorkspaceNav from './components/navigation/WorkspaceNav'
 
 export default function App() {
   return (
@@ -30,9 +36,7 @@ function AppContent() {
   const isFrontendMockPage =
     location.pathname === '/open-matches' ||
     location.pathname === '/staff/dashboard' ||
-    location.pathname === '/owner/reports' ||
-    location.pathname === '/owner/courts-pricing' ||
-    location.pathname === '/admin/facilities'
+    location.pathname === '/owner/reports'
   const [status, setStatus] = useState(() => (isFrontendMockPage ? 'mock preview' : 'checking...'))
 
   useEffect(() => {
@@ -52,6 +56,12 @@ function AppContent() {
         </div>
       )}
 
+      {/* UC37: chuông thông báo dùng chung, tự ẩn khi chưa đăng nhập */}
+      {!isFrontendMockPage && <NotificationBell />}
+
+      {/* Lối vào các màn hình quản lý theo vai trò; tự ẩn khi chưa đăng nhập */}
+      <WorkspaceNav />
+
       <Routes>
         {/* UC11: Tìm kiếm địa điểm (GET /api/v1/facilities/search) */}
         <Route path="/" element={<FacilitySearchPage />} />
@@ -69,10 +79,20 @@ function AppContent() {
         <Route path="/staff/confirm-payments" element={<StaffConfirmPaymentPage />} />
         {/* UC35: Owner operational and revenue reports mock preview */}
         <Route path="/owner/reports" element={<OwnerReportPage />} />
-        {/* UC07-09: Owner courts and pricing mock preview */}
+        {/* UC07-09: Owner courts and pricing (GET /api/owner/locations, PATCH /api/owner/courts/:id) */}
         <Route path="/owner/courts-pricing" element={<OwnerCourtsPricingPage />} />
-        {/* UC06: Admin facilities mock preview */}
+        {/* UC08: Giờ mở cửa, cấu hình slot, ngày ngoại lệ (GET/PUT /api/owner/locations/:id/opening-hours) */}
+        <Route path="/owner/opening-hours" element={<OwnerOpeningHoursPage />} />
+        {/* UC07: Hồ sơ địa điểm (PATCH /api/owner/locations/:id) */}
+        <Route path="/owner/facility-settings" element={<OwnerFacilitySettingsPage />} />
+        {/* UC06: Admin quản lý địa điểm (GET /api/admin/locations, POST /api/admin/service-registrations/:id/approve) */}
         <Route path="/admin/facilities" element={<AdminFacilitiesPage />} />
+
+        {/* UC10: Bảo trì sân — Staff tạo/huỷ, Owner duyệt/từ chối (GET /api/staff|owner/maintenance-requests) */}
+        <Route path="/maintenance" element={<MaintenanceRequestsPage />} />
+
+        {/* UC37: Thông báo tự động (GET /api/notifications, PATCH /api/notifications/:id/read) */}
+        <Route path="/notifications" element={<NotificationsPage />} />
 
         {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
         <Route path="/login" element={<AuthPage />} />

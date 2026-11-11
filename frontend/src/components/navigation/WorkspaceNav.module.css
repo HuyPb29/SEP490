@@ -1,0 +1,151 @@
+/* Menu điều hướng theo vai trò — nổi ở góc trái dưới để không đụng chuông thông báo. */
+
+.wrap {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 70;
+  font-family: inherit;
+}
+
+/* ---------------------------------------------------------------- trigger */
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px 0 11px;
+  color: #fff;
+  background: #14532d;
+  border: 1px solid #14532d;
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgb(15 23 42 / 18%);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.trigger:hover {
+  background: #166534;
+}
+
+.triggerOpen {
+  background: #166534;
+}
+
+/* ------------------------------------------------------------------ panel */
+
+.panel {
+  position: absolute;
+  bottom: 46px;
+  left: 0;
+  width: 268px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e3e8f0;
+  border-radius: 14px;
+  box-shadow: 0 18px 42px rgb(15 23 42 / 18%);
+}
+
+.panelHead {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px 10px;
+  background: #f7faf8;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.roleBadge {
+  color: #128044;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.userName {
+  overflow: hidden;
+  color: #33415c;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------- list */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  color: #33415c;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover {
+  color: #128044;
+  background: #f1f7f3;
+}
+
+.itemActive {
+  color: #0f6b39;
+  background: #e8f4ed;
+}
+
+.itemLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemUc {
+  flex: 0 0 auto;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.itemActive .itemUc {
+  color: #4f9b6d;
+}
+
+/* ----------------------------------------------------------------- logout */
+
+.logout {
+  width: 100%;
+  padding: 11px 14px;
+  color: #b91c1c;
+  background: #fdf5f5;
+  border: 0;
+  border-top: 1px solid #eef1f5;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.logout:hover {
+  background: #fbeaea;
+}

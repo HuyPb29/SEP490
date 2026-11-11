@@ -45,6 +45,22 @@ public class CourtManagementService {
                 .toList();
     }
 
+    /**
+     * UC10 - Staff xem danh sách sân của địa điểm mình làm việc.
+     * Cần cho form tạo yêu cầu bảo trì: staff không gọi được API /api/owner/** nên
+     * không có cách nào khác lấy courtId.
+     */
+    @Transactional(readOnly = true)
+    public List<CourtDto> listForStaff(UserPrincipal user) {
+        Long locationId = user == null ? null : user.getLocationId();
+        if (locationId == null) {
+            throw new AppException("Tài khoản nhân viên chưa được gán địa điểm", HttpStatus.FORBIDDEN);
+        }
+        return courtsOf(locationId).stream()
+                .map(CourtDto::fromEntity)
+                .toList();
+    }
+
     /** UC07 - Owner thêm sân mới. Sân mới mặc định ở trạng thái hoạt động. */
     @Transactional
     public CourtDto create(UserPrincipal user, Long locationId, CreateCourtRequest request) {

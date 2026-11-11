@@ -2,6 +2,28 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import styles from './OwnerReportPage.module.css'
 
+/** Mục sidebar đã có màn hình thật; mục không có trong map vẫn là link chết. */
+const NAV_LINKS = {
+  Reports: '/owner/reports',
+  'Courts & Pricing': '/owner/courts-pricing',
+  'Opening Hours': '/owner/opening-hours',
+  'Maintenance Approval': '/maintenance',
+  'Facility Settings': '/owner/facility-settings',
+}
+
+const NAV_ITEMS = [
+  'Reports',
+  'Courts & Pricing',
+  'Opening Hours',
+  'Staff',
+  'Vouchers & Offers',
+  'Complaints',
+  'Refunds',
+  'Maintenance Approval',
+  'Reviews',
+  'Facility Settings',
+]
+
 const FACILITIES = [
   { id: 'smash-arena', name: 'Smash Arena' },
   { id: 'green-shuttle-club', name: 'Green Shuttle Club' },
@@ -166,22 +188,11 @@ export default function OwnerReportPage() {
         </select>
 
         <nav className={styles.navigation} aria-label="Owner navigation">
-          {[
-            'Reports',
-            'Courts & Pricing',
-            'Opening Hours',
-            'Staff',
-            'Vouchers & Offers',
-            'Complaints',
-            'Refunds',
-            'Maintenance Approval',
-            'Reviews',
-            'Facility Settings',
-          ].map((item) => (
-            item === 'Reports' || item === 'Courts & Pricing' ? (
+          {NAV_ITEMS.map((item) =>
+            NAV_LINKS[item] ? (
               <Link
                 className={`${styles.navItem} ${item === 'Reports' ? styles.navItemActive : ''}`}
-                to={item === 'Reports' ? '/owner/reports' : '/owner/courts-pricing'}
+                to={NAV_LINKS[item]}
                 key={item}
                 aria-current={item === 'Reports' ? 'page' : undefined}
               >
@@ -196,8 +207,8 @@ export default function OwnerReportPage() {
               >
                 {item}
               </a>
-            )
-          ))}
+            ),
+          )}
         </nav>
       </aside>
 

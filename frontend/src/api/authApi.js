@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 // Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_AUTH = true;
-// Đăng nhập dùng backend thật để các màn F3/F4 gọi API có JWT; đăng ký và OTP vẫn theo USE_MOCK_AUTH.
+// Đăng nhập, đăng ký, OTP đều gọi backend thật.
+export const USE_MOCK_AUTH = false;
 export const USE_MOCK_LOGIN = false;
 
 // In-memory DB giả lập

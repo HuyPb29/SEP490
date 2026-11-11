@@ -2,6 +2,7 @@ package com.sep490.bms.service.location;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -16,6 +17,7 @@ import com.sep490.bms.dto.location.LocationDetailDto;
 import com.sep490.bms.dto.location.UpdateLocationRequest;
 import com.sep490.bms.entity.Location;
 import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.location.ServiceTerm;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.LocationRepository;
@@ -52,8 +54,12 @@ public class LocationManagementService {
                 .toList();
         Map<Long, LocalDate> termEnds = latestTermEnds(
                 locations.stream().map(Location::getId).toList());
+        Map<Long, List<CourtDto>> courtsByLocation = courtsOf(
+                locations.stream().map(Location::getId).toList());
         return locations.stream()
-                .map(location -> LocationDetailDto.fromEntity(location, null, termEnds.get(location.getId())))
+                .map(location -> LocationDetailDto.fromEntity(location,
+                        courtsByLocation.getOrDefault(location.getId(), List.of()),
+                        termEnds.get(location.getId())))
                 .toList();
     }
 
@@ -132,6 +138,23 @@ public class LocationManagementService {
                     (current, candidate) -> candidate.isAfter(current) ? candidate : current);
         }
         return termEnds;
+    }
+
+    /**
+     * Sân của nhiều địa điểm, gom trong một truy vấn và gom nhóm theo locationId.
+     * Trả về Map rỗng khi Owner chưa có địa điểm nào.
+     */
+    private Map<Long, List<CourtDto>> courtsOf(List<Long> locationIds) {
+        if (locationIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<CourtDto>> courtsByLocation = new HashMap<>();
+        for (Court court : courtRepository.findAllByLocationIdInOrderByNameAsc(locationIds)) {
+            courtsByLocation
+                    .computeIfAbsent(court.getLocationId(), key -> new ArrayList<>())
+                    .add(CourtDto.fromEntity(court));
+        }
+        return courtsByLocation;
     }
 
     /** Địa điểm theo id, đồng thời kiểm tra địa điểm thuộc Owner đang đăng nhập. */

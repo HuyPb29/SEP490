@@ -1,0 +1,330 @@
+/* UC08 – Giờ mở cửa, cấu hình slot và ngày ngoại lệ của địa điểm. */
+
+.subtitle {
+  max-width: 720px;
+  margin: -6px 0 14px;
+  color: #6b7789;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+/* ------------------------------------------------------------------ card */
+
+.card {
+  margin-bottom: 14px;
+  padding: 15px;
+  background: #fff;
+  border: 1px solid #e3e7ed;
+  border-radius: 15px;
+}
+
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 12px;
+}
+
+.cardTitle {
+  margin: 0;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 730;
+}
+
+.cardHint {
+  margin: 4px 0 0;
+  color: #7d899b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.cardFooter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* --------------------------------------------------------------- buttons */
+
+.primaryButton {
+  min-height: 32px;
+  padding: 0 15px;
+  color: #fff;
+  background: #16a34a;
+  border: 1px solid #128044;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: #128044;
+}
+
+.primaryButton:disabled {
+  color: #e2e8f0;
+  background: #a7bdb1;
+  border-color: #a7bdb1;
+  cursor: not-allowed;
+}
+
+.ghostButton {
+  min-height: 30px;
+  padding: 0 12px;
+  color: #33415c;
+  background: #f6f8fa;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ghostButton:hover {
+  background: #eef1f5;
+}
+
+.linkButton,
+.linkButtonDanger {
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.linkButton {
+  color: #128044;
+}
+
+.linkButtonDanger {
+  color: #b42318;
+  margin-left: 9px;
+}
+
+/* ---------------------------------------------------------------- tables */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.table th {
+  padding: 7px 8px;
+  color: #7d899b;
+  border-bottom: 1px solid #eef1f5;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.table td {
+  padding: 7px 8px;
+  color: #33415c;
+  border-bottom: 1px solid #f4f6f9;
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.colToggle {
+  width: 52px;
+}
+
+.colDuration {
+  width: 88px;
+  text-align: right;
+}
+
+.colDate {
+  width: 108px;
+}
+
+.colDay {
+  width: 96px;
+}
+
+.colWindow {
+  width: 150px;
+}
+
+.colActions {
+  width: 96px;
+  text-align: right;
+}
+
+.rowDisabled td {
+  color: #a4aebd;
+}
+
+.rowEditing {
+  background: #f6fbf7;
+}
+
+.dayName {
+  color: #172033;
+  font-weight: 650;
+}
+
+.timeSelect,
+.field select,
+.field input,
+.inlineField select,
+.inlineField input {
+  min-height: 30px;
+  padding: 0 8px;
+  color: #172033;
+  background: #fff;
+  border: 1px solid #dfe5ee;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 11px;
+}
+
+/* Bảng tuần chỉ có 5 cột ngắn nên để co theo nội dung, không giãn hết card. */
+.weekTable {
+  width: auto;
+  min-width: 560px;
+}
+
+.weekTable .timeSelect {
+  width: 110px;
+}
+
+.timeSelect:disabled {
+  color: #a4aebd;
+  background: #f7f9fb;
+}
+
+/* ---------------------------------------------------------------- fields */
+
+.fieldGrid {
+  display: grid;
+  gap: 10px 14px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > span {
+  color: #6b7789;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.inlineField {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #6b7789;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.note {
+  margin: 10px 0 0;
+  color: #7d899b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.noteCell {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  margin: 0;
+  padding: 16px 0 4px;
+  color: #7d899b;
+  font-size: 11px;
+}
+
+/* ------------------------------------------------------------ exceptions */
+
+.exceptionForm {
+  display: grid;
+  gap: 10px 14px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin-bottom: 12px;
+  padding: 12px;
+  background: #f9fbfc;
+  border: 1px solid #eef1f5;
+  border-radius: 11px;
+}
+
+.fieldWide {
+  grid-column: span 2;
+}
+
+.exceptionActions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0 6px;
+}
+
+/* ---------------------------------------------------------------- alerts */
+
+.alertError,
+.alertOk,
+.alertWarn {
+  margin: 10px 0 0;
+  padding: 8px 11px;
+  border-radius: 9px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.alertError {
+  color: #b42318;
+  background: #fef4f4;
+  border: 1px solid #fadcd9;
+}
+
+.alertOk {
+  color: #12633c;
+  background: #effaf2;
+  border: 1px solid #cbead6;
+}
+
+.alertWarn {
+  color: #92400e;
+  background: #fffaeb;
+  border: 1px solid #fde9b8;
+}
