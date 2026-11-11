@@ -1,39 +1,9 @@
 import axios from 'axios';
+import api, { getAllPages } from './index';
 
 // Toggle kết nối Backend thật/giả lập
 export const USE_MOCK_BOOKING = true;
 
-// DR03, BR09: Danh sách Đội do Player làm chủ
-const MOCK_OWNED_TEAMS = [
-  { team_id: 1, team_name: 'Cau Giay Smashers' },
-  { team_id: 2, team_name: 'FPT Badminton' },
-];
-
-// BR60: Kho Voucher giả lập theo cơ sở
-const MOCK_VOUCHERS = {
-  DISC20K: {
-    voucher_code: 'DISC20K',
-    discount_amount: 20000,
-    min_order_amount: 100000,
-    description: '20,000 VND off for orders from 100,000 VND.',
-    is_active: true,
-  },
-  SUMMER2026: {
-    voucher_code: 'SUMMER2026',
-    discount_amount: 20000,
-    min_order_amount: 100000,
-    description: '20,000 VND off for orders from 100,000 VND.',
-    is_active: true,
-  },
-  USEDUP: {
-    voucher_code: 'USEDUP',
-    discount_amount: 50000,
-    min_order_amount: 100000,
-    is_active: false,
-  },
-};
-
-// UC17: Danh sách 7 booking mẫu khớp 100% với Mockup 6_Player_UC17_Lich_su_booking.png
 const MOCK_MY_BOOKINGS = [
   {
     booking_id: 1005,
@@ -248,277 +218,53 @@ const MOCK_MY_BOOKINGS = [
   },
 ];
 
-// FR89, BR60: Lấy điểm khả dụng (GET /api/v1/facilities/{facility_id}/my-points)
-export async function getMyPointsAtFacility(facilityId = 1) {
-  if (USE_MOCK_BOOKING) {
-    await new Promise((r) => setTimeout(r, 150));
-    return {
-      success: true,
-      code: 200,
-      data: {
-        facility_id: facilityId,
-        available_points: 120,
-        point_value_vnd: 500, // P10: 1 điểm = 500 VNĐ
-        max_discount_Ratio: 0.5, // P13: Tối đa 50% số tiền sau voucher
-      },
-    };
-  }
-
-  const res = await axios.get(`/api/v1/facilities/${facilityId}/my-points`, {
-    headers: {
-      Authorization: 'Bearer ' + localStorage.getItem('token'),
-    },
-  });
-  return res.data;
+export async function getMyPointsAtFacility(locationId) {
+  const balances = await getAllPages('/me/loyalty-balances');
+  return balances.find((balance) => balance.locationId === locationId)?.pointBalance ?? 0;
 }
 
-// DR03, BR09: Lấy danh sách đội do Player làm chủ (GET /api/v1/teams/my-owned)
 export async function getMyOwnedTeams() {
-  if (USE_MOCK_BOOKING) {
-    return {
-      success: true,
-      code: 200,
-      data: MOCK_OWNED_TEAMS,
-    };
-  }
-
-  const res = await axios.get('/api/v1/teams/my-owned');
-  return res.data;
+  const { data } = await api.get('/me/teams');
+  return data.data.filter((team) => team.captain);
 }
 
-// DR08: Áp dụng Voucher (POST /api/v1/vouchers/apply)
-export async function applyVoucherApi({ facility_id, total_list_price, voucher_code }) {
-  if (USE_MOCK_BOOKING) {
-    await new Promise((r) => setTimeout(r, 250));
-    const code = (voucher_code || '').trim().toUpperCase();
-    const found = MOCK_VOUCHERS[code];
-
-    // MSG34 / MSG108: Mã không tồn tại, hết hạn hoặc hết lượt
-    if (!found || !found.is_active) {
-      const msg = 'Voucher code does not exist, has expired, or has reached its usage limit.';
-      const err = new Error(msg);
-      err.response = { data: { code: 'MSG34', message: msg } };
-      throw err;
-    }
-
-    if (total_list_price < found.min_order_amount) {
-      const msg = `Order does not meet the minimum value of ${found.min_order_amount.toLocaleString('en-US')} VND to apply code ${code}.`;
-      const err = new Error(msg);
-      err.response = { data: { code: 'MSG34', message: msg } };
-      throw err;
-    }
-
-    return {
-      success: true,
-      code: 200,
-      data: {
-        facility_id,
-        voucher_code: found.voucher_code,
-        discount_amount: found.discount_amount,
-        min_order_amount: found.min_order_amount,
-        description: found.description,
-      },
-    };
-  }
-
-  const res = await axios.post('/api/v1/vouchers/apply', {
-    facility_id,
-    total_list_price,
-    voucher_code,
-  }, {
-    headers: {
-      Authorization: 'Bearer ' + localStorage.getItem('token'),
-    },
-  });
-  return res.data;
+export async function getPublicBatchOffers(locationId, signal) {
+  const { data } = await api.get('/locations/' + locationId + '/batch-offers', { signal, skipAuth: true });
+  return data.data;
 }
 
-// UC14: Tạo Booking lẻ / Chốt đơn (POST /api/bookings)
+export async function getCheckoutVouchers(locationId) {
+  const [publicVouchers, grants] = await Promise.all([
+    getAllPages('/locations/' + locationId + '/vouchers'),
+    getAllPages('/me/vouchers'),
+  ]);
+  return { publicVouchers, grants: grants.filter(({ voucher, grantStatus }) =>
+    voucher.locationId === locationId && voucher.status === 'PUBLISHED' && grantStatus === 'AVAILABLE') };
+}
+
+export async function applyVoucherApi({ locationId, orderAmount, selection }) {
+  const { data } = await api.post('/vouchers/check', { locationId, orderAmount, selection });
+  return data.data;
+}
+
+export async function previewBookingApi(payload, signal) {
+  const { data } = await api.post('/bookings/summary', payload, { signal });
+  return data.data;
+}
+
 export async function createBookingApi(payload) {
-  if (USE_MOCK_BOOKING) {
-    await new Promise((r) => setTimeout(r, 350));
-
-    // MSG109: Kiểm tra ghi chú quá 200 ký tự
-    if (payload.guest_note && payload.guest_note.length > 200) {
-      const msg = 'Note to facility owner cannot exceed 200 characters.';
-      const err = new Error(msg);
-      err.response = { data: { code: 'MSG109', message: msg } };
-      throw err;
-    }
-
-    // BR03 / P02: Giữ chỗ đếm ngược 5 phút cố định
-    const holdExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    const bookingCode = 'BK-24102';
-
-    return {
-      success: true,
-      code: 201,
-      message: 'Booking created successfully. Please complete payment within 5 minutes.',
-      data: {
-        booking_id: 1005,
-        booking_code: bookingCode,
-        status: 'holding',
-        hold_expires_at: holdExpires,
-        resubmit_attempts_left: 3, // P06: Tối đa 3 lần gửi lại chứng từ
-        pricing_summary: {
-          total_list_price: payload.total_list_price || 160000,
-          voucher_discount_amount: payload.voucher_discount_amount || 0,
-          points_discount_amount: (payload.points_used || 0) * 500,
-          final_amount: payload.final_amount || 80000,
-          points_used: payload.points_used || 0,
-        },
-        bank_info: {
-          bank_name: 'Vietcombank',
-          bank_account_number: '0011 0023 4567',
-          bank_account_holder: 'NGUYEN VAN HUNG',
-          qr_image_url: null,
-          transfer_content: 'BK24102 0987654321',
-        },
-      },
-    };
-  }
-
-  // 1. Dịch giờ (String "HH:mm") sang tổng số phút (Integer) cho Backend
-  const parseToMinutes = (timeStr) => {
-    if (!timeStr) return 0;
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    return hours * 60 + minutes;
-  };
-
-  // 2. Chuyển đổi (Map) Payload Frontend sang BookingRequest DTO của Backend
-  const backendPayload = {
-    courtId: payload.court_id,
-    date: payload.booking_date, // "2026-11-04"
-    startMinute: parseToMinutes(payload.slots?.[0]?.start_time),
-    endMinute: parseToMinutes(payload.slots?.[payload.slots.length - 1]?.end_time),
-    voucherCode: payload.voucher_code || null,
-    voucherGrantId: null,
-    pointsToUse: payload.points_used || 0,
-  };
-
-  try {
-    // 3. Lấy token từ localStorage và gửi kèm payload lên Backend
-    const token = localStorage.getItem('token');
-    const res = await axios.post('/api/bookings', backendPayload, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    return res.data;
-  } catch (error) {
-    console.error('Lỗi đặt sân Backend:', error.response?.data);
-    throw error;
-  }
+  const { data } = await api.post('/bookings', payload);
+  return data.data;
 }
 
-// UC15: Kiểm tra lịch & buổi trùng trước khi chốt gói (POST /api/booking-packages/preview)
 export async function previewBookingPackageApi(payload) {
-  if (USE_MOCK_BOOKING) {
-    await new Promise((r) => setTimeout(r, 200));
-    return {
-      success: true,
-      code: 200,
-      data: payload,
-    };
-  }
-
-  const res = await axios.post('/api/booking-packages/preview', payload);
-  return res.data;
+  const { data } = await api.post('/booking-packages/preview', payload);
+  return data.data;
 }
 
-// UC15: Xác nhận tạo gói đặt nhiều buổi & giữ chỗ 15 phút (POST /api/booking-packages)
 export async function createBookingPackageApi(payload) {
-  if (USE_MOCK_BOOKING) {
-    await new Promise((r) => setTimeout(r, 350));
-
-    const validSessions = payload.sessions?.filter((s) => !s.is_conflicted) || [];
-    const conflictedSessions = payload.sessions?.filter((s) => s.is_conflicted) || [];
-
-    // BR50 / MSG44: Chặn nếu vẫn còn buổi bị trùng chưa chọn slot bù hoặc chưa bấm bỏ
-    if (conflictedSessions.length > 0) {
-      const conflictList = conflictedSessions
-        .map((s) => `${s.display_date} (${s.time_label}, ${s.court_name})`)
-        .join(', ');
-      const msg = `MSG44: You have ${conflictedSessions.length} conflicted session(s): ${conflictList}. Please choose a compensation slot or remove conflicted sessions.`;
-      const err = new Error(msg);
-      err.response = { data: { code: 'MSG44', message: msg } };
-      throw err;
-    }
-
-    // BR27 / MSG92: Sau khi xử lý buổi trùng, gói bắt buộc phải còn ít nhất 2 buổi
-    if (validSessions.length < 2) {
-      const msg =
-        'MSG92: Package must have at least 2 sessions remaining. Please choose a compensation slot instead of removing.';
-      const err = new Error(msg);
-      err.response = { data: { code: 'MSG92', message: msg } };
-      throw err;
-    }
-
-    // BR53 / P27: Giữ chỗ gói cố định 15 phút
-    const holdExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-    const packageCode = 'PK-26113';
-    const totalAmount = payload.total_amount || validSessions.length * 4 * 80000;
-
-    const newPackageRecord = {
-      booking_id: 1099,
-      booking_code: packageCode,
-      booking_type: 'recurring',
-      status: 'holding',
-      status_name: 'Holding',
-      facility_id: payload.facility_id || 1,
-      facility_name: `Multi-Session Package · ${payload.facility_name || 'Smash Arena'}`,
-      court_id: 103,
-      court_name: payload.court_name || 'Court 3',
-      booking_date: validSessions[0]?.date || '2026-11-03',
-      start_time: `${payload.start_time || '19:00'}:00`,
-      end_time: `${payload.end_time || '21:00'}:00`,
-      time_range: `${payload.start_time || '19:00'} – ${payload.end_time || '21:00'} · ${validSessions.length} sessions`,
-      booker_label: payload.booker_label || 'Cau Giay Smashers',
-      total_slots: validSessions.length * (payload.slots_per_session || 4),
-      total_list_price: totalAmount,
-      voucher_discount_amount: 0,
-      points_discount_amount: 0,
-      final_amount: totalAmount,
-      hold_expires_at: holdExpires,
-      resubmit_attempts_left: 3,
-      bank_info: {
-        bank_name: 'Vietcombank',
-        bank_account_number: '0011 0023 4567',
-        bank_account_holder: 'NGUYEN VAN HUNG',
-        qr_image_url: null,
-        transfer_content: `${packageCode} 0987654321`,
-      },
-      created_at: new Date().toISOString(),
-    };
-
-    // Đẩy gói vừa tạo lên đầu danh sách UC17
-    MOCK_MY_BOOKINGS.unshift(newPackageRecord);
-
-    return {
-      success: true,
-      code: 201,
-      message:
-        'Package schedule confirmed. Your slots are held for 15 minutes (P27).',
-      data: {
-        booking_id: newPackageRecord.booking_id,
-        booking_code: packageCode,
-        status: 'holding',
-        hold_expires_at: holdExpires,
-        resubmit_attempts_left: 3,
-        pricing_summary: {
-          total_list_price: totalAmount,
-          voucher_discount_amount: 0,
-          points_discount_amount: 0,
-          final_amount: totalAmount,
-          points_used: 0,
-        },
-        bank_info: newPackageRecord.bank_info,
-      },
-    };
-  }
-
-  const res = await axios.post('/api/booking-packages', payload);
-  return res.data;
+  const { data } = await api.post('/booking-packages', payload);
+  return data.data;
 }
 
 // UC18: Tải lên ảnh chứng từ chuyển khoản (POST /api/v1/bookings/{booking_id}/payment-proof)
@@ -577,114 +323,134 @@ export async function uploadPaymentProofApi({ bookingId, file, note = '', resubm
   return res.data;
 }
 
-// UC17: Lấy danh sách lịch sử booking của Player (GET /api/v1/players/me/bookings)
-export async function getMyBookingsApi({ tab = 'all', status = '', page = 1, limit = 10 } = {}) {
-  if (USE_MOCK_BOOKING) {
-    await new Promise((r) => setTimeout(r, 200));
+const bookingLabels = {
+  holding: 'Holding',
+  awaiting_confirmation: 'Awaiting Confirmation',
+  resubmit_requested: 'Receipt Requested',
+  confirmed: 'Confirmed',
+  in_use: 'In Use',
+  completed: 'Completed',
+  expired: 'Expired',
+  payment_rejected: 'Payment Rejected',
+  cancelled_by_player: 'Cancelled by Player',
+  cancelled_by_facility: 'Cancelled by Facility',
+};
 
-    try {
-      const savedActive = sessionStorage.getItem('active_holding_booking');
-      if (savedActive) {
-        const parsed = JSON.parse(savedActive);
-        const match = MOCK_MY_BOOKINGS.find((b) => b.booking_id === parsed.booking_id);
-        if (match && parsed.hold_expires_at) {
-          match.hold_expires_at = parsed.hold_expires_at;
-          if (parsed.status === 'awaiting_confirmation') {
-            match.status = 'awaiting_confirmation';
-            match.status_name = 'Awaiting Confirmation';
-            match.sub_note = 'Receipt submitted just now';
-          }
-        }
-      }
-    } catch {
-      // Ignore JSON error
-    }
-
-    const pendingStatuses = ['holding', 'resubmit_requested', 'awaiting_confirmation'];
-    const confirmedStatuses = ['confirmed', 'in_use'];
-    const pastStatuses = [
-      'completed',
-      'cancelled_by_player',
-      'cancelled_by_facility',
-      'expired',
-      'payment_rejected',
-    ];
-
-    const sorted = [...MOCK_MY_BOOKINGS].sort((a, b) => {
-      const aPending = pendingStatuses.includes(a.status) ? 1 : 0;
-      const bPending = pendingStatuses.includes(b.status) ? 1 : 0;
-      if (aPending !== bPending) return bPending - aPending;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-
-    let filtered = sorted;
-    if (tab === 'pending_payment') {
-      filtered = sorted.filter((b) => pendingStatuses.includes(b.status));
-    } else if (tab === 'confirmed') {
-      filtered = sorted.filter((b) => confirmedStatuses.includes(b.status));
-    } else if (tab === 'past') {
-      filtered = sorted.filter((b) => pastStatuses.includes(b.status));
-    }
-
-    if (status) {
-      filtered = filtered.filter((b) => b.status === status);
-    }
-
-    const pendingCount = MOCK_MY_BOOKINGS.filter((b) => pendingStatuses.includes(b.status)).length;
-
-    return {
-      success: true,
-      code: 200,
-      message: 'Fetched bookings successfully.',
-      data: {
-        items: filtered,
-        pending_count: pendingCount,
-        pagination: {
-          page,
-          limit,
-          total_items: filtered.length,
-          total_pages: 1,
-        },
-      },
-    };
-  }
-
-  const params = { page, limit };
-  if (tab && tab !== 'all') params.tab = tab;
-  if (status) params.status = status;
-
-  const res = await axios.get('/api/v1/players/me/bookings', { params });
-  return res.data;
+function bookingCard(item, packageId) {
+  const status = item.status.toLowerCase();
+  return {
+    booking_id: item.id,
+    booking_code: item.bookingCode,
+    booking_type: packageId ? 'session' : 'single',
+    package_id: packageId,
+    location_id: item.locationId,
+    facility_name: item.locationName,
+    court_name: item.courtName,
+    booking_date: item.playDate,
+    start_time: item.startTime,
+    end_time: item.endTime,
+    time_range: item.startTime + ' – ' + item.endTime,
+    hold_expires_at: item.holdExpiresAt,
+    final_amount: item.finalAmount,
+    created_at: item.createdAt,
+    status,
+    status_name: bookingLabels[status] || item.status,
+    can_cancel: status === 'confirmed' && Date.parse(item.playDate + 'T' + item.startTime + ':00+07:00') > Date.now(),
+  };
 }
 
-// UC17 / BR07 / MSG66: Player tự hủy booking ở trạng thái confirmed
+export async function getMyBookingsApi() {
+  const [bookings, packages] = await Promise.all([
+    getAllPages('/me/bookings'),
+    getAllPages('/me/booking-packages'),
+  ]);
+  return [
+    ...bookings.map((item) => bookingCard(item)),
+    ...packages.map((item) => {
+      const status = item.status.toLowerCase();
+      return {
+        booking_id: item.id,
+        booking_code: 'Package #' + item.id,
+        booking_type: 'package',
+        facility_name: item.locationName,
+        court_name: item.sessionCount + ' sessions',
+        booking_date: item.startDate,
+        time_range: item.startDate + ' – ' + item.endDate,
+        hold_expires_at: item.holdExpiresAt,
+        final_amount: item.finalAmount,
+        created_at: item.createdAt,
+        status,
+        status_name: bookingLabels[status] || item.status,
+      };
+    }),
+  ];
+}
+
+export async function getPackageSessionsApi(packageId) {
+  const { data } = await api.get('/booking-packages/' + packageId);
+  return data.data.sessions.map((item) => bookingCard(item, packageId));
+}
+
 export async function cancelBookingApi(bookingId) {
-  if (USE_MOCK_BOOKING) {
-    await new Promise((r) => setTimeout(r, 250));
-    const found = MOCK_MY_BOOKINGS.find((b) => b.booking_id === bookingId);
+  const { data } = await api.post('/bookings/' + bookingId + '/cancel');
+  return data;
+}
 
-    if (!found || found.status !== 'confirmed') {
-      const msg = 'Only confirmed bookings before play time can be cancelled.';
-      const err = new Error(msg);
-      err.response = { data: { code: 'MSG65', message: msg } };
-      throw err;
-    }
+export async function getRescheduleDeadlineApi(bookingId) {
+  const { data } = await api.get('/bookings/' + bookingId + '/reschedule-deadline');
+  return data.data;
+}
 
-    found.status = 'cancelled_by_player';
-    found.status_name = 'Cancelled by Player';
-    found.can_cancel = false;
-    found.can_reschedule = false;
-    found.can_open_match = false;
-    found.sub_note = 'Cancelled by player (non-refundable per BR07)';
+export async function getRescheduleRequestsApi(bookingId, signal) {
+  const { data } = await api.get('/bookings/' + bookingId + '/reschedule-requests', { signal });
+  return data.data;
+}
 
-    return {
-      success: true,
-      code: 200,
-      message: `Booking ${found.booking_code} has been cancelled.`,
-      data: found,
-    };
-  }
+// UC22: Booking bị ảnh hưởng do sân hủy, bảo trì, tắt sân hoặc đổi giờ (GET /api/me/affected-bookings)
+export async function getMyAffectedBookingsApi() {
+  const { data } = await api.get('/me/affected-bookings');
+  return data.data;
+}
 
-  const res = await axios.post(`/api/v1/bookings/${bookingId}/cancel`);
-  return res.data;
+// UC22: Player chọn hoàn tiền hoặc điểm bồi hoàn; đổi slot miễn phí cần gửi kèm slot mới
+export async function getAffectedBookingApi(id) {
+  const { data } = await api.get('/affected-bookings/' + id);
+  return data.data;
+}
+
+export async function submitAffectedChoiceApi(affectedId, choice, slot = null) {
+  const body = slot ? { choice, slot } : { choice };
+  const { data } = await api.post('/affected-bookings/' + affectedId + '/submit-choice', body);
+  return data.data;
+}
+
+
+// UC21: Xem trước chênh lệch giá khi đổi lịch (POST /api/bookings/{id}/reschedule-requests/preview)
+export async function previewRescheduleApi(bookingId, slot) {
+  const { data } = await api.post('/bookings/' + bookingId + '/reschedule-requests/preview', slot);
+  return data.data;
+}
+
+// UC21: Xác nhận tạo yêu cầu đổi lịch (POST /api/bookings/{id}/reschedule-requests)
+export async function createRescheduleApi(bookingId, slot) {
+  const { data } = await api.post('/bookings/' + bookingId + '/reschedule-requests', slot);
+  return data.data;
+}
+
+// Lấy danh sách sân hoạt động của cơ sở để chọn slot đổi lịch (GET /api/locations/{locationId}/courts)
+export async function getLocationCourtsApi(locationId) {
+  const { data } = await api.get('/locations/' + locationId + '/courts');
+  return data.data;
+}
+
+// UC21 / FR90: Giữ kèo theo giờ mới sau khi đổi lịch (POST /api/matches/{id}/keep-after-reschedule)
+export async function keepMatchAfterRescheduleApi(matchId) {
+  const { data } = await api.post('/matches/' + matchId + '/keep-after-reschedule');
+  return data.data;
+}
+
+// UC21 / FR90: Hủy kèo sau khi đổi lịch (POST /api/matches/{id}/cancel)
+export async function cancelMatchApi(matchId) {
+  const { data } = await api.post('/matches/' + matchId + '/cancel');
+  return data.data;
 }

@@ -73,21 +73,23 @@ public class BookingChangeSupport {
         if (recipient != null) em.persist(Notification.builder().recipientId(recipient).type(type)
                 .title("Cập nhật booking").content(content.length()>500?content.substring(0,500):content).refType("BOOKING").refId(bookingId).build());
     }
-    public void matches(Booking b, boolean cancel) {
+    public void expireMatches(Booking b) {
         var matches = em.createQuery("select m from Match m where m.bookingId=:id and m.status in :states", Match.class)
                 .setParameter("id", b.getId()).setParameter("states", List.of(MatchStatus.OPEN, MatchStatus.CLOSED))
                 .setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
         for (Match m : matches) {
-            if (cancel) { m.setStatus(MatchStatus.EXPIRED); m.setClosedAt(LocalDateTime.now()); }
+            m.setReschedulePending(false);
+            m.setStatus(MatchStatus.EXPIRED);
+            m.setClosedAt(LocalDateTime.now());
             for (var r : em.createQuery("select r from MatchJoinRequest r where r.matchId=:id", MatchJoinRequest.class)
                     .setParameter("id", m.getId()).getResultList()) {
-                if (cancel && r.getStatus() == JoinRequestStatus.PENDING) {
+                if (r.getStatus() == JoinRequestStatus.PENDING) {
                     r.setStatus(JoinRequestStatus.CANCELLED); r.setDecidedAt(LocalDateTime.now());
                 }
-                if (r.getStatus() == JoinRequestStatus.APPROVED || (cancel && r.getStatus() == JoinRequestStatus.CANCELLED))
-                    notify(r.getPlayerId(), "MATCH_BOOKING_CHANGED", cancel ? "Kèo hết hiệu lực do booking bị hủy" : "Booking của kèo đã đổi lịch", b.getId());
+                if (r.getStatus() == JoinRequestStatus.APPROVED || r.getStatus() == JoinRequestStatus.CANCELLED)
+                    notify(r.getPlayerId(), "MATCH_BOOKING_CHANGED", "Kèo hết hiệu lực do booking bị hủy", b.getId());
             }
-            notify(b.getPlayerId(), "MATCH_BOOKING_CHANGED", cancel ? "Kèo đã hết hiệu lực" : "Booking đã đổi lịch; bạn có thể giữ hoặc hủy kèo", b.getId());
+            notify(b.getPlayerId(), "MATCH_BOOKING_CHANGED", "Kèo đã hết hiệu lực", b.getId());
         }
     }
 }

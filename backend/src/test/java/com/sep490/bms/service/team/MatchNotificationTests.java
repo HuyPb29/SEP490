@@ -101,6 +101,14 @@ class MatchNotificationTests {
         assertThat(types(applicantId)).containsExactly("MATCH_RESCHEDULED");
         assertThat(jdbc.queryForObject("SELECT status FROM [match] WHERE id = ?", String.class, match))
                 .isEqualTo("OPEN");
+        assertThat(matches.getMatch(hostId, match).isReschedulePending()).isTrue();
+
+        var kept = matches.keepRescheduledMatch(hostId, match);
+
+        assertThat(kept.isReschedulePending()).isFalse();
+        assertThat(kept.getStatus()).isEqualTo("OPEN");
+        assertThat(types(memberId)).containsExactly("MATCH_RESCHEDULED", "MATCH_RESCHEDULED_KEPT");
+        assertThat(types(applicantId)).containsExactly("MATCH_RESCHEDULED");
     }
 
     @Test

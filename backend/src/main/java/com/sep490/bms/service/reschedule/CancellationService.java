@@ -19,6 +19,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Xử lý hủy booking, đánh dấu booking bị ảnh hưởng và thực hiện phương án của Player.
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -36,7 +39,31 @@ public class CancellationService {
         if(!pending(b).isEmpty()) throw new AppException("Hãy chọn xử lý booking bị ảnh hưởng",HttpStatus.CONFLICT);
         cancelBooking(b,u.getId(),BookingStatus.CANCELLED_BY_PLAYER); return b;
     }
+    public record CancellableBooking(Long id, String bookingCode, Long courtId, int startMinute, int endMinute,
+            BookingType bookingType) {}
+
+    @Transactional(readOnly = true)
+    public List<CancellableBooking> ownerBookings(UserPrincipal user, LocalDate playDate) {
+        LocalDateTime now = LocalDateTime.now();
+        return em.createQuery("""
+                select b from Booking b
+                where b.locationId = :locationId and b.status = :status and b.playDate = :playDate
+                and not exists (select a from AffectedBooking a where a.bookingId = b.id and a.status = :affectedStatus)
+                order by b.startMinute, b.id
+                """, Booking.class)
+                .setParameter("locationId", access.selectedLocation(user).getId())
+                .setParameter("status", BookingStatus.CONFIRMED)
+                .setParameter("playDate", playDate)
+                .setParameter("affectedStatus", AffectedStatus.PENDING)
+                .getResultList().stream()
+                .filter(booking -> support.start(booking).isAfter(now))
+                .map(booking -> new CancellableBooking(booking.getId(), booking.getBookingCode(), booking.getCourtId(),
+                        booking.getStartMinute(), booking.getEndMinute(), booking.getBookingType()))
+                .toList();
+    }
+
     public Object ownerCancel(UserPrincipal u,Long id,OwnerCancellationRequest input) {
+        if (u.getRole() != Role.OWNER) throw new AppException("Chỉ Owner được hủy booking", HttpStatus.FORBIDDEN);
         Booking b=support.booking(id);
         if(!access.selectedLocation(u).getId().equals(b.getLocationId())) throw new AppException("Sai địa điểm",HttpStatus.FORBIDDEN);
         support.confirmed(b);
@@ -101,13 +128,15 @@ public class CancellationService {
                     .suggestedAmount(support.paidAmount(b)).originalPaymentDate(original).reason("Hoàn tiền do cơ sở gây ảnh hưởng").build());
             support.notify(em.find(Location.class,b.getLocationId()).getOwnerId(),"REFUND_REQUEST","Có yêu cầu hoàn tiền cho "+b.getBookingCode(),b.getId());
         }
-        em.flush(); points.settleFacilityCancellation(a.getId()); vouchers.restoreForFailedBooking(b.getId());
+        em.flush();
+        vouchers.restoreForFailedBooking(b.getId());
+        points.settleFacilityCancellation(a.getId());
         support.notify(b.getPlayerId(),"AFFECTED_RESOLVED","Đã xử lý booking theo lựa chọn "+choice+(defaultChoice?" (mặc định)":""),b.getId());
     }
     private void cancelBooking(Booking b,Long actor,BookingStatus status) {
         reschedules.rejectPending(b); support.release(b.getId(),null);
         b.setStatus(status);b.setCancelledBy(actor);b.setCancelledAt(LocalDateTime.now());b.setUpdatedAt(LocalDateTime.now());
-        support.matches(b,true);support.notify(b.getPlayerId(),"BOOKING_CANCELLED","Booking "+b.getBookingCode()+" đã hủy",b.getId());
+        support.expireMatches(b);support.notify(b.getPlayerId(),"BOOKING_CANCELLED","Booking "+b.getBookingCode()+" đã hủy",b.getId());
     }
     public void defaultChoice(Long id) {
         AffectedBooking a=find(id);Booking b=support.booking(a.getBookingId());em.refresh(a,LockModeType.PESSIMISTIC_WRITE);

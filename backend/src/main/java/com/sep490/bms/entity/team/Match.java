@@ -17,6 +17,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu kèo mở từ booking, số người hiện có, số chỗ cần tuyển và trạng thái.
+ */
 @Entity
 // "match" là từ khóa của SQL Server nên phải quote tên bảng.
 @Table(name = "`match`")
@@ -49,6 +52,9 @@ public class Match {
 
     @Column(name = "closed_at")
     private LocalDateTime closedAt;
+
+    @Column(name = "reschedule_pending", nullable = false)
+    private boolean reschedulePending;
 
     @PrePersist
     public void prePersist() {

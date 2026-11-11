@@ -168,6 +168,7 @@ export default function FacilitySearchPage() {
 
                 {/* Dropdown Menu thả xuống */}
                 <div className={styles.dropdownMenu}>
+                  <button type="button" className={styles.dropdownItem} onClick={() => navigate('/notifications')}>Thông báo</button>
                   {['player', 'owner'].includes(userInfo.role_code) &&
                     <button type="button" className={styles.dropdownItem} onClick={() => navigate('/account')}>Tài khoản của tôi</button>}
                   {userInfo.role_code === 'owner' &&

@@ -15,6 +15,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Cung cấp API hủy booking cho Player và xử lý hủy tại địa điểm cho Owner.
+ */
 @RestController
 @RequiredArgsConstructor
 public class BookingCancellationController {
@@ -24,7 +27,15 @@ public class BookingCancellationController {
     public ApiResponse<Booking> cancel(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id) {
         return ApiResponse.success(service.cancel(u,id));
     }
-    @PreAuthorize("hasAnyRole('OWNER','STAFF')")
+    @PreAuthorize("hasRole('OWNER')")
+    @GetMapping("/api/owner/bookings/cancellable")
+    public ApiResponse<List<CancellationService.CancellableBooking>> ownerBookings(
+            @AuthenticationPrincipal UserPrincipal user,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate playDate) {
+        return ApiResponse.success(service.ownerBookings(user, playDate));
+    }
+
+    @PreAuthorize("hasRole('OWNER')")
     @PostMapping({"/api/owner/bookings/{id}/cancel","/api/staff/bookings/{id}/cancel"})
     public ApiResponse<Object> ownerCancel(@AuthenticationPrincipal UserPrincipal u,@PathVariable Long id,@Valid @RequestBody OwnerCancellationRequest r) {
         return ApiResponse.success(service.ownerCancel(u,id,r));

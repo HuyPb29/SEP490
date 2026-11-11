@@ -1,75 +1,46 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
 import {
   getMyPointsAtFacility,
   getMyOwnedTeams,
+  getCheckoutVouchers,
   applyVoucherApi,
   createBookingApi,
+  previewBookingApi,
 } from '../../api/bookingApi';
+import { getSavedUser } from '../../api/session';
 import styles from './BookingSummaryPage.module.css';
 
-// FIX: Cinderella Bug (Chặn lỗi 24:00:00 của SQL Server)
-function addThirtyMinutes(timeStr) {
-  const [hh, mm] = timeStr.split(':').map(Number);
-  const totalMins = hh * 60 + mm + 30;
-
-  // Nếu chạm mốc 24:00 (1440 phút), ép về 23:59 để DB không bị crash
-  if (totalMins >= 1440) return '23:59';
-
-  const nextH = String(Math.floor(totalMins / 60)).padStart(2, '0');
-  const nextM = String(totalMins % 60).padStart(2, '0');
-  return `${nextH}:${nextM}`;
+function toMinutes(time) {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
 }
 
 export default function BookingSummaryPage() {
   const navigate = useNavigate();
-
-  // 1. Load dữ liệu các slot đã chọn từ UC13 (hoặc khởi tạo chuẩn theo Mockup để dễ test)
+  const user = getSavedUser();
   const [bookingContext] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('pending_booking_selection');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed?.selectedSlots?.length > 0) return parsed;
-      }
+      const saved = JSON.parse(sessionStorage.getItem('pending_booking_selection'));
+      return saved?.source === 'backend' && saved.selectedSlots?.length ? saved : null;
     } catch {
-      // Fallback nếu JSON lỗi
+      return null;
     }
-    return {
-      facility: {
-        facility_id: 1,
-        facility_name: 'Smash Arena',
-        address: '12 Tran Thai Tong, Cau Giay, Hanoi',
-      },
-      playDate: '2026-10-24',
-      selectedSlots: [
-        { courtId: 2, courtName: 'Court 2', timeIdx: 4, time: '19:00', price: 80000 },
-        { courtId: 2, courtName: 'Court 2', timeIdx: 5, time: '19:30', price: 80000 },
-      ],
-    };
   });
-
-  // 2. Load thông tin Player đăng nhập (DR24, DR01)
-  const [playerInfo] = useState(() => {
-    try {
-      const savedUser = localStorage.getItem('bms_user_info');
-      if (savedUser) {
-        const parsed = JSON.parse(savedUser);
-        return {
-          full_name: parsed.full_name || 'Nguyen Minh Anh',
-          phone_number: parsed.phone_number || '0987 654 321',
-          email: parsed.email || 'minhanh@gmail.com',
-        };
-      }
-    } catch {
-      // Fallback
-    }
+  const selection = useMemo(() => {
+    if (!bookingContext) return null;
+    const slots = bookingContext.selectedSlots;
     return {
-      full_name: 'Nguyen Minh Anh',
-      phone_number: '0987 654 321',
-      email: 'minhanh@gmail.com',
+      courtId: slots[0].courtId,
+      date: bookingContext.playDate,
+      startMinute: toMinutes(slots[0].time),
+      endMinute: toMinutes(slots[slots.length - 1].time) + 30,
     };
-  });
+  }, [bookingContext]);
+  const isPlayer = user?.role_code === 'player';
+  const [quote, setQuote] = useState(null);
+  const [quoteError, setQuoteError] = useState('');
+  const [pointsError, setPointsError] = useState('');
 
   // State Đội bóng (DR03 / BR09)
   const [ownedTeams, setOwnedTeams] = useState([]);
@@ -80,96 +51,57 @@ export default function BookingSummaryPage() {
 
   // Sửa lại thành chuỗi rỗng và null
   const [voucherInput, setVoucherInput] = useState('');
+  const [checkoutVouchers, setCheckoutVouchers] = useState({ publicVouchers: [], grants: [] });
+  const [selectedGrant, setSelectedGrant] = useState(null);
   const [appliedVoucher, setAppliedVoucher] = useState(null);
   const [voucherError, setVoucherError] = useState('');
   const [voucherLoading, setVoucherLoading] = useState(false);
 
   // State Điểm thưởng tại cơ sở (FR89, P10, P11, P13, BR15, BR41)
-  const [availablePoints, setAvailablePoints] = useState(120);
-  const [usePoints, setUsePoints] = useState(true);
+  const [availablePoints, setAvailablePoints] = useState(0);
+  const [pointsInput, setPointsInput] = useState('');
 
   // State thông báo khi chốt đơn
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [createdBooking, setCreatedBooking] = useState(null);
-
   useEffect(() => {
-    const fetchInitialData = async () => {
-      const facilityId = bookingContext.facility?.facility_id || 1;
-      const [pointsRes, teamsRes] = await Promise.all([
-        getMyPointsAtFacility(facilityId),
-        getMyOwnedTeams(),
-      ]);
-      if (pointsRes?.success) {
-        setAvailablePoints(pointsRes.data.available_points);
-      }
-      if (teamsRes?.success) {
-        setOwnedTeams(teamsRes.data);
-      }
-    };
-    fetchInitialData();
-  }, [bookingContext.facility?.facility_id]);
+    if (!isPlayer || !selection) return undefined;
+    const controller = new AbortController();
+    const active = () => !controller.signal.aborted;
+    previewBookingApi(selection, controller.signal)
+      .then((data) => { if (active()) setQuote(data); })
+      .catch((error) => {
+        if (active()) setQuoteError(error.response?.data?.message || 'Không tải được giá đặt sân.');
+      });
+    getMyOwnedTeams().then((teams) => { if (active()) setOwnedTeams(teams); })
+      .catch(() => { if (active()) setOwnedTeams([]); });
+    getMyPointsAtFacility(bookingContext.facility.facility_id)
+      .then((points) => { if (active()) setAvailablePoints(points); })
+      .catch((error) => {
+        if (active()) setPointsError(error.response?.data?.message || 'Không tải được số dư điểm.');
+      });
+    getCheckoutVouchers(bookingContext.facility.facility_id)
+      .then((vouchers) => { if (active()) setCheckoutVouchers(vouchers); })
+      .catch(() => { if (active()) setCheckoutVouchers({ publicVouchers: [], grants: [] }); });
+    return () => controller.abort();
+  }, [bookingContext, isPlayer, selection]);
 
-  // Tính toán thông tin hiển thị khung giờ & tiền sân niêm yết (DR05)
-  const slotSummary = useMemo(() => {
-    const slots = bookingContext.selectedSlots || [];
-    const totalSlots = slots.length;
-    const unitPrice = slots[0]?.price || 80000;
-    const totalListPrice = slots.reduce((sum, s) => sum + s.price, 0);
-    const courtId = slots[0]?.courtId || 2;
-    const courtName = slots[0]?.courtName || 'Court 2';
-    const startTime = slots[0]?.time || '19:00';
-    const endTime = slots.length > 0 ? addThirtyMinutes(slots[slots.length - 1].time) : '20:00';
-
-    return {
-      totalSlots,
-      unitPrice,
-      totalListPrice,
-      courtId,
-      courtName,
-      timeRangeText: `${startTime} – ${endTime} (${totalSlots} slot)`,
-    };
-  }, [bookingContext.selectedSlots]);
-
-  // Thuật toán tính thứ tự trừ tiền (Discount Calculation Order - BR15, BR41, P10, P11, P13):
-  // Giá niêm yết -> Trừ Voucher -> Trừ Điểm thưởng (tối đa 50% phần còn lại) -> Thực trả (> 0đ)
-  const pricingSummary = useMemo(() => {
-    const listPrice = slotSummary.totalListPrice;
-    const voucherDiscount = appliedVoucher ? appliedVoucher.discount_amount : 0;
-    const remainingAfterVoucher = Math.max(0, listPrice - voucherDiscount);
-
-    let pointsUsed = 0;
-    let pointsDiscount = 0;
-
-    if (usePoints && availablePoints >= 2 && remainingAfterVoucher > 1000) {
-      // P13 / BR41: Tối đa 50% số tiền còn lại sau khi trừ Voucher
-      const maxAllowedDiscountByRatio = Math.floor(remainingAfterVoucher * 0.5);
-      // BR15: Không có booking 0 đồng (giữ lại ít nhất 1.000đ thực trả)
-      const maxAllowedDiscountByNonZero = Math.max(0, remainingAfterVoucher - 1000);
-      const maxDiscountVnd = Math.min(maxAllowedDiscountByRatio, maxAllowedDiscountByNonZero);
-
-      // Quy đổi sang số điểm tối đa được phép dùng (P10: 1 điểm = 500đ)
-      const maxPointsByRule = Math.floor(maxDiscountVnd / 500);
-      const candidatePoints = Math.min(availablePoints, maxPointsByRule);
-
-      // P11 / BR15: Mỗi lần dùng điểm phải giảm tối thiểu 1.000đ (tức >= 2 điểm)
-      if (candidatePoints >= 2) {
-        pointsUsed = candidatePoints;
-        pointsDiscount = pointsUsed * 500;
-      }
-    }
-
-    const finalAmount = Math.max(0, remainingAfterVoucher - pointsDiscount);
-
-    return {
-      listPrice,
-      voucherDiscount,
-      remainingAfterVoucher,
-      pointsUsed,
-      pointsDiscount,
-      finalAmount,
-    };
-  }, [slotSummary.totalListPrice, appliedVoucher, usePoints, availablePoints]);
+  const listPrice = quote?.listAmount ?? 0;
+  const voucherDiscount = appliedVoucher?.discountAmount ?? 0;
+  const remainingAfterVoucher = listPrice - voucherDiscount;
+  const pointsAllowed = Math.min(availablePoints, Math.floor(remainingAfterVoucher / 1000));
+  const requestedPoints = Number(pointsInput);
+  const validPoints = Number.isInteger(requestedPoints) &&
+    (requestedPoints === 0 || (requestedPoints >= 2 && requestedPoints <= pointsAllowed));
+  const pointsUsed = validPoints ? requestedPoints : 0;
+  const pointsDiscount = pointsUsed * 500;
+  const pricingSummary = { listPrice, voucherDiscount, remainingAfterVoucher, pointsUsed, pointsDiscount,
+    finalAmount: remainingAfterVoucher - pointsDiscount };
+  const slotSummary = {
+    courtName: quote?.courtName,
+    totalSlots: quote?.slots?.length ?? 0,
+    timeRangeText: quote ? quote.startTime + ' – ' + quote.endTime : '',
+  };
 
   const formatDate = (dateStr) => {
     const d = new Date(dateStr);
@@ -191,21 +123,18 @@ export default function BookingSummaryPage() {
       return;
     }
 
-    if (!voucherInput.trim()) {
+    if (!voucherInput.trim() && !selectedGrant) {
       setVoucherError('Please enter a voucher code before applying.');
       return;
     }
 
     setVoucherLoading(true);
     try {
-      const res = await applyVoucherApi({
-        facility_id: bookingContext.facility?.facility_id || 1,
-        total_list_price: slotSummary.totalListPrice,
-        voucher_code: voucherInput.trim(),
-      });
-      if (res?.success) {
-        setAppliedVoucher(res.data);
-      }
+      const code = voucherInput.trim().toUpperCase();
+      const selection = selectedGrant ? { grantId: selectedGrant } : { code };
+      const checked = await applyVoucherApi({ locationId: quote.locationId, orderAmount: quote.listAmount, selection });
+      setAppliedVoucher({ ...checked, selection, label: selectedGrant
+        ? checkoutVouchers.grants.find((grant) => grant.grantId === selectedGrant)?.voucher.name : code });
     } catch (err) {
       const message = err.response?.data?.message;
       setVoucherError(
@@ -218,68 +147,45 @@ export default function BookingSummaryPage() {
     }
   };
 
-  // Xử lý bấm "Xác nhận đặt sân" (POST /api/v1/bookings)
   const handleConfirmBooking = async () => {
+    if (!quote || submitting || voucherLoading || !validPoints) return;
     setSubmitError('');
-
-    if (guestNote.length > 200) {
-      setSubmitError('Note to facility owner cannot exceed 200 characters (MSG109).');
-      return;
-    }
-
-    if (pricingSummary.finalAmount <= 0) {
-      setSubmitError('Total payment after discount must be greater than 0 VND (BR15).');
-      return;
-    }
-
-    // Format danh sách slot chuẩn "HH:mm:00" cho Backend
-    const formattedSlots = (bookingContext.selectedSlots || []).map((s) => ({
-      start_time: `${s.time}:00`,
-      end_time: `${addThirtyMinutes(s.time)}:00`,
-    }));
-
-    const payload = {
-      facility_id: bookingContext.facility?.facility_id || 1,
-      court_id: slotSummary.courtId,
-      booking_date: bookingContext.playDate,
-      booking_type: 'single',
-      slots: formattedSlots,
-      team_id: selectedTeamId,
-      voucher_code: appliedVoucher ? appliedVoucher.voucher_code : null,
-      points_used: pricingSummary.pointsUsed,
-      guest_note: guestNote.trim() || null,
-      // Các trường hỗ trợ hiển thị Mock Response
-      total_list_price: pricingSummary.listPrice,
-      voucher_discount_amount: pricingSummary.voucherDiscount,
-      final_amount: pricingSummary.finalAmount,
-    };
-
     setSubmitting(true);
     try {
-      const res = await createBookingApi(payload);
-      if (res?.success) {
-        // Lưu thông tin giữ chỗ 5 phút (BR03) và VietQR vào sessionStorage cho màn UC18 (Thanh toán)
-        sessionStorage.setItem('active_holding_booking', JSON.stringify(res.data));
-        setCreatedBooking(res.data);
-        navigate('/booking/payment');
+      const payload = {
+        ...selection,
+        teamId: selectedTeamId,
+        note: guestNote.trim() || null,
+        voucherCode: appliedVoucher?.selection.code ?? null,
+        voucherGrantId: appliedVoucher?.selection.grantId ?? null,
+        pointsToUse: pointsUsed,
+      };
+      const checked = await previewBookingApi(payload);
+      if (checked.listAmount !== listPrice || checked.voucherDiscount !== voucherDiscount ||
+          checked.pointDiscount !== pointsDiscount || checked.finalAmount !== pricingSummary.finalAmount) {
+        setAppliedVoucher(null);
+        setQuote(checked);
+        setPointsInput('');
+        setSubmitError('Giá hoặc ưu đãi đã thay đổi. Vui lòng kiểm tra lại trước khi xác nhận.');
+        return;
       }
-    } catch (err) {
-      const message = err.response?.data?.message;
-      if (message?.includes('MSG37')) {
-        setSubmitError(
-          'Điểm thưởng của bạn không đủ để thực hiện giao dịch này. Vui lòng tải lại trang để cập nhật số điểm.'
-        );
-      } else {
-        setSubmitError(
-          message && message !== 'No message available'
-            ? message
-            : 'Không thể xác nhận đặt sân. Vui lòng kiểm tra lại thông tin và thử lại.'
-        );
-      }
+      const booking = await createBookingApi(payload);
+      sessionStorage.removeItem('pending_booking_selection');
+      navigate('/booking/payment?bookingId=' + booking.id, { replace: true });
+    } catch (error) {
+      setSubmitError(error.response?.data?.message || 'Không thể xác nhận đặt sân. Vui lòng thử lại.');
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (!bookingContext) return <Navigate to="/" replace />;
+  if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/summary' }} replace />;
+  if (!isPlayer) return <p role="alert">Vui lòng đăng nhập bằng tài khoản Player để đặt sân.</p>;
+  if (!quote) return <main className={styles.mainContainer}>
+    <p role={quoteError ? 'alert' : 'status'}>{quoteError || 'Đang tải giá đặt sân…'}</p>
+    {quoteError && <Link to={'/facilities/' + bookingContext.facility.facility_id}>Quay lại lịch sân</Link>}
+  </main>;
 
   return (
     <div className={styles.pageWrapper}>
@@ -300,8 +206,8 @@ export default function BookingSummaryPage() {
           </nav>
 
           <div className={styles.userProfile}>
-            <span className={styles.avatar}>MA</span>
-            <span className={styles.userName}>Minh Anh</span>
+            <span className={styles.avatar}>{user.full_name?.charAt(0)}</span>
+            <span className={styles.userName}>{user.full_name}</span>
           </div>
         </div>
       </header>
@@ -334,13 +240,13 @@ export default function BookingSummaryPage() {
                 </button>
                 {ownedTeams.map((team) => (
                   <button
-                    key={team.team_id}
+                    key={team.id}
                     type="button"
-                    className={`${styles.teamPill} ${selectedTeamId === team.team_id ? styles.teamPillActive : ''
+                    className={`${styles.teamPill} ${selectedTeamId === team.id ? styles.teamPillActive : ''
                       }`}
-                    onClick={() => setSelectedTeamId(team.team_id)}
+                    onClick={() => setSelectedTeamId(team.id)}
                   >
-                    {team.team_name}
+                    {team.name}
                   </button>
                 ))}
               </div>
@@ -380,12 +286,12 @@ export default function BookingSummaryPage() {
 
                 <div className={styles.infoItem}>
                   <span className={styles.infoLabel}>Booker</span>
-                  <strong className={styles.infoValue}>{playerInfo.full_name}</strong>
+                  <strong className={styles.infoValue}>{quote.bookerName}</strong>
                 </div>
 
                 <div className={styles.infoItem}>
                   <span className={styles.infoLabel}>Phone Number</span>
-                  <strong className={styles.infoValue}>{playerInfo.phone_number}</strong>
+                  <strong className={styles.infoValue}>{quote.bookerPhone}</strong>
                 </div>
               </div>
 
@@ -406,34 +312,59 @@ export default function BookingSummaryPage() {
             <section className={styles.card}>
               <h2 className={styles.cardTitle}>Promotions</h2>
 
-              <label className={styles.noteLabel}>Voucher Code</label>
+              <label className={styles.noteLabel} htmlFor="voucher-code">Voucher Code</label>
               <div className={styles.voucherRow}>
                 <input
+                  id="voucher-code"
                   type="text"
                   className={styles.voucherInput}
                   value={voucherInput}
-                  disabled={Boolean(appliedVoucher)}
+                  list="public-vouchers"
+                  maxLength={20}
+                  disabled={Boolean(appliedVoucher) || voucherLoading || submitting}
                   onChange={(e) => {
                     setVoucherInput(e.target.value.toUpperCase());
+                    setSelectedGrant(null);
                     setVoucherError('');
                   }}
-                  placeholder="Enter discount code (e.g., DISC20K)"
+                  placeholder="Enter discount code"
                 />
+                <datalist id="public-vouchers">
+                  {checkoutVouchers.publicVouchers.map((voucher) =>
+                    <option key={voucher.id} value={voucher.code}>{voucher.name}</option>)}
+                </datalist>
                 <button
                   type="button"
                   className={styles.voucherBtn}
                   onClick={handleVoucherAction}
-                  disabled={voucherLoading}
+                  disabled={voucherLoading || submitting}
                 >
                   {appliedVoucher ? 'Remove' : voucherLoading ? 'Checking...' : 'Apply'}
                 </button>
               </div>
 
+              {checkoutVouchers.grants.length > 0 && <div className={styles.noteGroup}>
+                <label className={styles.noteLabel} htmlFor="voucher-grant">Voucher cá nhân</label>
+                <select id="voucher-grant" className={styles.voucherInput} value={selectedGrant ?? ''}
+                  disabled={Boolean(appliedVoucher) || voucherLoading || submitting}
+                  onChange={(event) => {
+                    setSelectedGrant(Number(event.target.value) || null);
+                    setVoucherInput('');
+                    setVoucherError('');
+                  }}>
+                  <option value="">Chọn voucher cá nhân</option>
+                  {checkoutVouchers.grants.map(({ grantId, voucher }) =>
+                    <option key={grantId} value={grantId}>{voucher.name} · {voucher.code}</option>)}
+                </select>
+              </div>}
+
               {voucherError && <p className={styles.errorText}>{voucherError}</p>}
+
+              {pointsError && <p role="alert" className={styles.errorText}>{pointsError}</p>}
 
               {appliedVoucher && (
                 <div className={styles.voucherSuccessBanner}>
-                  Applied {appliedVoucher.voucher_code}: {appliedVoucher.description}
+                  Applied {appliedVoucher.label}: {appliedVoucher.discountAmount.toLocaleString('vi-VN') + ' VND'}
                 </div>
               )}
 
@@ -445,15 +376,12 @@ export default function BookingSummaryPage() {
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={usePoints}
-                  className={`${styles.switchToggle} ${usePoints ? styles.switchOn : ''}`}
-                  onClick={() => setUsePoints((prev) => !prev)}
-                >
-                  <span className={styles.switchThumb} />
-                </button>
+                <input type="number" aria-label="Số điểm muốn dùng" min="0" max={pointsAllowed}
+                  placeholder="0" value={pointsInput} disabled={submitting || voucherLoading}
+                  onChange={(event) => setPointsInput(event.target.value)} />
+                {!validPoints && <p role="alert" className={styles.errorText}>
+                  {pointsAllowed < 2 ? 'Booking này chưa đủ điều kiện dùng điểm.' : `Nhập 0 hoặc từ 2 đến ${pointsAllowed} điểm.`}
+                </p>}
               </div>
             </section>
           </div>
@@ -465,8 +393,7 @@ export default function BookingSummaryPage() {
 
               <div className={styles.priceLine}>
                 <span className={styles.priceLabel}>
-                  Court Fee ({slotSummary.totalSlots} ×{' '}
-                  {slotSummary.unitPrice.toLocaleString('vi-VN')} VND)
+                  Court Fee ({slotSummary.totalSlots} slots)
                 </span>
                 <strong className={styles.priceValue}>
                   {pricingSummary.listPrice.toLocaleString('vi-VN')} VND
@@ -519,27 +446,16 @@ export default function BookingSummaryPage() {
               <button
                 type="button"
                 className={styles.confirmBtn}
-                disabled={submitting}
+                disabled={submitting || voucherLoading || !validPoints}
                 onClick={handleConfirmBooking}
               >
                 {submitting ? 'Holding slot...' : 'Confirm Booking'}
               </button>
 
               <p className={styles.holdNotice}>
-                After confirmation, the slot will be held for 5 minutes for you to transfer funds and upload the receipt.
+                The payment page will show the deadline for transferring funds and uploading the receipt.
               </p>
 
-              {/* Hiển thị thông báo xác nhận giữ chỗ thành công (Chuẩn bị nối sang UC18) */}
-              {createdBooking && (
-                <div className={styles.holdingSuccessBox}>
-                  <strong>✅ Slot held with code {createdBooking.booking_code}!</strong>
-                  <span>
-                    Please transfer:{' '}
-                    {createdBooking.pricing_summary.final_amount.toLocaleString('vi-VN')} VND to{' '}
-                    {createdBooking.bank_info.bank_name} ({createdBooking.bank_info.bank_account_number}).
-                  </span>
-                </div>
-              )}
             </div>
           </aside>
         </div>

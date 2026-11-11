@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Routes, Route, useLocation } from 'react-route
 import api from './api'
 import { getSavedUser, getSelectedLocation, getToken, roleHome } from './api/session'
 import { AccountPage, AdminWorkspace } from './pages/account/AccountPages'
+import NotificationsPage from './pages/NotificationsPage'
 
 import FacilitySearchPage from './pages/location/FacilitySearchPage'
 import FacilityDetailPage from './pages/location/FacilityDetailPage'
@@ -10,12 +11,16 @@ import AuthPage from './pages/auth/AuthPage'
 import BookingSummaryPage from './pages/booking/BookingSummaryPage'
 import BookingPaymentPage from './pages/booking/BookingPaymentPage'
 import MyBookingsPage from './pages/booking/MyBookingsPage'
+import RescheduleHistoryPage from './pages/booking/RescheduleHistoryPage'
 import OpenMatchesPage from './pages/matches/OpenMatchesPage'
 import StaffDashboardPage from './pages/staff/StaffDashboardPage'
 import StaffConfirmPaymentPage from './pages/staff/StaffConfirmPaymentPage'
 import OwnerCourtsPricingPage from './pages/owner/OwnerCourtsPricingPage'
 import AdminFacilitiesPage from './pages/admin/AdminFacilitiesPage'
 
+const PlayerComplaintsPage = lazy(() => import('./pages/feedback/CourtComplaintsPage')
+  .then((module) => ({ default: module.PlayerComplaintsPage })))
+const CourtComplaintsPage = lazy(() => import('./pages/feedback/CourtComplaintsPage'))
 const OwnerReportPage = lazy(() => import('./pages/owner/OwnerReportPage'))
 const OwnerWorkspace = lazy(() => import('./pages/owner/OwnerWorkspace'))
 const MultiSessionBookingPage = lazy(() => import('./pages/booking/MultiSessionBookingPage'))
@@ -88,6 +93,7 @@ function AppContent() {
           <Route path="/open-matches" element={<OpenMatchesPage />} />
 
           {/* UC34: Staff dashboard mock preview */}
+          <Route path="/staff/complaints" element={<CourtComplaintsPage />} />
           <Route path="/staff/dashboard" element={<RequireRole roles={['staff']}><StaffDashboardPage /></RequireRole>} />
           {/* UC19 và UC21: Xác nhận thanh toán và phụ thu */}
           <Route path="/staff/confirm-payments" element={<RequireRole roles={['staff', 'owner']} selectedVenue><StaffConfirmPaymentPage /></RequireRole>} />
@@ -103,6 +109,8 @@ function AppContent() {
           <Route path="/account" element={<AccountPage />} />
           <Route path="/owner/workspace" element={<OwnerWorkspace />} />
           <Route path="/admin/workspace" element={<AdminWorkspace />} />
+          <Route path="/my-complaints" element={<PlayerComplaintsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
 
           {/* UC14 và F6: Tóm tắt, voucher, điểm và xác nhận đặt sân lẻ */}
           <Route path="/booking/summary" element={<BookingSummaryPage />} />
@@ -115,6 +123,7 @@ function AppContent() {
 
           {/* UC17 và F5: Lịch sử, trạng thái đổi lịch và hủy booking của Player */}
           <Route path="/my-bookings" element={<MyBookingsPage />} />
+          <Route path="/my-bookings/:bookingId/reschedules" element={<RescheduleHistoryPage />} />
         </Routes>
       </Suspense>
     </>

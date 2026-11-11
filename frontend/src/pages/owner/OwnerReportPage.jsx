@@ -1,343 +1,203 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
+import api from '../../api'
+import { downloadVenueData, loadOwnerLocations } from '../../api/ownerApi'
+import { getSelectedLocation, selectLocation } from '../../api/session'
+import { errorMessage, money, today, useResource } from '../workspaceSupport'
 import styles from './OwnerReportPage.module.css'
 
-const FACILITIES = [
-  { id: 'smash-arena', name: 'Smash Arena' },
-  { id: 'green-shuttle-club', name: 'Green Shuttle Club' },
+const percent = (value) => (Number(value) * 100).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + '%'
+const count = (value) => Number(value).toLocaleString('vi-VN')
+const column = (key, label, format = count) => ({ key, label, format })
+const day = column('date', 'Ngày', String)
+const court = column('courtName', 'Sân', String)
+
+const reports = [
+  {
+    id: 'revenue', name: 'Doanh thu',
+    summary: [column('totalRevenue', 'Tổng thu', money), column('totalRefunds', 'Tiền đã hoàn', money),
+      column('netRevenue', 'Doanh thu ròng', money), column('paymentCount', 'Lượt thanh toán'), column('refundCount', 'Lượt hoàn')],
+    tables: [['daily', 'Theo ngày', [day, column('revenue', 'Tổng thu', money),
+      column('refunds', 'Hoàn tiền', money), column('net', 'Doanh thu ròng', money)]]],
+  },
+  {
+    id: 'booking', name: 'Đặt sân',
+    summary: [column('totalBookings', 'Tổng booking'), column('validBookings', 'Booking hợp lệ'),
+      column('cancelledBookings', 'Booking đã hủy'), column('cancellationRate', 'Tỷ lệ hủy', percent)],
+    tables: [['daily', 'Theo ngày', [day, column('total', 'Tổng'), column('valid', 'Hợp lệ')]],
+      ['byCourt', 'Theo sân', [court, column('total', 'Tổng'), column('valid', 'Hợp lệ')]]],
+  },
+  {
+    id: 'cancellation', name: 'Hủy và hoàn tiền',
+    summary: [column('totalCancelled', 'Tổng booking hủy'), column('cancelledByPlayer', 'Player hủy'),
+      column('cancelledByFacility', 'Địa điểm hủy'), column('cancelledAmount', 'Giá trị booking hủy', money),
+      column('refundRequests', 'Yêu cầu hoàn tiền'), column('refundedAmount', 'Đã hoàn', money)],
+    tables: [['daily', 'Theo ngày', [day, column('cancelledByPlayer', 'Player hủy'), column('cancelledByFacility', 'Địa điểm hủy')]]],
+  },
+  {
+    id: 'reschedule', name: 'Đổi lịch',
+    summary: [column('totalRequests', 'Tổng yêu cầu'), column('approved', 'Đã duyệt'),
+      column('freeRequests', 'Miễn phí'), column('paidRequests', 'Có phụ thu'), column('extraAmount', 'Phụ thu', money)],
+    tables: [['daily', 'Theo ngày', [day, column('requests', 'Yêu cầu'), column('approved', 'Đã duyệt')]]],
+  },
+  {
+    id: 'voucher', name: 'Voucher',
+    summary: [column('usedCount', 'Lượt đã dùng'), column('returnedCount', 'Lượt đã trả'), column('totalDiscount', 'Tổng giảm', money)],
+    tables: [['vouchers', 'Theo voucher', [column('name', 'Voucher', String), column('code', 'Mã', String),
+      column('usedCount', 'Lượt dùng'), column('returnedCount', 'Lượt trả'), column('totalDiscount', 'Tổng giảm', money)]]],
+  },
+  {
+    id: 'occupancy', name: 'Lấp đầy sân',
+    summary: [column('availableSlots', 'Slot mở'), column('bookedSlots', 'Slot đã đặt'), column('occupancyRate', 'Tỷ lệ lấp đầy', percent)],
+    tables: [['daily', 'Theo ngày', [day, column('availableSlots', 'Slot mở'), column('bookedSlots', 'Slot đã đặt'),
+      column('occupancyRate', 'Tỷ lệ lấp đầy', percent)]],
+    ['byCourt', 'Theo sân', [court, column('availableSlots', 'Slot mở'), column('bookedSlots', 'Slot đã đặt'),
+      column('occupancyRate', 'Tỷ lệ lấp đầy', percent)]]],
+  },
 ]
 
-const TABS = ['Revenue', 'Bookings', 'Cancellations', 'Reschedules', 'Vouchers', 'Court Utilization']
-
-const FACILITY_REPORTS = {
-  'smash-arena': {
-    grossRevenue: 152_400_000,
-    voucherDeductions: 4_200_000,
-    pointDeductions: 1_980_000,
-    refunds: 1_920_000,
-    confirmedBookings: 1024,
-    weeklyRevenue: [38.2, 41.5, 44.9, 19.7],
-    courtUtilization: [82, 76, 71, 64, 58, 31],
-  },
-  'green-shuttle-club': {
-    grossRevenue: 128_600_000,
-    voucherDeductions: 3_600_000,
-    pointDeductions: 1_540_000,
-    refunds: 2_100_000,
-    confirmedBookings: 876,
-    weeklyRevenue: [32.4, 36.1, 39.8, 15.2],
-    courtUtilization: [74, 69, 63, 59, 52, 38],
-  },
+function ReportTable({ title, rows = [], columns }) {
+  return <section className={styles.chartCard}>
+    <h2 className="mb-3 text-lg font-semibold">{title}</h2>
+    {!rows.length ? <p>Chưa có dữ liệu trong khoảng ngày đã chọn.</p> : <div className="overflow-x-auto">
+      <table className="w-full min-w-max text-left text-sm">
+        <thead><tr>{columns.map((field) => <th key={field.key} className="px-3 py-2" scope="col">{field.label}</th>)}</tr></thead>
+        <tbody>{rows.map((row) => <tr className="border-t border-slate-200" key={row.date ?? row.courtId ?? row.voucherId ?? row.status}>
+          {columns.map((field) => <td key={field.key} className="px-3 py-2">
+            {row[field.key] == null ? '—' : field.format(row[field.key])}
+          </td>)}
+        </tr>)}</tbody>
+      </table>
+    </div>}
+  </section>
 }
 
-function getDayCount(startDate, endDate) {
-  const [startYear, startMonth, startDay] = startDate.split('-').map(Number)
-  const [endYear, endMonth, endDay] = endDate.split('-').map(Number)
-  const start = new Date(Date.UTC(startYear, startMonth - 1, startDay))
-  const end = new Date(Date.UTC(endYear, endMonth - 1, endDay))
-  const dayCount = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1
-
-  if (!Number.isFinite(dayCount) || dayCount < 1) {
-    throw new Error('The end date must be on or after the start date.')
-  }
-
-  return dayCount
+function RevenueChart({ daily }) {
+  const recent = daily.slice(-7)
+  if (!recent.length) return null
+  const maximum = Math.max(1, ...recent.map((item) => Math.abs(Number(item.net))))
+  return <section className={styles.chartCard}>
+    <header className={styles.cardHeader}><h2>Doanh thu ròng · {recent.length} ngày cuối kỳ</h2><span>Triệu đồng</span></header>
+    <div className="overflow-x-auto">
+      <div className={`${styles.barChart} min-w-[360px]`}>
+        {recent.map((item) => <div className={styles.barColumn} key={item.date} title={item.date + ' · ' + money(item.net)}>
+          <span className={styles.barValue}>{(Number(item.net) / 1_000_000).toLocaleString('vi-VN', { maximumFractionDigits: 2 })}</span>
+          <div className={styles.barTrack} aria-hidden="true">
+            <div className={styles.bar} style={{ height: Math.abs(Number(item.net)) / maximum * 100 + '%',
+              backgroundColor: Number(item.net) < 0 ? '#b91c1c' : undefined }} />
+          </div>
+          <span className={styles.barLabel}>{item.date.slice(8) + '/' + item.date.slice(5, 7)}</span>
+        </div>)}
+      </div>
+    </div>
+  </section>
 }
 
-function formatDisplayDate(date) {
-  const [year, month, day] = date.split('-')
-  return `${day}/${month}/${year}`
+function CourtUtilization({ courts }) {
+  if (!courts.length) return null
+  return <section className={`${styles.chartCard} ${styles.utilizationCard}`}>
+    <header className={styles.cardHeader}><h2>Tỷ lệ lấp đầy theo sân</h2></header>
+    <ul className={styles.utilizationList}>{courts.map((item) => <li key={item.courtId}>
+      <div className={styles.courtLabels}><span>{item.courtName}</span><strong>{percent(item.occupancyRate)}</strong></div>
+      <div className={styles.progressTrack} aria-hidden="true">
+        <div className={styles.progressBar} style={{ width: Math.min(100, Number(item.occupancyRate) * 100) + '%' }} />
+      </div>
+    </li>)}</ul>
+  </section>
 }
 
-function loadReportData(facilityId, startDate, endDate) {
-  const facilityReport = FACILITY_REPORTS[facilityId]
-  if (!facilityReport) throw new Error('The selected facility could not be found.')
-
-  const dayCount = getDayCount(startDate, endDate)
-  const periodScale = dayCount / 24
-  const utilizationScale = 0.9 + periodScale * 0.1
-
-  return {
-    grossRevenue: Math.round(facilityReport.grossRevenue * periodScale),
-    voucherDeductions: Math.round(facilityReport.voucherDeductions * periodScale),
-    pointDeductions: Math.round(facilityReport.pointDeductions * periodScale),
-    refunds: Math.round(facilityReport.refunds * periodScale),
-    confirmedBookings: Math.round(facilityReport.confirmedBookings * periodScale),
-    weeklyRevenue: facilityReport.weeklyRevenue.map((value) =>
-      Number((value * periodScale).toFixed(1)),
-    ),
-    courtUtilization: facilityReport.courtUtilization.map((value) =>
-      Math.min(100, Math.round(value * utilizationScale)),
-    ),
-  }
-}
-
-function formatCurrency(value) {
-  return `${value.toLocaleString('en-US')} VND`
+function ReportContent({ report, resource }) {
+  const data = resource.data
+  if (resource.loading) return <p role="status">Đang tải báo cáo…</p>
+  if (resource.error) return <p role="alert" className={styles.errorMessage}>{resource.error} <button onClick={resource.reload}>Thử lại</button></p>
+  if (!data) return null
+  return <div className="space-y-5">
+    <div className={styles.statsGrid}>{report.summary.map((item) => <article className={styles.statCard} key={item.key}>
+      <h2>{item.label}</h2>
+      <p className={styles.statValue}>{item.format(data[item.key])}</p>
+    </article>)}</div>
+    {report.id === 'revenue' && <RevenueChart daily={data.daily ?? []} />}
+    {report.id === 'occupancy' && <CourtUtilization courts={data.byCourt ?? []} />}
+    {report.tables.map(([key, title, columns]) => <ReportTable key={key} title={title} rows={data[key]} columns={columns} />)}
+    {data.byStatus && <ReportTable title="Theo trạng thái" rows={Object.entries(data.byStatus).map(([status, total]) => ({ status, total }))}
+      columns={[column('status', 'Trạng thái', String), column('total', 'Số lượng')]} />}
+  </div>
 }
 
 export default function OwnerReportPage() {
-  const [selectedFacilityId, setSelectedFacilityId] = useState('smash-arena')
-  const [startDate, setStartDate] = useState('2026-10-01')
-  const [endDate, setEndDate] = useState('2026-10-24')
-  const [activeTab, setActiveTab] = useState('Revenue')
-  const [reportData, setReportData] = useState(() =>
-    loadReportData('smash-arena', '2026-10-01', '2026-10-24'),
-  )
-  const [reportError, setReportError] = useState('')
+  const locations = useResource(loadOwnerLocations)
+  const [locationId, setLocationId] = useState(() => getSelectedLocation() || '')
+  const [endDate, setEndDate] = useState(today)
+  const [startDate, setStartDate] = useState(() => today().slice(0, 8) + '01')
+  const [active, setActive] = useState('revenue')
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const venue = locations.data?.find((item) => String(item.id) === locationId)
+  const validDates = Boolean(startDate && endDate && startDate <= endDate)
+  const enabled = venue?.status === 'ACTIVE' && validDates
+  const report = reports.find((item) => item.id === active)
+  const load = useCallback(async (signal) => {
+    if (!enabled) return null
+    const { data } = await api.get('/owner/' + active + '-reports', {
+      signal, params: { from: startDate, to: endDate }, headers: { 'X-Location-Id': locationId },
+    })
+    return data.data
+  }, [active, enabled, endDate, locationId, startDate])
+  const data = useResource(load, [active, locationId, startDate, endDate, enabled].join(':'))
 
-  const selectedFacility = FACILITIES.find((facility) => facility.id === selectedFacilityId)
-  const netRevenue =
-    reportData.grossRevenue -
-    reportData.voucherDeductions -
-    reportData.pointDeductions -
-    reportData.refunds
-
-  const updateReport = (facilityId, nextStartDate, nextEndDate) => {
+  async function exportReport() {
+    setExporting(true)
+    setExportError('')
     try {
-      const nextReportData = loadReportData(facilityId, nextStartDate, nextEndDate)
-      setReportData(nextReportData)
-      setReportError('')
-    } catch (err) {
-      setReportError(err.response?.data?.message || err.message)
+      await downloadVenueData({ from: startDate, to: endDate })
+    } catch (error) {
+      setExportError(errorMessage(error))
+    } finally {
+      setExporting(false)
     }
   }
 
-  const handleExport = () => {
-    try {
-      const rows = [
-        ['Report', 'Operational & Revenue Reports'],
-        ['Facility', selectedFacility?.name ?? ''],
-        ['Start date', startDate],
-        ['End date', endDate],
-        ['Tab', activeTab],
-        ['Gross Revenue (VND)', reportData.grossRevenue],
-        ['Voucher Deductions (VND)', reportData.voucherDeductions],
-        ['Points Deductions (VND)', reportData.pointDeductions],
-        ['Refunds (VND)', reportData.refunds],
-        ['Net Revenue (VND)', netRevenue],
-        ['Confirmed Bookings', reportData.confirmedBookings],
-        ...reportData.weeklyRevenue.map((revenue, index) => [
-          `Week ${index + 1} Net Revenue (million VND)`,
-          revenue,
-        ]),
-        ...reportData.courtUtilization.map((utilization, index) => [
-          `Court ${index + 1} Utilization`,
-          `${utilization}%`,
-        ]),
-      ]
-      const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\r\n')
-      const file = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-      const url = URL.createObjectURL(file)
-      const downloadLink = document.createElement('a')
-      downloadLink.href = url
-      downloadLink.download = 'courtly-owner-report.csv'
-      document.body.appendChild(downloadLink)
-      downloadLink.click()
-      downloadLink.remove()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    } catch (err) {
-      setReportError(err.response?.data?.message || err.message)
-    }
-  }
-
-  return (
-    <div className={styles.page}>
-      <aside className={styles.sidebar}>
-        <div className={styles.brand}>
-          <span className={styles.brandBolt} aria-hidden="true">⚡</span>
-          <span>Courtly</span>
+  return <div className={styles.page}>
+    <aside className={styles.sidebar}>
+      <Link className={styles.brand} to="/owner/workspace"><span className={styles.brandBolt}>⚡</span> Courtly</Link>
+      <nav className={styles.navigation} aria-label="Quản lý địa điểm">
+        <Link className={styles.navItem} to="/owner/workspace">Quản lý địa điểm</Link>
+        <Link className={styles.navItem} to="/owner/courts-pricing">Sân và bảng giá</Link>
+        <Link className={`${styles.navItem} ${styles.navItemActive}`} to="/owner/reports" aria-current="page">Báo cáo</Link>
+      </nav>
+    </aside>
+    <main className={styles.main}>
+      <header className={styles.header}>
+        <h1 className={styles.heading}>Báo cáo vận hành và doanh thu</h1>
+        <div className={styles.headerActions}>
+          <label className={styles.facilityLabel}>Địa điểm
+            <select className={styles.facilitySelect} value={locationId} onChange={(event) => {
+              selectLocation(event.target.value)
+              setLocationId(event.target.value)
+            }}>
+              <option value="">Chọn địa điểm</option>
+              {locations.data?.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.status}</option>)}
+            </select>
+          </label>
+          <label>Từ ngày <input type="date" className={styles.dateInput} value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
+          <label>Đến ngày <input type="date" className={styles.dateInput} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+          <button className={styles.exportButton} type="button" disabled={!venue || !validDates || exporting} onClick={exportReport}>
+            {exporting ? 'Đang tải…' : 'Tải Excel'}
+          </button>
         </div>
-
-        <label className={styles.facilityLabel} htmlFor="owner-facility">Facility</label>
-        <select
-          className={styles.facilitySelect}
-          id="owner-facility"
-          value={selectedFacilityId}
-          onChange={(event) => {
-            const nextFacilityId = event.target.value
-            setSelectedFacilityId(nextFacilityId)
-            updateReport(nextFacilityId, startDate, endDate)
-          }}
-        >
-          {FACILITIES.map((facility) => (
-            <option key={facility.id} value={facility.id}>{facility.name}</option>
-          ))}
-        </select>
-
-        <nav className={styles.navigation} aria-label="Owner navigation">
-          {[
-            'Reports',
-            'Courts & Pricing',
-            'Opening Hours',
-            'Staff',
-            'Vouchers & Offers',
-            'Complaints',
-            'Refunds',
-            'Maintenance Approval',
-            'Reviews',
-            'Facility Settings',
-          ].map((item) => (
-            item === 'Reports' || item === 'Courts & Pricing' ? (
-              <Link
-                className={`${styles.navItem} ${item === 'Reports' ? styles.navItemActive : ''}`}
-                to={item === 'Reports' ? '/owner/reports' : '/owner/courts-pricing'}
-                key={item}
-                aria-current={item === 'Reports' ? 'page' : undefined}
-              >
-                {item}
-              </Link>
-            ) : (
-              <a
-                className={styles.navItem}
-                href="#"
-                key={item}
-                onClick={(event) => event.preventDefault()}
-              >
-                {item}
-              </a>
-            )
-          ))}
+      </header>
+      {locations.loading && <p role="status">Đang tải địa điểm…</p>}
+      {locations.error && <p role="alert">{locations.error}</p>}
+      {exportError && <p role="alert" className={styles.errorMessage}>{exportError}</p>}
+      {!validDates && <p role="alert" className={styles.errorMessage}>Chọn khoảng ngày hợp lệ.</p>}
+      {venue && venue.status !== 'ACTIVE' && <p>Địa điểm đã khóa. Có thể tải dữ liệu trong thời hạn được phép.</p>}
+      {enabled && <>
+        <nav className={styles.tabs} aria-label="Loại báo cáo">
+          {reports.map((item) => <button type="button" className={`${styles.tab} ${item.id === active ? styles.tabActive : ''}`}
+            key={item.id} aria-pressed={item.id === active} onClick={() => setActive(item.id)}>{item.name}</button>)}
         </nav>
-      </aside>
-
-      <main className={styles.main}>
-        <header className={styles.header}>
-          <div className={styles.heading}>
-            <h1>Operational &amp; Revenue Reports</h1>
-            <p>
-              {selectedFacility?.name} · {formatDisplayDate(startDate)} – {formatDisplayDate(endDate)}
-            </p>
-          </div>
-          <div className={styles.headerActions}>
-            <label className={styles.visuallyHidden} htmlFor="report-start-date">Start date</label>
-            <input
-              className={styles.dateInput}
-              id="report-start-date"
-              type="date"
-              value={startDate}
-              onChange={(event) => {
-                const nextStartDate = event.target.value
-                setStartDate(nextStartDate)
-                updateReport(selectedFacilityId, nextStartDate, endDate)
-              }}
-            />
-            <span className={styles.dateSeparator} aria-hidden="true">–</span>
-            <label className={styles.visuallyHidden} htmlFor="report-end-date">End date</label>
-            <input
-              className={styles.dateInput}
-              id="report-end-date"
-              type="date"
-              value={endDate}
-              onChange={(event) => {
-                const nextEndDate = event.target.value
-                setEndDate(nextEndDate)
-                updateReport(selectedFacilityId, startDate, nextEndDate)
-              }}
-            />
-            <button className={styles.exportButton} type="button" onClick={handleExport}>
-              Export Excel
-            </button>
-          </div>
-        </header>
-
-        <nav className={styles.tabs} aria-label="Report categories">
-          {TABS.map((tab) => (
-            <button
-              className={`${styles.tab} ${activeTab === tab ? styles.tabActive : ''}`}
-              type="button"
-              key={tab}
-              aria-current={activeTab === tab ? 'page' : undefined}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab}
-            </button>
-          ))}
-        </nav>
-
-        {reportError && <p className={styles.errorMessage} role="alert">{reportError}</p>}
-
-        <section className={styles.statsGrid} aria-label="Revenue summary">
-          <article className={styles.statCard}>
-            <h2>Gross Revenue</h2>
-            <p className={styles.statValue}>{formatCurrency(reportData.grossRevenue)}</p>
-            <p className={styles.statNote}>
-              {reportData.confirmedBookings.toLocaleString('en-US')} confirmed bookings
-            </p>
-          </article>
-          <article className={styles.statCard}>
-            <h2>Deductions</h2>
-            <p className={styles.statValue}>
-              -{formatCurrency(reportData.voucherDeductions + reportData.pointDeductions)}
-            </p>
-            <p className={styles.statNote}>
-              Voucher {(reportData.voucherDeductions / 1_000_000).toLocaleString('en-US')}M
-              {' · '}Points {(reportData.pointDeductions / 1_000_000).toLocaleString('en-US')}M
-            </p>
-          </article>
-          <article className={styles.statCard}>
-            <h2>Refunds</h2>
-            <p className={styles.statValue}>-{formatCurrency(reportData.refunds)}</p>
-            <p className={styles.statNote}>9 items, counted by refund date</p>
-          </article>
-          <article className={styles.statCard}>
-            <h2>Net Revenue</h2>
-            <p className={styles.statValue}>{formatCurrency(netRevenue)}</p>
-            <p className={styles.statNote}>Up 8% vs last month</p>
-          </article>
-        </section>
-
-        <section className={styles.chartsGrid} aria-label="Revenue and court utilization charts">
-          <article className={`${styles.chartCard} ${styles.revenueCard}`}>
-            <div className={styles.cardHeader}>
-              <h2>Weekly Net Revenue</h2>
-              <span>million VND</span>
-            </div>
-            <div className={styles.barChart} role="img" aria-label="Weekly net revenue in million VND">
-              {reportData.weeklyRevenue.map((revenue, index) => (
-                <div className={styles.barColumn} key={index}>
-                  <span className={styles.barValue}>{revenue.toFixed(1)}</span>
-                  <div className={styles.barTrack}>
-                    <div
-                      className={styles.bar}
-                      style={{ height: `${(revenue / 50) * 100}%` }}
-                    />
-                  </div>
-                  <span className={styles.barLabel}>
-                    {['W1 (1–7)', 'W2 (8–14)', 'W3 (15–21)', 'W4 (22–24)'][index]}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className={`${styles.chartCard} ${styles.utilizationCard}`}>
-            <div className={styles.cardHeader}>
-              <h2>Court Utilization Rate</h2>
-            </div>
-            <div className={styles.utilizationList}>
-              {reportData.courtUtilization.map((utilization, index) => (
-                <div className={styles.courtRow} key={index}>
-                  <div className={styles.courtLabels}>
-                    <span>Court {index + 1}</span>
-                    <strong>{utilization}%</strong>
-                  </div>
-                  <div
-                    className={styles.progressTrack}
-                    role="progressbar"
-                    aria-label={`Court ${index + 1} utilization`}
-                    aria-valuemin="0"
-                    aria-valuemax="100"
-                    aria-valuenow={utilization}
-                  >
-                    <div className={styles.progressBar} style={{ width: `${utilization}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </article>
-        </section>
-      </main>
-    </div>
-  )
+        <ReportContent report={report} resource={data} />
+      </>}
+    </main>
+  </div>
 }

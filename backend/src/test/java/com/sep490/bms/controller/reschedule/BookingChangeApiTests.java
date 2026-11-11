@@ -37,27 +37,61 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.WebApplicationContext;
 
+/**
+ * Kiểm thử tích hợp đổi lịch, xác nhận phụ thu, hủy booking, xử lý booking bị ảnh hưởng và hoàn tiền.
+ */
 @SpringBootTest(properties="app.booking-change.jobs-enabled=false")
 class BookingChangeApiTests {
     @Test void extraPaymentSupportsResubmissionAndPlayerCanReadItsProof() throws Exception {
         Long id=create(660);
-        mvc.perform(post("/api/reschedule-requests/"+id+"/payments").header("Authorization",token(player))).andExpect(status().isOk());
+        mvc.perform(post("/api/reschedule-requests/" + id + "/payments").header("Authorization", token(player)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.success").value(false));
+        assertThat(jdbc.queryForObject("select count(*) from payment where reschedule_request_id=?", Integer.class, id)).isZero();
+        mvc.perform(paymentProof(id)).andExpect(status().isOk());
         Long payment=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);
         mvc.perform(post("/api/staff/reschedule-payments/"+payment+"/request-resubmission").header("Authorization",token(owner))
                 .header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"reason\":\"Transfer delayed\",\"playerAtFault\":false}")).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("select status from payment where id=?",String.class,payment)).isEqualTo("RESUBMIT_REQUESTED");
         assertThat(bookingStatus()).isEqualTo("CONFIRMED");
+        String paymentPath = "/api/reschedule-requests/" + id + "/payment";
+        mvc.perform(get(paymentPath).header("Authorization", token(player)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(payment))
+                .andExpect(jsonPath("$.data.status").value("RESUBMIT_REQUESTED"))
+                .andExpect(jsonPath("$.data.resubmitReason").value("Transfer delayed"));
+        mvc.perform(get(paymentPath).header("Authorization", token(other))).andExpect(status().isForbidden());
         var proof=new org.springframework.mock.web.MockMultipartFile("proof","receipt.png","image/png",new byte[]{1,2});
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/reschedule-payments/"+payment+"/resubmit")
                 .file(proof).header("Authorization",token(player))).andExpect(status().isOk());
-        Long proofId=jdbc.queryForObject("select id from payment_proof where payment_id=?",Long.class,payment);
+        Long proofId=jdbc.queryForObject("select max(id) from payment_proof where payment_id=?",Long.class,payment);
         String image="/api/payments/"+payment+"/proofs/"+proofId+"/image";
         mvc.perform(get(image).header("Authorization",token(player))).andExpect(status().isOk());
         mvc.perform(get(image).header("Authorization",token(other))).andExpect(status().isForbidden());
         mvc.perform(post("/api/staff/reschedule-payments/"+payment+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("APPROVED"));
     }
+    @Test
+    void onlyBookingPlayerCanReadRescheduleDeadline() throws Exception {
+        String path = "/api/bookings/" + booking.getId() + "/reschedule-deadline";
+        mvc.perform(get(path).header("Authorization", token(player)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").isString());
+        mvc.perform(get(path).header("Authorization", token(other))).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ownerListsCancellableBookingsForSelectedVenueAndDay() throws Exception {
+        String path = "/api/owner/bookings/cancellable";
+        mvc.perform(get(path).param("playDate", booking.getPlayDate().toString())
+                .header("Authorization", token(owner)).header("X-Location-Id", location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].id").value(booking.getId()));
+        mvc.perform(get(path).param("playDate", booking.getPlayDate().plusDays(1).toString())
+                .header("Authorization", token(owner)).header("X-Location-Id", location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").isEmpty());
+        mvc.perform(get(path).param("playDate", booking.getPlayDate().toString())
+                .header("Authorization", token(player))).andExpect(status().isForbidden());
+    }
+
     @Autowired WebApplicationContext context;
     @Autowired EntityManager em;
     @Autowired JdbcTemplate jdbc;
@@ -107,6 +141,13 @@ class BookingChangeApiTests {
                 .contentType(MediaType.APPLICATION_JSON).content(slot(end))).andExpect(status().isCreated()).andReturn();
         return json.readTree(r.getResponse().getContentAsString()).at("/data/id").asLong();
     }
+    private org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder paymentProof(Long id) {
+        var proof = new org.springframework.mock.web.MockMultipartFile("proof", "receipt.png", "image/png", new byte[]{1, 2});
+        var request = multipart("/api/reschedule-requests/" + id + "/payments").file(proof);
+        request.header("Authorization", token(player));
+        return request;
+    }
+
     Long mark() throws Exception {
         var r=mvc.perform(post("/api/owner/bookings/"+booking.getId()+"/cancel").header("Authorization",token(owner)).header("X-Location-Id",location.getId())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"cause\":\"OWNER_CANCELLED\",\"reason\":\"Facility unavailable\"}"))
@@ -160,12 +201,12 @@ class BookingChangeApiTests {
     }
     @Test void extraPaymentHoldsBothThenConfirmsAndEarnsPoints() throws Exception {
         Long id=create(660);assertThat(active(booking.getPlayDate())).isEqualTo(2);assertThat(active(LocalDate.now().plusDays(3))).isEqualTo(2);
-        mvc.perform(post("/api/reschedule-requests/"+id+"/payments").header("Authorization",token(player))).andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("AWAITING_CONFIRMATION"));
+        mvc.perform(paymentProof(id)).andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("AWAITING_CONFIRMATION"));
         Long pay=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);
         // UC18–19 retain Minh's booking contract; UC21 uses its own routes and payment type.
         Long originalPay=jdbc.queryForObject("select id from payment where booking_id=?",Long.class,booking.getId());
         mvc.perform(get("/api/payments/"+originalPay).header("Authorization",token(player)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(originalPay));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.payment.id").value(originalPay));
         mvc.perform(get("/api/payments/"+pay).header("Authorization",token(player))).andExpect(status().isNotFound());
         mvc.perform(get("/api/reschedule-payments/"+originalPay).header("Authorization",token(player))).andExpect(status().isNotFound());
         mvc.perform(get("/api/reschedule-payments/"+pay).header("Authorization",token(player)))
@@ -182,7 +223,7 @@ class BookingChangeApiTests {
         mvc.perform(post("/api/staff/reschedule-payments/"+pay+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId())).andExpect(status().isConflict());
     }
     @Test void rejectionReleasesOnlyNewSlots() throws Exception {
-        Long id=create(660);mvc.perform(post("/api/reschedule-requests/"+id+"/payments").header("Authorization",token(player))).andExpect(status().isOk());
+        Long id=create(660);mvc.perform(paymentProof(id)).andExpect(status().isOk());
         Long pay=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);
         mvc.perform(post("/api/staff/reschedule-payments/"+pay+"/reject").header("Authorization",token(owner)).header("X-Location-Id",location.getId())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Money not received\"}")).andExpect(status().isOk());
@@ -196,7 +237,7 @@ class BookingChangeApiTests {
         assertThat(jdbc.queryForObject("select reschedule_count from booking where id=?",Integer.class,booking.getId())).isZero();
     }
     @Test void approvalDeadlineExpiresSubmittedPayment() throws Exception {
-        Long id=create(660);mvc.perform(post("/api/reschedule-requests/"+id+"/payments").header("Authorization",token(player))).andExpect(status().isOk());
+        Long id=create(660);mvc.perform(paymentProof(id)).andExpect(status().isOk());
         jdbc.update("update reschedule_request set approve_deadline=? where id=?",LocalDateTime.now().minusMinutes(1),id);reschedules.expireRequest(id);
         assertThat(jdbc.queryForObject("select status from payment where reschedule_request_id=?",String.class,id)).isEqualTo("REJECTED");
         assertThat(active(booking.getPlayDate())).isEqualTo(2);
@@ -227,7 +268,7 @@ class BookingChangeApiTests {
     }
     @Test void compensationIsIdempotentAndIncludesExtraPayments() throws Exception {
         Long request=create(660);
-        mvc.perform(post("/api/reschedule-requests/"+request+"/payments").header("Authorization",token(player))).andExpect(status().isOk());
+        mvc.perform(paymentProof(request)).andExpect(status().isOk());
         Long payment=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,request);
         mvc.perform(post("/api/staff/reschedule-payments/"+payment+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId())).andExpect(status().isOk());
         Long id=mark();choice(id,"POINTS");
@@ -291,7 +332,7 @@ class BookingChangeApiTests {
         assertThat(bookingStatus()).isEqualTo("CONFIRMED");
     }
     @Test void confirmationRejectsTargetThatBecameUnavailable() throws Exception {
-        Long id=create(660);mvc.perform(post("/api/reschedule-requests/"+id+"/payments").header("Authorization",token(player))).andExpect(status().isOk());
+        Long id=create(660);mvc.perform(paymentProof(id)).andExpect(status().isOk());
         tx.executeWithoutResult(s->em.persist(Maintenance.builder().courtId(court).startAt(LocalDate.now().plusDays(3).atTime(10,0))
                 .endAt(LocalDate.now().plusDays(3).atTime(11,0)).reason("New maintenance").status(ApprovalStatus.APPROVED).requestedBy(owner.getId()).build()));
         Long payment=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);

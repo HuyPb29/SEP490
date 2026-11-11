@@ -73,7 +73,8 @@ export default function WorkspaceLayout({ role, title, children }) {
         <nav aria-label="Tài khoản" className="flex flex-wrap items-center gap-4 text-sm underline">
           <Link to={roleHome[user.role_code] ?? '/'}>Trang chính</Link>
           {['player', 'owner'].includes(user.role_code) && <Link to="/account">Tài khoản</Link>}
-          {user.role_code === 'player' && <><Link to="/my-bookings">Đặt sân của tôi</Link></>}
+          {user.role_code === 'player' && <><Link to="/my-bookings">Đặt sân của tôi</Link><Link to="/my-complaints">Khiếu nại</Link></>}
+          <Link to="/notifications">Thông báo</Link>
           <button type="button" onClick={async () => {
             try {
               await logoutApi()

@@ -25,7 +25,7 @@ export default function FacilityDetailPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      const res = await getFacilityDetailAndSchedule(Number(id) || 1, playDate);
+      const res = await getFacilityDetailAndSchedule(Number(id), playDate);
       if (res?.success) {
         setLoadError('');
         setFacility(res.data.facility);
@@ -140,7 +140,7 @@ export default function FacilityDetailPage() {
     if (selectedSlots.length === 0) return;
     sessionStorage.setItem(
       'pending_booking_selection',
-      JSON.stringify({ facility, playDate, selectedSlots, totalPrice })
+      JSON.stringify({ facility, playDate, selectedSlots, totalPrice, source: 'backend' })
     );
     navigate('/booking/summary');
   };
