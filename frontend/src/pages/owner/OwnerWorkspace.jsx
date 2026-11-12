@@ -70,6 +70,27 @@ function Cancellations() {
   </Section>
 }
 
+function lockedVenueDeadline(location) {
+  const lockedAt = new Date(location.lockedAt)
+  if (!location.lockedAt || Number.isNaN(lockedAt.getTime())) return null
+  lockedAt.setDate(lockedAt.getDate() + 30)
+  return lockedAt
+}
+
+function canDownloadLockedVenue(location) {
+  const deadline = lockedVenueDeadline(location)
+  return !deadline || deadline.getTime() >= Date.now()
+}
+
+function lockedVenueNotice(location) {
+  const deadline = lockedVenueDeadline(location)
+  const name = 'Địa điểm ' + location.name + ' đã bị khóa.'
+  if (!deadline) return name
+  if (!canDownloadLockedVenue(location)) return name + ' Đã hết thời hạn tải dữ liệu quản lý.'
+  return name + ' Anh/chị chỉ còn tải được dữ liệu quản lý đến ngày '
+    + new Intl.DateTimeFormat('vi-VN').format(deadline) + '.'
+}
+
 function OwnerLocation() {
   const locations = useResource(loadOwnerLocations)
   const [params, setParams] = useSearchParams()
@@ -86,7 +107,8 @@ function OwnerLocation() {
       {locations.data?.length === 0 && <p>Bạn chưa có địa điểm.</p>}
     </Section>
     {location && location.status !== 'ACTIVE' && <Section title="Địa điểm đã khóa">
-      <ActionForm label="Tải dữ liệu địa điểm" action={() => downloadVenueData()} />
+      <p>{lockedVenueNotice(location)}</p>
+      {canDownloadLockedVenue(location) && <ActionForm label="Tải dữ liệu địa điểm" action={() => downloadVenueData()} />}
     </Section>}
     {location?.status === 'ACTIVE' && <>
       <div className="flex flex-wrap gap-4">

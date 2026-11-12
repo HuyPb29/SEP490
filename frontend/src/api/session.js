@@ -5,7 +5,7 @@ const locationKey = 'bms_selected_location'
 export const roleHome = {
   player: '/',
   owner: '/owner/workspace',
-  staff: '/staff/confirm-payments',
+  staff: '/staff/dashboard',
   admin: '/admin/workspace',
 }
 
@@ -57,4 +57,40 @@ export function clearSession() {
   }
   sessionStorage.removeItem('active_holding_booking')
   window.dispatchEvent(new Event('bms-auth-change'))
+}
+
+export function watchSessionExpiry(expired) {
+  let timer
+  let expiredToken
+  function schedule() {
+    clearTimeout(timer)
+    const token = getToken()
+    if (!token || token === expiredToken) return
+    let expiresAt
+    try {
+      const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+      const { exp } = JSON.parse(atob(payload))
+      if (!Number.isFinite(exp)) return
+      expiresAt = exp * 1000
+    } catch {
+      return
+    }
+    const remaining = expiresAt - Date.now()
+    if (remaining > 0) {
+      timer = setTimeout(schedule, Math.min(remaining, 2_147_483_647))
+      return
+    }
+    expiredToken = token
+    expired()
+  }
+  window.addEventListener('bms-auth-change', schedule)
+  window.addEventListener('storage', schedule)
+  document.addEventListener('visibilitychange', schedule)
+  schedule()
+  return () => {
+    clearTimeout(timer)
+    window.removeEventListener('bms-auth-change', schedule)
+    window.removeEventListener('storage', schedule)
+    document.removeEventListener('visibilitychange', schedule)
+  }
 }

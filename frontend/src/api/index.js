@@ -20,6 +20,7 @@ api.interceptors.response.use((response) => response, (error) => {
   if (token && error.response?.status === 401 &&
       error.config?.headers?.get?.('Authorization') === `Bearer ${token}`) {
     clearSession()
+    if (error.config?.url !== '/auth/logout') window.dispatchEvent(new Event('bms-session-expired'))
   }
   return Promise.reject(error)
 })

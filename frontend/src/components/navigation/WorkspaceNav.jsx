@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { logoutApi } from '../../api/authApi'
 import styles from './WorkspaceNav.module.css'
 
 /**
@@ -81,6 +82,7 @@ export default function WorkspaceNav() {
   const location = useLocation()
   const [session, setSession] = useState(readSession)
   const [open, setOpen] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
   const wrapRef = useRef(null)
 
   useEffect(() => {
@@ -115,14 +117,16 @@ export default function WorkspaceNav() {
     setOpen(false)
   }, [location.pathname])
 
-  const handleLogout = useCallback(() => {
-    ;['token', 'bms_access_token', 'bms_user_info', 'bms_selected_location_id', 'user'].forEach(
-      (key) => localStorage.removeItem(key),
-    )
-    setOpen(false)
-    // Reload cứng để xoá sạch state trong bộ nhớ của các trang.
-    window.location.href = '/login'
-  }, [])
+  const handleLogout = useCallback(async () => {
+    setLogoutError('')
+    try {
+      await logoutApi()
+      setOpen(false)
+      navigate('/', { replace: true })
+    } catch (error) {
+      setLogoutError(error.response?.data?.message || 'Không thể đăng xuất. Vui lòng thử lại.')
+    }
+  }, [navigate])
 
   if (!session.signedIn) return null
 

@@ -2,20 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { loginApi, registerPlayerApi, verifyOtpApi, resendOtpApi, forgotPasswordApi, resetPasswordApi } from '../../api/authApi';
 import { roleHome } from '../../api/session';
+import { canResumePath } from '../../api/f1Navigation';
 import { fieldError, messages, normalizeName, otpSendError, otpSent, validEmail, validName, validPassword, validPhone, validUsername } from '../../api/f1Rules';
 import styles from './AuthPage.module.css';
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const sessionDialog = useRef(null);
-  const sessionExpired = Boolean(location.state?.sessionExpired);
-
-  useEffect(() => {
-    const dialog = sessionDialog.current;
-    if (sessionExpired && dialog && !dialog.open) dialog.showModal();
-  }, [sessionExpired]);
-
   // Tab: 'login' (UC02) | 'register' (UC01) | 'otp' (DR25)
   const [activeTab, setActiveTab] = useState(location.state?.isSignUp ? 'register' : 'login');
 
@@ -25,7 +18,7 @@ export default function AuthPage() {
   const [visiblePassword, setVisiblePassword] = useState(null);
   const [loginError, setLoginError] = useState('');
   const [loginFields, setLoginFields] = useState({});
-  const [loginNotice, setLoginNotice] = useState(location.state?.notice || '');
+  const [loginNotice, setLoginNotice] = useState(location.state?.passwordChanged ? messages.changed : location.state?.notice || '');
   const [loginLoading, setLoginLoading] = useState(false);
 
   // State UC01: Đăng ký tài khoản Player
@@ -46,6 +39,7 @@ export default function AuthPage() {
   const [otpSending, setOtpSending] = useState(false);
   const [resetCodeSent, setResetCodeSent] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [otpFields, setOtpFields] = useState({});
   const [sendError, setSendError] = useState('');
   const [registrationExpired, setRegistrationExpired] = useState(false);
@@ -84,8 +78,9 @@ export default function AuthPage() {
     setLoginNotice('');
 
     const errors = {};
-    if (!loginIdentity.trim()) errors.identity = 'Nhập tên đăng nhập hoặc email.';
-    if (!loginPassword) errors.password = 'Nhập mật khẩu.';
+    errors.identity = fieldError(loginIdentity, 'tên đăng nhập hoặc email', (value) =>
+      !value.includes('@') || validEmail(value));
+    errors.password = fieldError(loginPassword, 'mật khẩu');
     setLoginFields(errors);
     if (Object.values(errors).some(Boolean)) return;
 
@@ -94,11 +89,13 @@ export default function AuthPage() {
       const user = await loginApi({ username_or_email: loginIdentity, password: loginPassword });
       const home = roleHome[user.role.toLowerCase()] ?? '/';
       const returnTo = location.state?.returnTo;
-      navigate(typeof returnTo === 'string' && /^\/(?!\/)/.test(returnTo) ? returnTo : home, { replace: true });
+      navigate(canResumePath(returnTo, user.role.toLowerCase()) ? returnTo : home, { replace: true });
     } catch (error) {
       const errors = error.response?.data?.errors;
       if (errors) setLoginFields({ identity: errors.email, password: errors.password });
-      else setLoginError(error.response?.data?.message || 'Không thể đăng nhập. Vui lòng thử lại.');
+      else setLoginError(error.response?.data?.message?.includes('MSG10') ? 'Thông tin đăng nhập không đúng.'
+        : error.response?.data?.message?.includes('MSG11') ? 'Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên.'
+        : error.response?.data?.message || 'Không thể đăng nhập. Vui lòng thử lại.');
     } finally {
       setLoginLoading(false);
     }
@@ -159,7 +156,11 @@ export default function AuthPage() {
     if (registrationExpired || (resettingPassword && !resetCodeSent)) return;
     const errors = {
       otp: fieldError(otpCode, 'mã xác minh', (value) => /^\d{6}$/.test(value)),
-      password: resettingPassword ? fieldError(newPassword, 'mật khẩu mới', (value) => value.length >= 8 && value.length <= 32) : undefined,
+      password: resettingPassword ? fieldError(newPassword, 'mật khẩu mới', validPassword) : undefined,
+      confirmation: resettingPassword
+        ? fieldError(confirmPassword, 'xác nhận mật khẩu mới') ||
+          (confirmPassword !== newPassword ? 'Xác nhận mật khẩu mới không khớp.' : undefined)
+        : undefined,
     };
     setOtpFields(errors);
     if (Object.values(errors).some(Boolean)) return;
@@ -173,8 +174,9 @@ export default function AuthPage() {
       setLoginPassword('');
       setNewPassword('');
       setOtpCode('');
+      setConfirmPassword('');
       if (!resettingPassword) setPendingRegistrationEmail('');
-      setLoginNotice(resettingPassword ? 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập.' : messages.verified);
+      setLoginNotice(resettingPassword ? messages.reset : messages.verified);
       setActiveTab('login');
     } catch (error) {
       const message = error.response?.data?.message || 'Không thể xác minh mã. Vui lòng thử lại.';
@@ -194,6 +196,7 @@ export default function AuthPage() {
     setOtpEmail(purpose === 'REGISTER' ? pendingRegistrationEmail : loginIdentity.includes('@') ? loginIdentity.trim() : '');
     setOtpCode('');
     setNewPassword('');
+    setConfirmPassword('');
     setOtpFields({});
     setSendError('');
     setResetCodeSent(false);
@@ -240,11 +243,6 @@ export default function AuthPage() {
 
   return (
     <div className={styles.splitLayout}>
-      <dialog ref={sessionDialog} className={styles.sessionDialog} aria-labelledby="expired-session-title">
-        <h2 id="expired-session-title">Phiên đăng nhập đã hết hạn (MSG06)</h2>
-        <p>Vui lòng đăng nhập lại để tiếp tục.</p>
-        <form method="dialog"><button className={styles.primaryBtn} type="submit">Đóng</button></form>
-      </dialog>
       <aside className={styles.leftPanel}>
         <Link className={styles.brandHeader} to="/">
           <span className={styles.brandIcon} aria-hidden="true">C</span>
@@ -507,6 +505,11 @@ export default function AuthPage() {
                         onChange={(event) => setNewPassword(event.target.value)}
                         aria-describedby={otpFields.password ? "reset-password-error" : undefined} />
                       {otpFields.password && <p id="reset-password-error" role="alert" className={styles.errorText}>{otpFields.password}</p>}
+                      <label className={styles.label} htmlFor="reset-confirm">Xác nhận mật khẩu mới</label>
+                      <input id="reset-confirm" className={styles.input} type="password" autoComplete="new-password"
+                        value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)}
+                        aria-describedby={otpFields.confirmation ? "reset-confirm-error" : undefined} />
+                      {otpFields.confirmation && <p id="reset-confirm-error" role="alert" className={styles.errorText}>{otpFields.confirmation}</p>}
                     </div>
                   )}
                   <button className={styles.primaryBtn} type="submit" disabled={otpLoading || otpSending}>

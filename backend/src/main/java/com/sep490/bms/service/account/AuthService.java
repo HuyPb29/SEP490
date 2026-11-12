@@ -373,20 +373,24 @@ public class AuthService {
 
         OtpRequest otpRequest = otpRequestRepository
                 .findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.RESET_PASSWORD)
-                .orElseThrow(() -> new AppException("Yêu cầu đặt lại mật khẩu không hợp lệ hoặc đã hết hạn (MSG96)"));
+                .orElseThrow(() -> new AppException("Mã xác minh đã hết hạn. Vui lòng gửi mã mới. (MSG96)"));
 
-        if (otpRequest.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new AppException("Mã xác thực đã hết hạn. Vui lòng yêu cầu lại (MSG96)");
+        if (!otpRequest.getExpiresAt().isAfter(LocalDateTime.now())) {
+            throw new AppException("Mã xác minh đã hết hạn. Vui lòng gửi mã mới. (MSG96)");
         }
 
         if (otpRequest.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
-            throw new AppException("Bạn đã nhập sai mã xác thực quá số lần quy định. Vui lòng gửi lại mã mới");
+            throw new AppException("Mã xác minh đã hết hạn. Vui lòng gửi mã mới. (MSG96)");
         }
 
         if (!passwordEncoder.matches(otp, otpRequest.getCodeHash())) {
-            otpRequest.setFailedAttempts(otpRequest.getFailedAttempts() + 1);
+            int attempts = otpRequest.getFailedAttempts() + 1;
+            otpRequest.setFailedAttempts(attempts);
             otpRequestRepository.save(otpRequest);
-            throw new InvalidOtpException();
+            String message = attempts >= MAX_FAILED_ATTEMPTS
+                    ? "Mã xác minh đã hết hạn. Vui lòng gửi mã mới. (MSG96)"
+                    : incorrectOtp(attempts);
+            throw new InvalidOtpException(message);
         }
 
         otpRequest.setUsedAt(LocalDateTime.now());

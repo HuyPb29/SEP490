@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react'
-import { BrowserRouter, Navigate, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { messages } from './api/f1Rules'
+import { F1Dialog } from './components/F1Feedback'
 import api from './api'
-import { getSavedUser, getSelectedLocation, getToken, roleHome } from './api/session'
+import { clearSession, watchSessionExpiry, getSavedUser, getSelectedLocation, getToken, roleHome } from './api/session'
 import { AccountPage, AdminWorkspace } from './pages/account/AccountPages'
 import { AdminVouchers, PersonalRewardsPage } from './pages/promotion/PromotionPages'
 import NotificationsPage from './pages/NotificationsPage'
@@ -62,6 +64,26 @@ function subscribeToSession(listener) {
 function AppContent() {
   const session = useSyncExternalStore(subscribeToSession, getToken)
   const location = useLocation()
+  const navigate = useNavigate()
+  const [showExpiry, setShowExpiry] = useState(false)
+  const returnTo = location.pathname === '/login' ? location.state?.returnTo : location.pathname + location.search
+
+  useEffect(() => {
+    function expired() {
+      setShowExpiry(true)
+      navigate('/login', { replace: true, state: { returnTo } })
+    }
+    window.addEventListener('bms-session-expired', expired)
+    const stop = watchSessionExpiry(() => {
+      clearSession()
+      expired()
+    })
+    return () => {
+      stop()
+      window.removeEventListener('bms-session-expired', expired)
+    }
+  }, [navigate, returnTo])
+
   // Hai màn còn dùng dữ liệu mẫu, chưa gọi backend
   const isFrontendMockPage =
     location.pathname === '/open-matches' ||
@@ -79,6 +101,7 @@ function AppContent() {
 
   return (
     <>
+      {showExpiry && location.pathname === '/login' && <F1Dialog title="Phiên đăng nhập" message={messages.expiredSession} onClose={() => setShowExpiry(false)} />}
       {!isFrontendMockPage && (
         <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
           BE: {displayedStatus}

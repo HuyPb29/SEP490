@@ -103,7 +103,7 @@ class OtpLifecycleTests {
                 assertThat(otps.findById(request.getId()).orElseThrow().getFailedAttempts()).isEqualTo(i);
             }
             assertThatThrownBy(() -> verify(purpose, "123456"))
-                    .isInstanceOf(AppException.class).hasMessageContaining("quá số lần");
+                    .isInstanceOf(AppException.class).hasMessageContaining("MSG96");
         }
     }
 

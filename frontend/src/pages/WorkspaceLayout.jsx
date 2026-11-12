@@ -78,7 +78,7 @@ export default function WorkspaceLayout({ role, title, children }) {
           <button type="button" onClick={async () => {
             try {
               await logoutApi()
-              navigate('/login', { replace: true })
+              navigate('/', { replace: true })
             } catch (error) {
               setLogoutError(errorMessage(error))
             }

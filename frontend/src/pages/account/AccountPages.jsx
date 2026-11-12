@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
+import AccountForm from './AccountForm'
+import { validPassword } from '../../api/f1Rules'
 import api, { getAllPages } from '../../api'
 import { clearSession, getSavedUser } from '../../api/session'
 import WorkspaceLayout, { ActionForm, Field, Section } from '../WorkspaceLayout'
@@ -34,13 +36,14 @@ function Profile() {
         </ActionForm>}
     </Section>
     <Section title="Đổi mật khẩu">
-      <ActionForm label="Đổi mật khẩu" action={(form) => api.post('/users/me/password', form)} after={() => {
+      <AccountForm label="Đổi mật khẩu" fields={[
+        { name: 'currentPassword', label: 'Mật khẩu hiện tại', type: 'password', autoComplete: 'current-password', required: true },
+        { name: 'newPassword', label: 'Mật khẩu mới', type: 'password', autoComplete: 'new-password', required: true, validate: validPassword },
+        { name: 'confirmation', label: 'Xác nhận mật khẩu mới', type: 'password', autoComplete: 'new-password', required: true },
+      ]} submit={(form) => api.post('/users/me/password', form)} after={() => {
         clearSession()
-        navigate('/login', { replace: true })
-      }}>
-        <Field label="Mật khẩu hiện tại" name="currentPassword" type="password" autoComplete="current-password" required />
-        <Field label="Mật khẩu mới" name="newPassword" type="password" autoComplete="new-password" minLength={8} maxLength={32} required />
-      </ActionForm>
+        navigate('/login', { replace: true, state: { passwordChanged: true } })
+      }} />
     </Section>
   </>
 }
