@@ -155,7 +155,7 @@ function AppContent() {
           <Route path="/notifications" element={<NotificationsPage />} />
 
           {/* UC14 và F6: Tóm tắt, voucher, điểm và xác nhận đặt sân lẻ */}
-          <Route path="/booking/summary" element={<BookingSummaryPage />} />
+          <Route path="/booking/summary" element={<RequireRole roles={['player']}><BookingSummaryPage /></RequireRole>} />
 
           {/* UC15: Đặt nhiều buổi định kỳ hoặc tự chọn (POST /api/booking-packages/preview & /api/booking-packages) */}
           <Route path="/booking/multi" element={<MultiSessionBookingPage />} />

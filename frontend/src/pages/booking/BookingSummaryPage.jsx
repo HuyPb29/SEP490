@@ -132,7 +132,8 @@ export default function BookingSummaryPage() {
     if (!usePoints) return 0;
     const voucherDiscount = appliedVoucher ? appliedVoucher.discount_amount : 0;
     const remainingAfterVoucher = Math.max(0, slotSummary.totalListPrice - voucherDiscount);
-    return Math.min(availablePoints, Math.floor((remainingAfterVoucher * 0.5) / 500));
+    const maximum = Math.min(availablePoints, Math.floor(remainingAfterVoucher / 1000));
+    return maximum >= 2 ? maximum : 0;
   }, [usePoints, appliedVoucher, availablePoints, slotSummary.totalListPrice]);
 
   // UC14 #3–#5: backend tính lại tiền mỗi khi đổi voucher hoặc điểm
@@ -205,7 +206,7 @@ export default function BookingSummaryPage() {
     }
 
     if (!voucherInput.trim()) {
-      setVoucherError('Please enter a voucher code before applying.');
+      setVoucherError('Vui lòng nhập mã giảm giá. (MSG01)');
       return;
     }
 
@@ -236,6 +237,7 @@ export default function BookingSummaryPage() {
 
   // Xử lý bấm "Xác nhận đặt sân" (POST /api/v1/bookings)
   const handleConfirmBooking = async () => {
+    if (!serverPricing || serverPricing.conflictSessions || submitting) return;
     setSubmitError('');
 
     if (guestNote.length > 200) {
@@ -269,6 +271,10 @@ export default function BookingSummaryPage() {
         navigate(`/booking/payment?${res.data.kind === 'package' ? 'packageId' : 'bookingId'}=${res.data.booking_id}`);
       }
     } catch (err) {
+      if (err.response?.data?.message?.includes('MSG28')) {
+        const refreshed = await (isOrder ? previewOrderApi({ date: bookingContext.playDate, ranges }) : previewBookingSummaryApi({ selection })).catch(() => null);
+        if (refreshed?.data) setServerPricing(refreshed.data);
+      }
       setSubmitError(
         apiErrorMessage(err, 'Không thể xác nhận đặt sân. Vui lòng kiểm tra lại thông tin và thử lại.')
       );
