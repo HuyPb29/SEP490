@@ -1,3 +1,5 @@
+import HistoryDetailDialog from './HistoryDetailDialog';
+import { bookingStatusLabels, canPayHistoryEntry } from '../../api/bookingHistory';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import {
@@ -66,10 +68,12 @@ export default function MyBookingsPage() {
 
   // Tab: 'all' | 'pending_payment' | 'confirmed' | 'past'
   const [activeTab, setActiveTab] = useState('all');
+  const [exactStatus, setExactStatus] = useState('');
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
   const [feedbackBanner, setFeedbackBanner] = useState('');
+  const [detailTarget, setDetailTarget] = useState(null);
 
   // Tick mỗi giây để cập nhật đồng hồ đếm ngược cho các booking 'holding' (BR03)
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -101,7 +105,7 @@ export default function MyBookingsPage() {
   useEffect(() => {
     if (!isPlayer) return undefined;
     let active = true;
-    Promise.all([getMyBookingsApi(), getMyAffectedBookingsApi()]).then(([items, affected]) => {
+    Promise.all([getMyBookingsApi(), getMyAffectedBookingsApi().catch(() => [])]).then(([items, affected]) => {
       if (!active) return;
       // API trả theo id giảm dần, giữ bản ghi mới nhất của mỗi booking
       const latest = {};
@@ -118,6 +122,25 @@ export default function MyBookingsPage() {
     return () => { active = false; };
   }, [isPlayer]);
 
+  useEffect(() => {
+    if (!isPlayer || loading || fetchError) return undefined;
+    let active = true;
+    let updating = false;
+    const timer = setInterval(async () => {
+      if (updating || document.visibilityState === 'hidden') return;
+      updating = true;
+      try {
+        const items = await getMyBookingsApi();
+        if (active) setBookings((current) => [...items, ...current.filter((item) => item.booking_type === 'session')]);
+      } catch {
+        // Keep the last successful list while polling.
+      } finally {
+        updating = false;
+      }
+    }, 12_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [isPlayer, loading, fetchError]);
+
   // BR03: Đếm lùi thời gian thực cho các booking đang giữ chỗ (holding)
   useEffect(() => {
     const timer = setInterval(() => {
@@ -128,7 +151,7 @@ export default function MyBookingsPage() {
       setBookings((prev) =>
         prev.map((item) => {
           if (item.status === 'holding' && item.hold_expires_at) {
-            const left = Math.floor((serverTimestamp(item.hold_expires_at) - currentNow) / 1000);
+            const left = serverTimestamp(item.hold_expires_at) - currentNow;
             if (left <= 0) {
               return {
                 ...item,
@@ -154,7 +177,7 @@ export default function MyBookingsPage() {
 
   // Lọc và giữ nguyên thứ tự ưu tiên: Nhóm chờ thanh toán luôn nằm trên đầu
   const displayedBookings = useMemo(() => {
-    const sorted = [...bookings].sort((a, b) => {
+    const sorted = bookings.filter((item) => !exactStatus || item.status === exactStatus).sort((a, b) => {
       const aPending = PENDING_STATUSES.includes(a.status) ? 1 : 0;
       const bPending = PENDING_STATUSES.includes(b.status) ? 1 : 0;
       if (aPending !== bPending) return bPending - aPending;
@@ -171,7 +194,7 @@ export default function MyBookingsPage() {
       return sorted.filter((b) => PAST_STATUSES.includes(b.status));
     }
     return sorted;
-  }, [bookings, activeTab]);
+  }, [bookings, activeTab, exactStatus]);
 
   // VÁ LỖI NGÀY THÁNG: Dùng new Date() thay vì .split('-') để không bị NaN khi Backend trả chuỗi ISO dài
   const formatDayBadge = (dateStr) => {
@@ -193,6 +216,7 @@ export default function MyBookingsPage() {
   };
 
   const handleGoToPayment = (booking) => {
+    if (['holding', 'resubmit_requested'].includes(booking.status) && !canPayHistoryEntry(booking, nowMs)) return;
     const param = booking.booking_type === 'package' ? 'packageId' : 'bookingId';
     navigate('/booking/payment?' + param + '=' + booking.booking_id);
   };
@@ -479,7 +503,7 @@ export default function MyBookingsPage() {
             role="tab"
             aria-selected={activeTab === 'all'}
             className={`${styles.tabPill} ${activeTab === 'all' ? styles.tabPillActive : ''}`}
-            onClick={() => setActiveTab('all')}
+            onClick={() => { setExactStatus(''); setActiveTab('all'); }}
           >
             All
           </button>
@@ -490,7 +514,7 @@ export default function MyBookingsPage() {
             className={`${styles.tabPill} ${
               activeTab === 'pending_payment' ? styles.tabPillActive : ''
             }`}
-            onClick={() => setActiveTab('pending_payment')}
+            onClick={() => { setExactStatus(''); setActiveTab('pending_payment'); }}
           >
             Pending Payment · {pendingCount}
           </button>
@@ -501,7 +525,7 @@ export default function MyBookingsPage() {
             className={`${styles.tabPill} ${
               activeTab === 'confirmed' ? styles.tabPillActive : ''
             }`}
-            onClick={() => setActiveTab('confirmed')}
+            onClick={() => { setExactStatus(''); setActiveTab('confirmed'); }}
           >
             Confirmed
           </button>
@@ -510,10 +534,17 @@ export default function MyBookingsPage() {
             role="tab"
             aria-selected={activeTab === 'past'}
             className={`${styles.tabPill} ${activeTab === 'past' ? styles.tabPillActive : ''}`}
-            onClick={() => setActiveTab('past')}
+            onClick={() => { setExactStatus(''); setActiveTab('past'); }}
           >
             Past
           </button>
+          <label>
+            Trạng thái
+            <select value={exactStatus} onChange={(event) => { setExactStatus(event.target.value); setActiveTab('all'); }}>
+              <option value="">Tất cả trạng thái</option>
+              {Object.entries(bookingStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+            </select>
+          </label>
         </div>
 
         {feedbackBanner && (
@@ -595,25 +626,28 @@ export default function MyBookingsPage() {
                     </strong>
 
                     <div className={styles.actionGroup}>
+                      <button type="button" className={styles.outlineActionBtn} onClick={() => setDetailTarget(item)}>
+                        Xem chi tiết
+                      </button>
                       {/* 1. Trạng thái holding -> Nút Tiếp tục thanh toán */}
-                      {item.status === 'holding' && (
+                      {item.status === 'holding' && canPayHistoryEntry(item, nowMs) && (
                         <button
                           type="button"
                           className={styles.primaryActionBtn}
                           onClick={() => handleGoToPayment(item)}
                         >
-                          Continue Payment
+                          Tiếp tục thanh toán
                         </button>
                       )}
 
                       {/* 2. Trạng thái resubmit_requested -> Nút Gửi lại chứng từ (kèm kiểm tra P06) */}
-                      {item.status === 'resubmit_requested' && (
+                      {item.status === 'resubmit_requested' && canPayHistoryEntry(item, nowMs) && (
                         <button
                           type="button"
                           className={styles.primaryActionBtn}
                           onClick={() => handleGoToPayment(item)}
                         >
-                          Resubmit Receipt
+                          Gửi lại chứng từ
                         </button>
                       )}
 
@@ -894,6 +928,11 @@ export default function MyBookingsPage() {
       )}
 
       {/* Hộp xác nhận Hủy booking theo chuẩn BR07 / MSG66 */}
+      {detailTarget && (
+        <HistoryDetailDialog key={detailTarget.booking_type + ':' + detailTarget.booking_id}
+          item={detailTarget} now={nowMs} onClose={() => setDetailTarget(null)} onPayment={handleGoToPayment} />
+      )}
+
       {cancelTarget && (
         <div className={styles.modalOverlay} role="dialog" aria-modal="true">
           <div className={styles.modalCard}>

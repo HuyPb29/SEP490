@@ -164,7 +164,7 @@ function AppContent() {
           <Route path="/booking/payment" element={<BookingPaymentPage key={location.search} />} />
 
           {/* UC17 và F5: Lịch sử, trạng thái đổi lịch và hủy booking của Player */}
-          <Route path="/my-bookings" element={<MyBookingsPage />} />
+          <Route path="/my-bookings" element={<RequireRole roles={['player']}><MyBookingsPage /></RequireRole>} />
           <Route path="/my-bookings/:bookingId/reschedules" element={<RescheduleHistoryPage />} />
         </Routes>
       </Suspense>

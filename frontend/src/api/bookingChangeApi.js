@@ -1,3 +1,4 @@
+import { enrichHistoryEntry } from './bookingHistory';
 import axios from 'axios';
 import api, { getAllPages } from './index';
 
@@ -364,7 +365,7 @@ export async function getMyBookingsApi() {
     getAllPages('/me/bookings'),
     getAllPages('/me/booking-packages'),
   ]);
-  return [
+  const entries = [
     ...bookings.map((item) => bookingCard(item)),
     ...packages.map((item) => {
       const status = item.status.toLowerCase();
@@ -384,6 +385,7 @@ export async function getMyBookingsApi() {
       };
     }),
   ];
+  return Promise.all(entries.map(enrichHistoryEntry));
 }
 
 export async function getPackageSessionsApi(packageId) {
