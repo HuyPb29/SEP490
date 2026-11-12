@@ -1,17 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { loginApi, registerPlayerApi, verifyOtpApi, resendOtpApi, forgotPasswordApi, resetPasswordApi } from '../../api/authApi';
-import { getSavedUser, roleHome } from '../../api/session';
+import PublicLayout from '../../components/layout/PublicLayout';
+import { useAuth } from '../../hooks/useAuth';
 import { canResumePath } from '../../api/f1Navigation';
 import { fieldError, messages, normalizeName, otpSendError, otpSent, validEmail, validName, validPassword, validPhone, validUsername } from '../../api/f1Rules';
 import styles from './AuthPage.module.css';
+import courtPhoto from '../../assets/badminton-court.jpg';
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const currentUser = getSavedUser();
+  const {
+    user: currentUser,
+    login: loginApi,
+    registerPlayer: registerPlayerApi,
+    verifyOtp: verifyOtpApi,
+    resendOtp: resendOtpApi,
+    forgotPassword: forgotPasswordApi,
+    resetPassword: resetPasswordApi,
+    roleHome,
+  } = useAuth();
   // Tab: 'login' (UC02) | 'register' (UC01) | 'otp' (DR25)
-  const [requestedTab, setActiveTab] = useState(location.state?.isSignUp ? 'register' : 'login');
+  const [requestedTab, setActiveTab] = useState(
+    location.state?.isSignUp || new URLSearchParams(location.search).get('mode') === 'register'
+      ? 'register'
+      : 'login'
+  );
   const activeTab = currentUser && requestedTab === 'register' ? 'login' : requestedTab;
 
   // State UC02: Đăng nhập
@@ -245,22 +259,25 @@ export default function AuthPage() {
   };
 
   return (
-    <div className={styles.splitLayout}>
-      <aside className={styles.leftPanel}>
-        <Link className={styles.brandHeader} to="/">
-          <span className={styles.brandIcon} aria-hidden="true">C</span>
-          <span className={styles.brandName}>Courtly</span>
-        </Link>
-        <div className={styles.heroCopy}>
-          <p className={styles.heroHeading}>Hẹn nhau trên sân.</p>
-          <p className={styles.heroDescription}>
-            Đặt sân, quản lý lịch chơi và sử dụng điểm thưởng trong cùng một tài khoản.
-          </p>
-        </div>
-      </aside>
+    <PublicLayout fullWidth>
+      <div className={styles.splitLayout}>
+        <aside className={styles.leftPanel}>
+          <img className={styles.courtPhoto} src={courtPhoto} width="1600" height="900" alt="" fetchPriority="high" />
+          <Link className={styles.brandHeader} to="/">
+            <span className={styles.brandIcon} aria-hidden="true">C</span>
+            <span className={styles.brandName}>Courtly</span>
+          </Link>
+          <div className={styles.heroCopy}>
+            <p className={styles.heroHeading}>Hẹn nhau trên sân.</p>
+            <p className={styles.heroDescription}>
+              Đặt sân, quản lý lịch chơi và sử dụng điểm thưởng trong cùng một tài khoản.
+            </p>
+          </div>
+          <footer className={styles.photoCredit}>Ảnh sân trong nhà · <a href="https://commons.wikimedia.org/wiki/File:Indoor_badminton_court.jpg">Alanands3</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></footer>
+        </aside>
 
-      <main className={styles.rightPanel}>
-        <section className={styles.authCard}>
+        <div className={styles.rightPanel}>
+          <section className={styles.authCard}>
           <div className={styles.tabGroup} role="group" aria-label="Thao tác tài khoản">
             <button
               type="button"
@@ -289,8 +306,13 @@ export default function AuthPage() {
           </div>
 
           {activeTab === 'login' && (
-            <form className={styles.formContainer} onSubmit={handleLoginSubmit}>
-              <h1 className={styles.cardTitle}>Đăng nhập</h1>
+            <form className={styles.formContainer} onSubmit={handleLoginSubmit} noValidate>
+              <div className={styles.cardHeader}>
+                <h1 className={styles.cardTitle}>Đăng nhập</h1>
+                <p className={styles.cardSubtitle}>
+                  Nhập thông tin tài khoản để tiếp tục đặt sân và quản lý lịch chơi.
+                </p>
+              </div>
               {loginNotice && <div role="status" className={loginNotice === location.state?.notice ? styles.infoBanner : styles.toast}>{loginNotice}</div>}
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="login-identity">
@@ -298,7 +320,7 @@ export default function AuthPage() {
                 </label>
                 <input
                   id="login-identity"
-                  className={styles.input}
+                  className={`${styles.input} ${loginFields.identity ? styles.inputError : ''}`}
                   type="text"
                   autoComplete="username"
                   value={loginIdentity}
@@ -314,74 +336,100 @@ export default function AuthPage() {
                 {loginFields.identity && <p id="login-identity-error" role="alert" className={styles.errorText}>{loginFields.identity}</p>}
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="login-password">
-                  Mật khẩu
-                </label>
-                <input
-                  id="login-password"
-                  className={`${styles.input} ${loginError ? styles.inputError : ''}`}
-                  type={visiblePassword === 'login' ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  value={loginPassword}
-                  onChange={(event) => {
-                    setLoginPassword(event.target.value);
-                    setLoginFields((fields) => ({ ...fields, password: undefined }));
-                    setLoginError('');
-                  }}
-                  placeholder="Nhập mật khẩu"
-                  aria-invalid={Boolean(loginFields.password)}
-                  aria-describedby={loginFields.password ? 'login-password-error' : undefined}
-                />
-                <button type="button" className={styles.passwordToggle} aria-controls="login-password" aria-pressed={visiblePassword === 'login'}
-                  onClick={() => setVisiblePassword(visiblePassword === 'login' ? null : 'login')}>{visiblePassword === 'login' ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}</button>
+                <div className={styles.labelRow}>
+                  <label className={styles.label} htmlFor="login-password">
+                    Mật khẩu
+                  </label>
+                  <button type="button" className={styles.inlineSwitchBtn} onClick={() => openOtpForm('RESET_PASSWORD')}>
+                    Quên mật khẩu?
+                  </button>
+                </div>
+                <div className={styles.passwordInputWrap}>
+                  <input
+                    id="login-password"
+                    className={`${styles.input} ${styles.passwordInput} ${loginFields.password || loginError ? styles.inputError : ''}`}
+                    type={visiblePassword === 'login' ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={loginPassword}
+                    onChange={(event) => {
+                      setLoginPassword(event.target.value);
+                      setLoginFields((fields) => ({ ...fields, password: undefined }));
+                      setLoginError('');
+                    }}
+                    placeholder="Nhập mật khẩu"
+                    aria-invalid={Boolean(loginFields.password)}
+                    aria-describedby={loginFields.password ? 'login-password-error' : undefined}
+                  />
+                  <button
+                    type="button"
+                    className={styles.passwordToggle}
+                    aria-controls="login-password"
+                    aria-pressed={visiblePassword === 'login'}
+                    onClick={() => setVisiblePassword(visiblePassword === 'login' ? null : 'login')}
+                  >
+                    {visiblePassword === 'login' ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  </button>
+                </div>
                 {loginFields.password && <p id="login-password-error" role="alert" className={styles.errorText}>{loginFields.password}</p>}
                 {loginError && <p role="alert" className={styles.errorText}>{loginError}</p>}
-              </div>
-              <div className={styles.forgotRow}>
-                <button type="button" className={styles.inlineSwitchBtn} onClick={() => openOtpForm('RESET_PASSWORD')}>
-                  Quên mật khẩu?
-                </button>
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={loginLoading}>
                 {loginLoading ? 'Đang đăng nhập…' : 'Đăng nhập'}
               </button>
+              {!currentUser && <p className={styles.cardFooterText}>
+                Bạn chưa có tài khoản?{' '}
+                <button
+                  type="button"
+                  className={styles.inlineSwitchBtn}
+                  onClick={() => setActiveTab('register')}
+                >
+                  Đăng ký ngay
+                </button>
+              </p>}
             </form>
           )}
 
           {activeTab === 'register' && (
             <form className={styles.formContainer} onSubmit={handleRegisterSubmit} noValidate>
-              <h1 className={styles.cardTitle}>Tạo tài khoản người chơi</h1>
-              <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="register-username">
-                  Tên đăng nhập
-                </label>
-                <input
-                  id="register-username"
-                  className={styles.input}
-                  value={registerForm.username}
-                  onChange={(event) => updateRegisterField('username', event.target.value)}
-                  autoComplete="username"
-                  placeholder="Ví dụ: player_01"
-                  aria-invalid={Boolean(registerFields.username)}
-                  aria-describedby={registerFields.username ? 'register-username-error' : undefined}
-                />
-                {registerFields.username && <p id="register-username-error" role="alert" className={styles.errorText}>{registerFields.username}</p>}
+              <div className={styles.cardHeader}>
+                <h1 className={styles.cardTitle}>Tạo tài khoản người chơi</h1>
+                <p className={styles.cardSubtitle}>
+                  Điền thông tin bên dưới để đăng ký và nhận mã xác thực qua email.
+                </p>
               </div>
-              <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="register-name">
-                  Họ và tên
-                </label>
-                <input
-                  id="register-name"
-                  className={styles.input}
-                  value={registerForm.full_name}
-                  onChange={(event) => updateRegisterField('full_name', event.target.value)}
-                  autoComplete="name"
-                  placeholder="Ví dụ: Nguyễn Minh Anh"
-                  aria-invalid={Boolean(registerFields.full_name)}
-                  aria-describedby={registerFields.full_name ? 'register-name-error' : undefined}
-                />
-                {registerFields.full_name && <p id="register-name-error" role="alert" className={styles.errorText}>{registerFields.full_name}</p>}
+              <div className={styles.twoColRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.label} htmlFor="register-username">
+                    Tên đăng nhập
+                  </label>
+                  <input
+                    id="register-username"
+                    className={`${styles.input} ${registerFields.username ? styles.inputError : ''}`}
+                    value={registerForm.username}
+                    onChange={(event) => updateRegisterField('username', event.target.value)}
+                    autoComplete="username"
+                    placeholder="Ví dụ: player_01"
+                    aria-invalid={Boolean(registerFields.username)}
+                    aria-describedby={registerFields.username ? 'register-username-error' : undefined}
+                  />
+                  {registerFields.username && <p id="register-username-error" role="alert" className={styles.errorText}>{registerFields.username}</p>}
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.label} htmlFor="register-name">
+                    Họ và tên
+                  </label>
+                  <input
+                    id="register-name"
+                    className={`${styles.input} ${registerFields.full_name ? styles.inputError : ''}`}
+                    value={registerForm.full_name}
+                    onChange={(event) => updateRegisterField('full_name', event.target.value)}
+                    autoComplete="name"
+                    placeholder="Ví dụ: Nguyễn Minh Anh"
+                    aria-invalid={Boolean(registerFields.full_name)}
+                    aria-describedby={registerFields.full_name ? 'register-name-error' : undefined}
+                  />
+                  {registerFields.full_name && <p id="register-name-error" role="alert" className={styles.errorText}>{registerFields.full_name}</p>}
+                </div>
               </div>
               <div className={styles.twoColRow}>
                 <div className={styles.formGroup}>
@@ -390,14 +438,14 @@ export default function AuthPage() {
                   </label>
                   <input
                     id="register-email"
-                    className={styles.input}
+                    className={`${styles.input} ${registerFields.email ? styles.inputError : ''}`}
                     type="email"
                     value={registerForm.email}
                     onChange={(event) => updateRegisterField('email', event.target.value)}
                     autoComplete="email"
                     placeholder="minhanh@gmail.com"
                     aria-invalid={Boolean(registerFields.email)}
-                  aria-describedby={registerFields.email ? 'register-email-error' : undefined}
+                    aria-describedby={registerFields.email ? 'register-email-error' : undefined}
                   />
                   {registerFields.email && <p id="register-email-error" role="alert" className={styles.errorText}>{registerFields.email}</p>}
                 </div>
@@ -407,14 +455,14 @@ export default function AuthPage() {
                   </label>
                   <input
                     id="register-phone"
-                    className={styles.input}
+                    className={`${styles.input} ${registerFields.phone_number ? styles.inputError : ''}`}
                     type="tel"
                     value={registerForm.phone_number}
                     onChange={(event) => updateRegisterField('phone_number', event.target.value)}
                     autoComplete="tel"
                     placeholder="0912345678"
                     aria-invalid={Boolean(registerFields.phone_number)}
-                  aria-describedby={registerFields.phone_number ? 'register-phone-error' : undefined}
+                    aria-describedby={registerFields.phone_number ? 'register-phone-error' : undefined}
                   />
                   {registerFields.phone_number && <p id="register-phone-error" role="alert" className={styles.errorText}>{registerFields.phone_number}</p>}
                 </div>
@@ -423,19 +471,28 @@ export default function AuthPage() {
                 <label className={styles.label} htmlFor="register-password">
                   Mật khẩu
                 </label>
-                <input
-                  id="register-password"
-                  className={styles.input}
-                  type={visiblePassword === 'register' ? 'text' : 'password'}
-                  value={registerForm.password}
-                  onChange={(event) => updateRegisterField('password', event.target.value)}
-                  autoComplete="new-password"
-                  placeholder="8–32 ký tự, gồm chữ và số"
-                  aria-invalid={Boolean(registerFields.password)}
-                  aria-describedby={registerFields.password ? 'register-password-error' : undefined}
-                />
-                <button type="button" className={styles.passwordToggle} aria-controls="register-password" aria-pressed={visiblePassword === 'register'}
-                  onClick={() => setVisiblePassword(visiblePassword === 'register' ? null : 'register')}>{visiblePassword === 'register' ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}</button>
+                <div className={styles.passwordInputWrap}>
+                  <input
+                    id="register-password"
+                    className={`${styles.input} ${styles.passwordInput} ${registerFields.password || registerError ? styles.inputError : ''}`}
+                    type={visiblePassword === 'register' ? 'text' : 'password'}
+                    value={registerForm.password}
+                    onChange={(event) => updateRegisterField('password', event.target.value)}
+                    autoComplete="new-password"
+                    placeholder="8–32 ký tự, gồm chữ và số"
+                    aria-invalid={Boolean(registerFields.password)}
+                    aria-describedby={registerFields.password ? 'register-password-error' : undefined}
+                  />
+                  <button
+                    type="button"
+                    className={styles.passwordToggle}
+                    aria-controls="register-password"
+                    aria-pressed={visiblePassword === 'register'}
+                    onClick={() => setVisiblePassword(visiblePassword === 'register' ? null : 'register')}
+                  >
+                    {visiblePassword === 'register' ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  </button>
+                </div>
                 {registerFields.password && <p id="register-password-error" role="alert" className={styles.errorText}>{registerFields.password}</p>}
                 {registerError && <p role="alert" className={styles.errorText}>{registerError}</p>}
               </div>
@@ -457,7 +514,14 @@ export default function AuthPage() {
 
           {activeTab === 'otp' && (resettingPassword || !currentUser) && (
             <form className={styles.formContainer} onSubmit={handleVerifyOtpSubmit} noValidate>
-              <h1 className={styles.cardTitle}>{resettingPassword ? 'Đặt lại mật khẩu' : 'Xác thực email'}</h1>
+              <div className={styles.cardHeader}>
+                <h1 className={styles.cardTitle}>{resettingPassword ? 'Đặt lại mật khẩu' : 'Xác thực email'}</h1>
+                <p className={styles.cardSubtitle}>
+                  {resettingPassword
+                    ? 'Nhập email đã đăng ký để nhận mã xác thực và tạo mật khẩu mới.'
+                    : 'Nhập mã xác thực gồm 6 chữ số đã được gửi tới email của bạn.'}
+                </p>
+              </div>
               <dialog ref={otpDialog} className={styles.sessionDialog} aria-label="Mã xác minh" onClose={() => setOtpMessage('')}>
                 <p>{otpMessage}</p>
                 <button type="button" className={styles.primaryBtn} onClick={() => otpDialog.current.close()}>Đã hiểu</button>
@@ -468,7 +532,7 @@ export default function AuthPage() {
                 </label>
                 <input
                   id="otp-email"
-                  className={styles.input}
+                  className={`${styles.input} ${otpFields.email ? styles.inputError : ''}`}
                   type="email"
                   value={otpEmail}
                   readOnly={!resettingPassword || resetCodeSent}
@@ -488,7 +552,7 @@ export default function AuthPage() {
                     <input
                       id="otp-code"
                       className={`${styles.input} ${styles.otpInput} ${
-                        otpError ? styles.inputError : ''
+                        otpFields.otp || otpError ? styles.inputError : ''
                       }`}
                       type="text"
                       inputMode="numeric"
@@ -501,19 +565,23 @@ export default function AuthPage() {
                     {otpFields.otp && <p id="otp-code-error" role="alert" className={styles.errorText}>{otpFields.otp}</p>}
                   </div>
                   {resettingPassword && (
-                    <div className={styles.formGroup}>
-                      <label className={styles.label} htmlFor="reset-password">Mật khẩu mới</label>
-                      <input id="reset-password" className={styles.input} type="password"
-                        autoComplete="new-password" value={newPassword} required
-                        onChange={(event) => setNewPassword(event.target.value)}
-                        aria-describedby={otpFields.password ? "reset-password-error" : undefined} />
-                      {otpFields.password && <p id="reset-password-error" role="alert" className={styles.errorText}>{otpFields.password}</p>}
-                      <label className={styles.label} htmlFor="reset-confirm">Xác nhận mật khẩu mới</label>
-                      <input id="reset-confirm" className={styles.input} type="password" autoComplete="new-password"
-                        value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)}
-                        aria-describedby={otpFields.confirmation ? "reset-confirm-error" : undefined} />
-                      {otpFields.confirmation && <p id="reset-confirm-error" role="alert" className={styles.errorText}>{otpFields.confirmation}</p>}
-                    </div>
+                    <>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label} htmlFor="reset-password">Mật khẩu mới</label>
+                        <input id="reset-password" className={`${styles.input} ${otpFields.password ? styles.inputError : ''}`} type="password"
+                          autoComplete="new-password" value={newPassword} required
+                          onChange={(event) => setNewPassword(event.target.value)}
+                          aria-describedby={otpFields.password ? "reset-password-error" : undefined} />
+                        {otpFields.password && <p id="reset-password-error" role="alert" className={styles.errorText}>{otpFields.password}</p>}
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label} htmlFor="reset-confirm">Xác nhận mật khẩu mới</label>
+                        <input id="reset-confirm" className={`${styles.input} ${otpFields.confirmation ? styles.inputError : ''}`} type="password" autoComplete="new-password"
+                          value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)}
+                          aria-describedby={otpFields.confirmation ? "reset-confirm-error" : undefined} />
+                        {otpFields.confirmation && <p id="reset-confirm-error" role="alert" className={styles.errorText}>{otpFields.confirmation}</p>}
+                      </div>
+                    </>
                   )}
                   <button className={styles.primaryBtn} type="submit" disabled={otpLoading || otpSending}>
                     {otpLoading ? 'Đang xác thực…' : resettingPassword ? 'Đặt lại mật khẩu' : 'Xác thực mã'}
@@ -521,17 +589,34 @@ export default function AuthPage() {
                 </>
               )}
               {otpError && <p role="alert" className={styles.errorText}>{otpError}</p>}
-              {registrationExpired ? <button type="button" className={styles.inlineSwitchBtn} onClick={() => setActiveTab('register')}>Đăng ký lại</button>
-                : <button type="button" className={styles.inlineSwitchBtn}
-                disabled={cooldown > 0 || otpLoading || otpSending} onClick={handleSendOtp}>
-                {otpSending ? 'Đang gửi…' : cooldown > 0 ? `Gửi lại sau ${cooldown} giây`
-                  : resettingPassword && !resetCodeSent ? 'Gửi mã đặt lại mật khẩu' : 'Gửi lại mã'}
-              </button>}
+              <div className={styles.otpActionRow}>
+                {registrationExpired ? (
+                  <button type="button" className={styles.inlineSwitchBtn} onClick={() => setActiveTab('register')}>
+                    Đăng ký lại
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.inlineSwitchBtn}
+                    disabled={cooldown > 0 || otpLoading || otpSending}
+                    onClick={handleSendOtp}
+                  >
+                    {otpSending
+                      ? 'Đang gửi…'
+                      : cooldown > 0
+                        ? `Gửi lại sau ${cooldown} giây`
+                        : resettingPassword && !resetCodeSent
+                          ? 'Gửi mã đặt lại mật khẩu'
+                          : 'Gửi lại mã'}
+                  </button>
+                )}
+              </div>
               {sendError && <p role="alert" className={styles.errorText}>{sendError}</p>}
             </form>
           )}
-        </section>
-      </main>
-    </div>
+          </section>
+        </div>
+      </div>
+    </PublicLayout>
   );
 }

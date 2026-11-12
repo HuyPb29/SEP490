@@ -1,24 +1,55 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react';
+import styles from './common/CommonUI.module.css';
 
 export function F1Dialog({ message, onClose, onConfirm, title, confirmLabel = 'Xác nhận' }) {
-  const ref = useRef(null)
+  const ref = useRef(null);
   useEffect(() => {
-    const dialog = ref.current
-    dialog.showModal()
-    return () => { if (dialog.open) dialog.close() }
-  }, [])
-  return <dialog ref={ref} aria-label={title || 'Thông báo'} className="m-auto max-w-md rounded-xl bg-white p-6 shadow-xl backdrop:bg-black/40"
-    onCancel={(event) => { event.preventDefault(); onClose() }}>
-    {title && <h2 className="mb-2 font-semibold">{title}</h2>}
-    <p>{message}</p>
-    <button type="button" className="mt-4 rounded bg-emerald-800 px-4 py-2 text-white" onClick={onClose}>{onConfirm ? 'Hủy' : 'Đã hiểu'}</button>
-    {onConfirm && <button type="button" className="ml-2 rounded bg-red-800 px-4 py-2 text-white" onClick={onConfirm}>{confirmLabel}</button>}
-  </dialog>
+    const dialog = ref.current;
+    dialog.showModal();
+    return () => {
+      if (dialog.open) dialog.close();
+    };
+  }, []);
+
+  return (
+    <dialog
+      ref={ref}
+      aria-label={title || 'Thông báo'}
+      className={styles.dialogNative}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      {title && <h2 className={styles.modalTitle}>{title}</h2>}
+      <p className={styles.modalBody}>{message}</p>
+      <div className={styles.modalActions}>
+        <button
+          type="button"
+          className={`${styles.btn} ${styles.btnMd} ${onConfirm ? styles.btnSecondary : styles.btnPrimary}`}
+          onClick={onClose}
+        >
+          {onConfirm ? 'Hủy' : 'Đã hiểu'}
+        </button>
+        {onConfirm && (
+          <button
+            type="button"
+            className={`${styles.btn} ${styles.btnMd} ${styles.btnDanger}`}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </button>
+        )}
+      </div>
+    </dialog>
+  );
 }
 
 export function F1Toast({ children }) {
-  if (!children) return null
-  return <p role="status" className="fixed right-4 top-4 z-[60] max-w-sm rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-emerald-950 shadow">
-    {children}
-  </p>
+  if (!children) return null;
+  return (
+    <p role="status" className={`${styles.toast} ${styles.toastSuccess}`}>
+      {children}
+    </p>
+  );
 }
