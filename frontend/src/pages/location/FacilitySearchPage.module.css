@@ -395,3 +395,18 @@
   box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
   transition: all 0.2s ease-in-out;
 }
+
+@media (max-width: 1023px) {
+  .contentGrid { grid-template-columns: minmax(0, 1fr); }
+  .cardsGrid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
+}
+
+@media (max-width: 767px) {
+  .heroSection, .mainContent { padding-inline: 16px; }
+  .heroTitle { font-size: var(--text-2xl); }
+  .searchBar { flex-direction: column; align-items: stretch; padding: 12px; gap: 12px; }
+  .searchField, .fieldContent, .fieldContent input { min-width: 0; }
+  .divider { display: none; }
+  .resultsHeader { flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+  .sortGroup { flex-wrap: wrap; }
+}

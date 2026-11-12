@@ -51,7 +51,7 @@ export function UserMenu({ user: userProp }) {
           Đăng nhập
         </Link>
         <Link
-          to="/login?mode=register"
+          to="/register"
           state={{ returnTo: location.pathname + location.search }}
           className={styles.registerLink}
         >
@@ -128,7 +128,12 @@ export function UserMenu({ user: userProp }) {
                 className={styles.dropdownItem}
                 onClick={() => setOpen(false)}
               >
-                Hồ sơ & Đổi mật khẩu
+                Hồ sơ cá nhân
+              </Link>
+            )}
+            {canAccessAccountPage && (
+              <Link to="/change-password" role="menuitem" className={styles.dropdownItem} onClick={() => setOpen(false)}>
+                Đổi mật khẩu
               </Link>
             )}
             <Link

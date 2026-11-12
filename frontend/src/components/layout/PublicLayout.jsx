@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useNavigationDrawer } from '../../hooks/useNavigationDrawer';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { PageHeader } from '../common/PageHeader';
@@ -10,7 +10,9 @@ function getPublicMenuItems(roleCode) {
     return [
       ['/', 'Tìm địa điểm'],
       ['/my-bookings', 'Booking của tôi'],
-      ['/open-matches', 'Kèo & Đội'],
+      ['/my-reschedules', 'Lịch sử đổi lịch'],
+      ['/open-matches', 'Kèo'],
+      ['/teams', 'Đội của tôi'],
       ['/my-rewards', 'Voucher & Điểm'],
       ['/my-complaints', 'Khiếu nại'],
       ['/account', 'Tài khoản'],
@@ -47,7 +49,7 @@ export function PublicHeader({ user: userProp }) {
   const { user: contextUser, roleHome } = useAuth();
   const location = useLocation();
   const user = userProp !== undefined ? userProp : contextUser;
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useNavigationDrawer();
 
   const roleCode = String(user?.role_code || user?.role || '').toLowerCase();
   const menuItems = getPublicMenuItems(roleCode);

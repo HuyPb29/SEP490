@@ -13,6 +13,9 @@ const roleCases = [
 ]
 
 test('UC02 đăng nhập theo 4 vai trò, giữ returnTo hợp lệ và xử lý phiên hết hạn', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 })
+  await page.goto('/')
+  await expect(page.getByRole('link', { name: 'Đăng ký', exact: true })).toBeVisible()
   const identities = new Map(roleCases.map((item) => [item.identity, item.role]))
   await page.route('/api/**', async (route) => {
     const request = route.request()
@@ -49,6 +52,27 @@ test('UC02 đăng nhập theo 4 vai trò, giữ returnTo hợp lệ và xử lý
       await signIn(item.identity)
       await expect(page).toHaveURL((url) => url.pathname === item.destination)
       expect(await page.evaluate(() => Boolean(localStorage.getItem('bms_access_token')))).toBe(true)
+      const mobileMenu = page.getByRole('button', { name: 'Mở menu điều hướng' }).first()
+      await mobileMenu.click()
+      const expected = {
+        PLAYER: 'Đội của tôi',
+        STAFF: 'Bảng điều hành',
+        OWNER: 'Tổng quan & Vận hành',
+        ADMIN: 'Kiểm duyệt đánh giá',
+      }[item.role]
+      await expect(page.getByRole('link', { name: expected, exact: true }).filter({ visible: true })).toBeVisible()
+      await expect(mobileMenu).toHaveAttribute('aria-expanded', 'true')
+      await page.keyboard.press('Escape')
+      await expect(mobileMenu).toHaveAttribute('aria-expanded', 'false')
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
+      if (item.role === 'PLAYER') {
+        await mobileMenu.click()
+        await page.getByRole('link', { name: 'Đội của tôi', exact: true }).filter({ visible: true }).click()
+        await expect(page).toHaveURL(/\/teams$/)
+        await expect(page.getByRole('heading', { name: 'Đội của tôi' })).toBeVisible()
+        await expect(page.getByRole('button', { name: 'Mở menu điều hướng' })).toHaveAttribute('aria-expanded', 'false')
+      }
+
     })
   }
 

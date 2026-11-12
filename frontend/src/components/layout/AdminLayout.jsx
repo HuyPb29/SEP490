@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useNavigationDrawer } from '../../hooks/useNavigationDrawer';
 import { Link, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { PageHeader } from '../common/PageHeader';
@@ -6,8 +6,10 @@ import styles from './AppLayouts.module.css';
 import { UserMenu } from './UserMenu';
 
 const ADMIN_MENU = [
-  { to: '/admin/workspace', label: 'Tài khoản & Kiểm duyệt (UC04, UC24, UC32)', end: true },
-  { to: '/admin/facilities', label: 'Địa điểm & Đăng ký dịch vụ (UC05, UC06)' },
+  { to: '/admin/workspace', label: 'Quản lý tài khoản', end: true },
+  { to: '/admin/facilities', label: 'Quản lý địa điểm' },
+  { to: '/admin/vouchers', label: 'Kiểm duyệt voucher' },
+  { to: '/admin/reviews', label: 'Kiểm duyệt đánh giá' },
 ];
 
 export default function AdminLayout({
@@ -20,7 +22,7 @@ export default function AdminLayout({
 }) {
   const location = useLocation();
   const { user, roleHome } = useAuth();
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useNavigationDrawer();
 
   if (!user) {
     return <Navigate to="/login" state={{ returnTo: location.pathname + location.search }} replace />;

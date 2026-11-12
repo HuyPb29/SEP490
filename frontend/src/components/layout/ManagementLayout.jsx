@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useNavigationDrawer } from '../../hooks/useNavigationDrawer';
 import { Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useLocationContext } from '../../hooks/useLocation';
@@ -31,7 +31,7 @@ export default function ManagementLayout({
     currentLocation,
     setLocationId,
   } = useLocationContext();
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useNavigationDrawer();
 
   if (!user) {
     return <Navigate to="/login" state={{ returnTo: location.pathname + location.search }} replace />;

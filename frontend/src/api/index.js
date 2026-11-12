@@ -7,9 +7,10 @@ api.interceptors.request.use((request) => {
   const token = request.skipAuth ? null : getToken()
   if (token) {
     request.headers.set('Authorization', `Bearer ${token}`)
-    const selectedLocation = getSelectedLocation()
-    if (getSavedUser()?.role_code === 'owner' && selectedLocation && !request.headers.has('X-Location-Id')) {
-      request.headers.set('X-Location-Id', selectedLocation)
+    const selectedLocation = request.locationId ?? getSelectedLocation()
+    const isAdminRoute = String(request.url || '').startsWith('/admin')
+    if (!isAdminRoute && getSavedUser()?.role_code === 'owner' && selectedLocation && !request.headers.has('X-Location-Id')) {
+      request.headers.set('X-Location-Id', String(selectedLocation))
     }
   }
   return request

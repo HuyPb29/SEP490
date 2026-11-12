@@ -1,3 +1,4 @@
+import { ConfirmDialog } from '../../components/common/Modal';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api, { apiErrorMessage, getAllPages } from '../../api';
@@ -260,18 +261,28 @@ export default function StaffDashboardPage() {
     navigate(`/staff/confirm-payments${idParam}${typeParam}`);
   };
 
-  // UC16 #5: Xác nhận đã nhận tiền cho lượt đặt tại quầy
-  const handleConfirmCounterPayment = async (bookingItem) => {
-    if (bookingItem.status !== 'HOLDING' || parseLocalExpiry(bookingItem.holdExpiresAt) <= now) return;
-    const confirmed = window.confirm(
-      `Xác nhận đã nhận đủ ${formatMoney(bookingItem.finalAmount)} cho đơn tại quầy ${bookingItem.bookingCode}?`
-    );
-    if (!confirmed) return;
+  const [counterPayment, setCounterPayment] = useState(null);
+  const [confirmingCounter, setConfirmingCounter] = useState(false);
+  const [counterPaymentError, setCounterPaymentError] = useState('');
+
+  const handleConfirmCounterPayment = async () => {
+    if (confirmingCounter || !counterPayment) return;
+    const current = counterBookings.find((item) => item.id === counterPayment.id);
+    if (!current || current.status !== 'HOLDING' || parseLocalExpiry(current.holdExpiresAt) <= Date.now()) {
+      setCounterPaymentError('Đơn đã hết hạn hoặc đã được xử lý. Vui lòng tải lại danh sách.');
+      return;
+    }
+    setConfirmingCounter(true);
+    setCounterPaymentError('');
     try {
-      await api.post(`/staff/bookings/${bookingItem.id}/confirm`);
+      await api.post('/staff/bookings/' + current.id + '/confirm');
+      setCounterPayment(null);
       await loadAll();
-    } catch (err) {
-      window.alert(apiErrorMessage(err, 'Không thể xác nhận thanh toán tại quầy.'));
+    } catch (error) {
+      setCounterPaymentError(apiErrorMessage(error, 'Không thể xác nhận thanh toán tại quầy.'));
+      if (error.response?.status === 409) await loadAll();
+    } finally {
+      setConfirmingCounter(false);
     }
   };
 
@@ -496,7 +507,7 @@ export default function StaffDashboardPage() {
                             type="button"
                             className={styles.primaryButton}
                             style={{ minHeight: 32, fontSize: 11.5, padding: '0 12px' }}
-                            onClick={() => handleConfirmCounterPayment(item)}
+                            onClick={() => { setCounterPayment(item); setCounterPaymentError(''); }}
                           >
                             Xác nhận đã nhận tiền
                           </button>
@@ -562,6 +573,14 @@ export default function StaffDashboardPage() {
 
       {showCounterBooking && (
         <WalkInBookingDialog initialCourt={counterCourt} onClose={() => setShowCounterBooking(false)} onChanged={loadAll} />
+      )}
+
+      {counterPayment && (
+        <ConfirmDialog title="Xác nhận đã nhận tiền" busy={confirmingCounter}
+          onClose={() => setCounterPayment(null)} onConfirm={handleConfirmCounterPayment}>
+          <p>Đã nhận đủ {formatMoney(counterPayment.finalAmount)} cho đơn {counterPayment.bookingCode}?</p>
+          {counterPaymentError && <p role="alert">{counterPaymentError}</p>}
+        </ConfirmDialog>
       )}
 
       {showReconciliation && <ReconciliationDialog onClose={() => setShowReconciliation(false)} />}

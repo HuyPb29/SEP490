@@ -57,6 +57,13 @@ export async function loadPayment({ kind, id }, signal) {
   }
 }
 
+export async function isLatePaymentEligible(bookingId, paymentId, signal) {
+  const { data } = await api.get('/complaints/late-payment-eligibility', {
+    params: { bookingId, paymentId }, signal,
+  })
+  return data.data
+}
+
 export async function submitPaymentProof({ kind, id }, payment, proof) {
   const body = new FormData()
   body.append('proof', proof)
@@ -69,7 +76,7 @@ export async function submitPaymentProof({ kind, id }, payment, proof) {
 }
 
 export async function loadPaymentImage(path, signal) {
-  if (!path?.startsWith('/api/') || path.includes('\\')) throw new Error('Invalid image path.')
+  if (!path?.startsWith('/api/') || path.includes('\\')) throw new Error('Đường dẫn ảnh không hợp lệ.')
   const { data } = await api.get(path.slice('/api'.length), { responseType: 'blob', signal })
   return data
 }
@@ -84,19 +91,13 @@ export async function listPendingReschedulePayments(signal) {
   return data.data
 }
 
-export async function getLatestRescheduleProof(paymentId, signal) {
-  const { data } = await api.get(`/staff/reschedule-payments/${paymentId}`, { signal })
-  const proof = data.data.proofs.at(-1)
-  return proof ? loadPaymentImage(`/api/payments/${paymentId}/proofs/${proof.id}/image`, signal) : null
+export async function getStaffReschedulePaymentDetails(paymentId, signal) {
+  const { data } = await api.get('/staff/reschedule-payments/' + paymentId, { signal })
+  return data.data
 }
 
 export async function decideReschedulePayment(paymentId, decision, payload) {
   const { data } = await api.post(`/staff/reschedule-payments/${paymentId}/${decision}`, payload)
-  return data.data
-}
-
-export async function getStaffReschedulePaymentDetails(paymentId, signal) {
-  const { data } = await api.get('/staff/reschedule-payments/' + paymentId, { signal })
   return data.data
 }
 

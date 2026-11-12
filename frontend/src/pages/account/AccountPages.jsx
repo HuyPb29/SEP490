@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import api, { getAllPages } from '../../api';
 import { messages, normalizeName, validName, validPassword, validPhone, validUsername } from '../../api/f1Rules';
 import { clearSession, getSavedUser } from '../../api/session';
@@ -44,6 +44,11 @@ function AccountDetails({ account }) {
 function Profile() {
   const profile = useResource(loadProfile);
   const navigate = useNavigate();
+  const { hash } = useLocation();
+  const passwordSection = useRef(null);
+  useEffect(() => {
+    if (hash === '#change-password') passwordSection.current?.scrollIntoView({ block: 'start' });
+  }, [hash]);
   return (
     <>
       <Section title="Hồ sơ cá nhân" resource={profile}>
@@ -92,41 +97,43 @@ function Profile() {
           </>
         )}
       </Section>
-      <Section title="Đổi mật khẩu">
-        <p className="cw-muted">Sau khi đổi mật khẩu, bạn sẽ cần đăng nhập lại.</p>
-        <AccountForm
-          label="Đổi mật khẩu"
-          fields={[
-            {
-              name: 'currentPassword',
-              label: 'Mật khẩu hiện tại',
-              type: 'password',
-              autoComplete: 'current-password',
-              required: true,
-            },
-            {
-              name: 'newPassword',
-              label: 'Mật khẩu mới',
-              type: 'password',
-              autoComplete: 'new-password',
-              required: true,
-              validate: validPassword,
-            },
-            {
-              name: 'confirmation',
-              label: 'Xác nhận mật khẩu mới',
-              type: 'password',
-              autoComplete: 'new-password',
-              required: true,
-            },
-          ]}
-          submit={(form) => api.post('/users/me/password', form)}
-          after={() => {
-            clearSession();
-            navigate('/login', { replace: true, state: { passwordChanged: true } });
-          }}
-        />
-      </Section>
+      <div id="change-password" ref={passwordSection} className="scroll-mt-20">
+        <Section title="Đổi mật khẩu">
+          <p className="cw-muted">Sau khi đổi mật khẩu, bạn sẽ cần đăng nhập lại.</p>
+          <AccountForm
+            label="Đổi mật khẩu"
+            fields={[
+              {
+                name: 'currentPassword',
+                label: 'Mật khẩu hiện tại',
+                type: 'password',
+                autoComplete: 'current-password',
+                required: true,
+              },
+              {
+                name: 'newPassword',
+                label: 'Mật khẩu mới',
+                type: 'password',
+                autoComplete: 'new-password',
+                required: true,
+                validate: validPassword,
+              },
+              {
+                name: 'confirmation',
+                label: 'Xác nhận mật khẩu mới',
+                type: 'password',
+                autoComplete: 'new-password',
+                required: true,
+              },
+            ]}
+            submit={(form) => api.post('/users/me/password', form)}
+            after={() => {
+              clearSession();
+              navigate('/login', { replace: true, state: { passwordChanged: true } });
+            }}
+          />
+        </Section>
+      </div>
     </>
   );
 }
