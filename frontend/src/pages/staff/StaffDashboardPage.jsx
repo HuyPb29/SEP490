@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import WalkInBookingDialog from './WalkInBookingDialog'
 import styles from './StaffDashboardPage.module.css'
 
 const initialTransactions = [
@@ -59,19 +60,8 @@ export default function StaffDashboardPage() {
   const [stats] = useState(initialStats)
   const [banners] = useState({ urgent: true, courtEnding: true })
   const [showCounterBooking, setShowCounterBooking] = useState(false)
-  const [counterBooking, setCounterBooking] = useState({
-    court: 'Court 2',
-    customer: '',
-    date: '2026-10-24',
-    startTime: '19:00',
-  })
-  const [counterBookingSubmitted, setCounterBookingSubmitted] = useState(false)
 
-  const openCounterBooking = (court = 'Court 2') => {
-    setCounterBooking((current) => ({ ...current, court }))
-    setCounterBookingSubmitted(false)
-    setShowCounterBooking(true)
-  }
+  const openCounterBooking = () => setShowCounterBooking(true)
 
   const openPaymentConfirmation = (bookingId) => {
     navigate(`/staff/confirm-payments${bookingId ? `?booking=${encodeURIComponent(bookingId)}` : ''}`)
@@ -184,7 +174,7 @@ export default function StaffDashboardPage() {
                     className={`${styles.courtTile} ${styles[court.type]}`}
                     key={court.name}
                     type="button"
-                    onClick={() => openCounterBooking(court.name)}
+                    onClick={() => openCounterBooking()}
                   >
                     <strong>{court.name}</strong>
                     <span>{court.status}</span>
@@ -238,75 +228,7 @@ export default function StaffDashboardPage() {
       </main>
 
       {showCounterBooking && (
-        <div className={styles.modalOverlay} role="presentation" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) setShowCounterBooking(false)
-        }}>
-          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="booking-title">
-            <h2 id="booking-title" className={styles.modalTitle}>Counter Booking</h2>
-            <p className={styles.modalDescription}>UC16 · Enter the counter booking details.</p>
-            <form
-              className={styles.bookingForm}
-              onSubmit={(event) => {
-                event.preventDefault()
-                setCounterBookingSubmitted(true)
-              }}
-            >
-              <label className={styles.formField}>
-                Customer name
-                <input
-                  autoFocus
-                  required
-                  value={counterBooking.customer}
-                  onChange={(event) => setCounterBooking((current) => ({ ...current, customer: event.target.value }))}
-                />
-              </label>
-              <label className={styles.formField}>
-                Court
-                <select
-                  value={counterBooking.court}
-                  onChange={(event) => setCounterBooking((current) => ({ ...current, court: event.target.value }))}
-                >
-                  {courts.map((court) => <option key={court.name}>{court.name}</option>)}
-                </select>
-              </label>
-              <div className={styles.formRow}>
-                <label className={styles.formField}>
-                  Date
-                  <input
-                    type="date"
-                    value={counterBooking.date}
-                    onChange={(event) => setCounterBooking((current) => ({ ...current, date: event.target.value }))}
-                  />
-                </label>
-                <label className={styles.formField}>
-                  Start time
-                  <input
-                    type="time"
-                    value={counterBooking.startTime}
-                    onChange={(event) => setCounterBooking((current) => ({ ...current, startTime: event.target.value }))}
-                  />
-                </label>
-              </div>
-              {counterBookingSubmitted && (
-                <p className={styles.successMessage} role="status">
-                  Counter booking saved in this mock preview.
-                </p>
-              )}
-              <div className={styles.modalActions}>
-                <button
-                  className={styles.secondaryButton}
-                  type="button"
-                  onClick={() => setShowCounterBooking(false)}
-                >
-                  Close
-                </button>
-                <button className={styles.primaryButton} type="submit" disabled={counterBookingSubmitted}>
-                  {counterBookingSubmitted ? 'Saved' : 'Create booking'}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
+        <WalkInBookingDialog onClose={() => setShowCounterBooking(false)} />
       )}
     </div>
   )
