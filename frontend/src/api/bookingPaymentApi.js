@@ -1,4 +1,4 @@
-import api from './index'
+import api, { getAllPages } from './index'
 
 const targets = {
   booking: '/bookings',
@@ -80,7 +80,7 @@ export async function getReschedulePaymentDetail(paymentId, signal) {
 }
 
 export async function listPendingReschedulePayments(signal) {
-  const { data } = await api.get('/staff/reschedule-payments', { signal })
+  const { data } = await api.get('/staff/reschedule-payments', { signal, params: { status: 'AWAITING_CONFIRMATION' } })
   return data.data
 }
 
@@ -95,15 +95,18 @@ export async function decideReschedulePayment(paymentId, decision, payload) {
   return data.data
 }
 
+export async function getStaffReschedulePaymentDetails(paymentId, signal) {
+  const { data } = await api.get('/staff/reschedule-payments/' + paymentId, { signal })
+  return data.data
+}
+
 export async function listPendingStaffBookingPayments(signal) {
-  // Danh sách chỉ có thông tin thanh toán phẳng; màn Staff cần khách, sân, giờ chơi, chứng từ
-  // nên tải thêm chi tiết từng giao dịch: { payment, customerName, courtName, ..., proofs }.
-  const { data } = await api.get('/staff/payments?status=AWAITING_CONFIRMATION&size=50', { signal });
-  const payments = data.data.content;
-  return Promise.all(payments.map(async (payment) => {
-    const res = await api.get('/staff/payments/' + payment.id, { signal });
-    return res.data.data;
-  }));
+  return getAllPages('/staff/payments', { signal, params: { status: 'AWAITING_CONFIRMATION' } });
+}
+
+export async function getStaffBookingPaymentDetails(paymentId, signal) {
+  const { data } = await api.get('/staff/payments/' + paymentId, { signal });
+  return data.data;
 }
 
 export async function getStaffBookingProofImage(paymentId, proofId, signal) {

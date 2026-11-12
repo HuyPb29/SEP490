@@ -1,357 +1,267 @@
-import { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { getSavedUser, getSelectedLocation } from '../../api/session'
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { apiErrorMessage } from '../../api';
+import { getSavedUser, getSelectedLocation, getToken } from '../../api/session';
 import {
-  decideReschedulePayment,
-  getLatestRescheduleProof,
-  listPendingReschedulePayments,
-  listPendingStaffBookingPayments,
-  getStaffBookingProofImage,
-  decideStaffBookingPayment,
-} from '../../api/bookingPaymentApi'
-import styles from './StaffConfirmPaymentPage.module.css'
+  listPendingStaffBookingPayments, getStaffBookingPaymentDetails, getStaffBookingProofImage,
+  decideStaffBookingPayment, listPendingReschedulePayments, getStaffReschedulePaymentDetails, decideReschedulePayment,
+} from '../../api/bookingPaymentApi';
+import { F1Dialog } from '../../components/F1Feedback';
+import styles from './StaffConfirmPaymentPage.module.css';
 
-const initialTransactions = [
+const REASONS = [
   {
-    id: 'BK-24087',
-    customer: 'Le Hoang',
-    court: 'Court 2',
-    playDate: '24/10',
-    playTime: '19:00 – 20:00',
-    listTime: '19:00',
-    phone: '0903 111 222',
-    transferContent: 'BK24087 0903111222',
-    amountDue: 160000,
-    actualAmount: 160000,
-    waiting: '17 mins',
-    overdue: true,
-    attempt: 1,
-    resubmissionsLeft: 2,
-    note: 'Please prepare 1 extra tube of shuttlecocks.',
+    code: 'EQUIPMENT',
+    label: 'Lỗi thiết bị tại quầy (không trừ lượt gửi lại)',
+    text: 'Lỗi thiết bị tại quầy',
+    playerAtFault: false,
   },
   {
-    id: 'BK-24095',
-    customer: 'Ngoc Mai',
-    court: 'Court 5',
-    playDate: '24/10',
-    playTime: '19:00 – 21:00',
-    listTime: '19:00',
-    phone: '0908 222 333',
-    transferContent: 'BK24095 0908222333',
-    amountDue: 320000,
-    actualAmount: 320000,
-    waiting: '6 mins',
-    overdue: false,
-    attempt: 1,
-    resubmissionsLeft: 2,
-    note: '',
+    code: 'DELAY',
+    label: 'Chưa nhận được tiền do ngân hàng trễ (không trừ lượt gửi lại của khách)',
+    text: 'Chưa nhận được tiền chuyển khoản',
+    playerAtFault: false,
   },
   {
-    id: 'BK-24102',
-    customer: 'Minh Anh',
-    court: 'Court 2',
-    playDate: '25/10',
-    playTime: '19:00 – 20:00',
-    listTime: '25/10',
-    phone: '0912 333 444',
-    transferContent: 'BK24102 0912333444',
-    amountDue: 80000,
-    actualAmount: 80000,
-    waiting: '1 min',
-    overdue: false,
-    attempt: 1,
-    resubmissionsLeft: 2,
-    note: '',
+    code: 'IMAGE',
+    label: 'Ảnh chứng từ bị mờ hoặc thiếu thông tin (trừ 1 lượt gửi lại)',
+    text: 'Ảnh chứng từ bị mờ hoặc thiếu thông tin',
+    playerAtFault: true,
   },
-]
+  {
+    code: 'AMOUNT',
+    label: 'Sai số tiền hoặc nội dung chuyển khoản (trừ 1 lượt gửi lại)',
+    text: 'Sai số tiền hoặc nội dung chuyển khoản',
+    playerAtFault: true,
+  },
+];
 
-const reasons = [
-  'Money not yet received in bank account',
-  'Blurry or unreadable receipt image',
-  'Incorrect transfer amount or content',
-]
+const formatMoney = (amount) => `${new Intl.NumberFormat('vi-VN').format(Number(amount || 0))} VND`;
 
-function getInitialBookingId(search) {
-  const requestedId = new URLSearchParams(search).get('booking')
-  return initialTransactions.some((transaction) => transaction.id === requestedId)
-    ? requestedId
-    : initialTransactions[0].id
+function formatPaymentLabel(item) {
+  if (!item) return '';
+  if (item.bookingCode) return item.bookingCode;
+  if (item.rescheduleRequestId) return `Đổi lịch #${item.rescheduleRequestId}`;
+  if (item.packageId) return `Đơn/Gói #${item.packageId}`;
+  return `Giao dịch #${item.id}`;
 }
 
 export default function StaffConfirmPaymentPage() {
-  const location = useLocation()
-  const surcharge = new URLSearchParams(location.search).get('type') === 'reschedule'
-  return <PaymentDesk key={surcharge ? 'reschedule' : 'booking'} surcharge={surcharge} />
+  const user = getSavedUser();
+  const role = user?.role_code;
+  const selectedLocationId = getSelectedLocation();
+  const token = getToken();
+  const [params] = useSearchParams();
+  const surcharge = params.get('type') === 'reschedule';
+  return <PaymentDesk key={[token, selectedLocationId, surcharge].join(':')} staff={user} role={role} surcharge={surcharge} />;
 }
 
-function PaymentDesk({ surcharge }) {
-  const location = useLocation()
-  const navigate = useNavigate()
-  const staff = getSavedUser()
-  const isStaff = staff?.role_code === 'staff' || (staff?.role_code === 'owner' && Boolean(getSelectedLocation()))
-  const [transactions, setTransactions] = useState(() => (isStaff ? [] : (surcharge ? [] : initialTransactions)))
-  const [selectedBookingId, setSelectedBookingId] = useState(() => (surcharge || isStaff ? null : getInitialBookingId(location.search)))
-  const [actualAmount, setActualAmount] = useState(() => {
-    if (surcharge || isStaff) return ''
-    const bookingId = getInitialBookingId(location.search)
-    return String(initialTransactions.find((transaction) => transaction.id === bookingId)?.actualAmount ?? '')
-  })
-  const [reason, setReason] = useState(reasons[0])
-  const [processedBookings, setProcessedBookings] = useState({})
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [message, setMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
-  const [isProofOpen, setIsProofOpen] = useState(false)
+function PaymentDesk({ staff, role, surcharge }) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedId = searchParams.get('paymentId') || searchParams.get('booking');
 
-  const selectedBooking = transactions.find((transaction) => transaction.id === selectedBookingId) ?? null
+  const [queue, setQueue] = useState([]);
+  const [filter, setFilter] = useState('');
+  const [selectedId, setSelectedId] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [loadingQueue, setLoadingQueue] = useState(true);
+  const [queueError, setQueueError] = useState('');
+  const [detailError, setDetailError] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [message, setMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [amountError, setAmountError] = useState('');
+  const [reasonError, setReasonError] = useState('');
+  const [decision, setDecision] = useState(null);
+  const [actualAmount, setActualAmount] = useState('');
+  const [reasonCode, setReasonCode] = useState('');
+  const [selectedProofId, setSelectedProofId] = useState(null);
+  const [proof, setProof] = useState(null);
+  const [isProofOpen, setIsProofOpen] = useState(false);
 
-  const [loading, setLoading] = useState(Boolean(isStaff))
-  const [proofUrl, setProofUrl] = useState('')
-  const [proofError, setProofError] = useState('')
-
-  useEffect(() => {
-    if (!isStaff) return undefined
-    const controller = new AbortController()
-    if (surcharge) {
-      listPendingReschedulePayments(controller.signal).then((payments) => {
-        if (controller.signal.aborted) return
-        const mapped = payments.map((payment) => ({
-          id: payment.id,
-          requestId: payment.rescheduleRequestId,
-          amountDue: payment.amountDue,
-          actualAmount: payment.amountDue,
-          submittedAt: payment.submittedAt,
-          resubmissionsLeft: Math.max(0, 3 - payment.resubmitCount),
-        }))
-        setTransactions(mapped)
-        setSelectedBookingId(mapped[0]?.id ?? null)
-        setActualAmount(String(mapped[0]?.actualAmount ?? ''))
-      }).catch((error) => {
-        if (!controller.signal.aborted) setErrorMessage(error.response?.data?.message || 'Không tải được phụ thu chờ xác nhận.')
-      }).finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
-    } else {
-      listPendingStaffBookingPayments(controller.signal).then((payments) => {
-        if (controller.signal.aborted) return
-        const mapped = payments.map((item) => ({
-          id: item.payment.id,
-          bookingId: item.payment.bookingId,
-          bookingCode: item.payment.bookingCode || (item.payment.packageId ? ('Package #' + item.payment.packageId) : ('Booking #' + item.payment.id)),
-          customer: item.customerName || 'Khách đặt online',
-          court: item.courtName || (item.sessions?.length ? (item.sessions.length + ' sessions') : 'Court'),
-          playDate: item.playDate || item.sessions?.[0]?.playDate || '',
-          playTime: item.startTime ? (item.startTime + ' – ' + item.endTime) : (item.sessions?.[0] ? (item.sessions[0].startTime + ' – ' + item.sessions[0].endTime) : ''),
-          listTime: item.startTime || '',
-          phone: item.customerPhone || '',
-          transferContent: item.payment.bookingCode || ('PK' + (item.payment.packageId || item.payment.id)),
-          amountDue: item.payment.amountDue,
-          actualAmount: item.payment.amountDue,
-          waiting: 'Waiting',
-          overdue: false,
-          attempt: Math.max(1, 4 - (item.payment.resubmitsLeft ?? 3)),
-          resubmissionsLeft: item.payment.resubmitsLeft ?? 3,
-          note: item.note || '',
-          proofs: item.proofs || [],
-        }))
-        setTransactions(mapped)
-        setSelectedBookingId(mapped[0]?.id ?? null)
-        setActualAmount(String(mapped[0]?.actualAmount ?? ''))
-      }).catch((error) => {
-        if (!controller.signal.aborted) setErrorMessage(error.response?.data?.message || 'Không tải được giao dịch chờ xác nhận.')
-      }).finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
-    }
-    return () => controller.abort()
-  }, [isStaff, surcharge])
+  const reload = () => {
+    setLoadingQueue(true);
+    setSelectedId(null);
+    setDetail(null);
+    setDetailError(null);
+    setQueueError('');
+    setActualAmount('');
+    setReasonCode('');
+    setAmountError('');
+    setReasonError('');
+    setIsProofOpen(false);
+    setRevision((value) => value + 1);
+  };
 
   useEffect(() => {
-    if (!isProofOpen || selectedBookingId == null) return undefined
-    const controller = new AbortController()
-    let url
-    const fetchProof = surcharge
-      ? getLatestRescheduleProof(selectedBookingId, controller.signal)
-      : (async () => {
-          const proofs = selectedBooking?.proofs || []
-          const latestProof = proofs[proofs.length - 1]
-          if (!latestProof) return null
-          return getStaffBookingProofImage(selectedBookingId, latestProof.id, controller.signal)
-        })()
-
-    fetchProof.then((image) => {
-      if (controller.signal.aborted) return
-      if (!image) {
-        setProofError('Giao dịch chưa có ảnh chứng từ.')
-        return
-      }
-      url = URL.createObjectURL(image)
-      setProofUrl(url)
+    const controller = new AbortController();
+    const { signal } = controller;
+    const load = surcharge ? listPendingReschedulePayments : listPendingStaffBookingPayments;
+    load(signal).then((items) => {
+      if (signal.aborted) return;
+      const list = items.filter((item) => item.status === 'AWAITING_CONFIRMATION');
+      setQueue(list);
+      const matched = requestedId && list.find((item) => String(item.id) === requestedId || item.bookingCode === requestedId);
+      setSelectedId((current) => list.find(({ id }) => id === current)?.id ?? (matched || list[0])?.id ?? null);
+      setQueueError('');
     }).catch((error) => {
-      if (!controller.signal.aborted) setProofError(error.response?.data?.message || 'Không tải được ảnh chứng từ.')
-    })
+      if (signal.aborted) return;
+      setQueue([]);
+      setSelectedId(null);
+      setQueueError(apiErrorMessage(error, 'Không tải được danh sách giao dịch chờ xác nhận.'));
+    }).finally(() => {
+      if (!signal.aborted) setLoadingQueue(false);
+    });
+    return () => controller.abort();
+  }, [requestedId, revision, surcharge, listPendingReschedulePayments, listPendingStaffBookingPayments]);
+
+  useEffect(() => {
+    if (!selectedId || loadingQueue) return undefined;
+    const controller = new AbortController();
+    const { signal } = controller;
+    const load = surcharge ? getStaffReschedulePaymentDetails : getStaffBookingPaymentDetails;
+    load(selectedId, signal).then((data) => {
+      if (signal.aborted) return;
+      setDetail(data);
+      setDetailError(null);
+      const proofs = data.proofs ?? [];
+      setSelectedProofId((surcharge ? proofs.at(-1) : proofs[0])?.id ?? null);
+    }).catch((error) => {
+      if (!signal.aborted) setDetailError({ id: selectedId, message: apiErrorMessage(error, 'Không tải được chi tiết giao dịch.') });
+    });
+    return () => controller.abort();
+  }, [selectedId, loadingQueue, surcharge, getStaffReschedulePaymentDetails, getStaffBookingPaymentDetails]);
+
+  const payment = detail?.payment || detail;
+  const activeDetail = !loadingQueue && selectedId && payment?.id === selectedId ? detail : null;
+  const activePayment = activeDetail ? payment : null;
+  const canDecide = activePayment?.status === 'AWAITING_CONFIRMATION';
+  const proofs = surcharge ? (activeDetail?.proofs ?? []).slice().reverse() : activeDetail?.proofs ?? [];
+  const activeProofId = proofs.some(({ id }) => id === selectedProofId) ? selectedProofId : null;
+  const proofKey = selectedId && activeProofId ? selectedId + ':' + activeProofId : '';
+  const activeProofUrl = proof?.key === proofKey ? proof.url : '';
+  const proofError = proof?.key === proofKey ? proof.error : '';
+
+  useEffect(() => {
+    if (!proofKey) return undefined;
+    const controller = new AbortController();
+    const { signal } = controller;
+    let objectUrl;
+    getStaffBookingProofImage(selectedId, activeProofId, signal).then((blob) => {
+      if (signal.aborted) return;
+      objectUrl = URL.createObjectURL(blob);
+      setProof({ key: proofKey, url: objectUrl });
+    }).catch((error) => {
+      if (!signal.aborted) setProof({ key: proofKey, error: apiErrorMessage(error, 'Không tải được ảnh chứng từ.') });
+    });
     return () => {
-      controller.abort()
-      if (url) URL.revokeObjectURL(url)
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedId, activeProofId, proofKey, getStaffBookingProofImage]);
+
+  const amountDue = Number(activePayment?.amountDue ?? 0);
+  const validAmount = !actualAmount || /^[0-9]{1,12}$/.test(actualAmount);
+  const parsedReceived = actualAmount === '' ? amountDue : Number(actualAmount);
+  const isShortfall = validAmount && parsedReceived < amountDue;
+  const isOverpaid = validAmount && parsedReceived > amountDue;
+  const reason = REASONS.find((item) => item.code === reasonCode);
+  const query = filter.trim().toLowerCase();
+  const filteredQueue = queue.filter((item) => (formatPaymentLabel(item) + ' ' + item.id).toLowerCase().includes(query));
+
+  const handleSelectTransaction = (item) => {
+    if (item.id === selectedId) return;
+    setSelectedId(item.id);
+    setDetail(null);
+    setDetailError(null);
+    setSelectedProofId(null);
+    setProof(null);
+    setIsProofOpen(false);
+    setActualAmount('');
+    setReasonCode('');
+    setAmountError('');
+    setReasonError('');
+    setErrorMessage('');
+    setMessage('');
+  };
+
+  const prepare = (action) => {
+    if (!canDecide || isProcessing) return;
+    setAmountError('');
+    setReasonError('');
+    setErrorMessage('');
+    if (action !== 'reject' && !validAmount) {
+      setAmountError('Số tiền thực nhận phải là số nguyên không âm, tối đa 12 chữ số. (MSG02)');
+      return;
     }
-  }, [isProofOpen, selectedBookingId, surcharge, selectedBooking])
-
-  const processSurcharge = async (decision, payload, successMessage) => {
-    const result = await decideReschedulePayment(selectedBooking.id, decision, payload)
-    if (result.status === 'EXPIRED') {
-      removeSelectedBooking('expired', 'Yêu cầu đã hết hạn. Booking giữ lịch cũ.')
-    } else if (result.status === 'REJECTED') {
-      removeSelectedBooking('payment_rejected', 'Phụ thu bị từ chối. Booking giữ lịch cũ.')
-    } else {
-      removeSelectedBooking(result.status, successMessage)
+    if (action === 'confirm' && isShortfall) {
+      setAmountError('Khách còn thiếu tiền. Vui lòng yêu cầu bổ sung chứng từ.');
+      return;
     }
-  }
+    if (action !== 'confirm' && !reason) {
+      setReasonError('Vui lòng chọn lý do. (MSG01)');
+      return;
+    }
+    setDecision({ action, id: selectedId });
+  };
 
-  const selectBooking = (transaction) => {
-    setSelectedBookingId(transaction.id)
-    setActualAmount(String(transaction.actualAmount))
-    setMessage('')
-    setErrorMessage('')
-  }
-
-  const removeSelectedBooking = (status, successMessage, resubmissionsLeft, metadata = {}) => {
-    if (!selectedBooking) return
-    const remaining = transactions.filter((transaction) => transaction.id !== selectedBooking.id)
-    setProcessedBookings((current) => ({
-      ...current,
-      [selectedBooking.id]: { status, ...metadata, ...(resubmissionsLeft == null ? {} : { resubmissionsLeft }) },
-    }))
-    setTransactions(remaining)
-    const nextBooking = remaining[0] ?? null
-    setSelectedBookingId(nextBooking?.id ?? null)
-    setActualAmount(nextBooking ? String(nextBooking.actualAmount) : '')
-    setMessage(successMessage)
-  }
-
-  const confirmPayment = async () => {
+  const perform = async () => {
+    if (!decision || decision.id !== selectedId || !canDecide || isProcessing) return;
+    const { action, id } = decision;
+    setDecision(null);
+    setIsProcessing(true);
+    const submit = surcharge ? decideReschedulePayment : decideStaffBookingPayment;
+    const label = formatPaymentLabel(activePayment);
     try {
-      if (!selectedBooking) return
-      const amountReceived = Number(actualAmount)
-      if (!Number.isFinite(amountReceived) || amountReceived < 0) {
-        throw new Error('Enter a valid amount received.')
-      }
-
-      const confirmed = window.confirm(
-        `Confirm that you have received ${amountReceived.toLocaleString()} VND for booking ${selectedBooking.id}?`,
-      )
-      if (!confirmed) return
-
-      setIsProcessing(true)
-      setErrorMessage('')
-      if (surcharge) {
-        await processSurcharge('confirm', { receivedAmount: amountReceived }, 'Đã xác nhận phụ thu và hoàn tất đổi lịch.')
-        return
-      }
-      if (isStaff) {
-        await decideStaffBookingPayment(selectedBooking.id, 'confirm', { receivedAmount: amountReceived })
-        const receivedNote = amountReceived > selectedBooking.amountDue
-          ? ` Khách chuyển thừa ${(amountReceived - selectedBooking.amountDue).toLocaleString()} VND; hệ thống ghi nhận ${selectedBooking.amountDue.toLocaleString()} VND.`
-          : ''
-        removeSelectedBooking(
-          'payment_confirmed',
-          `Đã xác nhận thanh toán cho ${selectedBooking.bookingCode || selectedBooking.id}.${receivedNote}`,
-          null,
-          { revenue: selectedBooking.amountDue, amountReceived },
-        )
-        return
-      }
-      const receivedNote = amountReceived > selectedBooking.amountDue
-        ? ` Customer transferred ${(amountReceived - selectedBooking.amountDue).toLocaleString()} VND extra; only ${selectedBooking.amountDue.toLocaleString()} VND was recorded.`
-        : ''
-      removeSelectedBooking(
-        'payment_confirmed',
-        `Payment confirmed for ${selectedBooking.id}.${receivedNote}`,
-        null,
-        { revenue: selectedBooking.amountDue, amountReceived },
-      )
-    } catch (err) {
-      setErrorMessage(err.response?.data?.message || err.message)
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  const requestResubmission = async () => {
-    try {
-      if (!selectedBooking) return
-      setIsProcessing(true)
-      setErrorMessage('')
-      if (surcharge) {
-        await processSurcharge('request-resubmission', { reason, playerAtFault: reason !== reasons[0] }, 'Đã yêu cầu bổ sung chứng từ phụ thu.')
-        return
-      }
-      if (isStaff) {
-        await decideStaffBookingPayment(selectedBooking.id, 'request-resubmission', {
-          reason,
-          playerAtFault: reason !== reasons[0],
-        })
-        removeSelectedBooking(
-          'resubmit_requested',
-          `Đã yêu cầu bổ sung chứng từ cho ${selectedBooking.bookingCode || selectedBooking.id}.`,
-          selectedBooking.resubmissionsLeft - 1,
-        )
-        return
-      }
-      const resubmissionsLeft = reason === reasons[0]
-        ? selectedBooking.resubmissionsLeft
-        : Math.max(0, selectedBooking.resubmissionsLeft - 1)
-
-      if (resubmissionsLeft === 0) {
-        removeSelectedBooking(
-          'payment_rejected',
-          `MSG52: ${selectedBooking.id} has no resubmissions left. Payment was rejected.`,
-          resubmissionsLeft,
-        )
+      let result;
+      if (action === 'confirm') {
+        result = await submit(id, action, { receivedAmount: isOverpaid ? parsedReceived : null });
+        const receipt = result.receiptNo ? ' Biên nhận ' + result.receiptNo + '.' : '';
+        const excess = isOverpaid ? ' Đã thông báo Chủ sân về khoản chuyển thừa. (MSG55)' : '';
+        setMessage(result.status === 'EXPIRED' ? 'Đã hết hạn thanh toán. (MSG33)'
+          : 'Đã xác nhận thanh toán cho ' + label + '. (MSG46)' + receipt + excess);
+      } else if (action === 'request-resubmission') {
+        result = await submit(id, action, { reason: reason.text, playerAtFault: reason.playerAtFault,
+          receivedAmount: isShortfall ? parsedReceived : null });
+        const deadline = result.resubmitDeadline ? ' Hạn gửi lại ' + result.resubmitDeadline.replace('T', ' ') + '.' : '';
+        const attempts = result.resubmitsLeft != null
+          ? (result.resubmitsLeft > 0 ? ' Còn ' + result.resubmitsLeft + ' lượt bổ sung.' : ' Yêu cầu bổ sung cuối đang mở.')
+          : '';
+        setMessage(result.status === 'REJECTED' ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ. (MSG52)'
+          : 'Đã yêu cầu bổ sung chứng từ cho ' + label + '. (MSG50)' + deadline + attempts);
       } else {
-        removeSelectedBooking(
-          'resubmit_requested',
-          `MSG50: Resubmission requested for ${selectedBooking.id}.`,
-          resubmissionsLeft,
-        )
+        await submit(id, action, { reason: reason.text });
+        setMessage('Đã từ chối thanh toán cho ' + label + '. (MSG51)');
       }
-    } catch (err) {
-      setErrorMessage(err.response?.data?.message || err.message)
+      reload();
+    } catch (error) {
+      const fields = error.response?.data?.errors;
+      const message = apiErrorMessage(error, 'Không thể xử lý giao dịch.');
+      if (fields?.receivedAmount) setAmountError(fields.receivedAmount);
+      else if (fields?.reason) setReasonError(fields.reason);
+      else {
+        setErrorMessage(message);
+        if (message.includes('MSG54') || error.response?.status === 409) {
+          reload();
+        }
+      }
     } finally {
-      setIsProcessing(false)
+      setIsProcessing(false);
     }
-  }
+  };
 
-  const rejectPayment = async () => {
-    try {
-      if (!selectedBooking) return
-      setIsProcessing(true)
-      setErrorMessage('')
-      if (surcharge) {
-        if (!window.confirm('Từ chối phụ thu? Booking sẽ giữ lịch cũ.')) return
-        await processSurcharge('reject', { reason }, '')
-        return
-      }
-      if (isStaff) {
-        if (!window.confirm('Từ chối thanh toán booking? Slot sẽ bị giải phóng, ưu đãi được hoàn lại.')) return
-        await decideStaffBookingPayment(selectedBooking.id, 'reject', { reason })
-        removeSelectedBooking(
-          'payment_rejected',
-          `MSG51: ${selectedBooking.bookingCode || selectedBooking.id} đã bị từ chối. Slot đã được giải phóng và ưu đãi được hoàn lại.`,
-          selectedBooking.resubmissionsLeft,
-        )
-        return
-      }
-      removeSelectedBooking(
-        'payment_rejected',
-        `MSG51: ${selectedBooking.id} was rejected. The slot was released and points/voucher were refunded.`,
-        selectedBooking.resubmissionsLeft,
-      )
-    } catch (err) {
-      setErrorMessage(err.response?.data?.message || err.message)
-    } finally {
-      setIsProcessing(false)
-    }
-  }
+  const dialogMessage = decision?.action === 'confirm'
+    ? 'Xác nhận đã đối chiếu và nhận đủ ' + formatMoney(parsedReceived) + ' cho ' + formatPaymentLabel(activePayment) + '? (MSG53)'
+    : decision?.action === 'reject'
+      ? 'Từ chối thanh toán ' + formatPaymentLabel(activePayment) + '?'
+      : isShortfall
+        ? 'Ghi nhận ' + formatMoney(parsedReceived) + ' và yêu cầu chuyển thêm ' + formatMoney(amountDue - parsedReceived) + '?'
+        : 'Gửi yêu cầu bổ sung chứng từ với lý do “' + reason?.text + '”?';
+
+  const resubmitsLeft =
+    activePayment?.resubmitsLeft ?? Math.max(0, 3 - Number(activePayment?.resubmitCount ?? 0));
 
   return (
     <div className={styles.page}>
@@ -361,195 +271,451 @@ function PaymentDesk({ surcharge }) {
           <span>Courtly</span>
         </div>
         <div className={styles.facility}>
-          <span>Staff at</span>
-          <strong>{surcharge ? staff?.full_name || "Staff" : "Smash Arena"}</strong>
+          <span>{role === 'owner' ? 'Chủ sân' : 'Nhân viên tại'}</span>
+          <strong>{staff?.full_name || 'Cụm sân'}</strong>
         </div>
-        <nav className={styles.navigation} aria-label="Staff navigation">
-          <button className={styles.navItem} type="button" onClick={() =>
-            navigate(staff?.role_code === 'owner' ? '/owner/workspace' : '/staff/dashboard')}>
-            {staff?.role_code === 'owner' ? 'Địa điểm' : 'Dashboard'}
+        <nav className={styles.navigation} aria-label="Điều hướng nhân viên">
+          <button
+            className={styles.navItem}
+            type="button"
+            onClick={() =>
+              navigate(role === 'owner' ? '/owner/workspace' : '/staff/dashboard')
+            }
+          >
+            {role === 'owner' ? 'Quản lý cụm sân' : 'Bảng điều hành'}
           </button>
-          {staff?.role_code === 'staff' && <button className={styles.navItem} type="button" onClick={() => navigate('/staff/complaints')}>Khiếu nại</button>}
-          {staff && <button className={styles.navItem} type="button" onClick={() => navigate('/notifications')}>Thông báo</button>}
-          <button className={styles.navItem} type="button">Court Schedule</button>
-          <button className={styles.navItem} type="button">Counter Booking</button>
+          {role === 'staff' && <button
+            className={styles.navItem}
+            type="button"
+            onClick={() => navigate('/staff/dashboard?modal=counter')}
+          >
+            Đặt sân tại quầy
+          </button>}
           <button
             className={`${styles.navItem} ${styles.activeNav}`}
             type="button"
             onClick={() => navigate('/staff/confirm-payments')}
           >
-            Confirm Payments
+            Xác nhận thanh toán (UC19)
           </button>
-          <button className={styles.navItem} type="button">Daily Reconciliation</button>
-          <button className={styles.navItem} type="button">Maintenance Requests</button>
+          <button
+            className={styles.navItem}
+            type="button"
+            onClick={() => navigate(role === 'owner' ? '/owner/reconciliations' : '/staff/dashboard?modal=reconciliation')}
+          >
+            Đối soát cuối ngày (UC20)
+          </button>
+          <button className={styles.navItem} type="button" onClick={() => navigate('/maintenance')}>
+            Yêu cầu bảo trì
+          </button>
+          {role === 'staff' && (
+            <button
+              className={styles.navItem}
+              type="button"
+              onClick={() => navigate('/staff/complaints')}
+            >
+              Khiếu nại
+            </button>
+          )}
         </nav>
       </aside>
 
       <main className={styles.main}>
-        <h1 className={styles.pageTitle}>{surcharge ? 'Phụ thu đổi lịch' : 'Xác nhận thanh toán'}</h1>
-        <div className={styles.actions}>
-          <button type="button" className={styles.resubmitButton} disabled={isProcessing}
-            onClick={() => navigate('/staff/confirm-payments')}>{isStaff ? 'Thanh toán booking' : 'Booking payments · Demo'}</button>
-          <button type="button" className={styles.confirmButton} disabled={isProcessing}
-            onClick={() => navigate('/staff/confirm-payments?type=reschedule')}>Phụ thu đổi lịch</button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <h1 className={styles.pageTitle} style={{ margin: 0 }}>
+            {surcharge ? 'Xác nhận phụ thu đổi lịch (UC21)' : 'Xác nhận thanh toán đặt sân (UC19)'}
+          </h1>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className={!surcharge ? styles.confirmButton : styles.resubmitButton}
+              style={{ minHeight: 36, padding: '0 14px', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}
+              disabled={isProcessing}
+              onClick={() => navigate('/staff/confirm-payments')}
+            >
+              Thanh toán đặt sân
+            </button>
+            <button
+              type="button"
+              className={surcharge ? styles.confirmButton : styles.resubmitButton}
+              style={{ minHeight: 36, padding: '0 14px', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}
+              disabled={isProcessing}
+              onClick={() => navigate('/staff/confirm-payments?type=reschedule')}
+            >
+              Phụ thu đổi lịch
+            </button>
+            <button
+              type="button"
+              className={styles.resubmitButton}
+              style={{ minHeight: 36, padding: '0 12px', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}
+              disabled={loadingQueue || isProcessing}
+              onClick={reload}
+            >
+              Làm mới
+            </button>
+          </div>
         </div>
-        {surcharge && !isStaff && <p role="alert">
-          Cần đăng nhập Staff để xem phụ thu.{' '}
-          <button type="button" onClick={() => navigate('/login', { state: { returnTo: '/staff/confirm-payments?type=reschedule' } })}>Đăng nhập</button>
-        </p>}
-        {loading && <p role="status">Đang tải giao dịch…</p>}
-        {!selectedBooking && errorMessage && <p className={styles.errorMessage} role="alert">{errorMessage}</p>}
-        {message && <p className={styles.actionMessage} role="status">{message}</p>}
+
+        {message && (
+          <p
+            className={styles.actionMessage}
+            role="status"
+            style={{
+              margin: '0 0 14px',
+              padding: '10px 14px',
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: 10,
+            }}
+          >
+            {message}
+          </p>
+        )}
+        {(queueError || errorMessage) && (
+          <p className={styles.errorMessage} role="alert" style={{ marginBottom: 14 }}>
+            {queueError || errorMessage}
+          </p>
+        )}
+
         <div className={styles.workspace}>
-          <section className={styles.bookingList} aria-label="Bookings awaiting confirmation">
-            {transactions.map((transaction) => (
+          <section className={styles.bookingList} aria-label="Danh sách giao dịch chờ xác nhận">
+            <div style={{ padding: '6px 6px 8px' }}>
+              <input
+                type="search"
+                placeholder="Tìm theo mã đơn BK... hoặc ID"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className={styles.amountInput}
+                style={{ height: 34, fontSize: 12 }}
+              />
+            </div>
+
+            {loadingQueue && (
+              <div className={styles.emptyList}>Đang tải hàng chờ xác nhận…</div>
+            )}
+
+            {!loadingQueue && filteredQueue.map((item) => (
               <button
-                className={`${styles.bookingItem} ${selectedBookingId === transaction.id ? styles.bookingSelected : ''}`}
-                key={transaction.id}
+                className={`${styles.bookingItem} ${selectedId === item.id ? styles.bookingSelected : ''}`}
+                key={item.id}
                 type="button"
-                onClick={() => selectBooking(transaction)}
+                onClick={() => handleSelectTransaction(item)}
                 disabled={isProcessing}
               >
                 <span className={styles.bookingTopline}>
-                  <strong>{transaction.id}</strong>
-                  <strong>{transaction.amountDue.toLocaleString()} VND</strong>
+                  <strong>{formatPaymentLabel(item)}</strong>
+                  <strong>{formatMoney(item.amountDue)}</strong>
                 </span>
                 <span className={styles.bookingMeta}>
-                  {surcharge ? 'Yêu cầu đổi lịch #' + transaction.requestId : transaction.customer + ' · ' + transaction.court + ', ' + transaction.listTime}
+                  Mã GD #{item.id} · Còn {item.resubmitsLeft ?? Math.max(0, 3 - (item.resubmitCount ?? 0))} lượt gửi lại
                 </span>
-                <span className={transaction.overdue ? styles.overdue : styles.waiting}>
-                  {surcharge ? transaction.submittedAt?.replace('T', ' ') : 'Waiting ' + transaction.waiting + (transaction.overdue ? ' · overdue' : '')}
+                <span className={styles.waiting}>
+                  {item.submittedAt ? `Gửi lúc ${item.submittedAt.replace('T', ' ')}` : 'Đang chờ xác nhận'}
                 </span>
               </button>
             ))}
-            {transactions.length === 0 && !loading && (!surcharge || isStaff) && !errorMessage && (
-              <div className={styles.emptyList}>No payments awaiting confirmation.</div>
+
+            {!loadingQueue && !queueError && filteredQueue.length === 0 && (
+              <div className={styles.emptyList}>
+                Không có giao dịch nào đang chờ xác nhận.
+              </div>
             )}
           </section>
 
-          {selectedBooking && (
-            <section className={styles.detailCard} aria-label="Selected payment details">
-              <header className={styles.detailHeader}>
-                <h2>{surcharge ? 'Phụ thu #' + selectedBooking.id : selectedBooking.id + ' · ' + selectedBooking.customer}</h2>
-                <span className={styles.statusBadge}>
-                  {surcharge ? 'Chờ xác nhận' : 'Awaiting confirmation · attempt ' + selectedBooking.attempt + '/3'}
-                </span>
-              </header>
+          {selectedId && (
+            <section className={styles.detailCard} aria-label="Chi tiết giao dịch đang chọn">
+              {detailError?.id === selectedId ? (
+                <p role="alert">{detailError.message} <button type="button" onClick={reload}>Thử lại</button></p>
+              ) : !activePayment ? (
+                <p role="status">Đang tải chi tiết giao dịch…</p>
+              ) : (
+                <>
+                  <header className={styles.detailHeader}>
+                    <h2>
+                      {formatPaymentLabel(activePayment)}
+                      {activeDetail?.customerName ? ` · ${activeDetail.customerName}` : ''}
+                    </h2>
+                    <span className={styles.statusBadge}>
+                      {canDecide ? 'Chờ xác nhận · Còn ' + resubmitsLeft + '/3 lượt bổ sung' : 'Giao dịch đã được xử lý. (MSG54)'}
+                    </span>
+                  </header>
 
-              <div className={styles.detailBody}>
-                <button
-                  className={styles.proofPreview}
-                  type="button"
-                  onClick={() => {
-                    setProofUrl('')
-                    setProofError('')
-                    setIsProofOpen(true)
-                  }}
-                  aria-label="Open payment proof"
-                >
-                  <svg viewBox="0 0 32 32" aria-hidden="true">
-                    <rect x="4" y="5" width="24" height="22" rx="2" />
-                    <circle cx="12" cy="12" r="2" />
-                    <path d="m6 24 7-7 4 4 4-5 5 7" />
-                  </svg>
-                  <strong>Payment Proof</strong>
-                  <small>Click to zoom</small>
-                </button>
-
-                <div className={styles.paymentInfo}>
-                  <dl className={styles.infoList}>
-                    {surcharge ? <div><dt>Yêu cầu đổi lịch</dt><dd>#{selectedBooking.requestId}</dd></div> : <>
-                    <div><dt>Court</dt><dd>{selectedBooking.court}</dd></div>
-                    <div>
-                      <dt>Play Time</dt>
-                      <dd>{selectedBooking.playDate} · {selectedBooking.playTime}</dd>
+                  {proofs.length > 1 && (
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                      {proofs.map((p, idx) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => { if (p.id !== selectedProofId) { setProof(null); setSelectedProofId(p.id); } }}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: 8,
+                            border: selectedProofId === p.id ? '1.5px solid #16a34a' : '1px solid #cbd5e1',
+                            background: selectedProofId === p.id ? '#e8f5ee' : '#fff',
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Ảnh lần {proofs.length - idx}
+                        </button>
+                      ))}
                     </div>
-                    <div><dt>Phone Number</dt><dd>{selectedBooking.phone}</dd></div>
-                    <div><dt>Transfer Content</dt><dd>{selectedBooking.transferContent}</dd></div>
-                    </>}
-                    <div>
-                      <dt>Amount Due</dt>
-                      <dd>{selectedBooking.amountDue.toLocaleString()} VND</dd>
-                    </div>
-                  </dl>
-
-                  {selectedBooking.note && (
-                    <p className={styles.ownerNote}>
-                      <strong>Note to facility owner:</strong> {selectedBooking.note}
-                    </p>
                   )}
 
-                  <label className={styles.amountLabel} htmlFor="actual-amount">
-                    Actual amount received (if customer overpaid)
-                  </label>
-                  <input
-                    className={styles.amountInput}
-                    id="actual-amount"
-                    type="text"
-                    inputMode="numeric"
-                    value={actualAmount === '' || !Number.isFinite(Number(actualAmount))
-                      ? ''
-                      : Number(actualAmount).toLocaleString()}
-                    onChange={(event) => setActualAmount(event.target.value.replace(/\D/g, ''))}
-                  />
-                </div>
-              </div>
+                  <div className={styles.detailBody}>
+                    <button
+                      className={styles.proofPreview}
+                      type="button"
+                      onClick={() => setIsProofOpen(true)}
+                      aria-label="Phóng to ảnh chứng từ"
+                      disabled={!activeProofUrl}
+                      style={{ overflow: 'hidden', padding: activeProofUrl ? 8 : 16 }}
+                    >
+                      {activeProofUrl ? (
+                        <img
+                          src={activeProofUrl}
+                          alt="Chứng từ chuyển khoản"
+                          style={{
+                            maxWidth: '100%',
+                            maxHeight: 240,
+                            objectFit: 'contain',
+                            borderRadius: 8,
+                          }}
+                        />
+                      ) : (
+                        <>
+                          <svg viewBox="0 0 32 32" aria-hidden="true">
+                            <rect x="4" y="5" width="24" height="22" rx="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <path d="m6 24 7-7 4 4 4-5 5 7" />
+                          </svg>
+                          <strong role={proofError ? 'alert' : 'status'}>{proofError || (activeProofId ? 'Đang tải ảnh chứng từ…' : 'Giao dịch chưa có chứng từ.')}</strong>
+                        </>
+                      )}
+                      {activeProofUrl && <small>Nhấn để phóng to</small>}
+                    </button>
 
-              <section className={styles.reasonBox}>
-                <label htmlFor="payment-reason">Reason (when requesting resubmission or rejecting)</label>
-                <select id="payment-reason" value={reason} onChange={(event) => setReason(event.target.value)}>
-                  {reasons.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-                <p>
-                  Customer has {processedBookings[selectedBooking.id]?.resubmissionsLeft ?? selectedBooking.resubmissionsLeft} resubmissions left,
-                  {surcharge ? ' theo hạn của yêu cầu đổi lịch.' : ' deadline until end of play time (' + selectedBooking.playTime.split('–')[1]?.trim().split(' ')[0] + ').'}
-                </p>
-              </section>
+                    <div className={styles.paymentInfo}>
+                      <dl className={styles.infoList}>
+                        {surcharge ? (
+                          <div>
+                            <dt>Yêu cầu đổi lịch</dt>
+                            <dd>#{activePayment.rescheduleRequestId || selectedId}</dd>
+                          </div>
+                        ) : (
+                          <>
+                            <div>
+                              <dt>Sân</dt>
+                              <dd>
+                                {activeDetail?.courtName ||
+                                  (activeDetail?.sessions?.length
+                                    ? `${activeDetail.sessions.length} buổi trong gói/đơn`
+                                    : '—')}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Thời gian chơi</dt>
+                              <dd>
+                                {activeDetail?.playDate
+                                  ? `${activeDetail.playDate} · ${activeDetail.startTime}–${activeDetail.endTime}`
+                                  : activeDetail?.sessions?.[0]
+                                    ? `${activeDetail.sessions[0].playDate} · ${activeDetail.sessions[0].startTime}–${activeDetail.sessions[0].endTime}`
+                                    : '—'}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Khách hàng / SĐT</dt>
+                              <dd>
+                                {activeDetail?.customerName || 'Khách đặt online'}
+                                {activeDetail?.customerPhone ? ` · ${activeDetail.customerPhone}` : ''}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Nội dung CK chuẩn</dt>
+                              <dd>
+                                {activePayment.bookingCode || `PK${activePayment.packageId || activePayment.id}`}
+                              </dd>
+                            </div>
+                          </>
+                        )}
+                        <div>
+                          <dt>Số tiền phải thu</dt>
+                          <dd style={{ color: '#0d9651', fontSize: 14 }}>{formatMoney(amountDue)}</dd>
+                        </div>
+                        {activePayment.receivedAmount != null && (
+                          <div>
+                            <dt>Đã nhận trước đó</dt>
+                            <dd>{formatMoney(activePayment.receivedAmount)}</dd>
+                          </div>
+                        )}
+                      </dl>
 
-              {errorMessage && <p className={styles.errorMessage} role="alert">{errorMessage}</p>}
+                      {activeDetail?.sessions?.length > 0 && (
+                        <div
+                          style={{
+                            maxHeight: 110,
+                            overflowY: 'auto',
+                            marginBottom: 10,
+                            padding: '8px 10px',
+                            borderRadius: 10,
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            fontSize: 11.5,
+                          }}
+                        >
+                          <strong style={{ display: 'block', marginBottom: 4 }}>
+                            Danh sách buổi ({activeDetail.sessions.length}):
+                          </strong>
+                          {activeDetail.sessions.map((s) => (
+                            <div key={s.bookingCode} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                              <span>{s.bookingCode} · {s.courtName}</span>
+                              <span>{s.playDate} ({s.startTime}–{s.endTime})</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
-              <div className={styles.actions}>
-                <button className={styles.rejectButton} type="button" disabled={isProcessing} onClick={rejectPayment}>
-                  Reject
-                </button>
-                <button className={styles.resubmitButton} type="button" disabled={isProcessing} onClick={requestResubmission}>
-                  Request Resubmission
-                </button>
-                <button className={styles.confirmButton} type="button" disabled={isProcessing} onClick={confirmPayment}>
-                  Confirm Payment Received
-                </button>
-              </div>
+                      {activeDetail?.note && (
+                        <p className={styles.ownerNote}>
+                          <strong>Ghi chú cho chủ sân (DR20):</strong> {activeDetail.note}
+                        </p>
+                      )}
+
+                      <label className={styles.amountLabel} htmlFor="actual-amount">
+                        Số tiền thực tế nhận được (nhập khi khách chuyển thừa hoặc chuyển thiếu)
+                      </label>
+                      <input
+                        className={styles.amountInput}
+                        id="actual-amount"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder={formatMoney(amountDue)}
+                        value={actualAmount}
+                        onChange={(event) => { setActualAmount(event.target.value); setAmountError(''); }}
+                        aria-invalid={Boolean(amountError)}
+                        aria-describedby={amountError ? 'amount-error' : undefined}
+                        disabled={!canDecide || isProcessing}
+                      />
+                      {amountError && <p id="amount-error" className={styles.errorMessage} role="alert">{amountError}</p>}
+                      {isShortfall && (
+                        <p style={{ margin: '6px 0 0', fontSize: 11.5, color: '#b45309', fontWeight: 600 }}>
+                          Khách còn thiếu {formatMoney(amountDue - parsedReceived)} (BR05). Không thể xác nhận; hãy nhấn &ldquo;Yêu cầu gửi lại chứng từ&rdquo; để khách chuyển bù phần thiếu.
+                        </p>
+                      )}
+                      {isOverpaid && (
+                        <p style={{ margin: '6px 0 0', fontSize: 11.5, color: '#0d9651', fontWeight: 600 }}>
+                          Khách chuyển thừa {formatMoney(parsedReceived - amountDue)} (BR51). Hệ thống sẽ ghi nhận doanh thu {formatMoney(amountDue)} và lưu phần thừa để đối soát (MSG55).
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {canDecide && <section className={styles.reasonBox}>
+                    <label htmlFor="payment-reason">
+                      Lý do (khi Yêu cầu gửi lại chứng từ hoặc Từ chối)
+                    </label>
+                    <select
+                      id="payment-reason"
+                      value={reasonCode}
+                      onChange={(event) => { setReasonCode(event.target.value); setReasonError(''); }}
+                      aria-invalid={Boolean(reasonError)}
+                      aria-describedby={reasonError ? "reason-error" : undefined}
+                    >
+                      <option value="">Chọn lý do</option>
+                      {REASONS.map((item) => (
+                        <option key={item.code} value={item.code}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                    {reasonError && <p id="reason-error" className={styles.errorMessage} role="alert">{reasonError}</p>}
+                    <p>
+                      Người chơi còn <strong>{resubmitsLeft}</strong> lượt gửi lại chứng từ (tối đa 3 lần · P06). Căn cứ xác nhận là tiền thực về tài khoản ngân hàng của địa điểm (BR33).
+                    </p>
+                  </section>}
+
+                  {canDecide && <div className={styles.actions}>
+                    <button
+                      className={styles.rejectButton}
+                      type="button"
+                      disabled={isProcessing}
+                      onClick={() => prepare('reject')}
+                    >
+                      Từ chối thanh toán
+                    </button>
+                    <button
+                      className={styles.resubmitButton}
+                      type="button"
+                      disabled={isProcessing}
+                      onClick={() => prepare('request-resubmission')}
+                    >
+                      Yêu cầu gửi lại chứng từ
+                    </button>
+                    <button
+                      className={styles.confirmButton}
+                      type="button"
+                      disabled={isProcessing || isShortfall}
+                      onClick={() => prepare('confirm')}
+                    >
+                      Xác nhận đã nhận tiền
+                    </button>
+                  </div>}
+                </>
+              )}
             </section>
           )}
         </div>
       </main>
 
-      {isProofOpen && selectedBooking && (
+      {decision && <F1Dialog title="Xác nhận thao tác" message={dialogMessage}
+        onClose={() => setDecision(null)} onConfirm={perform} />}
+
+      {isProofOpen && activePayment && (
         <div
           className={styles.proofOverlay}
           role="presentation"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setIsProofOpen(false)
+            if (event.target === event.currentTarget) setIsProofOpen(false);
           }}
         >
-          <section className={styles.proofModal} role="dialog" aria-modal="true" aria-label="Payment proof">
-            <button className={styles.closeProof} type="button" onClick={() => setIsProofOpen(false)}>Close</button>
+          <section
+            className={styles.proofModal}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Ảnh chứng từ thanh toán"
+          >
+            <button
+              className={styles.closeProof}
+              type="button"
+              onClick={() => setIsProofOpen(false)}
+            >
+              Đóng
+            </button>
             <div className={styles.proofLarge}>
-              {surcharge
-                ? proofUrl ? <img src={proofUrl} alt="Chứng từ phụ thu" style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain' }} />
-                  : <p role={proofError ? 'alert' : 'status'}>{proofError || 'Đang tải ảnh chứng từ…'}</p>
-                : (
-              <svg viewBox="0 0 32 32" aria-hidden="true">
-                <rect x="4" y="5" width="24" height="22" rx="2" />
-                <circle cx="12" cy="12" r="2" />
-                <path d="m6 24 7-7 4 4 4-5 5 7" />
-              </svg>
-                )}
-              <strong>Payment Proof · {selectedBooking.id}</strong>
+              {activeProofUrl ? (
+                <img
+                  src={activeProofUrl}
+                  alt="Chứng từ thanh toán"
+                  style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain' }}
+                />
+              ) : (
+                <>
+                  <svg viewBox="0 0 32 32" aria-hidden="true">
+                    <rect x="4" y="5" width="24" height="22" rx="2" />
+                    <circle cx="12" cy="12" r="2" />
+                    <path d="m6 24 7-7 4 4 4-5 5 7" />
+                  </svg>
+                  <p role={proofError ? 'alert' : 'status'}>
+                    {proofError || 'Giao dịch chưa có ảnh chứng từ.'}
+                  </p>
+                </>
+              )}
+              <strong>Chứng từ thanh toán · {formatPaymentLabel(activePayment)}</strong>
             </div>
           </section>
         </div>
       )}
     </div>
-  )
+  );
 }
