@@ -38,7 +38,7 @@ CREATE TABLE account (
     location_id BIGINT NULL,
     status VARCHAR(10) NOT NULL CONSTRAINT df_account_status DEFAULT 'ACTIVE',
     token_version BIGINT NOT NULL CONSTRAINT df_account_token_version DEFAULT 0,
-    failed_login_count INT NOT NULL CONSTRAINT df_account_failed_login_count DEFAULT 0,
+    failed_login_count TINYINT NOT NULL CONSTRAINT df_account_failed_login DEFAULT 0,
     locked_until DATETIME2(0) NULL,
     last_login_at DATETIME2(0) NULL,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_account_created_at DEFAULT SYSDATETIME(),
@@ -706,7 +706,7 @@ CREATE TABLE match (
     status VARCHAR(10) NOT NULL CONSTRAINT df_match_status DEFAULT 'OPEN',
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_match_created_at DEFAULT SYSDATETIME(),
     closed_at DATETIME2(0) NULL,
-    reschedule_pending BIT NOT NULL CONSTRAINT df_match_reschedule_pending DEFAULT 0,
+    reschedule_pending BIT NOT NULL CONSTRAINT df_match_reschedule DEFAULT 0,
     CONSTRAINT pk_match PRIMARY KEY (id),
     CONSTRAINT ck_match_players CHECK (current_players >= 1 AND needed_players >= 0 AND current_players + needed_players <= 8),
     CONSTRAINT ck_match_status CHECK (status IN ('OPEN','CLOSED','CANCELLED','EXPIRED'))

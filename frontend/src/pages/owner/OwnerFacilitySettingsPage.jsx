@@ -235,7 +235,7 @@ export default function OwnerFacilitySettingsPage() {
     <ManagementLayout
       role="owner"
       title="Hồ sơ địa điểm"
-      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name} · Cấu hình thông tin địa điểm và tài khoản ngân hàng (UC07)` : 'Cấu hình thông tin địa điểm và tài khoản ngân hàng (UC07)'}
+      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name} · Cấu hình thông tin địa điểm và tài khoản ngân hàng` : 'Cấu hình thông tin địa điểm và tài khoản ngân hàng'}
       locations={locations}
       locationId={selectedLocationId}
       onLocationChange={handleFacilityChange}

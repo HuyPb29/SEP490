@@ -539,7 +539,7 @@ export default function BookingSummaryPage() {
               </button>
 
               <p className={styles.holdNotice}>
-                Trang thanh toán sẽ hiển thị mã QR chuyển khoản và giữ chỗ trong 10 phút để bạn gửi chứng từ (BR03).
+                Trang thanh toán sẽ hiển thị mã QR chuyển khoản và giữ chỗ trong 10 phút để bạn gửi chứng từ.
               </p>
 
             </div>

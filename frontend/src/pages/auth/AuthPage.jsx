@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { canResumePath } from '../../api/f1Navigation';
 import { fieldError, messages, normalizeName, otpSendError, otpSent, validEmail, validName, validPassword, validPhone, validUsername } from '../../api/f1Rules';
 import styles from './AuthPage.module.css';
 import courtPhoto from '../../assets/badminton-court.jpg';
@@ -18,7 +17,6 @@ export default function AuthPage() {
     resendOtp: resendOtpApi,
     forgotPassword: forgotPasswordApi,
     resetPassword: resetPasswordApi,
-    roleHome,
   } = useAuth();
   // Tab: 'login' (UC02) | 'register' (UC01) | 'otp' (DR25)
   const [requestedTab, setActiveTab] = useState(
@@ -103,9 +101,23 @@ export default function AuthPage() {
     setLoginLoading(true);
     try {
       const user = await loginApi({ username_or_email: loginIdentity, password: loginPassword });
-      const home = roleHome[user.role.toLowerCase()] ?? '/';
-      const returnTo = location.state?.returnTo;
-      navigate(canResumePath(returnTo, user.role.toLowerCase()) ? returnTo : home, { replace: true });
+
+      const from = typeof location.state?.from === 'string' ? location.state.from : location.state?.from?.pathname;
+
+      if (from && from !== '/' && from !== '/login') {
+        navigate(from, { replace: true });
+      } else {
+        const userRole = String(user?.role || user?.role_code || '').toUpperCase();
+        if (userRole === 'ADMIN') {
+          navigate('/admin/workspace', { replace: true });
+        } else if (userRole === 'OWNER') {
+          navigate('/owner/workspace', { replace: true });
+        } else if (userRole === 'STAFF') {
+          navigate('/staff/dashboard', { replace: true });
+        } else {
+          navigate('/', { replace: true });
+        }
+      }
     } catch (error) {
       const errors = error.response?.data?.errors;
       if (errors) setLoginFields({ identity: errors.email, password: errors.password });

@@ -12,7 +12,9 @@ import MyBookingsPage from '../pages/booking/MyBookingsPage';
 import RescheduleHistoryPage from '../pages/booking/RescheduleHistoryPage';
 import FacilityDetailPage from '../pages/location/FacilityDetailPage';
 import FacilitySearchPage from '../pages/location/FacilitySearchPage';
+import ServiceRegistrationPage from '../pages/location/ServiceRegistrationPage';
 import OpenMatchesPage from '../pages/matches/OpenMatchesPage';
+import TeamsPage from '../pages/team/TeamsPage';
 import NotificationsPage from '../pages/NotificationsPage';
 import MaintenanceRequestsPage from '../pages/operation/MaintenanceRequestsPage';
 import OwnerCourtsPricingPage from '../pages/owner/OwnerCourtsPricingPage';
@@ -55,6 +57,9 @@ export default function AppRoutes() {
       <Routes key={token ? 'signed-in' : 'guest'}>
         {/* UC11: Tìm kiếm địa điểm */}
         <Route path="/" element={<FacilitySearchPage />} />
+
+        {/* UC05: Đăng ký dịch vụ sân */}
+        <Route path="/register-service" element={<ServiceRegistrationPage />} />
 
         {/* UC12-13: Thông tin & Lịch sân */}
         <Route path="/facilities/:id" element={<FacilityDetailPage />} />
@@ -176,7 +181,7 @@ export default function AppRoutes() {
         <Route path="/change-password" element={<Navigate to="/account#change-password" replace />} />
         <Route path="/owner/courts" element={<Navigate to="/owner/courts-pricing" replace />} />
         <Route path="/admin/accounts" element={<Navigate to="/admin/workspace" replace />} />
-        <Route path="/teams" element={<RequireRole roles={['player']}><NavigationPage kind="teams" /></RequireRole>} />
+        <Route path="/teams" element={<RequireRole roles={['player']}><TeamsPage /></RequireRole>} />
         <Route path="/my-reschedules" element={<RequireRole roles={['player']}><NavigationPage kind="reschedules" /></RequireRole>} />
         <Route path="/admin/vouchers" element={<RequireRole roles={['admin']}>
           <WorkspaceLayout title="Kiểm duyệt voucher" role="admin"><AdminVouchers /></WorkspaceLayout>

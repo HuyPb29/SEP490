@@ -956,12 +956,12 @@ export default function MyBookingsPage() {
                 </div>
                 {quote.noDifferenceRefund && (
                   <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
-                    * Slot mới rẻ hơn: Hệ thống không hoàn lại tiền chênh lệch theo quy định BR08.
+                    * Slot mới rẻ hơn: Hệ thống không hoàn lại tiền chênh lệch.
                   </p>
                 )}
                 {quote.extraAmount > 0 && (
                   <p style={{ margin: '4px 0 0', fontSize: 12, color: '#b45309' }}>
-                    * Cần hoàn tất chuyển khoản phụ thu trong vòng 5 phút sau khi bấm xác nhận (BR32).
+                    * Cần hoàn tất chuyển khoản phụ thu trong vòng 5 phút sau khi bấm xác nhận.
                   </p>
                 )}
               </div>

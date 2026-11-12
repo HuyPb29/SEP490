@@ -270,7 +270,7 @@ function PaymentDesk({ role, surcharge }) {
   return (
     <ManagementLayout
       role={role === 'owner' ? 'owner' : 'staff'}
-      title={surcharge ? 'Xác nhận phụ thu đổi lịch (UC21)' : 'Xác nhận thanh toán đặt sân (UC19)'}
+      title={surcharge ? 'Xác nhận phụ thu đổi lịch' : 'Xác nhận thanh toán đặt sân'}
       subtitle="Xác nhận thanh toán chuyển khoản và đối chiếu biên nhận"
       actions={
         <div style={{ display: 'flex', gap: 8 }}>
@@ -549,12 +549,12 @@ function PaymentDesk({ role, surcharge }) {
                       {amountError && <p id="amount-error" className={styles.errorMessage} role="alert">{amountError}</p>}
                       {isShortfall && (
                         <p style={{ margin: '6px 0 0', fontSize: 11.5, color: '#b45309', fontWeight: 600 }}>
-                          Khách còn thiếu {formatMoney(amountDue - parsedReceived)} (BR05). Không thể xác nhận; hãy nhấn &ldquo;Yêu cầu gửi lại chứng từ&rdquo; để khách chuyển bù phần thiếu.
+                          Khách còn thiếu {formatMoney(amountDue - parsedReceived)}. Không thể xác nhận; hãy nhấn &ldquo;Yêu cầu gửi lại chứng từ&rdquo; để khách chuyển bù phần thiếu.
                         </p>
                       )}
                       {isOverpaid && (
                         <p style={{ margin: '6px 0 0', fontSize: 11.5, color: '#0d9651', fontWeight: 600 }}>
-                          Khách chuyển thừa {formatMoney(parsedReceived - amountDue)} (BR51). Hệ thống sẽ ghi nhận doanh thu {formatMoney(amountDue)} và lưu phần thừa để đối soát (MSG55).
+                          Khách chuyển thừa {formatMoney(parsedReceived - amountDue)}. Hệ thống sẽ ghi nhận doanh thu {formatMoney(amountDue)} và lưu phần thừa để đối soát.
                         </p>
                       )}
                     </div>
@@ -580,7 +580,7 @@ function PaymentDesk({ role, surcharge }) {
                     </select>
                     {reasonError && <p id="reason-error" className={styles.errorMessage} role="alert">{reasonError}</p>}
                     <p>
-                      Người chơi còn <strong>{resubmitsLeft}</strong> lượt gửi lại chứng từ (tối đa 3 lần · P06). Căn cứ xác nhận là tiền thực về tài khoản ngân hàng của địa điểm (BR33).
+                      Người chơi còn <strong>{resubmitsLeft}</strong> lượt gửi lại chứng từ (tối đa 3 lần). Căn cứ xác nhận là tiền thực về tài khoản ngân hàng của địa điểm.
                     </p>
                   </section>}
 

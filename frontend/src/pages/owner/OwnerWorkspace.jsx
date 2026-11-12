@@ -8,9 +8,10 @@ import { money, today, useResource } from '../workspaceSupport'
 import { OwnerCourtComplaints } from '../feedback/CourtComplaintsPage'
 import { StaffAccounts } from '../account/AccountPages'
 import { OwnerPromotions } from '../promotion/PromotionPages'
+import { OwnerReviews } from '../feedback/OwnerReviews'
 
 const loadRefunds = (signal) => api.get('/owner/refunds', { signal }).then((response) => response.data.data)
-const ownerTabs = [['staff', 'Nhân viên'], ['cancel', 'Hủy đặt sân'], ['refund', 'Hoàn tiền'], ['complaints', 'Khiếu nại'], ['rewards', 'Ưu đãi và điểm']]
+const ownerTabs = [['staff', 'Nhân viên'], ['cancel', 'Hủy đặt sân'], ['refund', 'Hoàn tiền'], ['complaints', 'Khiếu nại'], ['reviews', 'Đánh giá'], ['rewards', 'Ưu đãi và điểm']]
 const clock = (minute) => String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0')
 
 function RefundDetail({ id, refresh }) {
@@ -122,15 +123,25 @@ function OwnerLocation() {
   const [selected, setSelected] = useState(() => getSelectedLocation() || '')
   const requestedTab = params.get('tab')
   const tab = ownerTabs.some(([value]) => value === requestedTab) ? requestedTab : 'staff'
-  const location = locations.data?.find((item) => String(item.id) === selected)
+
+  const fallbackId = !selected && locations.data?.length > 0
+    ? String(locations.data.find((item) => item.status === 'ACTIVE')?.id || locations.data[0]?.id || '')
+    : ''
+  const effectiveSelected = selected || fallbackId
+  const location = locations.data?.find((item) => String(item.id) === effectiveSelected)
+
   return <>
     <Section title="Địa điểm làm việc" resource={locations}>
-      <Field label="Địa điểm" value={location ? selected : ''} onChange={(event) => {
+      <Field label="Địa điểm" value={location ? effectiveSelected : ''} onChange={(event) => {
         selectLocation(event.target.value)
         setSelected(event.target.value)
       }} options={[[ '', 'Chọn địa điểm' ], ...(locations.data ?? []).map((item) => [item.id, item.name + ' · ' + item.status])]} />
       {locations.data?.length === 0 && <EmptyState>Bạn chưa có địa điểm.</EmptyState>}
-      {locations.data?.length > 0 && !location && <Feedback>Chọn địa điểm để xem nhân viên, đặt sân và ưu đãi.</Feedback>}
+      {locations.data?.length > 0 && !location && <Feedback>
+        {tab === 'reviews'
+          ? 'Vui lòng chọn cơ sở bên trên để xem và phản hồi các đánh giá của khách hàng.'
+          : 'Chọn địa điểm để xem nhân viên, đặt sân và ưu đãi.'}
+      </Feedback>}
     </Section>
     {location && location.status !== 'ACTIVE' && <Section title="Địa điểm đã khóa">
       <p>{lockedVenueNotice(location)}</p>
@@ -143,14 +154,20 @@ function OwnerLocation() {
         <Link className="underline" to="/owner/reports">Báo cáo</Link>
         <Link className="underline" to="/staff/confirm-payments?type=reschedule">Xử lý phụ thu đổi lịch</Link>
       </div>
-      <div key={selected + ':' + tab} className="cw-stack">
+      <div key={effectiveSelected + ':' + tab} className="cw-stack">
         {tab === 'staff' && <StaffAccounts />}
         {tab === 'cancel' && <Cancellations />}
         {tab === 'refund' && <Refunds key={params.get('complaintId') || ''} />}
         {tab === 'complaints' && <OwnerCourtComplaints />}
+        {tab === 'reviews' && <OwnerReviews />}
         {tab === 'rewards' && <OwnerPromotions location={location} refreshLocation={locations.reload} />}
       </div>
     </>}
+    {!location && tab === 'reviews' && (
+      <Section title="Đánh giá từ khách hàng">
+        <Feedback>Vui lòng chọn cơ sở bên trên để xem và phản hồi các đánh giá của khách hàng.</Feedback>
+      </Section>
+    )}
   </>
 }
 

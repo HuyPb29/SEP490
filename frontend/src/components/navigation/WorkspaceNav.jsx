@@ -9,33 +9,33 @@ import styles from './WorkspaceNav.module.css';
  */
 const SCREENS = {
   admin: [
-    { to: '/admin/workspace', label: 'Admin Workspace', uc: 'UC03 · UC06' },
-    { to: '/admin/facilities', label: 'Facilities & Registration', uc: 'UC05 · UC06' },
-    { to: '/notifications', label: 'Notifications', uc: 'UC37' },
+    { to: '/admin/workspace', label: 'Admin Workspace' },
+    { to: '/admin/facilities', label: 'Facilities & Registration' },
+    { to: '/notifications', label: 'Notifications' },
   ],
   owner: [
-    { to: '/owner/workspace', label: 'Owner Workspace', uc: 'UC07–UC35' },
-    { to: '/owner/courts-pricing', label: 'Courts & Pricing', uc: 'UC07 · UC09' },
-    { to: '/owner/opening-hours', label: 'Opening Hours', uc: 'UC08' },
-    { to: '/owner/facility-settings', label: 'Facility Settings', uc: 'UC07' },
-    { to: '/maintenance', label: 'Maintenance Approval', uc: 'UC10' },
-    { to: '/owner/reports', label: 'Reports', uc: 'UC35' },
-    { to: '/notifications', label: 'Notifications', uc: 'UC37' },
+    { to: '/owner/workspace', label: 'Owner Workspace' },
+    { to: '/owner/courts-pricing', label: 'Courts & Pricing' },
+    { to: '/owner/opening-hours', label: 'Opening Hours' },
+    { to: '/owner/facility-settings', label: 'Facility Settings' },
+    { to: '/maintenance', label: 'Maintenance Approval' },
+    { to: '/owner/reports', label: 'Reports' },
+    { to: '/notifications', label: 'Notifications' },
   ],
   staff: [
-    { to: '/staff/dashboard', label: 'Staff Dashboard', uc: 'UC16 · UC34' },
-    { to: '/staff/confirm-payments', label: 'Confirm Payments', uc: 'UC19' },
-    { to: '/staff/complaints', label: 'Complaints', uc: 'UC27' },
-    { to: '/maintenance', label: 'Maintenance Requests', uc: 'UC10' },
-    { to: '/notifications', label: 'Notifications', uc: 'UC37' },
+    { to: '/staff/dashboard', label: 'Staff Dashboard' },
+    { to: '/staff/confirm-payments', label: 'Confirm Payments' },
+    { to: '/staff/complaints', label: 'Complaints' },
+    { to: '/maintenance', label: 'Maintenance Requests' },
+    { to: '/notifications', label: 'Notifications' },
   ],
   player: [
-    { to: '/facilities', label: 'Find Court', uc: 'UC11' },
-    { to: '/open-matches', label: 'Open Matches', uc: 'UC28–UC32' },
-    { to: '/my-bookings', label: 'My Bookings', uc: 'UC17' },
-    { to: '/my-rewards', label: 'Rewards & Points', uc: 'UC23' },
-    { to: '/account', label: 'Account Profile', uc: 'UC04' },
-    { to: '/notifications', label: 'Notifications', uc: 'UC37' },
+    { to: '/facilities', label: 'Find Court' },
+    { to: '/open-matches', label: 'Open Matches' },
+    { to: '/my-bookings', label: 'My Bookings' },
+    { to: '/my-rewards', label: 'Rewards & Points' },
+    { to: '/account', label: 'Account Profile' },
+    { to: '/notifications', label: 'Notifications' },
   ],
 };
 
@@ -114,7 +114,6 @@ export default function WorkspaceNav() {
                 }}
               >
                 <span className={styles.itemLabel}>{screen.label}</span>
-                <span className={styles.itemUc}>{screen.uc}</span>
               </button>
             ))}
           </div>

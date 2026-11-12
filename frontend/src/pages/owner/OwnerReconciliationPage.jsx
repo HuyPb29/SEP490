@@ -12,7 +12,7 @@ export default function OwnerReconciliationPage({ locationId = getSelectedLocati
     <ManagementLayout
       role="owner"
       title="Kết quả đối soát doanh thu"
-      subtitle="Theo dõi biên bản đối soát doanh thu ca của nhân viên (UC20)"
+      subtitle="Theo dõi biên bản đối soát doanh thu ca của nhân viên"
       backTo="/owner/reports"
     >
       <ReconciliationResults key={locationId} locationId={locationId} />
