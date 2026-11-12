@@ -23,6 +23,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API gửi, rút và xét duyệt yêu cầu tham gia kèo.
+ *
  * Feature: F7 – Đội và kèo
  * Owner: Hoàng
  * UC: UC28 – Quản lý kèo (chủ kèo); UC30 – Tham gia kèo

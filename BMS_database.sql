@@ -38,7 +38,7 @@ CREATE TABLE account (
     location_id BIGINT NULL,
     status VARCHAR(10) NOT NULL CONSTRAINT df_account_status DEFAULT 'ACTIVE',
     token_version BIGINT NOT NULL CONSTRAINT df_account_token_version DEFAULT 0,
-    failed_login_count INT NOT NULL CONSTRAINT df_account_failed_login_count DEFAULT 0,
+    failed_login_count TINYINT NOT NULL CONSTRAINT df_account_failed_login DEFAULT 0,
     locked_until DATETIME2(0) NULL,
     last_login_at DATETIME2(0) NULL,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_account_created_at DEFAULT SYSDATETIME(),
@@ -53,7 +53,7 @@ CREATE TABLE account (
     CONSTRAINT ck_account_email CHECK (role NOT IN ('PLAYER','OWNER') OR email IS NOT NULL),
     CONSTRAINT ck_account_phone CHECK (role NOT IN ('PLAYER','OWNER') OR phone IS NOT NULL),
     CONSTRAINT ck_account_phone_digits CHECK (phone IS NULL OR (LEN(phone) = 10 AND phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
-    CONSTRAINT ck_account_username CHECK (LEN(username) BETWEEN 6 AND 32 AND username COLLATE Latin1_General_BIN LIKE '[a-z]%' AND username COLLATE Latin1_General_BIN NOT LIKE '%[^a-z0-9._]%')
+    CONSTRAINT ck_account_username CHECK (LEN(username) BETWEEN 4 AND 20 AND username COLLATE Latin1_General_BIN LIKE '[a-z]%' AND username COLLATE Latin1_General_BIN NOT LIKE '%[^a-z0-9._]%')
 );
 CREATE UNIQUE INDEX ux_account_email ON account (email) WHERE email IS NOT NULL;
 CREATE UNIQUE INDEX ux_account_phone ON account (phone) WHERE phone IS NOT NULL;
@@ -246,13 +246,13 @@ CREATE TABLE maintenance (
 );
 CREATE INDEX ix_maint_court ON maintenance (court_id, start_at);
 
--- booking_package: Gói đặt nhiều buổi (booking tổng); các buổi con là booking loại SESSION (BR10, DR06).
+-- booking_package: Gói đặt nhiều buổi (booking tổng) hoặc đơn đặt lẻ (DAY); các booking con là loại SESSION (BR10, BR64, DR06, DR32).
 CREATE TABLE booking_package (
     id BIGINT IDENTITY(1,1) NOT NULL,
     location_id BIGINT NOT NULL,
     player_id BIGINT NOT NULL,
     batch_offer_id BIGINT NULL,
-    package_type VARCHAR(10) NOT NULL,
+    package_type VARCHAR(12) NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     list_amount DECIMAL(12,0) NOT NULL,
@@ -266,8 +266,9 @@ CREATE TABLE booking_package (
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_booking_package_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_booking_package PRIMARY KEY (id),
     CONSTRAINT uk_pkg_id_location UNIQUE (id, location_id),
-    CONSTRAINT ck_pkg_type CHECK (package_type IN ('RECURRING','CUSTOM')),
-    CONSTRAINT ck_pkg_status CHECK (status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','PAYMENT_REJECTED','EXPIRED')),
+    CONSTRAINT ck_pkg_type CHECK (package_type IN ('RECURRING','CUSTOM','DAY')),
+    CONSTRAINT ck_pkg_status CHECK (status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','PAYMENT_REJECTED','EXPIRED')
+        OR (package_type = 'DAY' AND status = 'CANCELLED_BY_PLAYER')),
     CONSTRAINT ck_pkg_dates CHECK (end_date >= start_date),
     CONSTRAINT ck_pkg_amount CHECK (final_amount > 0 AND voucher_discount >= 0 AND point_discount >= 0 AND points_used >= 0),
     CONSTRAINT ck_pkg_point_min CHECK (points_used = 0 OR point_discount >= 1000)
@@ -465,6 +466,7 @@ CREATE TABLE refund_request (
     complaint_id BIGINT NULL,
     suggested_amount DECIMAL(12,0) NOT NULL,
     refunded_amount DECIMAL(12,0) NULL,
+    verified_unrecorded_amount DECIMAL(12,0) NULL,
     loyalty_settled_amount DECIMAL(12,0) NOT NULL CONSTRAINT df_refund_loyalty_amount DEFAULT 0,
     loyalty_revoked_points INT NOT NULL CONSTRAINT df_refund_loyalty_points DEFAULT 0,
     refund_date DATE NULL,
@@ -704,6 +706,7 @@ CREATE TABLE match (
     status VARCHAR(10) NOT NULL CONSTRAINT df_match_status DEFAULT 'OPEN',
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_match_created_at DEFAULT SYSDATETIME(),
     closed_at DATETIME2(0) NULL,
+    reschedule_pending BIT NOT NULL CONSTRAINT df_match_reschedule DEFAULT 0,
     CONSTRAINT pk_match PRIMARY KEY (id),
     CONSTRAINT ck_match_players CHECK (current_players >= 1 AND needed_players >= 0 AND current_players + needed_players <= 8),
     CONSTRAINT ck_match_status CHECK (status IN ('OPEN','CLOSED','CANCELLED','EXPIRED'))

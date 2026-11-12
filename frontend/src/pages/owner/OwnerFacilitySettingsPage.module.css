@@ -1,0 +1,272 @@
+/* UC07 – Hồ sơ địa điểm: thông tin chung, quy tắc đặt sân, thanh toán & QR. */
+
+.subtitle {
+  max-width: 720px;
+  margin: -6px 0 14px;
+  color: #6b7789;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.card {
+  margin-bottom: 14px;
+  padding: 15px;
+  background: #fff;
+  border: 1px solid #e3e7ed;
+  border-radius: 15px;
+}
+
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 12px;
+}
+
+.cardTitle {
+  margin: 0;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 730;
+}
+
+.cardHint {
+  margin: 4px 0 0;
+  color: #7d899b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------- fields */
+
+/* Lưới cố định 3 cột để hàng luôn kín, không phụ thuộc bề rộng cửa sổ. */
+.fieldGrid {
+  display: grid;
+  gap: 10px 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Khối chỉ có 2 ô thì dùng lưới 2 cột, tránh ô trống bên phải. */
+.fieldGridNarrow {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 640px;
+}
+
+.field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > span {
+  color: #6b7789;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.field input {
+  min-height: 32px;
+  padding: 0 9px;
+  color: #172033;
+  background: #fff;
+  border: 1px solid #dfe5ee;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 11px;
+}
+
+.field input:focus {
+  border-color: #16a34a;
+  outline: 2px solid #d8f0e1;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.note {
+  margin: 10px 0 0;
+  color: #7d899b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/* -------------------------------------------------------------------- QR */
+
+.qrBox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 11px;
+  padding: 9px 11px;
+  background: #f9fbfc;
+  border: 1px solid #eef1f5;
+  border-radius: 11px;
+}
+
+.qrImage {
+  width: 74px;
+  height: 74px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid #e3e7ed;
+  border-radius: 8px;
+}
+
+.qrHint {
+  color: #8592a6;
+  font-size: 10px;
+}
+
+/* ---------------------------------------------------------------- actions */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.primaryButton {
+  min-height: 34px;
+  padding: 0 17px;
+  color: #fff;
+  background: #16a34a;
+  border: 1px solid #128044;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: #128044;
+}
+
+.primaryButton:disabled {
+  color: #eef2f5;
+  background: #a7bdb1;
+  border-color: #a7bdb1;
+  cursor: not-allowed;
+}
+
+.ghostButton {
+  min-height: 32px;
+  padding: 0 13px;
+  color: #33415c;
+  background: #f6f8fa;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ghostButton:hover:not(:disabled) {
+  background: #eef1f5;
+}
+
+.ghostButton:disabled {
+  color: #a4aebd;
+  cursor: not-allowed;
+}
+
+.dirtyHint {
+  color: #8592a6;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------- meta */
+
+.metaGrid {
+  display: grid;
+  gap: 12px 18px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin: 0;
+}
+
+.metaGrid dt {
+  color: #8592a6;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.metaGrid dd {
+  margin: 3px 0 0;
+  color: #172033;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+}
+
+.badgeActive {
+  color: #12633c;
+  background: #e7f6ec;
+}
+
+.badgeLocked {
+  color: #92400e;
+  background: #fffaeb;
+}
+
+/* ---------------------------------------------------------------- alerts */
+
+.alertError,
+.alertOk,
+.alertWarn {
+  margin: 10px 0;
+  padding: 8px 11px;
+  border-radius: 9px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.alertError {
+  color: #b42318;
+  background: #fef4f4;
+  border: 1px solid #fadcd9;
+}
+
+.alertOk {
+  color: #12633c;
+  background: #effaf2;
+  border: 1px solid #cbead6;
+}
+
+.alertWarn {
+  color: #92400e;
+  background: #fffaeb;
+  border: 1px solid #fde9b8;
+}
+
+@media (max-width: 900px) {
+  .fieldGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .fieldGrid,
+  .fieldGridNarrow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

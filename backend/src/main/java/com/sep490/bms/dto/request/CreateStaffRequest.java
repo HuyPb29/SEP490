@@ -10,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận tên đăng nhập, họ tên, số điện thoại và mật khẩu ban đầu của Staff.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

@@ -27,6 +27,7 @@ import org.springframework.util.StringUtils;
 import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.dto.booking.BatchOfferPublicResponse;
 import com.sep490.bms.dto.booking.BookingListItem;
+import com.sep490.bms.dto.booking.BookingOrderRequest;
 import com.sep490.bms.dto.booking.BookingSummaryResponse.SlotPrice;
 import com.sep490.bms.dto.booking.PackagePreviewResponse;
 import com.sep490.bms.dto.booking.PackagePreviewResponse.BatchOfferStatus;
@@ -36,13 +37,14 @@ import com.sep490.bms.dto.booking.PackageRequest;
 import com.sep490.bms.dto.booking.PackageRequest.WeeklySlot;
 import com.sep490.bms.dto.promotion.VoucherCheckRequest;
 import com.sep490.bms.dto.promotion.VoucherSelection;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.enums.VoucherStatus;
+import com.sep490.bms.entity.enums.VoucherTargetGroup;
 import com.sep490.bms.entity.location.BatchOffer;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.notification.NotificationType;
@@ -131,7 +133,21 @@ public class PackageService {
      */
     @Transactional(readOnly = true)
     public PackagePreviewResponse preview(UserPrincipal player, PackageRequest request) {
+        requirePackage(request);
         return preview(player, request, LocalDateTime.now());
+    }
+
+    /**
+     * UC14 #2–5, BR64 (D164): màn tóm tắt của đơn đặt lẻ nhiều dải trong một ngày: giá từng dải, dải bị trùng,
+     * voucher và điểm trên cả đơn. Không tạo đơn, không giữ chỗ, không trừ voucher hay điểm.
+     */
+    @Transactional(readOnly = true)
+    public PackagePreviewResponse previewOrder(UserPrincipal player, BookingOrderRequest request) {
+        return previewOrder(player, request, LocalDateTime.now());
+    }
+
+    PackagePreviewResponse previewOrder(UserPrincipal player, BookingOrderRequest request, LocalDateTime now) {
+        return preview(player, toPackageRequest(request), now);
     }
 
     PackagePreviewResponse preview(UserPrincipal player, PackageRequest request, LocalDateTime now) {
@@ -139,15 +155,21 @@ public class PackageService {
                 .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
         Location location = locationQueryService.findActive(court.getLocationId());
         bookingService.requireOwnTeam(player.getId(), request.teamId());
+        boolean order = isOrder(request);
+        if (order) {
+            requireOrderDate(location, request.startDate(), now.toLocalDate());
+        }
 
         List<Planned> sessions = markConflicts(location, plan(request, court, now.toLocalDate()), now);
         List<Planned> bookable = sessions.stream().filter(s -> !s.hasConflict()).toList();
         Quote quote = quote(player, location, bookable, request);
-        BatchOfferStatus offer = offerStatus(location.getId(), now.toLocalDate(), quote.finalAmount());
+        // BR47: ưu đãi đặt theo lô chỉ cho gói đặt nhiều buổi, không cho đơn đặt lẻ.
+        BatchOfferStatus offer = order ? null : offerStatus(location.getId(), now.toLocalDate(), quote.finalAmount());
 
         Map<Planned, Priced> pricedBySession = new HashMap<>();
         quote.sessions().forEach(p -> pricedBySession.put(p.session(), p));
         int conflicts = sessions.size() - bookable.size();
+        String unit = order ? " khung giờ" : " buổi";
         return PackagePreviewResponse.builder()
                 .locationId(location.getId())
                 .locationName(location.getName())
@@ -156,7 +178,7 @@ public class PackageService {
                 .endDate(sessions.get(sessions.size() - 1).date())
                 .totalSessions(sessions.size())
                 .conflictSessions(conflicts)
-                .summary("Tổng " + sessions.size() + " buổi, " + conflicts + " buổi bị trùng.")
+                .summary("Tổng " + sessions.size() + unit + ", " + conflicts + unit + " bị trùng.")
                 .months(monthSummaries(sessions))
                 .sessions(sessions.stream().map(s -> toResponse(s, pricedBySession.get(s))).toList())
                 .listAmount(quote.listAmount())
@@ -176,31 +198,57 @@ public class PackageService {
      */
     @Transactional
     public PackageDetailResponse create(UserPrincipal player, PackageRequest request) {
+        requirePackage(request);
         return create(player, request, LocalDateTime.now());
     }
 
+    /**
+     * UC14 #6–8, BR64 (D164): Player bấm Xác nhận ở màn tóm tắt của đơn đặt lẻ. Còn dải nào vừa bị người khác
+     * giữ hoặc đặt thì không tạo booking nào và báo các dải đó. Không trùng thì tạo đơn Đang giữ chỗ 10 phút
+     * (BR03) và mỗi dải một booking; voucher, điểm trừ trên cả đơn rồi chia cho từng booking (BR28).
+     */
+    @Transactional
+    public PackageDetailResponse createOrder(UserPrincipal player, BookingOrderRequest request) {
+        return createOrder(player, request, LocalDateTime.now());
+    }
+
+    PackageDetailResponse createOrder(UserPrincipal player, BookingOrderRequest request, LocalDateTime now) {
+        return create(player, toPackageRequest(request), request.note(), now);
+    }
+
     PackageDetailResponse create(UserPrincipal player, PackageRequest request, LocalDateTime now) {
-        // BR35: một gói tính là một booking chờ thanh toán.
+        return create(player, request, request.note(), now);
+    }
+
+    private PackageDetailResponse create(UserPrincipal player, PackageRequest request, String note,
+            LocalDateTime now) {
+        // BR35: một gói hoặc một đơn đặt lẻ tính là một booking chờ thanh toán.
         bookingService.requirePendingPaymentLimit(player.getId(), now);
         Court court = courtRepository.findByIdAndActiveTrue(request.courtId())
                 .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
         Location location = locationQueryService.findActive(court.getLocationId());
         bookingService.requireOwnTeam(player.getId(), request.teamId());
         LocalDate today = now.toLocalDate();
+        boolean order = isOrder(request);
+        if (order) {
+            requireOrderDate(location, request.startDate(), today);
+        }
 
         List<Planned> sessions = markConflicts(location, plan(request, court, today), now);
         List<Planned> conflicts = sessions.stream().filter(Planned::hasConflict).toList();
         if (!conflicts.isEmpty()) {
-            throw sessionsTaken(conflicts);
+            throw order ? orderSlotsTaken(conflicts) : sessionsTaken(conflicts);
         }
-        if (sessions.size() < 2) {
+        // D163, BR27: sau khi xử lý buổi trùng, các buổi còn lại phải nằm trong ít nhất 2 ngày khác nhau.
+        if (!order && distinctDays(sessions) < 2) {
             throw tooFewSessions();
         }
         List<Priced> priced = price(sessions);
         BigDecimal listAmount = sum(priced);
         // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 15 phút.
+        // Đơn đặt lẻ giữ chỗ như đặt sân lẻ (10 phút, BR03), gói giữ 15 phút (P27).
         LocalDateTime createdAt = now.truncatedTo(ChronoUnit.SECONDS);
-        LocalDateTime holdExpiresAt = createdAt.plusMinutes(HOLD_MINUTES);
+        LocalDateTime holdExpiresAt = createdAt.plusMinutes(order ? BookingService.HOLD_MINUTES : HOLD_MINUTES);
 
         // Lưu với giá niêm yết; consumeForPackage, redeemForPackage tự ghi số giảm và finalAmount vào gói.
         BookingPackage pkg = bookingPackageRepository.save(BookingPackage.builder()
@@ -228,6 +276,7 @@ public class PackageService {
                     .playDate(session.session().date())
                     .startMinute(session.session().startMinute())
                     .endMinute(session.session().endMinute())
+                    .note(StringUtils.hasText(note) ? note.trim() : null)
                     .listAmount(session.listAmount())
                     .finalAmount(session.listAmount())
                     .status(BookingStatus.HOLDING)
@@ -239,7 +288,7 @@ public class PackageService {
             } catch (AppException e) {
                 // Người khác vừa giữ slot của buổi này sau bước kiểm tra lại (ux_slot_active): báo như MSG44.
                 if (e.getStatus() == HttpStatus.CONFLICT) {
-                    throw sessionsTaken(List.of(session.session()));
+                    throw order ? orderSlotsTaken(List.of(session.session())) : sessionsTaken(List.of(session.session()));
                 }
                 throw e;
             }
@@ -259,8 +308,8 @@ public class PackageService {
             booking.setFinalAmount(share.finalAmount());
         }
         // BR47: gói xác nhận lịch trong thời gian chương trình và đạt mức thì ghi chương trình để tặng voucher
-        // khi thanh toán gói được xác nhận.
-        BatchOfferStatus offer = offerStatus(location.getId(), today, pkg.getFinalAmount());
+        // khi thanh toán gói được xác nhận. Đơn đặt lẻ không có ưu đãi đặt theo lô.
+        BatchOfferStatus offer = order ? null : offerStatus(location.getId(), today, pkg.getFinalAmount());
         if (offer != null && offer.isReached()) {
             pkg.setBatchOfferId(offer.getId());
         }
@@ -286,9 +335,10 @@ public class PackageService {
             return false;
         }
         settleFailed(pkg, BookingStatus.EXPIRED);
+        String label = label(pkg);
         notificationService.notifyOnce(pkg.getPlayerId(), NotificationType.BOOKING_HOLD_EXPIRED,
-                "Gói đặt nhiều buổi đã hết hạn giữ chỗ",
-                "Gói đặt nhiều buổi từ " + pkg.getStartDate().format(DATE) + " đến " + pkg.getEndDate().format(DATE)
+                Character.toUpperCase(label.charAt(0)) + label.substring(1) + " đã hết hạn giữ chỗ",
+                Character.toUpperCase(label.charAt(0)) + label.substring(1)
                         + " đã bị hủy vì quá hạn thanh toán. Các slot đã được nhả.",
                 "PACKAGE", packageId);
         return true;
@@ -340,14 +390,24 @@ public class PackageService {
     }
 
     /**
-     * Giờ kết thúc của buổi đầu tiên: hạn gửi lại chứng từ của gói (P07) và mốc hết giờ chơi mà vẫn chờ Staff
-     * (BR03). Đề xuất, chưa duyệt: requirement chỉ nói "hết giờ chơi" cho booking lẻ; với gói lấy buổi đầu tiên
-     * để buổi đầu không bị chơi khi gói chưa được xác nhận.
+     * Giờ kết thúc của booking kết thúc sớm nhất: hạn gửi lại chứng từ (P07) và mốc hết giờ chơi mà vẫn chờ Staff
+     * (BR03) của gói và đơn đặt lẻ. Đơn đặt lẻ: theo BR64 (D164). Gói: đề xuất, chưa duyệt, lấy buổi đầu để buổi
+     * đầu không bị chơi khi gói chưa được xác nhận.
      */
     @Transactional(readOnly = true)
     public LocalDateTime firstSessionEnd(Long packageId) {
-        Booking first = sessionsOf(packageId).get(0);
-        return first.getPlayDate().atStartOfDay().plusMinutes(first.getEndMinute());
+        return sessionsOf(packageId).stream()
+                .map(b -> b.getPlayDate().atStartOfDay().plusMinutes(b.getEndMinute()))
+                .min(Comparator.naturalOrder())
+                .orElseThrow(PackageService::packageNotFound);
+    }
+
+    /** Tên dùng trong thông báo: "gói đặt nhiều buổi từ … đến …" hoặc "đơn đặt sân ngày …". */
+    public static String label(BookingPackage pkg) {
+        if (pkg.getPackageType() == PackageType.DAY) {
+            return "đơn đặt sân ngày " + pkg.getStartDate().format(DATE);
+        }
+        return "gói đặt nhiều buổi từ " + pkg.getStartDate().format(DATE) + " đến " + pkg.getEndDate().format(DATE);
     }
 
     private static AppException packageNotFound() {
@@ -429,6 +489,62 @@ public class PackageService {
         } catch (AppException e) {
             throw BookingService.noLongerUsable("Số điểm", e);
         }
+    }
+
+    // ===================== Đơn đặt lẻ (UC14, BR64, D164) =====================
+
+    static boolean isOrder(PackageRequest request) {
+        return request.packageType() == PackageType.DAY;
+    }
+
+    /** API gói (UC15) không nhận đơn đặt lẻ; đơn đi qua /api/booking-orders. */
+    private static void requirePackage(PackageRequest request) {
+        if (isOrder(request)) {
+            throw new AppException("Đơn đặt lẻ trong một ngày dùng chức năng đặt sân lẻ.");
+        }
+    }
+
+    /** BR02: đơn đặt lẻ theo giới hạn đặt trước của địa điểm như booking lẻ (MSG31), không như gói. */
+    private static void requireOrderDate(Location location, LocalDate date, LocalDate today) {
+        int advanceDays = location.getAdvanceBookingDays();
+        if (date.isBefore(today) || date.isAfter(today.plusDays(advanceDays))) {
+            throw new AppException(
+                    "Chỉ đặt được slot trống, trong giờ mở cửa và trước tối đa " + advanceDays + " ngày. (MSG31)");
+        }
+    }
+
+    /**
+     * Đơn đặt lẻ → PackageRequest loại DAY: mỗi dải là một buổi cùng ngày. Hai dải liền nhau trên cùng sân được
+     * gộp thành một, vì một booking là các slot liền nhau trên một sân (BR01).
+     */
+    static PackageRequest toPackageRequest(BookingOrderRequest request) {
+        List<BookingOrderRequest.Range> sorted = request.ranges().stream()
+                .sorted(Comparator.comparing(BookingOrderRequest.Range::courtId)
+                        .thenComparing(BookingOrderRequest.Range::startMinute))
+                .toList();
+        List<PackageRequest.Session> sessions = new ArrayList<>();
+        for (BookingOrderRequest.Range range : sorted) {
+            PackageRequest.Session last = sessions.isEmpty() ? null : sessions.get(sessions.size() - 1);
+            if (last != null && last.courtId().equals(range.courtId()) && last.endMinute() == range.startMinute()) {
+                sessions.set(sessions.size() - 1,
+                        new PackageRequest.Session(request.date(), range.courtId(), last.startMinute(), range.endMinute()));
+            } else {
+                sessions.add(new PackageRequest.Session(request.date(), range.courtId(), range.startMinute(),
+                        range.endMinute()));
+            }
+        }
+        return new PackageRequest(PackageType.DAY, sorted.get(0).courtId(), request.date(), request.date(), null,
+                sessions, request.teamId(), request.voucherCode(), request.voucherGrantId(), request.pointsToUse());
+    }
+
+    /** Dải của đơn vừa bị người khác giữ hoặc đặt: không tạo booking nào, báo các dải đó để Player chọn lại. */
+    private static AppException orderSlotsTaken(List<Planned> sessions) {
+        String list = sessions.stream()
+                .map(s -> MinuteTime.format(s.startMinute()) + "–" + MinuteTime.format(s.endMinute()) + " "
+                        + s.court().getName())
+                .collect(Collectors.joining("; "));
+        return new AppException("Có " + sessions.size() + " khung giờ vừa bị người khác giữ hoặc đặt hoặc không còn "
+                + "đặt được: " + list + ". Vui lòng chọn slot khác. (MSG28)", HttpStatus.CONFLICT);
     }
 
     /** MSG44: số buổi và danh sách các buổi bị trùng (ngày, giờ, sân). */
@@ -518,8 +634,8 @@ public class PackageService {
     /**
      * Danh sách buổi của gói theo ngày giờ chơi. Định kỳ: luôn kiểm mẫu ban đầu (MSG41); Player gửi danh sách
      * đã xử lý buổi trùng thì dùng danh sách đó, các buổi phải nằm trong thời gian của mẫu. Tự chọn: các buổi
-     * Player chọn, ít nhất 2 buổi, trong vòng 3 tháng (MSG91). Cả hai cách: buổi xa nhất không quá 3 tháng kể từ
-     * hôm nay (D162).
+     * Player chọn, nằm trong ít nhất 2 ngày khác nhau (D163), trong vòng 3 tháng (MSG91). Cả hai cách: buổi xa
+     * nhất không quá 3 tháng kể từ hôm nay (D162).
      */
     List<Planned> plan(PackageRequest request, Court court, LocalDate today) {
         List<Planned> sessions;
@@ -532,6 +648,16 @@ public class PackageService {
                             + request.startDate() + " – " + request.endDate() + ").");
                 }
             }
+        } else if (isOrder(request)) {
+            // BR64: mọi dải của đơn đặt lẻ thuộc cùng một ngày (MSG30).
+            if (request.sessions() == null || request.sessions().isEmpty()) {
+                throw new AppException("Chọn ít nhất một khung giờ cho đơn đặt lẻ.");
+            }
+            sessions = explicitSessions(request, court, today);
+            if (distinctDays(sessions) != 1) {
+                throw new AppException("Đặt lẻ chỉ chọn các slot trong cùng một ngày. "
+                        + "Muốn đặt nhiều ngày, vui lòng dùng Đặt nhiều buổi. (MSG30)");
+            }
         } else {
             if (request.sessions() == null || request.sessions().size() < 2) {
                 throw invalidCustom();
@@ -539,7 +665,7 @@ public class PackageService {
             sessions = explicitSessions(request, court, today);
             LocalDate first = sessions.get(0).date();
             LocalDate last = sessions.get(sessions.size() - 1).date();
-            if (last.plusDays(1).isAfter(first.plusMonths(MAX_MONTHS))) {
+            if (distinctDays(sessions) < 2 || last.plusDays(1).isAfter(first.plusMonths(MAX_MONTHS))) {
                 throw invalidCustom();
             }
         }
@@ -820,13 +946,19 @@ public class PackageService {
         }
     }
 
+    /** D163: số ngày khác nhau có buổi; một ngày có nhiều buổi vẫn tính là một ngày. */
+    static long distinctDays(List<Planned> sessions) {
+        return sessions.stream().map(Planned::date).distinct().count();
+    }
+
     private static AppException invalidCustom() {
-        return new AppException("Đặt tự chọn cần ít nhất 2 buổi, trong vòng tối đa 3 tháng. (MSG91)");
+        return new AppException(
+                "Đặt tự chọn cần các buổi nằm trong ít nhất 2 ngày khác nhau, trong vòng tối đa 3 tháng. (MSG91)");
     }
 
     static AppException tooFewSessions() {
-        return new AppException(
-                "Gói phải còn ít nhất 2 buổi. Vui lòng chọn slot bù cho các buổi bị trùng thay vì bỏ. (MSG92)");
+        return new AppException("Gói phải có buổi trong ít nhất 2 ngày khác nhau. "
+                + "Vui lòng chọn slot bù cho các buổi bị trùng thay vì bỏ. (MSG92)");
     }
 
     private static AppException invalidRecurring() {
@@ -860,6 +992,7 @@ public class PackageService {
     }
 
     private static boolean isPublished(Voucher voucher) {
-        return voucher != null && voucher.getStatus() == VoucherStatus.PUBLISHED;
+        return voucher != null && voucher.getStatus() == VoucherStatus.PUBLISHED
+                && voucher.getTargetGroup() == VoucherTargetGroup.SPECIFIED;
     }
 }

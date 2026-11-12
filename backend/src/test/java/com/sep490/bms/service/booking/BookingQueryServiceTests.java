@@ -28,8 +28,8 @@ import com.sep490.bms.dto.booking.BookingDetailResponse;
 import com.sep490.bms.dto.booking.BookingListItem;
 import com.sep490.bms.dto.booking.PackageDetailResponse;
 import com.sep490.bms.dto.booking.PackageListItem;
-import com.sep490.bms.entity.Location;
-import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;
@@ -44,6 +44,7 @@ import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.booking.BookingRepository.PackageSessionCount;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.feedback.ReviewService;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.payment.PaymentService;
 
@@ -61,8 +62,9 @@ class BookingQueryServiceTests {
     private final LocationQueryService locations = mock(LocationQueryService.class);
     private final BookingService bookingService = mock(BookingService.class);
     private final PaymentService payments = mock(PaymentService.class);
+    private final ReviewService reviews = mock(ReviewService.class);
     private final BookingQueryService service =
-            new BookingQueryService(bookings, packages, courts, locations, bookingService, payments);
+            new BookingQueryService(bookings, packages, courts, locations, bookingService, payments, reviews);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 
@@ -98,6 +100,26 @@ class BookingQueryServiceTests {
     private void repositoryReturns(Booking... rows) {
         when(bookings.findPlayerBookings(eq(PLAYER), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(rows), PageRequest.of(0, 20), rows.length));
+    }
+
+    @Test
+    void listMyBookings_flagsOnlyBookingsThatCanStillBeReviewed() {
+        repositoryReturns(booking(1L, BookingStatus.COMPLETED, null), booking(2L, BookingStatus.COMPLETED, null),
+                booking(3L, BookingStatus.CONFIRMED, null));
+        when(reviews.reviewableBookingIds(any())).thenReturn(java.util.Set.of(1L));
+
+        PageResponse<BookingListItem> page = service.listMyBookings(player, null, 0, 20, NOW);
+
+        assertThat(page.getContent()).extracting(BookingListItem::isCanReview).containsExactly(true, false, false);
+    }
+
+    @Test
+    void getMyBooking_flagsCompletedUnreviewedBooking() {
+        Booking completed = booking(5L, BookingStatus.COMPLETED, null);
+        when(bookingService.getForPlayer(5L, PLAYER)).thenReturn(completed);
+        when(reviews.reviewableBookingIds(List.of(completed))).thenReturn(java.util.Set.of(5L));
+
+        assertThat(service.getMyBooking(player, 5L, NOW).isCanReview()).isTrue();
     }
 
     @Test

@@ -1,554 +1,772 @@
-/**
- * OwnerOpeningHoursPage.jsx — UC08, FR18, FR19, FR62, BR01, BR04, BR17
- *
- * Route: /owner/locations/:id/hours
- *
- * Section 1: Standard Weekly Opening Hours (with step="1800" 30-min interval time inputs)
- * Section 2: Special / Exception Dates (BR04, stored in YYYY-MM-DD format)
- *
- * Validations:
- * - BR01 & MSG16: close_time > open_time and aligned to 30-minute intervals (:00 or :30)
- * - MSG42: Time range within configured court pricing hours (05:00 - 23:00)
- * - BR17 & MSG15: Impact confirmation modal when narrowing hours or closing
- * - MSG03: Success notification with (MSG67) reference
- */
-import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { getOpeningHoursApi, updateOpeningHoursApi } from '../../api/ownerApi'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  apiErrorMessage,
+  createOpeningException,
+  deleteOpeningException,
+  getOpeningExceptions,
+  getOpeningHours,
+  getOwnerLocations,
+  getSlotSetting, getStoredLocationId,
+  storeLocationId,
+  updateOpeningException,
+  updateOpeningHours,
+  updateSlotSetting,
+} from '../../api/locationApi'
+import ManagementLayout from '../../components/layout/ManagementLayout'
 import styles from './OwnerOpeningHoursPage.module.css'
 
-const DEFAULT_DAYS = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-]
+/** Backend chỉ nhận bội số 30 phút: mở 00:00–23:30, đóng 00:30–24:00. */
+const SLOT_STEP = 30
+const DAY_MINUTES = 24 * 60
 
-/** Helper to verify if time string is aligned to 30-minute intervals (:00 or :30) */
-function isAlignedTo30Minutes(timeStr) {
-  if (!timeStr) return false
-  const parts = timeStr.split(':')
-  if (parts.length < 2) return false
-  const minutes = parseInt(parts[1], 10)
-  return minutes === 0 || minutes === 30
+function toTimeLabel(minutes) {
+  const hour = Math.floor(minutes / 60)
+  const minute = minutes % 60
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+const OPEN_OPTIONS = Array.from({ length: DAY_MINUTES / SLOT_STEP }, (_, index) => index * SLOT_STEP)
+const CLOSE_OPTIONS = Array.from(
+  { length: DAY_MINUTES / SLOT_STEP },
+  (_, index) => (index + 1) * SLOT_STEP,
+)
+
+const WEEKDAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+// Slot length: backend yêu cầu bội số 30, từ 30 đến 240 phút.
+const SLOT_MINUTE_OPTIONS = [30, 60, 90, 120, 150, 180, 210, 240]
+// Thời gian nghỉ: 0–60 phút VÀ cũng phải là bội số của 30 (backend chặn 10/15/20/45).
+const BUFFER_OPTIONS = [0, 30, 60]
+const MAX_SLOT_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 10, 12]
+
+function todayIso() {
+  const now = new Date()
+  const offset = now.getTimezoneOffset() * 60_000
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10)
+}
+
+function formatDate(isoDate) {
+  if (!isoDate) return '—'
+  const [year, month, day] = String(isoDate).split('-')
+  return `${day}/${month}/${year}`
+}
+
+function weekdayName(isoDate) {
+  if (!isoDate) return ''
+  const date = new Date(`${isoDate}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return ''
+  // getDay(): 0 = Chủ nhật → đổi sang 0 = Thứ 2 cho khớp thứ tự hiển thị.
+  return WEEKDAY_LABELS[(date.getDay() + 6) % 7]
+}
+
+function buildWeek(days) {
+  const byDay = new Map((days ?? []).map((day) => [day.dayOfWeek, day]))
+  return WEEKDAY_LABELS.map((label, index) => {
+    const dayOfWeek = index + 1
+    const found = byDay.get(dayOfWeek)
+    return {
+      dayOfWeek,
+      label,
+      enabled: Boolean(found?.configured),
+      openMinute: found?.openMinute ?? 360,
+      closeMinute: found?.closeMinute ?? 1440,
+    }
+  })
 }
 
 export default function OwnerOpeningHoursPage() {
-  const { id: locationId } = useParams()
+  const [locations, setLocations] = useState([])
+  const [selectedLocationId, setSelectedLocationId] = useState(null)
+  const [_loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [pageError, setPageError] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
-  const [toastMessage, setToastMessage] = useState('')
+  const [week, setWeek] = useState(() => buildWeek([]))
+  const [weekSaving, setWeekSaving] = useState(false)
+  const [weekError, setWeekError] = useState('')
+  const [weekMessage, setWeekMessage] = useState('')
 
-  // Section 1: Standard Weekly Hours
-  const [standardHours, setStandardHours] = useState([])
+  const [slotCourtId, setSlotCourtId] = useState('')
+  const [slot, setSlot] = useState({ slotMinutes: 30, bufferMinutes: 0, maxSlotsPerBooking: 4 })
+  const [slotConfigured, setSlotConfigured] = useState(false)
+  const [slotSaving, setSlotSaving] = useState(false)
+  const [slotError, setSlotError] = useState('')
+  const [slotMessage, setSlotMessage] = useState('')
 
-  // Section 2: Exception Dates (BR04)
-  const [exceptionDates, setExceptionDates] = useState([])
+  const [exceptions, setExceptions] = useState([])
+  const [exceptionFilter, setExceptionFilter] = useState({ from: '', to: '' })
+  const [exceptionForm, setExceptionForm] = useState({
+    exceptionDate: todayIso(),
+    openMinute: 360,
+    closeMinute: 1080,
+    note: '',
+  })
+  const [editingExceptionId, setEditingExceptionId] = useState(null)
+  const [exceptionSaving, setExceptionSaving] = useState(false)
+  const [exceptionError, setExceptionError] = useState('')
+  const [exceptionMessage, setExceptionMessage] = useState('')
 
-  // MSG15 Confirmation Modal state
-  const [showConfirmModal, setShowConfirmModal] = useState(false)
-  const [affectedCount, setAffectedCount] = useState(3)
-  const [pendingPayload, setPendingPayload] = useState(null)
+  const selectedLocation = useMemo(
+    () => locations.find((location) => location.id === selectedLocationId) ?? null,
+    [locations, selectedLocationId],
+  )
+  const courts = useMemo(() => selectedLocation?.courts ?? [], [selectedLocation])
+  const locationLocked = selectedLocation?.status === 'LOCKED'
 
-  useEffect(() => {
-    let isCancelled = false
-    getOpeningHoursApi(locationId)
-      .then((data) => {
-        if (isCancelled) return
-        if (data?.standard_hours && Array.isArray(data.standard_hours)) {
-          setStandardHours(data.standard_hours)
-        } else {
-          setStandardHours(
-            DEFAULT_DAYS.map((day) => ({
-              day_of_week: day,
-              open_time: '05:00',
-              close_time: '23:00',
-              is_closed: false,
-            }))
-          )
-        }
-        setExceptionDates(data?.exception_dates || [])
-      })
-      .catch((err) => {
-        if (isCancelled) return
-        setPageError(err?.response?.data?.message || err?.message || 'Failed to load opening hours.')
-      })
-      .finally(() => {
-        if (!isCancelled) setLoading(false)
-      })
-    return () => {
-      isCancelled = true
-    }
-  }, [locationId])
+  const loadWeek = useCallback(async (locationId) => {
+    const days = await getOpeningHours(locationId)
+    setWeek(buildWeek(days))
+  }, [])
 
-  function showToast(msg) {
-    setToastMessage(msg)
-    setTimeout(() => setToastMessage(''), 4500)
-  }
+  const loadExceptions = useCallback(async (locationId, filter) => {
+    const rows = await getOpeningExceptions(locationId, filter)
+    setExceptions(rows)
+  }, [])
 
-  // ── Standard Weekly Handlers ───────────────────────────────────────────────
-
-  function handleStandardToggleClosed(index) {
-    setStandardHours((prev) =>
-      prev.map((item, idx) => (idx === index ? { ...item, is_closed: !item.is_closed } : item))
-    )
-    setErrorMessage('')
-  }
-
-  function handleStandardTimeChange(index, field, value) {
-    setStandardHours((prev) =>
-      prev.map((item, idx) => (idx === index ? { ...item, [field]: value } : item))
-    )
-    setErrorMessage('')
-  }
-
-  function handleApplyToAllWeekdays(sourceIndex) {
-    const source = standardHours[sourceIndex]
-    if (!source) return
-    setStandardHours((prev) =>
-      prev.map((item, idx) =>
-        idx <= 4 // Monday through Friday
-          ? { ...item, open_time: source.open_time, close_time: source.close_time, is_closed: source.is_closed }
-          : item
-      )
-    )
-    showToast('Applied hours to all weekdays (Monday – Friday).')
-  }
-
-  // ── Exception Dates Handlers (BR04) ────────────────────────────────────────
-
-  function handleAddExceptionDate() {
-    const today = new Date().toISOString().split('T')[0]
-    const newException = {
-      id: `exp-${Date.now()}`,
-      date: today, // Standard format YYYY-MM-DD
-      is_closed: true,
-      open_time: '06:00',
-      close_time: '22:00',
-      note: 'Holiday or Maintenance',
-    }
-    setExceptionDates((prev) => [...prev, newException])
-    setErrorMessage('')
-  }
-
-  function handleRemoveExceptionDate(id) {
-    setExceptionDates((prev) => prev.filter((item) => item.id !== id))
-    setErrorMessage('')
-  }
-
-  function handleExceptionChange(id, field, value) {
-    setExceptionDates((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
-    )
-    setErrorMessage('')
-  }
-
-  // ── Validation & Save Flow ─────────────────────────────────────────────────
-
-  function validateUI() {
-    // Check BR01 & MSG16 for standard hours
-    for (const day of standardHours) {
-      if (!day.is_closed) {
-        if (!day.open_time || !day.close_time) {
-          return '[MSG16] Closing time must be after opening time and aligned to 30-minute intervals.'
-        }
-        if (day.close_time <= day.open_time) {
-          return '[MSG16] Closing time must be after opening time and aligned to 30-minute intervals.'
-        }
-        if (!isAlignedTo30Minutes(day.open_time) || !isAlignedTo30Minutes(day.close_time)) {
-          return '[MSG16] Closing time must be after opening time and aligned to 30-minute intervals.'
-        }
-      }
-    }
-
-    // Check BR01 & MSG16 for exception dates
-    for (const exp of exceptionDates) {
-      if (!exp.date) {
-        return 'All exception dates must have a valid date specified (YYYY-MM-DD).'
-      }
-      if (!exp.is_closed) {
-        if (!exp.open_time || !exp.close_time) {
-          return '[MSG16] Closing time must be after opening time and aligned to 30-minute intervals.'
-        }
-        if (exp.close_time <= exp.open_time) {
-          return '[MSG16] Closing time must be after opening time and aligned to 30-minute intervals.'
-        }
-        if (!isAlignedTo30Minutes(exp.open_time) || !isAlignedTo30Minutes(exp.close_time)) {
-          return '[MSG16] Closing time must be after opening time and aligned to 30-minute intervals.'
-        }
-      }
-    }
-
-    return null
-  }
-
-  async function handleSaveClick(e) {
-    if (e) e.preventDefault()
-    setErrorMessage('')
-
-    // 1. UI Validation (BR01 & MSG16)
-    const validationError = validateUI()
-    if (validationError) {
-      setErrorMessage(validationError)
+  const loadSlot = useCallback(async (courtId, locationId) => {
+    if (!courtId) {
+      Promise.resolve().then(() => setSlotConfigured(false))
       return
     }
+    const setting = await getSlotSetting(courtId, locationId)
+    if (!setting) return
+    setSlot({
+      slotMinutes: setting.slotMinutes ?? 30,
+      bufferMinutes: setting.bufferMinutes ?? 0,
+      maxSlotsPerBooking: setting.maxSlotsPerBooking ?? 4,
+    })
+    setSlotConfigured(Boolean(setting.configured))
+  }, [])
 
-    const payload = {
-      standard_hours: standardHours,
-      exception_dates: exceptionDates,
-    }
-
-    setSaving(true)
-    try {
-      // 2. Call API without confirmation flag first
-      const res = await updateOpeningHoursApi(locationId, payload, { confirmAffected: false })
-
-      // 3. Handle confirmed booking impacts (BR17 & MSG15)
-      if (res && res.requires_confirmation) {
-        setPendingPayload(payload)
-        setAffectedCount(res.affected_bookings_count || 3)
-        setShowConfirmModal(true)
-        return
+  // Nạp danh sách địa điểm một lần, chọn địa điểm nhớ lần trước nếu còn hợp lệ.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      try {
+        const rows = await getOwnerLocations()
+        if (cancelled) return
+        setLocations(rows)
+        const stored = Number(getStoredLocationId())
+        const fallback = rows.some((location) => location.id === stored) ? stored : rows[0]?.id
+        setSelectedLocationId(fallback ?? null)
+        if (fallback) storeLocationId(fallback)
+        setLoadError('')
+      } catch (err) {
+        if (!cancelled) setLoadError(apiErrorMessage(err))
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-
-      showToast('[MSG03] Opening hours updated successfully. Affected customers have been notified (MSG67).')
-    } catch (err) {
-      // Caught MSG42 or server error
-      setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to save opening hours.')
-    } finally {
-      setSaving(false)
+    })()
+    return () => {
+      cancelled = true
     }
-  }
+  }, [])
 
-  async function handleConfirmModalAccept() {
-    if (!pendingPayload) return
-    setSaving(true)
-    setErrorMessage('')
-    try {
-      await updateOpeningHoursApi(locationId, pendingPayload, { confirmAffected: true })
-      setShowConfirmModal(false)
-      setPendingPayload(null)
-      showToast('[MSG03] Opening hours updated successfully. Affected customers have been notified (MSG67).')
-    } catch (err) {
-      setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to save opening hours.')
-    } finally {
-      setSaving(false)
+  // Đổi địa điểm thì nạp lại cả 3 phần.
+  useEffect(() => {
+    if (!selectedLocationId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        await loadWeek(selectedLocationId)
+        if (cancelled) return
+        await loadExceptions(selectedLocationId, {})
+        if (cancelled) return
+        setExceptionFilter({ from: '', to: '' })
+        setEditingExceptionId(null)
+        setWeekError('')
+        setWeekMessage('')
+        setExceptionError('')
+        setExceptionMessage('')
+        setSlotError('')
+        setSlotMessage('')
+      } catch (err) {
+        if (!cancelled) setWeekError(apiErrorMessage(err))
+      }
+    })()
+    return () => {
+      cancelled = true
     }
+  }, [selectedLocationId, loadWeek, loadExceptions])
+
+  // Cấu hình slot thuộc về địa điểm, nên chỉ cần xem qua sân đầu tiên.
+  useEffect(() => {
+    if (!selectedLocationId) return
+    const firstCourtId = courts[0]?.id ?? ''
+    Promise.resolve().then(() => setSlotCourtId(firstCourtId ? String(firstCourtId) : ''))
+    if (!firstCourtId) {
+      Promise.resolve().then(() => setSlotConfigured(false))
+      return
+    }
+    Promise.resolve().then(() => loadSlot(firstCourtId, selectedLocationId)).catch((err) => setSlotError(apiErrorMessage(err)))
+  }, [selectedLocationId, courts, loadSlot])
+
+  const handleFacilityChange = (event) => {
+    const nextId = Number(event.target.value)
+    if (!Number.isFinite(nextId)) return
+    setSelectedLocationId(nextId)
+    storeLocationId(nextId)
   }
 
-  function handleConfirmModalCancel() {
-    setShowConfirmModal(false)
-    setPendingPayload(null)
-  }
+  // ------------------------------------------------------------ giờ mở cửa
 
-  if (loading) {
-    return (
-      <div className={styles.page}>
-        <p className={styles.loading}>Loading opening hours…</p>
-      </div>
+  const updateDay = (dayOfWeek, patch) => {
+    setWeek((current) =>
+      current.map((day) => (day.dayOfWeek === dayOfWeek ? { ...day, ...patch } : day)),
     )
+    setWeekMessage('')
   }
+
+  const copyFirstDayToAll = () => {
+    const source = week[0]
+    if (!source) return
+    setWeek((current) =>
+      current.map((day) => ({
+        ...day,
+        enabled: day.enabled || source.enabled,
+        openMinute: source.openMinute,
+        closeMinute: source.closeMinute,
+      })),
+    )
+    setWeekMessage('Copied Monday hours to every enabled day. Remember to save.')
+  }
+
+  const weekValidationError = () => {
+    const enabledDays = week.filter((day) => day.enabled)
+    if (enabledDays.length === 0) return 'Pick at least one opening day.'
+    const broken = enabledDays.find((day) => day.closeMinute <= day.openMinute)
+    if (broken) return `${broken.label}: closing time must be after opening time.`
+    return ''
+  }
+
+  const handleSaveWeek = async () => {
+    const validation = weekValidationError()
+    if (validation) {
+      setWeekError(validation)
+      setWeekMessage('')
+      return
+    }
+    const confirmed = window.confirm(
+      'Saving the opening hours replaces the whole week.\n\n'
+      + 'Confirmed bookings that no longer fit inside the new window will be marked as affected '
+      + 'and the affected players will be notified. Continue?',
+    )
+    if (!confirmed) return
+
+    setWeekSaving(true)
+    try {
+      const payload = week
+        .filter((day) => day.enabled)
+        .map((day) => ({
+          dayOfWeek: day.dayOfWeek,
+          openMinute: day.openMinute,
+          closeMinute: day.closeMinute,
+        }))
+      const saved = await updateOpeningHours(selectedLocationId, payload)
+      setWeek(buildWeek(saved))
+      setWeekError('')
+      setWeekMessage('Opening hours saved.')
+    } catch (err) {
+      setWeekError(apiErrorMessage(err))
+      setWeekMessage('')
+    } finally {
+      setWeekSaving(false)
+    }
+  }
+
+  const handleResetWeek = () => {
+    loadWeek(selectedLocationId)
+      .then(() => {
+        setWeekError('')
+        setWeekMessage('Reverted to the saved schedule.')
+      })
+      .catch((err) => setWeekError(apiErrorMessage(err)))
+  }
+
+  // ------------------------------------------------------------- cấu hình slot
+
+  const handleSlotCourtChange = (event) => {
+    const courtId = event.target.value
+    setSlotCourtId(courtId)
+    setSlotError('')
+    setSlotMessage('')
+    if (courtId) {
+      loadSlot(Number(courtId), selectedLocationId).catch((err) => setSlotError(apiErrorMessage(err)))
+    }
+  }
+
+  const handleSaveSlot = async () => {
+    if (!slotCourtId) {
+      setSlotError('This facility has no court yet, so the slot setting cannot be saved.')
+      return
+    }
+    setSlotSaving(true)
+    try {
+      const saved = await updateSlotSetting(
+        Number(slotCourtId),
+        {
+          slotMinutes: Number(slot.slotMinutes),
+          bufferMinutes: Number(slot.bufferMinutes),
+          maxSlotsPerBooking: Number(slot.maxSlotsPerBooking),
+        },
+        selectedLocationId,
+      )
+      setSlot({
+        slotMinutes: saved?.slotMinutes ?? slot.slotMinutes,
+        bufferMinutes: saved?.bufferMinutes ?? slot.bufferMinutes,
+        maxSlotsPerBooking: saved?.maxSlotsPerBooking ?? slot.maxSlotsPerBooking,
+      })
+      setSlotConfigured(true)
+      setSlotError('')
+      setSlotMessage('Slot setting saved. It applies to every court of this facility.')
+    } catch (err) {
+      setSlotError(apiErrorMessage(err))
+      setSlotMessage('')
+    } finally {
+      setSlotSaving(false)
+    }
+  }
+
+  // ------------------------------------------------------------ ngày ngoại lệ
+
+  const resetExceptionForm = () => {
+    setExceptionForm({
+      exceptionDate: todayIso(),
+      openMinute: 360,
+      closeMinute: 1080,
+      note: '',
+    })
+    setEditingExceptionId(null)
+    setExceptionError('')
+  }
+
+  const handleExceptionSubmit = async (event) => {
+    event.preventDefault()
+    if (exceptionForm.closeMinute <= exceptionForm.openMinute) {
+      setExceptionError('Closing time must be after opening time.')
+      return
+    }
+    setExceptionSaving(true)
+    try {
+      const payload = {
+        exceptionDate: exceptionForm.exceptionDate,
+        openMinute: Number(exceptionForm.openMinute),
+        closeMinute: Number(exceptionForm.closeMinute),
+        note: exceptionForm.note?.trim() ? exceptionForm.note.trim() : null,
+      }
+      if (editingExceptionId) {
+        await updateOpeningException(editingExceptionId, payload, selectedLocationId)
+      } else {
+        await createOpeningException(selectedLocationId, payload)
+      }
+      await loadExceptions(selectedLocationId, exceptionFilter)
+      setExceptionMessage(editingExceptionId ? 'Exception day updated.' : 'Exception day added.')
+      resetExceptionForm()
+    } catch (err) {
+      setExceptionError(apiErrorMessage(err))
+      setExceptionMessage('')
+    } finally {
+      setExceptionSaving(false)
+    }
+  }
+
+  const handleEditException = (row) => {
+    setEditingExceptionId(row.id)
+    setExceptionForm({
+      exceptionDate: row.exceptionDate,
+      openMinute: row.openMinute,
+      closeMinute: row.closeMinute,
+      note: row.note ?? '',
+    })
+    setExceptionError('')
+    setExceptionMessage('')
+  }
+
+  const handleDeleteException = async (row) => {
+    if (!window.confirm(`Delete the exception on ${formatDate(row.exceptionDate)}?`)) return
+    try {
+      await deleteOpeningException(row.id, selectedLocationId)
+      await loadExceptions(selectedLocationId, exceptionFilter)
+      if (editingExceptionId === row.id) resetExceptionForm()
+      setExceptionError('')
+      setExceptionMessage('Exception day deleted.')
+    } catch (err) {
+      setExceptionError(apiErrorMessage(err))
+      setExceptionMessage('')
+    }
+  }
+
+  const applyExceptionFilter = async () => {
+    try {
+      await loadExceptions(selectedLocationId, exceptionFilter)
+      setExceptionError('')
+    } catch (err) {
+      setExceptionError(apiErrorMessage(err))
+    }
+  }
+
+  const clearExceptionFilter = async () => {
+    const empty = { from: '', to: '' }
+    setExceptionFilter(empty)
+    try {
+      await loadExceptions(selectedLocationId, empty)
+      setExceptionError('')
+    } catch (err) {
+      setExceptionError(apiErrorMessage(err))
+    }
+  }
+
+  const configuredDays = week.filter((day) => day.enabled).length
 
   return (
-    <div className={styles.page}>
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className={styles.toast} role="status" aria-live="polite">
-          {toastMessage}
-        </div>
-      )}
+    <ManagementLayout
+      role="owner"
+      title="Giờ mở cửa & Slot"
+      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name} · Cấu hình giờ mở cửa, slot và ngày ngoại lệ` : 'Cấu hình khung giờ hoạt động, thời lượng slot và ngày ngoại lệ'}
+      locations={locations}
+      locationId={selectedLocationId}
+      onLocationChange={handleFacilityChange}
+    >
+      <div>
+        {loadError && <p className={styles.alertError} role="alert">{loadError}</p>}
+        {locationLocked && (
+          <p className={styles.alertWarn}>
+            Cụm sân này đã bị khóa. Anh/chị chỉ có thể xem dữ liệu mà không thể chỉnh sửa.
+          </p>
+        )}
+        {serviceExpired && (
+          <p className={styles.alertWarn}>
+            Kỳ hạn dịch vụ đã hết hạn. Vui lòng liên hệ Quản trị viên để gia hạn trước khi thay đổi cấu hình.
+          </p>
+        )}
 
-      {/* Confirmation Modal (MSG15) */}
-      {showConfirmModal && (
-        <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-labelledby="modal-title">
-          <div className={styles.modal}>
-            <div className={styles.modalHeader}>
-              <h2 id="modal-title">Confirm Schedule Change</h2>
-              <button
-                className={styles.closeBtn}
-                type="button"
-                onClick={handleConfirmModalCancel}
-                aria-label="Close"
-              >
-                ×
+        {/* ------------------------------------------------------- tuần */}
+        <section className={styles.card}>
+          <div className={styles.cardHeader}>
+            <div>
+              <h2 className={styles.cardTitle}>Weekly opening hours</h2>
+              <p className={styles.cardHint}>
+                {configuredDays} of 7 days configured · unselected days are removed when you save
+              </p>
+            </div>
+            <div className={styles.headerActions}>
+              <button className={styles.ghostButton} type="button" onClick={copyFirstDayToAll}>
+                Copy Monday to all
+              </button>
+              <button className={styles.ghostButton} type="button" onClick={handleResetWeek}>
+                Reset
               </button>
             </div>
-            <div className={styles.modalBody}>
-              <div className={styles.warningAlert} role="alert">
-                <span className={styles.alertIcon} aria-hidden="true">⚠️</span>
-                <p className={styles.alertText}>
-                  [MSG15] This change affects {affectedCount} confirmed booking(s). Customers will be notified (MSG67) to choose a resolution (free slot change, refund, or compensation points). Do you want to continue?
-                </p>
-              </div>
-              <div className={styles.modalActions}>
-                <button
-                  className={styles.cancelBtn}
-                  type="button"
-                  onClick={handleConfirmModalCancel}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-                <button
-                  className={styles.confirmBtn}
-                  type="button"
-                  onClick={handleConfirmModalAccept}
-                  disabled={saving}
-                >
-                  {saving ? 'Processing…' : 'Confirm'}
-                </button>
-              </div>
-            </div>
           </div>
-        </div>
-      )}
 
-      {/* Page Header */}
-      <div className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Opening Hours</h1>
-          <p className={styles.sub}>
-            Location #{locationId} · Configure standard weekly schedule and exception dates
-          </p>
-        </div>
-        <button
-          className={styles.saveBtn}
-          type="button"
-          onClick={handleSaveClick}
-          disabled={saving}
-        >
-          {saving ? 'Saving…' : 'Save Changes'}
-        </button>
-      </div>
-
-      {pageError && <p className={styles.pageError} role="alert">{pageError}</p>}
-
-      {/* Error Banner for MSG16, MSG42, etc. */}
-      {errorMessage && (
-        <div className={styles.errorBanner} role="alert">
-          <span className={styles.alertIcon} aria-hidden="true">⚠️</span>
-          <span>{errorMessage}</span>
-        </div>
-      )}
-
-      {/* ── Section 1: Standard Weekly Opening Hours ───────────────────────── */}
-      <section className={styles.section} aria-labelledby="sec-weekly">
-        <div className={styles.sectionHeader}>
-          <div>
-            <h2 id="sec-weekly" className={styles.sectionTitle}>
-              Standard Weekly Opening Hours
-            </h2>
-            <p className={styles.sectionDesc}>
-              Configure open and close times for each day of the week in 30-minute intervals (step 1800s).
-            </p>
-          </div>
-        </div>
-
-        <div className={styles.daysList}>
-          {standardHours.map((day, idx) => (
-            <div
-              key={day.day_of_week}
-              className={`${styles.dayRow} ${day.is_closed ? styles.dayRowClosed : ''}`}
-            >
-              <div className={styles.dayCol}>
-                <span className={styles.dayName}>{day.day_of_week}</span>
-                <label className={styles.toggleLabel}>
-                  <input
-                    type="checkbox"
-                    checked={!day.is_closed}
-                    onChange={() => handleStandardToggleClosed(idx)}
-                  />
-                  <span>{day.is_closed ? 'Closed' : 'Open'}</span>
-                </label>
-              </div>
-
-              {!day.is_closed ? (
-                <div className={styles.timeInputsCol}>
-                  <div className={styles.timeGroup}>
-                    <label className={styles.timeLabel} htmlFor={`open-time-${idx}`}>
-                      Open Time
-                    </label>
+          <table className={`${styles.table} ${styles.weekTable}`}>
+            <thead>
+              <tr>
+                <th className={styles.colToggle}>Open</th>
+                <th>Day</th>
+                <th>From</th>
+                <th>To</th>
+                <th className={styles.colDuration}>Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {week.map((day) => (
+                <tr key={day.dayOfWeek} className={day.enabled ? '' : styles.rowDisabled}>
+                  <td>
                     <input
-                      id={`open-time-${idx}`}
-                      type="time"
-                      step="1800"
-                      value={day.open_time}
-                      onChange={(e) => handleStandardTimeChange(idx, 'open_time', e.target.value)}
-                      className={styles.timeInput}
+                      type="checkbox"
+                      checked={day.enabled}
+                      onChange={(event) => updateDay(day.dayOfWeek, { enabled: event.target.checked })}
+                      aria-label={`Open on ${day.label}`}
                     />
-                  </div>
-
-                  <span className={styles.timeDivider}>–</span>
-
-                  <div className={styles.timeGroup}>
-                    <label className={styles.timeLabel} htmlFor={`close-time-${idx}`}>
-                      Close Time
-                    </label>
-                    <input
-                      id={`close-time-${idx}`}
-                      type="time"
-                      step="1800"
-                      value={day.close_time}
-                      onChange={(e) => handleStandardTimeChange(idx, 'close_time', e.target.value)}
-                      className={styles.timeInput}
-                    />
-                  </div>
-
-                  {idx === 0 && (
-                    <button
-                      className={styles.copyBtn}
-                      type="button"
-                      onClick={() => handleApplyToAllWeekdays(0)}
-                      title="Copy Monday hours to Tuesday through Friday"
+                  </td>
+                  <td className={styles.dayName}>{day.label}</td>
+                  <td>
+                    <select
+                      className={styles.timeSelect}
+                      value={day.openMinute}
+                      disabled={!day.enabled}
+                      onChange={(event) => updateDay(day.dayOfWeek, { openMinute: Number(event.target.value) })}
+                      aria-label={`${day.label} opening time`}
                     >
-                      Copy to Weekdays
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className={styles.closedNotice}>
-                  <span className={styles.closedBadge}>Closed All Day</span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
+                      {OPEN_OPTIONS.map((minute) => (
+                        <option key={minute} value={minute}>{toTimeLabel(minute)}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      className={styles.timeSelect}
+                      value={day.closeMinute}
+                      disabled={!day.enabled}
+                      onChange={(event) => updateDay(day.dayOfWeek, { closeMinute: Number(event.target.value) })}
+                      aria-label={`${day.label} closing time`}
+                    >
+                      {CLOSE_OPTIONS.map((minute) => (
+                        <option key={minute} value={minute}>{toTimeLabel(minute)}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className={styles.colDuration}>
+                    {day.enabled
+                      ? `${((day.closeMinute - day.openMinute) / 60).toFixed(1)} h`
+                      : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
-      {/* ── Section 2: Special / Exception Dates (BR04) ─────────────────────── */}
-      <section className={styles.section} aria-labelledby="sec-exceptions">
-        <div className={styles.sectionHeader}>
-          <div>
-            <h2 id="sec-exceptions" className={styles.sectionTitle}>
-              Special / Exception Dates (BR04)
-            </h2>
-            <p className={styles.sectionDesc}>
-              Override weekly opening hours on holidays, maintenance days, or special events. Dates are saved in YYYY-MM-DD format.
-            </p>
-          </div>
-          <button
-            className={styles.addBtn}
-            type="button"
-            onClick={handleAddExceptionDate}
-          >
-            + Add Exception Date
-          </button>
-        </div>
+          {weekError && <p className={styles.alertError} role="alert">{weekError}</p>}
+          {weekMessage && <p className={styles.alertOk}>{weekMessage}</p>}
 
-        {exceptionDates.length === 0 ? (
-          <div className={styles.emptyCard}>
-            <p className={styles.emptyText}>No special exception dates configured.</p>
+          <div className={styles.cardFooter}>
             <button
-              className={styles.emptyAddBtn}
+              className={styles.primaryButton}
               type="button"
-              onClick={handleAddExceptionDate}
+              onClick={handleSaveWeek}
+              disabled={weekSaving || locationLocked}
             >
-              + Add First Exception Date
+              {weekSaving ? 'Saving…' : 'Save opening hours'}
             </button>
           </div>
-        ) : (
-          <div className={styles.exceptionTableWrapper}>
-            <table className={styles.exceptionTable}>
+        </section>
+
+        {/* ------------------------------------------------------- slot */}
+        <section className={styles.card}>
+          <div className={styles.cardHeader}>
+            <div>
+              <h2 className={styles.cardTitle}>Slot configuration</h2>
+              <p className={styles.cardHint}>
+                Belongs to the whole facility, not to a single court
+                {slotConfigured ? '' : ' · currently using the default values'}
+              </p>
+            </div>
+            {courts.length > 1 && (
+              <label className={styles.inlineField}>
+                <span>View via court</span>
+                <select
+                  className={styles.timeSelect}
+                  value={slotCourtId}
+                  onChange={handleSlotCourtChange}
+                >
+                  {courts.map((court) => (
+                    <option key={court.id} value={court.id}>{court.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+
+          <div className={styles.fieldGrid}>
+            <label className={styles.field}>
+              <span>Slot length</span>
+              <select
+                value={slot.slotMinutes}
+                onChange={(event) => setSlot((current) => ({ ...current, slotMinutes: Number(event.target.value) }))}
+              >
+                {SLOT_MINUTE_OPTIONS.map((value) => (
+                  <option key={value} value={value}>{value} minutes</option>
+                ))}
+              </select>
+            </label>
+
+            <label className={styles.field}>
+              <span>Buffer between slots</span>
+              <select
+                value={slot.bufferMinutes}
+                onChange={(event) => setSlot((current) => ({ ...current, bufferMinutes: Number(event.target.value) }))}
+              >
+                {BUFFER_OPTIONS.map((value) => (
+                  <option key={value} value={value}>{value} minutes</option>
+                ))}
+              </select>
+            </label>
+
+            <label className={styles.field}>
+              <span>Max slots per booking</span>
+              <select
+                value={slot.maxSlotsPerBooking}
+                onChange={(event) =>
+                  setSlot((current) => ({ ...current, maxSlotsPerBooking: Number(event.target.value) }))
+                }
+              >
+                {MAX_SLOT_OPTIONS.map((value) => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <p className={styles.note}>
+            One booking occupies {slot.slotMinutes + slot.bufferMinutes} minutes
+            ({slot.slotMinutes} minutes of play + {slot.bufferMinutes} minutes buffer).
+          </p>
+
+          {slotError && <p className={styles.alertError} role="alert">{slotError}</p>}
+          {slotMessage && <p className={styles.alertOk}>{slotMessage}</p>}
+
+          <div className={styles.cardFooter}>
+            <button
+              className={styles.primaryButton}
+              type="button"
+              onClick={handleSaveSlot}
+              disabled={slotSaving || locationLocked || !slotCourtId}
+            >
+              {slotSaving ? 'Saving…' : 'Save slot setting'}
+            </button>
+          </div>
+        </section>
+
+        {/* --------------------------------------------- ngày ngoại lệ */}
+        <section className={styles.card}>
+          <div className={styles.cardHeader}>
+            <div>
+              <h2 className={styles.cardTitle}>Exception days</h2>
+              <p className={styles.cardHint}>
+                A different opening window for one specific date. The schema has no “closed all day”
+                flag, so every exception must still open and close.
+              </p>
+            </div>
+          </div>
+
+          <form className={styles.exceptionForm} onSubmit={handleExceptionSubmit}>
+            <label className={styles.field}>
+              <span>Date</span>
+              <input
+                type="date"
+                value={exceptionForm.exceptionDate}
+                onChange={(event) =>
+                  setExceptionForm((current) => ({ ...current, exceptionDate: event.target.value }))
+                }
+                required
+              />
+            </label>
+
+            <label className={styles.field}>
+              <span>From</span>
+              <select
+                value={exceptionForm.openMinute}
+                onChange={(event) =>
+                  setExceptionForm((current) => ({ ...current, openMinute: Number(event.target.value) }))
+                }
+              >
+                {OPEN_OPTIONS.map((minute) => (
+                  <option key={minute} value={minute}>{toTimeLabel(minute)}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className={styles.field}>
+              <span>To</span>
+              <select
+                value={exceptionForm.closeMinute}
+                onChange={(event) =>
+                  setExceptionForm((current) => ({ ...current, closeMinute: Number(event.target.value) }))
+                }
+              >
+                {CLOSE_OPTIONS.map((minute) => (
+                  <option key={minute} value={minute}>{toTimeLabel(minute)}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className={`${styles.field} ${styles.fieldWide}`}>
+              <span>Note</span>
+              <input
+                type="text"
+                maxLength={255}
+                placeholder="Holiday, tournament, maintenance…"
+                value={exceptionForm.note}
+                onChange={(event) => setExceptionForm((current) => ({ ...current, note: event.target.value }))}
+              />
+            </label>
+
+            <div className={styles.exceptionActions}>
+              <button className={styles.primaryButton} type="submit" disabled={exceptionSaving || locationLocked}>
+                {exceptionSaving ? 'Saving…' : editingExceptionId ? 'Update exception' : 'Add exception'}
+              </button>
+              {editingExceptionId && (
+                <button className={styles.ghostButton} type="button" onClick={resetExceptionForm}>
+                  Cancel edit
+                </button>
+              )}
+            </div>
+          </form>
+
+          {exceptionError && <p className={styles.alertError} role="alert">{exceptionError}</p>}
+          {exceptionMessage && <p className={styles.alertOk}>{exceptionMessage}</p>}
+
+          <div className={styles.filterRow}>
+            <label className={styles.inlineField}>
+              <span>From</span>
+              <input
+                type="date"
+                value={exceptionFilter.from}
+                onChange={(event) =>
+                  setExceptionFilter((current) => ({ ...current, from: event.target.value }))
+                }
+              />
+            </label>
+            <label className={styles.inlineField}>
+              <span>To</span>
+              <input
+                type="date"
+                value={exceptionFilter.to}
+                onChange={(event) =>
+                  setExceptionFilter((current) => ({ ...current, to: event.target.value }))
+                }
+              />
+            </label>
+            <button className={styles.ghostButton} type="button" onClick={applyExceptionFilter}>
+              Filter
+            </button>
+            <button className={styles.ghostButton} type="button" onClick={clearExceptionFilter}>
+              Clear
+            </button>
+          </div>
+
+          {exceptions.length === 0 ? (
+            <p className={styles.empty}>No exception day in this range.</p>
+          ) : (
+            <table className={styles.table}>
               <thead>
                 <tr>
-                  <th scope="col">Date (YYYY-MM-DD)</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Operating Hours</th>
-                  <th scope="col">Reason / Note</th>
-                  <th scope="col">Actions</th>
+                  <th className={styles.colDate}>Date</th>
+                  <th className={styles.colDay}>Day</th>
+                  <th className={styles.colWindow}>Window</th>
+                  <th className={styles.colDuration}>Duration</th>
+                  <th>Note</th>
+                  <th className={styles.colActions} />
                 </tr>
               </thead>
               <tbody>
-                {exceptionDates.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <input
-                        type="date"
-                        value={item.date}
-                        onChange={(e) => handleExceptionChange(item.id, 'date', e.target.value)}
-                        className={styles.dateInput}
-                        required
-                      />
-                    </td>
-                    <td>
-                      <select
-                        value={item.is_closed ? 'closed' : 'custom'}
-                        onChange={(e) =>
-                          handleExceptionChange(item.id, 'is_closed', e.target.value === 'closed')
-                        }
-                        className={styles.statusSelect}
-                      >
-                        <option value="closed">Closed All Day</option>
-                        <option value="custom">Custom Hours</option>
-                      </select>
-                    </td>
-                    <td>
-                      {!item.is_closed ? (
-                        <div className={styles.tableTimeGroup}>
-                          <input
-                            type="time"
-                            step="1800"
-                            value={item.open_time}
-                            onChange={(e) => handleExceptionChange(item.id, 'open_time', e.target.value)}
-                            className={styles.tableTimeInput}
-                          />
-                          <span>–</span>
-                          <input
-                            type="time"
-                            step="1800"
-                            value={item.close_time}
-                            onChange={(e) => handleExceptionChange(item.id, 'close_time', e.target.value)}
-                            className={styles.tableTimeInput}
-                          />
-                        </div>
-                      ) : (
-                        <span className={styles.closedBadge}>Closed</span>
-                      )}
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        placeholder="e.g. Christmas, Renovation"
-                        value={item.note || ''}
-                        onChange={(e) => handleExceptionChange(item.id, 'note', e.target.value)}
-                        className={styles.noteInput}
-                      />
-                    </td>
-                    <td>
+                {exceptions.map((row) => (
+                  <tr key={row.id} className={editingExceptionId === row.id ? styles.rowEditing : ''}>
+                    <td className={styles.dayName}>{formatDate(row.exceptionDate)}</td>
+                    <td>{weekdayName(row.exceptionDate)}</td>
+                    <td>{row.openTime} – {row.closeTime}</td>
+                    <td className={styles.colDuration}>{((row.durationMinutes ?? 0) / 60).toFixed(1)} h</td>
+                    <td className={styles.noteCell}>{row.note || '—'}</td>
+                    <td className={styles.colActions}>
+                      <button className={styles.linkButton} type="button" onClick={() => handleEditException(row)}>
+                        Edit
+                      </button>
                       <button
-                        className={styles.removeBtn}
+                        className={styles.linkButtonDanger}
                         type="button"
-                        onClick={() => handleRemoveExceptionDate(item.id)}
-                        aria-label="Remove exception date"
+                        onClick={() => handleDeleteException(row)}
                       >
-                        Remove
+                        Delete
                       </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </section>
-
-      {/* Bottom Save Action */}
-      <div className={styles.footerActions}>
-        <button
-          className={styles.saveBtn}
-          type="button"
-          onClick={handleSaveClick}
-          disabled={saving}
-        >
-          {saving ? 'Saving…' : 'Save Changes'}
-        </button>
+          )}
+        </section>
       </div>
-    </div>
+    </ManagementLayout>
   )
 }

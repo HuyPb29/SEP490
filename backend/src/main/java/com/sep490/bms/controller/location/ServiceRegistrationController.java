@@ -24,6 +24,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API nộp, tra cứu và xét duyệt đơn đăng ký sử dụng dịch vụ.
+ *
  * Feature: F2 – Quản lý địa điểm
  * Owner: Minh Anh
  * UC: UC05 – Đăng ký sử dụng dịch vụ

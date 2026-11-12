@@ -11,6 +11,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Tổng hợp yêu cầu đổi lịch, lượt đã duyệt và số tiền phụ thu theo ngày.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

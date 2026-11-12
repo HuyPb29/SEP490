@@ -1,1 +1,121 @@
 @import "tailwindcss";
+
+:root {
+  /* 1. Brand & Semantic Colors */
+  --color-primary: #14532d;
+  --color-primary-hover: #0f3f22;
+  --color-primary-accent: #16a34a;
+  --color-primary-soft: #e4f2e8;
+  --color-secondary: #f8fafc;
+
+  /* 2. Surface & Background Colors */
+  --color-bg: #f6f7f3;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-border: #dde3da;
+  --color-border-strong: #cbd5e1;
+
+  /* 3. Text Colors */
+  --color-text: #142019;
+  --color-text-secondary: #334155;
+  --color-text-muted: #55645a;
+
+  /* 4. Sidebar Colors (Management & Admin) */
+  --color-sidebar-bg: #0b132b;
+  --color-sidebar-surface: #192235;
+  --color-sidebar-text: #e2e8f0;
+  --color-sidebar-muted: #94a3b8;
+
+  /* 5. Status Colors (Mapped to sheet Trang_thai) */
+  --color-success: #15803d;
+  --color-success-bg: #dcfce7;
+  --color-success-border: #bbf7d0;
+
+  --color-warning: #9a3412;
+  --color-warning-bg: #ffedd5;
+  --color-warning-border: #fed7aa;
+
+  --color-info: #1d4ed8;
+  --color-info-bg: #dbeafe;
+  --color-info-border: #bfdbfe;
+
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fee2e2;
+  --color-danger-border: #fecaca;
+
+  --color-neutral: #475569;
+  --color-neutral-bg: #f1f5f9;
+  --color-neutral-border: #e2e8f0;
+
+  /* 6. Typography */
+  --font-sans: 'Be Vietnam Pro', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
+
+  --text-xs: 0.75rem;      /* 12px */
+  --text-sm: 0.8125rem;    /* 13px */
+  --text-base: 0.875rem;   /* 14px */
+  --text-md: 1rem;         /* 16px */
+  --text-lg: 1.125rem;     /* 18px */
+  --text-xl: 1.375rem;     /* 22px */
+  --text-2xl: clamp(1.375rem, 2vw, 1.625rem); /* 22px - 26px */
+
+  /* 7. Spacing Scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* 8. Border Radius */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-full: 9999px;
+
+  /* 9. Shadows */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-sm: 0 4px 12px rgba(15, 29, 20, 0.05);
+  --shadow-md: 0 10px 30px rgba(15, 29, 20, 0.06);
+  --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.18);
+
+  /* 10. Layout Dimensions */
+  --container-max: 1240px;
+  --sidebar-width: 248px;
+  --header-height: 64px;
+
+  /* Backward-compatible aliases for workspace.css (--cw-*) */
+  --cw-bg: var(--color-bg);
+  --cw-surface: var(--color-surface);
+  --cw-surface-muted: #eff2eb;
+  --cw-ink: var(--color-text);
+  --cw-muted: var(--color-text-muted);
+  --cw-line: var(--color-border);
+  --cw-accent: var(--color-primary);
+  --cw-accent-strong: var(--color-primary-hover);
+  --cw-accent-soft: var(--color-primary-soft);
+  --cw-warn: var(--color-warning);
+  --cw-warn-soft: var(--color-warning-bg);
+  --cw-danger: var(--color-danger);
+  --cw-danger-soft: var(--color-danger-bg);
+  --cw-radius: 12px;
+  --cw-shadow: var(--shadow-md);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+

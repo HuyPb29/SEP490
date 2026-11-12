@@ -19,6 +19,9 @@ import com.sep490.bms.entity.payment.Payment;
 
 import jakarta.persistence.LockModeType;
 
+/**
+ * Tra cứu và khóa giao dịch theo booking hoặc gói, gồm các truy vấn phục vụ xác nhận và đối soát.
+ */
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
@@ -46,6 +49,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Page<Payment> findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
             Long locationId, PaymentStatus status, Pageable pageable);
 
+    List<Payment> findByLocationIdAndStatusOrderBySubmittedAtAscIdAsc(Long locationId, PaymentStatus status);
+
     @Query("""
             SELECT p.id FROM Payment p
             WHERE p.status IN :statuses AND EXISTS (
@@ -53,6 +58,20 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             )
             """)
     List<Long> findPackagePaymentExpiryCandidates(@Param("statuses") Collection<PaymentStatus> statuses,
+            @Param("today") LocalDate today);
+
+    /**
+     * UC37, BR03, FR125: giao dịch của booking lẻ vẫn chờ Staff mà ngày chơi đã đến. Chỉ lọc theo ngày;
+     * PaymentService kiểm lại giờ kết thúc sau khi khóa dòng. Gói và khoản trả thêm khi đổi lịch không có
+     * booking_id nên không lấy (ck_payment_target).
+     */
+    @Query("""
+            SELECT p.id FROM Payment p
+            WHERE p.status IN :statuses AND p.bookingId IS NOT NULL AND EXISTS (
+                SELECT b.id FROM Booking b WHERE b.id = p.bookingId AND b.playDate <= :today
+            )
+            """)
+    List<Long> findBookingPaymentExpiryCandidates(@Param("statuses") Collection<PaymentStatus> statuses,
             @Param("today") LocalDate today);
 
     /**

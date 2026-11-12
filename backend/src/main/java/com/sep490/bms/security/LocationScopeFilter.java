@@ -7,10 +7,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.sep490.bms.entity.Location;
-import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -27,6 +27,7 @@ public class LocationScopeFilter extends OncePerRequestFilter {
 
     private final LocationAccessService locationAccess;
     private final LocationRepository locations;
+    private final SecurityErrorWriter errors;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -36,7 +37,7 @@ public class LocationScopeFilter extends OncePerRequestFilter {
             try {
                 checkAccess(request, user);
             } catch (AppException ex) {
-                response.sendError(ex.getStatus().value(), ex.getMessage());
+                errors.write(response, ex.getStatus(), ex.getMessage());
                 return;
             }
         }

@@ -3,6 +3,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.promotion.Voucher;
+/**
+ * Trả điều kiện, hạn mức, ngân sách và trạng thái phát hành của voucher.
+ */
 public record VoucherResponse(Long id, Long locationId, String code, String name, VoucherSource source,
         VoucherTargetGroup targetGroup, DiscountType discountType, BigDecimal discountValue, BigDecimal minOrderAmount,
         LocalDate validFrom, LocalDate validTo, Integer grantValidDays, Integer maxUsesPerPlayer,

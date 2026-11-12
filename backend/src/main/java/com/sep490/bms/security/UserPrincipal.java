@@ -7,14 +7,17 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-import com.sep490.bms.entity.Account;
-import com.sep490.bms.entity.AccountStatus;
-import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.account.AccountStatus;
+import com.sep490.bms.entity.account.Role;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
+/**
+ * Biểu diễn tài khoản đã xác thực cùng vai trò, phạm vi địa điểm và phiên bản token.
+ */
 @Getter
 @AllArgsConstructor
 @Builder

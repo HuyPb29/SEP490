@@ -17,6 +17,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu tư cách thành viên đội và thời điểm tham gia hoặc rời đội.
+ */
 @Entity
 @Table(name = "team_member")
 @Getter

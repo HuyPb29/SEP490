@@ -17,6 +17,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu chương trình ưu đãi đặt theo lô, thời gian áp dụng, giá trị gói tối thiểu và voucher thưởng.
+ */
 @Entity
 @Table(name = "batch_offer")
 @Getter

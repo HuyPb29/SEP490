@@ -8,6 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận ghi chú của Staff khi chuyển khiếu nại cho Owner.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

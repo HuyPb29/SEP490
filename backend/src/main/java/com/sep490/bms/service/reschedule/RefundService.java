@@ -15,6 +15,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Tra cứu yêu cầu hoàn tiền, kiểm tra giới hạn và ghi nhận khoản Owner đã hoàn.
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -42,7 +45,8 @@ public class RefundService {
         if(r.getStatus()!=RefundStatus.PENDING_REFUND) throw new AppException("Đã ghi nhận hoàn tiền",HttpStatus.CONFLICT);
         BigDecimal refunded=em.createQuery("select coalesce(sum(r.refundedAmount),0) from RefundRequest r where r.bookingId=:b and r.status=:s",BigDecimal.class)
                 .setParameter("b",b.getId()).setParameter("s",RefundStatus.REFUNDED).getSingleResult();
-        BigDecimal cap=support.refundableAmount(b);
+        BigDecimal cap = r.getVerifiedUnrecordedAmount() != null
+                ? r.getVerifiedUnrecordedAmount() : support.refundableAmount(b);
         if(input.amount().compareTo(cap.subtract(refunded))>0) throw new AppException("Số tiền hoàn vượt số tiền đã thu còn lại");
         String reason=input.reason()==null?null:input.reason().trim();
         if(input.amount().compareTo(r.getSuggestedAmount())!=0 && (reason==null || reason.isBlank()))

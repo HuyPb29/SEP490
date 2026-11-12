@@ -9,6 +9,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.promotion.PlayerLocationBalance;
 
+/**
+ * Tra cứu ví điểm của Player theo địa điểm.
+ */
 @Repository
 public interface PlayerLocationBalanceRepository extends JpaRepository<PlayerLocationBalance, Long> {
     Optional<PlayerLocationBalance> findByPlayerIdAndLocationId(Long playerId, Long locationId);

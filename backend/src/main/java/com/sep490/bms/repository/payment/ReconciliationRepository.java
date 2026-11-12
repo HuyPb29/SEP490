@@ -12,6 +12,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.payment.Reconciliation;
 
+/**
+ * Tra cứu kết quả đối soát theo địa điểm, ngày hoặc kỳ báo cáo.
+ */
 @Repository
 public interface ReconciliationRepository extends JpaRepository<Reconciliation, Long> {
 

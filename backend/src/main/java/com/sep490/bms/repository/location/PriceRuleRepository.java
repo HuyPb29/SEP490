@@ -11,6 +11,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.location.PriceRule;
 
+/**
+ * Tra cứu quy tắc giá theo sân và ngày hiệu lực.
+ */
 @Repository
 public interface PriceRuleRepository extends JpaRepository<PriceRule, Long> {
 

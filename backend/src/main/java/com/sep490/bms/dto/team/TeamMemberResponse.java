@@ -8,6 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Trả thông tin thành viên, vai trò đội trưởng và thời điểm gia nhập đội.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

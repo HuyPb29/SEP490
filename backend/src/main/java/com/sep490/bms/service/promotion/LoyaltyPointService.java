@@ -10,7 +10,10 @@ import org.springframework.transaction.annotation.*;
 import org.springframework.validation.annotation.Validated;
 import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.promotion.*;
-import com.sep490.bms.entity.*;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.account.AccountStatus;
+import com.sep490.bms.entity.account.Role;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.*;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.reschedule.*;
@@ -24,6 +27,9 @@ import jakarta.persistence.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Quản lý số dư và lịch sử điểm, xử lý tích, dùng, trả lại và thu hồi điểm theo giao dịch.
+ */
 @Service @Validated @RequiredArgsConstructor @Transactional(readOnly=true)
 public class LoyaltyPointService {
     public static final int POINT_VALUE=500;
@@ -240,7 +246,7 @@ public class LoyaltyPointService {
         if(observed==null) throw new AppException("Không tìm thấy yêu cầu hoàn tiền",HttpStatus.NOT_FOUND);
         Booking booking=lock(Booking.class,observed.getBookingId());
         RefundRequest refund=lock(RefundRequest.class,refundId);
-        if(booking.getPlayerId()==null) return; // Walk-in has no wallet.
+        if (booking.getPlayerId() == null || refund.getVerifiedUnrecordedAmount() != null) return;
         BigDecimal old=refund.getLoyaltySettledAmount();
         if(amount.compareTo(old)==0) return;
         List<LoyaltyRefundCalculator.Receipt> receipts=refundReceipts(booking);
@@ -252,7 +258,13 @@ public class LoyaltyPointService {
         int delta=LoyaltyRefundCalculator.points(receipts,prior.add(amount))-LoyaltyRefundCalculator.points(receipts,prior.add(old));
         if(delta>0) {
             int revoked=Math.min(delta,wallet.getPointBalance());
-            if(revoked>0) change(wallet,booking.getId(),null,PointTransactionType.REVOKE,-revoked,null,"Thu hồi điểm hoàn tiền #"+refundId,refund.getRecordedBy());
+            if (revoked > 0) {
+                change(wallet,booking.getId(),null,PointTransactionType.REVOKE,-revoked,null,"Thu hồi điểm hoàn tiền #"+refundId,refund.getRecordedBy());
+                em.persist(Notification.builder().recipientId(booking.getPlayerId()).type("REFUND_POINTS_REVOKED")
+                        .title("Đã thu hồi điểm tích lũy")
+                        .content("Đã thu hồi " + revoked + " điểm của khoản hoàn cho " + booking.getBookingCode())
+                        .refType("BOOKING").refId(booking.getId()).build());
+            }
             refund.setLoyaltyRevokedPoints(refund.getLoyaltyRevokedPoints()+revoked);
         } else if(delta<0) {
             int returned=Math.min(-delta,refund.getLoyaltyRevokedPoints());

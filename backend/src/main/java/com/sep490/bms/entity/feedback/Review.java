@@ -15,6 +15,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu đánh giá sân theo booking, phản hồi của Owner và trạng thái hiển thị.
+ */
 @Entity
 @Table(name = "review")
 @Getter

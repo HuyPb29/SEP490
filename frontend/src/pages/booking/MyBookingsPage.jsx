@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Header from '../../components/layout/Header';
-import { getMyBookingsApi, cancelBookingApi, cancelBookingOrderApi } from '../../api/bookingApi';
+import HistoryDetailDialog from './HistoryDetailDialog';
+import { bookingStatusLabels, canPayHistoryEntry } from '../../api/bookingHistory';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+import { useBookingActions } from '../../hooks/useBooking';
 import styles from './MyBookingsPage.module.css';
+import { formatVnd } from '../../utils/formatters';
+import { EmptyState, Feedback, Field, Modal } from '../../components/common/WorkspacePrimitives';
+import { PublicHeader } from '../../components/layout/PublicLayout';
 
-function calculateDefaultHoldExpiry(isPackage) {
-  return new Date(Date.now() + (isPackage ? 15 : 10) * 60 * 1000).toISOString();
-}
-
-// Phân nhóm 10 trạng thái chính thức theo chuẩn SRS v18 (Sheet Trang_thai)
+// Phân nhóm 10 trạng thái chính thức theo chuẩn SRS (Sheet Trang_thai)
 const PENDING_STATUSES = ['holding', 'resubmit_requested', 'awaiting_confirmation'];
 const CONFIRMED_STATUSES = ['confirmed', 'in_use'];
 const PAST_STATUSES = [
@@ -19,96 +20,145 @@ const PAST_STATUSES = [
   'payment_rejected',
 ];
 
-function groupBookingOrders(items) {
-  const entries = [];
-  const orderEntries = new Map();
+// UC22: Nhãn nguyên nhân và kết quả xử lý booking bị ảnh hưởng
+const AFFECTED_CAUSES = {
+  OWNER_CANCELLED: 'Sân hủy lịch',
+  MAINTENANCE: 'Sân bảo trì',
+  COURT_DISABLED: 'Sân tạm ngừng hoạt động',
+  HOURS_CHANGED: 'Địa điểm đổi giờ mở cửa',
+};
+const AFFECTED_CHOICES = {
+  RESCHEDULE: 'Đã đổi slot miễn phí',
+  REFUND: 'Đã chọn hoàn tiền',
+  POINTS: 'Đã nhận điểm bồi hoàn',
+};
 
-  items.forEach((item) => {
-    if (item.order_id == null) {
-      entries.push({ kind: 'booking', booking: item, created_at: item.created_at });
-      return;
-    }
+function formatSlotTime(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
 
-    let order = orderEntries.get(String(item.order_id));
-    if (!order) {
-      order = {
-        kind: 'order',
-        order_id: item.order_id,
-        order_code: item.order_code || `Order ${item.order_id}`,
-        status: item.status,
-        status_name: item.status_name,
-        facility_name: item.facility_name,
-        created_at: item.created_at,
-        bookings: [],
-      };
-      orderEntries.set(String(item.order_id), order);
-      entries.push(order);
-    }
+const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+const TIME_OPTIONS = [];
+for (let min = 0; min <= 1440; min += 30) {
+  TIME_OPTIONS.push({ value: min, label: formatSlotTime(min) });
+}
 
-    order.bookings.push(...(Array.isArray(item.bookings) ? item.bookings : [item]));
-  });
-
-  return entries;
+function serverTimestamp(value) {
+  if (!value) return Number.NaN;
+  return Date.parse(/Z$|[+-]\d{2}:\d{2}$/.test(value) ? value : value + '+07:00');
 }
 
 export default function MyBookingsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const {
+    getMyBookingsApi,
+    cancelBookingApi,
+    cancelDayOrderApi,
+    createBookingReviewApi,
+    getPackageSessionsApi,
+    getRescheduleDeadlineApi,
+    getRescheduleRequestsApi,
+    getMyAffectedBookingsApi,
+    getAffectedBookingApi,
+    submitAffectedChoiceApi,
+    previewRescheduleApi,
+    createRescheduleApi,
+    getLocationCourtsApi,
+  } = useBookingActions();
+  const isPlayer = user?.role_code === 'player';
 
   // Tab: 'all' | 'pending_payment' | 'confirmed' | 'past'
   const [activeTab, setActiveTab] = useState('all');
+  const [exactStatus, setExactStatus] = useState('');
+  const [search, setSearch] = useState('');
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
   const [fetchError, setFetchError] = useState('');
   const [feedbackBanner, setFeedbackBanner] = useState('');
 
   // Tick mỗi giây để cập nhật đồng hồ đếm ngược cho các booking 'holding' (BR03)
   const [nowMs, setNowMs] = useState(() => Date.now());
 
+  // State Modal xem chi tiết đơn đặt sân (UC17 #3-5, FR35, FR51, FR52, FR57)
+  const [detailTarget, setDetailTarget] = useState(null);
+
   // State Modal xác nhận Hủy booking theo BR07 / MSG66
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
 
-  // State theo dõi các booking đã đánh giá (DR13 / BR21: chỉ đánh giá 1 lần)
-  const [reviewedIds, setReviewedIds] = useState([]);
+  // UC31: State Modal đánh giá sân sau khi hoàn tất buổi chơi
+  const [reviewTarget, setReviewTarget] = useState(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+
+  const [rescheduleLoading, setRescheduleLoading] = useState(false);
+  const [packageLoading, setPackageLoading] = useState(null);
+  const [expandedPackages, setExpandedPackages] = useState([]);
+  // UC22: Bản ghi affected mới nhất theo booking và hộp xác nhận lựa chọn
+  const [affectedByBooking, setAffectedByBooking] = useState({});
+  const [affectedLoading, setAffectedLoading] = useState(false);
+  const [choiceTarget, setChoiceTarget] = useState(null);
+  const [choiceSubmitting, setChoiceSubmitting] = useState(false);
+
+  // UC21: State cho Modal đổi lịch (chọn slot mới, xem chênh lệch và xác nhận)
+  const [rescheduleTarget, setRescheduleTarget] = useState(null);
+  const [rescheduleDeadline, setRescheduleDeadline] = useState(null);
+  const [availableCourts, setAvailableCourts] = useState([]);
+  const [selectedCourtId, setSelectedCourtId] = useState('');
+  const [newPlayDate, setNewPlayDate] = useState('');
+  const [startMin, setStartMin] = useState(1080); // 18:00
+  const [endMin, setEndMin] = useState(1140);   // 19:00
+  const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
+  const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
 
   useEffect(() => {
-    let isCancelled = false;
-    getMyBookingsApi({ tab: 'all' })
-      .then((res) => {
-        if (isCancelled) return;
-        if (res?.success) {
-          // VÁ LỖI HOLDING FLASH: Ép trạng thái expired ngay từ lúc nhận dữ liệu nếu đã quá giờ
-          const currentNow = Date.now();
-          const sanitizedItems = (res.data.items || []).map((item) => {
-            if (item.status === 'holding' && item.hold_expires_at) {
-              const left = Math.floor((new Date(item.hold_expires_at).getTime() - currentNow) / 1000);
-              if (left <= 0) {
-                return {
-                  ...item,
-                  status: 'expired',
-                  status_name: 'Expired',
-                  sub_note: 'Unpaid within holding time',
-                };
-              }
-            }
-            return item;
-          });
-          setBookings(sanitizedItems);
-        } else {
-          setFetchError('Could not load your bookings.');
-        }
-      })
-      .catch((err) => {
-        if (isCancelled) return;
-        setFetchError(err.response?.data?.message || err.message || 'Error loading bookings.');
-      })
-      .finally(() => {
-        if (!isCancelled) setLoading(false);
-      });
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
+    if (!isPlayer) return undefined;
+    let active = true;
+    Promise.all([getMyBookingsApi(), getMyAffectedBookingsApi().catch(() => [])]).then(([items, affected]) => {
+      if (!active) return;
+      const latest = {};
+      for (const record of affected) {
+        if (!latest[record.bookingId]) latest[record.bookingId] = record;
+      }
+      setAffectedByBooking(latest);
+      if (active) {
+        setExpandedPackages([]);
+        setBookings(items);
+      }
+    }).catch((error) => {
+      if (active) setFetchError(error.response?.data?.message || 'Không tải được lịch sử đặt sân.');
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [isPlayer, reload, getMyBookingsApi, getMyAffectedBookingsApi]);
+
+  useEffect(() => {
+    if (!isPlayer || loading || fetchError) return undefined;
+    let active = true;
+    let updating = false;
+    const timer = setInterval(async () => {
+      if (updating || document.visibilityState === 'hidden') return;
+      updating = true;
+      try {
+        const items = await getMyBookingsApi();
+        if (active) setBookings((current) => [...items, ...current.filter((item) => item.booking_type === 'session')]);
+      } catch {
+        // Keep the last successful list while polling.
+      } finally {
+        updating = false;
+      }
+    }, 12_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [isPlayer, loading, fetchError, reload, getMyBookingsApi]);
 
   // BR03: Đếm lùi thời gian thực cho các booking đang giữ chỗ (holding)
   useEffect(() => {
@@ -116,17 +166,17 @@ export default function MyBookingsPage() {
       const currentNow = Date.now();
       setNowMs(currentNow);
 
-      // Tự động chuyển sang expired nếu hết 5 phút giữ chỗ mà chưa gửi chứng từ (MSG33)
+      // Tự động chuyển sang expired nếu hết thời gian giữ chỗ mà chưa gửi chứng từ (MSG33)
       setBookings((prev) =>
         prev.map((item) => {
           if (item.status === 'holding' && item.hold_expires_at) {
-            const left = Math.floor((new Date(item.hold_expires_at).getTime() - currentNow) / 1000);
+            const left = serverTimestamp(item.hold_expires_at) - currentNow;
             if (left <= 0) {
               return {
                 ...item,
                 status: 'expired',
-                status_name: 'Expired',
-                sub_note: 'Unpaid within holding time',
+                status_name: 'Hết hạn',
+                sub_note: 'Đã hết thời gian giữ chỗ mà chưa gửi chứng từ.',
               };
             }
           }
@@ -138,7 +188,6 @@ export default function MyBookingsPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Đếm số lượng đơn Cần thanh toán hiển thị trên Tab "Pending Payment · 3"
   const pendingCount = useMemo(
     () => bookings.filter((b) => PENDING_STATUSES.includes(b.status)).length,
     [bookings]
@@ -146,113 +195,114 @@ export default function MyBookingsPage() {
 
   // Lọc và giữ nguyên thứ tự ưu tiên: Nhóm chờ thanh toán luôn nằm trên đầu
   const displayedBookings = useMemo(() => {
-    const sorted = [...bookings].sort((a, b) => {
-      const aPending = PENDING_STATUSES.includes(a.status) ? 1 : 0;
-      const bPending = PENDING_STATUSES.includes(b.status) ? 1 : 0;
-      if (aPending !== bPending) return bPending - aPending;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-
-    let filtered = sorted;
-    if (activeTab === 'pending_payment') {
-      filtered = sorted.filter((b) => PENDING_STATUSES.includes(b.status));
-    } else if (activeTab === 'confirmed') {
-      filtered = sorted.filter((b) => CONFIRMED_STATUSES.includes(b.status));
-    } else if (activeTab === 'past') {
-      filtered = sorted.filter((b) => PAST_STATUSES.includes(b.status));
+    const query = search.trim().toLocaleLowerCase('vi-VN');
+    const statusGroup = { pending_payment: PENDING_STATUSES, confirmed: CONFIRMED_STATUSES, past: PAST_STATUSES }[activeTab];
+    const matches = (item) => (!exactStatus || item.status === exactStatus) &&
+      (!statusGroup || statusGroup.includes(item.status)) &&
+      (!query || [item.booking_code, item.facility_name, item.court_name]
+        .some((value) => value?.toLocaleLowerCase('vi-VN').includes(query)));
+    const childrenByPackage = new Map();
+    const rows = [];
+    for (const item of bookings) {
+      if (item.booking_type === 'session') {
+        if (!childrenByPackage.has(item.package_id)) childrenByPackage.set(item.package_id, []);
+        childrenByPackage.get(item.package_id).push(item);
+      } else rows.push(item);
     }
-    return groupBookingOrders(filtered);
-  }, [bookings, activeTab]);
+    rows.sort((a, b) => Number(PENDING_STATUSES.includes(b.status)) - Number(PENDING_STATUSES.includes(a.status)) ||
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return rows.flatMap((item) => {
+      const children = item.booking_type === 'package' && expandedPackages.includes(item.booking_id)
+        ? childrenByPackage.get(item.booking_id) ?? [] : [];
+      const filtered = children.filter(matches);
+      if (matches(item)) return [item, ...filtered];
+      return filtered.length ? [item, ...filtered] : [];
+    });
+  }, [bookings, activeTab, exactStatus, search, expandedPackages]);
 
-  // VÁ LỖI NGÀY THÁNG: Dùng new Date() thay vì .split('-') để không bị NaN khi Backend trả chuỗi ISO dài
   const formatDayBadge = (dateStr) => {
-    if (!dateStr) return { day: '24', monthLabel: 'Oct' };
+    if (!dateStr) return { day: '—', monthLabel: '' };
     const d = new Date(dateStr);
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return {
+    return Number.isNaN(d.getTime()) ? { day: '—', monthLabel: '' } : {
       day: String(d.getDate()).padStart(2, '0'),
-      monthLabel: months[d.getMonth()] || 'Oct',
+      monthLabel: 'Thg ' + (d.getMonth() + 1),
     };
   };
 
   const formatCountdown = (expiresIso) => {
     if (!expiresIso) return '00:00';
-    const secs = Math.max(0, Math.floor((new Date(expiresIso).getTime() - nowMs) / 1000));
+    const secs = Math.max(0, Math.floor((serverTimestamp(expiresIso) - nowMs) / 1000));
     const mm = String(Math.floor(secs / 60)).padStart(2, '0');
     const ss = String(secs % 60).padStart(2, '0');
     return `${mm}:${ss}`;
   };
 
-  // Điều hướng sang UC18 khi bấm "Continue Payment" (holding) hoặc "Resubmit Receipt" (resubmit_requested)
-  const handleGoToPayment = useCallback(
-    (booking) => {
-      setFeedbackBanner('');
+  const handleGoToPayment = (booking) => {
+    if (['holding', 'resubmit_requested'].includes(booking.status) && !canPayHistoryEntry(booking, nowMs)) return;
+    const param = booking.booking_type === 'package' ? 'packageId' : 'bookingId';
+    navigate('/booking/payment?' + param + '=' + booking.booking_id);
+  };
 
-      // BR34 / P06 / MSG52: Chặn nếu đã hết lượt gửi lại chứng từ
-      if (booking.status === 'resubmit_requested' && (booking.resubmit_attempts_left ?? 0) <= 0) {
-        setFeedbackBanner('MSG52: You have reached the maximum resubmission attempts or the deadline has passed.');
-        return;
-      }
 
-      const isPackageBooking =
-        booking.booking_type === 'recurring' ||
-        booking.booking_type === 'package' ||
-        Number(booking.total_slots ?? 0) > 1;
-      const payloadForPayment = {
-        booking_id: booking.booking_id ?? booking.id,
-        booking_code: booking.booking_code,
-        booking_type: booking.booking_type || 'single',
-        total_slots: booking.total_slots ?? 1,
-        status: booking.status,
-        hold_expires_at:
-          booking.hold_expires_at || calculateDefaultHoldExpiry(isPackageBooking),
-        resubmit_attempts_left: booking.resubmit_attempts_left ?? 3,
-        pricing_summary: {
-          final_amount: booking.final_amount,
-        },
-        bank_info: booking.bank_info || {
-          bank_name: 'Vietcombank',
-          bank_account_number: '0011 0023 4567',
-          bank_account_holder: 'NGUYEN VAN HUNG',
-          qr_image_url: null,
-          transfer_content: `${booking.booking_code} 0987654321`,
-        },
-      };
+  const showPackageSessions = async (item) => {
+    if (expandedPackages.includes(item.booking_id)) {
+      setExpandedPackages((current) => current.filter((id) => id !== item.booking_id));
+      return;
+    }
+    setPackageLoading(item.booking_id);
+    setFeedbackBanner('');
+    try {
+      const sessions = await getPackageSessionsApi(item.booking_id);
+      setBookings((current) => [
+        ...current.filter((booking) => booking.package_id !== item.booking_id),
+        ...sessions,
+      ]);
+      setExpandedPackages((current) => [...current, item.booking_id]);
+    } catch (error) {
+      setFeedbackBanner(error.response?.data?.message || 'Không tải được lịch của gói.');
+    } finally {
+      setPackageLoading(null);
+    }
+  };
 
-      sessionStorage.setItem('active_holding_booking', JSON.stringify(payloadForPayment));
-      navigate('/booking/payment');
-    },
-    [navigate]
-  );
-
-  // BR07 / MSG66: Xác nhận hủy booking (Không hoàn tiền, không trả lại điểm & voucher)
+  // BR07 / BR64 / MSG66: Xác nhận hủy booking hoặc hủy cả đơn đặt lẻ trong ngày
   const handleConfirmCancel = async () => {
     if (!cancelTarget || cancelling) return;
     setCancelling(true);
     setFeedbackBanner('');
     try {
-      const isOrder = cancelTarget.kind === 'order';
-      const res = isOrder
-        ? await cancelBookingOrderApi(cancelTarget.order_id)
+      const isWholeOrder = cancelTarget.booking_type === 'package' && cancelTarget.single_order;
+      const res = isWholeOrder
+        ? await cancelDayOrderApi(cancelTarget.booking_id)
         : await cancelBookingApi(cancelTarget.booking_id);
       if (res?.success) {
-        const markCancelled = (booking) => ({
-          ...booking,
-          status: 'cancelled_by_player',
-          status_name: 'Cancelled by Player',
-          can_cancel: false,
-          can_reschedule: false,
-          can_open_match: false,
-          sub_note: 'Cancelled by player (non-refundable per BR07)',
-        });
+        if (cancelTarget.single_order) {
+          const orderPkgId = isWholeOrder ? cancelTarget.booking_id : cancelTarget.package_id;
+          setCancelTarget(null);
+          setFeedbackBanner('Đã hủy các booking chưa đến giờ chơi trong đơn. Tiền, điểm và voucher đã dùng không được hoàn lại.');
+          const [items, sessions] = await Promise.all([
+            getMyBookingsApi(),
+            getPackageSessionsApi(orderPkgId).catch(() => []),
+          ]);
+          setExpandedPackages([orderPkgId]);
+          setBookings([...items, ...sessions]);
+          return;
+        }
         setBookings((prev) =>
-          prev.map((item) => {
-            if (!isOrder) return item.booking_id === cancelTarget.booking_id ? markCancelled(item) : item;
-            if (String(item.order_id) !== String(cancelTarget.order_id)) return item;
-            return Array.isArray(item.bookings)
-              ? { ...markCancelled(item), bookings: item.bookings.map(markCancelled) }
-              : markCancelled(item);
-          })
+          prev.map((item) =>
+            item.booking_type !== 'package' && item.booking_id === cancelTarget.booking_id
+              ? {
+                  ...item,
+                  status: 'cancelled_by_player',
+                  status_name: 'Người chơi đã hủy',
+                  can_cancel: false,
+                  sub_note: 'Hủy tự nguyện. Tiền và ưu đãi đã dùng không được hoàn lại.',
+                }
+              : item
+          )
+        );
+        setFeedbackBanner(
+          `Đã hủy ${cancelTarget.booking_code}. Tiền, điểm và voucher đã dùng không được hoàn lại.`
         );
         setFeedbackBanner(isOrder
           ? `Order ${cancelTarget.order_id} and all ${cancelTarget.bookings.length} booking ranges have been cancelled. Per BR07, payments, points, and vouchers are non-refundable.`
@@ -260,33 +310,209 @@ export default function MyBookingsPage() {
         setCancelTarget(null);
       }
     } catch (err) {
-      setFeedbackBanner(err.response?.data?.message || err.message || 'Could not cancel booking.');
+      setFeedbackBanner(err.response?.data?.message || 'Không tải được trạng thái mới. Vui lòng mở lại lịch sử đặt sân để kiểm tra.');
+      setCancelTarget(null);
     } finally {
       setCancelling(false);
     }
   };
 
-  // Xử lý bấm Đổi lịch (BR25, BR29 / MSG62)
-  const handleRescheduleClick = (booking) => {
-    if (!booking.can_reschedule || Number(booking.reschedule_count || 0) >= 1) {
-      setFeedbackBanner(
-        'MSG62: Reschedule is unavailable (past the deadline or maximum 1 reschedule limit reached).'
-      );
-      return;
-    }
-    setFeedbackBanner(
-      `Proceeding to reschedule booking ${booking.booking_code} (BR25 / BR29: max 1 reschedule allowed before deadline).`
-    );
+  const openReviewModal = (booking) => {
+    setReviewTarget(booking);
+    setReviewRating(5);
+    setReviewComment('');
+    setReviewError('');
   };
 
-  // Xử lý bấm Đánh giá sân (DR13 / BR21 / MSG80)
-  const handleReviewClick = (booking) => {
-    if (reviewedIds.includes(booking.booking_id)) {
-      setFeedbackBanner('MSG80: You have already submitted a review for this booking (DR13 / BR21).');
-      return;
+  const handleSubmitReview = async () => {
+    if (!reviewTarget || reviewSubmitting) return;
+    setReviewSubmitting(true);
+    setReviewError('');
+    try {
+      await createBookingReviewApi(reviewTarget.booking_id, {
+        rating: reviewRating,
+        comment: reviewComment,
+      });
+      setBookings((prev) =>
+        prev.map((item) =>
+          item.booking_type !== 'package' && item.booking_id === reviewTarget.booking_id
+            ? { ...item, can_review: false }
+            : item
+        )
+      );
+      setFeedbackBanner(`Cảm ơn bạn đã gửi đánh giá ${reviewRating}★ cho ${reviewTarget.booking_code}!`);
+      setReviewTarget(null);
+    } catch (err) {
+      setReviewError(err.response?.data?.message || 'Không thể gửi đánh giá sân.');
+    } finally {
+      setReviewSubmitting(false);
     }
-    setReviewedIds((prev) => [...prev, booking.booking_id]);
-    setFeedbackBanner(`Thank you! Your review for ${booking.facility_name} (${booking.booking_code}) has been recorded.`);
+  };
+
+  const openRescheduleModal = async (booking, affected = null, deadline = null) => {
+    setRescheduleTarget({ booking, affected });
+    setRescheduleDeadline(deadline);
+    setNewPlayDate(booking.booking_date || today());
+    setStartMin(1080);
+    setEndMin(1140);
+    setQuote(null);
+    setQuoteError('');
+    setAvailableCourts([]);
+    setSelectedCourtId('');
+    try {
+      if (booking.location_id) {
+        const courts = await getLocationCourtsApi(booking.location_id);
+        setAvailableCourts(courts);
+        if (courts.length > 0) setSelectedCourtId(String(courts[0].id));
+      }
+    } catch (error) {
+      setQuoteError(error.response?.data?.message || 'Không tải được danh sách sân.');
+    }
+  };
+
+  const beginAffectedAction = async (booking, affectedId, choice) => {
+    if (affectedLoading) return;
+    setAffectedLoading(true);
+    setFeedbackBanner('');
+    try {
+      const affected = await getAffectedBookingApi(affectedId);
+      setAffectedByBooking((current) => ({ ...current, [booking.booking_id]: affected }));
+      if (affected.status !== 'PENDING') {
+        setFeedbackBanner('Booking bị ảnh hưởng đã được xử lý.');
+      } else if (choice === 'RESCHEDULE') {
+        await openRescheduleModal(booking, affected);
+      } else {
+        setChoiceTarget({ booking, affected, choice });
+      }
+    } catch (error) {
+      setFeedbackBanner(error.response?.data?.message || 'Không tải được chi tiết booking bị ảnh hưởng.');
+    } finally {
+      setAffectedLoading(false);
+    }
+  };
+
+  const handleRescheduleClick = async (booking) => {
+    setRescheduleLoading(true);
+    setFeedbackBanner('');
+    try {
+      const [latest] = await getRescheduleRequestsApi(booking.booking_id);
+      if (latest?.status === 'PENDING_PAYMENT' && serverTimestamp(latest.holdExpiresAt) > Date.now()) {
+        navigate('/booking/payment?rescheduleId=' + latest.id);
+        return;
+      }
+      if (latest?.status === 'AWAITING_CONFIRMATION') {
+        navigate('/booking/payment?rescheduleId=' + latest.id);
+        return;
+      }
+      const deadline = await getRescheduleDeadlineApi(booking.booking_id);
+      await openRescheduleModal(booking, null, deadline);
+    } catch (error) {
+      setFeedbackBanner(error.response?.data?.message || 'Không tải được yêu cầu đổi lịch.');
+    } finally {
+      setRescheduleLoading(false);
+    }
+  };
+
+  const handlePreviewQuote = async () => {
+    if (!rescheduleTarget || !selectedCourtId || !newPlayDate) return;
+    setQuoteLoading(true);
+    setQuoteError('');
+    try {
+      const slot = {
+        courtId: Number(selectedCourtId),
+        date: newPlayDate,
+        startMinute: Number(startMin),
+        endMinute: Number(endMin),
+      };
+      const result = await previewRescheduleApi(rescheduleTarget.booking.booking_id, slot);
+      setQuote(result);
+    } catch (err) {
+      setQuote(null);
+      setQuoteError(err.response?.data?.message || 'Slot mới không hợp lệ hoặc không khả dụng.');
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
+
+  const handleConfirmReschedule = async () => {
+    if (!rescheduleTarget || !selectedCourtId || !newPlayDate || rescheduleSubmitting) return;
+    setRescheduleSubmitting(true);
+    setQuoteError('');
+    const slot = {
+      courtId: Number(selectedCourtId),
+      date: newPlayDate,
+      startMinute: Number(startMin),
+      endMinute: Number(endMin),
+    };
+    try {
+      if (rescheduleTarget.affected) {
+        // UC22: Đổi slot miễn phí cho booking bị ảnh hưởng
+        const result = await submitAffectedChoiceApi(rescheduleTarget.affected.id, 'RESCHEDULE', slot);
+        setFeedbackBanner(result.choice === 'RESCHEDULE'
+          ? `Booking ${rescheduleTarget.booking.booking_code} đã được đổi slot miễn phí.`
+          : `Đã quá giờ chơi. Hệ thống tự cộng ${result.compensationPoints ?? 0} điểm bồi hoàn.`);
+        setRescheduleTarget(null);
+        const [items, affectedList] = await Promise.all([getMyBookingsApi(), getMyAffectedBookingsApi()]);
+        setExpandedPackages([]);
+        setBookings(items);
+        const latest = {};
+        for (const r of affectedList) {
+          if (!latest[r.bookingId]) latest[r.bookingId] = r;
+        }
+        setAffectedByBooking(latest);
+      } else {
+        // UC21: Đổi lịch bình thường
+        const req = await createRescheduleApi(rescheduleTarget.booking.booking_id, slot);
+        if (req.extraAmount === 0 || req.status === 'APPROVED') {
+          setFeedbackBanner(`Đổi lịch thành công cho booking ${rescheduleTarget.booking.booking_code}!`);
+          setRescheduleTarget(null);
+          const items = await getMyBookingsApi();
+          setExpandedPackages([]);
+          setBookings(items);
+        } else {
+          setRescheduleTarget(null);
+          navigate('/booking/payment?rescheduleId=' + req.id);
+        }
+      }
+    } catch (err) {
+      setQuoteError(err.response?.data?.message || 'Không thể tạo yêu cầu đổi lịch.');
+    } finally {
+      setRescheduleSubmitting(false);
+    }
+  };
+
+  // UC22: Player chọn hoàn tiền hoặc điểm bồi hoàn cho booking bị ảnh hưởng
+  const handleConfirmChoice = async () => {
+    if (!choiceTarget || choiceSubmitting) return;
+    const { booking, affected, choice } = choiceTarget;
+    setChoiceSubmitting(true);
+    setFeedbackBanner('');
+    try {
+      const result = await submitAffectedChoiceApi(affected.id, choice);
+      setAffectedByBooking((current) => ({ ...current, [booking.booking_id]: result }));
+      setBookings((prev) =>
+        prev.map((item) =>
+          item.booking_type !== 'package' && item.booking_id === booking.booking_id
+            ? {
+                ...item,
+                status: 'cancelled_by_facility',
+                status_name: 'Địa điểm đã hủy',
+                can_cancel: false,
+              }
+            : item
+        )
+      );
+      const done = result.choice === 'POINTS'
+        ? `Đã cộng ${result.compensationPoints ?? ''} điểm bồi hoàn, điểm và voucher đã dùng được trả lại.`
+        : 'Đã gửi yêu cầu hoàn tiền tới Chủ sân, điểm và voucher đã dùng được trả lại.';
+      setFeedbackBanner(booking.booking_code + ' · ' + done + (result.defaultChoice ? ' (đã quá giờ chơi, hệ thống tự cấp điểm)' : ''));
+      setChoiceTarget(null);
+    } catch (err) {
+      setFeedbackBanner(err.response?.data?.message || 'Không gửi được lựa chọn.');
+      setChoiceTarget(null);
+    } finally {
+      setChoiceSubmitting(false);
+    }
   };
 
   const getBadgeClass = (status) => {
@@ -310,190 +536,84 @@ export default function MyBookingsPage() {
     }
   };
 
-  const renderBookingCard = (item, isOrderChild = false) => {
-    const { day, monthLabel } = formatDayBadge(item.booking_date);
-    const isReviewed = reviewedIds.includes(item.booking_id);
-    let secondaryLine = item.sub_note || '';
-    if (item.status === 'holding') {
-      secondaryLine = `${formatCountdown(item.hold_expires_at)} left to pay`;
-    } else if (item.status === 'resubmit_requested') {
-      secondaryLine = item.resubmit_reason || `Receipt image is blurry, ${item.resubmit_attempts_left ?? 2} attempts left`;
-    } else if (item.status === 'completed' && isReviewed) {
-      secondaryLine = 'Reviewed';
-    }
-
-    return (
-      <article
-        key={item.booking_id}
-        className={styles.bookingCard}
-        style={isOrderChild
-          ? { marginTop: 12, marginBottom: 0, border: 0, borderTop: '1px solid #e2e8f0', borderRadius: 0, padding: '14px 0 0', boxShadow: 'none' }
-          : undefined}
-      >
-        <div className={styles.cardLeft}>
-          <div className={styles.dateBox}>
-            <strong className={styles.dateDay}>{day}</strong>
-            <span className={styles.dateMonth}>{monthLabel}</span>
-          </div>
-          <div className={styles.bookingDetails}>
-            <div className={styles.titleRow}>
-              <h2 className={styles.facilityCourtTitle}>{item.facility_name} · {item.court_name}</h2>
-              <span className={`${styles.statusBadge} ${getBadgeClass(item.status)}`}>{item.status_name}</span>
-            </div>
-            <p className={styles.timeMetaLine}>
-              {item.time_range}{item.booker_label ? ` · ${item.booker_label}` : ''}
-            </p>
-            {secondaryLine && <p className={styles.subNoteLine}>{secondaryLine}</p>}
-          </div>
-        </div>
-
-        <div className={styles.cardRight}>
-          <strong className={styles.priceText}>{Number(item.final_amount || 0).toLocaleString('vi-VN')} VND</strong>
-          <div className={styles.actionGroup}>
-            {item.status === 'holding' && (
-              <button type="button" className={styles.primaryActionBtn} onClick={() => handleGoToPayment(item)}>
-                Continue Payment
-              </button>
-            )}
-            {item.status === 'resubmit_requested' && (
-              <button type="button" className={styles.primaryActionBtn} onClick={() => handleGoToPayment(item)}>
-                Resubmit Receipt
-              </button>
-            )}
-            {item.status === 'confirmed' && item.booking_type === 'recurring' && (
-              <button
-                type="button"
-                className={styles.outlineActionBtn}
-                onClick={() => setFeedbackBanner(`Viewing recurring schedule for package ${item.booking_code} (24 sessions).`)}
-              >
-                View Package Schedule
-              </button>
-            )}
-            {item.status === 'confirmed' && item.booking_type !== 'recurring' && (
-              <>
-                {item.can_open_match && (
-                  <button
-                    type="button"
-                    className={styles.outlineActionBtn}
-                    onClick={() => setFeedbackBanner(`Opening match recruitment for booking ${item.booking_code}.`)}
-                  >
-                    Open Match
-                  </button>
-                )}
-                <button type="button" className={styles.outlineActionBtn} onClick={() => handleRescheduleClick(item)}>
-                  Reschedule
-                </button>
-                {!isOrderChild && item.can_cancel && (
-                  <button type="button" className={styles.outlineActionBtn} onClick={() => setCancelTarget({ ...item, kind: 'booking' })}>
-                    Cancel
-                  </button>
-                )}
-              </>
-            )}
-            {item.status === 'completed' && (
-              <>
-                <button
-                  type="button"
-                  className={styles.outlineActionBtn}
-                  disabled={isReviewed}
-                  onClick={() => handleReviewClick(item)}
-                >
-                  {isReviewed ? 'Reviewed' : 'Review'}
-                </button>
-                {item.can_complain && (
-                  <button
-                    type="button"
-                    className={styles.outlineActionBtn}
-                    onClick={() => setFeedbackBanner(`Opening complaint form (UC33) for booking ${item.booking_code} (within 24h window per BR49).`)}
-                  >
-                    Complain
-                  </button>
-                )}
-              </>
-            )}
-            {(item.status === 'payment_rejected' || item.status === 'cancelled_by_facility') && (
-              <button
-                type="button"
-                className={styles.outlineActionBtn}
-                onClick={() => setFeedbackBanner(`Opening complaint form (UC33) for booking ${item.booking_code}.`)}
-              >
-                Complain
-              </button>
-            )}
-          </div>
-        </div>
-      </article>
-    );
-  };
+  if (!user) return <Navigate to="/login" state={{ returnTo: '/my-bookings' }} replace />;
+  if (!isPlayer) return <p role="alert">Chỉ tài khoản Người chơi xem được lịch sử đặt sân cá nhân.</p>;
 
   return (
-    <div className={styles.pageWrapper}>
-      {/* Top Navbar */}
-      <Header />
+    <div className={`${styles.pageWrapper} cw-workspace`}>
+      <PublicHeader user={user} />
 
       <main className={styles.mainContainer}>
-        {/* Header Row: Tiêu đề + Nút Đặt nhiều buổi */}
+        {/* Header Row: Tiêu đề + Nút Tìm sân để đặt */}
         <div className={styles.headerRow}>
-          <h1 className={styles.pageTitle}>My Bookings</h1>
+          <h1 className={styles.pageTitle}>Lịch đặt sân</h1>
           <button
             type="button"
             className={styles.multiBookBtn}
             onClick={() => navigate('/')}
           >
-            + Book Multiple Sessions
+            Tìm sân để đặt
           </button>
         </div>
 
         {/* Bộ lọc 4 Tab theo chuẩn UC17 */}
-        <div className={styles.filterTabs} role="tablist" aria-label="Booking Status Filter">
+        <div className={styles.historyTools}>
+          <Field label="Tìm lịch đặt sân" type="search" placeholder="Mã đặt sân, địa điểm hoặc tên sân"
+            value={search} onChange={(event) => setSearch(event.target.value)} />
+        <div className={styles.filterTabs} role="group" aria-label="Trạng thái đặt sân">
           <button
             type="button"
-            role="tab"
-            aria-selected={activeTab === 'all'}
+            aria-pressed={activeTab === 'all'}
             className={`${styles.tabPill} ${activeTab === 'all' ? styles.tabPillActive : ''}`}
-            onClick={() => setActiveTab('all')}
+            onClick={() => { setExactStatus(''); setActiveTab('all'); }}
           >
-            All
+            Tất cả
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={activeTab === 'pending_payment'}
+            aria-pressed={activeTab === 'pending_payment'}
             className={`${styles.tabPill} ${
               activeTab === 'pending_payment' ? styles.tabPillActive : ''
             }`}
-            onClick={() => setActiveTab('pending_payment')}
+            onClick={() => { setExactStatus(''); setActiveTab('pending_payment'); }}
           >
-            Pending Payment · {pendingCount}
+            Thanh toán · {pendingCount}
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={activeTab === 'confirmed'}
+            aria-pressed={activeTab === 'confirmed'}
             className={`${styles.tabPill} ${
               activeTab === 'confirmed' ? styles.tabPillActive : ''
             }`}
-            onClick={() => setActiveTab('confirmed')}
+            onClick={() => { setExactStatus(''); setActiveTab('confirmed'); }}
           >
-            Confirmed
+            Đã xác nhận
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={activeTab === 'past'}
+            aria-pressed={activeTab === 'past'}
             className={`${styles.tabPill} ${activeTab === 'past' ? styles.tabPillActive : ''}`}
-            onClick={() => setActiveTab('past')}
+            onClick={() => { setExactStatus(''); setActiveTab('past'); }}
           >
-            Past
+            Đã qua
           </button>
+          <label>
+            Trạng thái
+            <select value={exactStatus} onChange={(event) => { setExactStatus(event.target.value); setActiveTab('all'); }}>
+              <option value="">Tất cả trạng thái</option>
+              {Object.entries(bookingStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+            </select>
+          </label>
         </div>
 
+        </div>
         {feedbackBanner && (
-          <div className={styles.feedbackBanner}>
+          <div className={styles.feedbackBanner} role="status">
             <span>{feedbackBanner}</span>
             <button
               type="button"
               className={styles.closeBannerBtn}
+              aria-label="Đóng thông báo"
               onClick={() => setFeedbackBanner('')}
             >
               ✕
@@ -501,39 +621,216 @@ export default function MyBookingsPage() {
           </div>
         )}
 
-        {fetchError && <div className={styles.errorBanner}>{fetchError}</div>}
+        {fetchError && <Feedback tone="error">{fetchError}<button className="cw-secondary" type="button" onClick={() => { setFetchError(''); setLoading(true); setReload((value) => value + 1); }}>Thử lại</button></Feedback>}
 
         {/* Danh sách các thẻ Booking */}
         {loading ? (
-          <div className={styles.loadingState}>Loading your bookings...</div>
-        ) : displayedBookings.length === 0 ? (
-          <div className={styles.emptyState}>No bookings found in this tab.</div>
+          <Feedback>Đang tải lịch đặt sân…</Feedback>
+        ) : fetchError ? null : displayedBookings.length === 0 ? (
+          <EmptyState action={search ? <button type="button" className="cw-secondary" onClick={() => setSearch('')}>Xóa từ khóa</button>
+            : activeTab === 'all' ? <Link to="/" className="cw-secondary">Tìm sân</Link> : null}>
+            {search ? 'Không tìm thấy lịch đặt sân phù hợp.' : 'Chưa có lịch đặt sân trong mục này.'}
+          </EmptyState>
         ) : (
           <div className={styles.bookingList}>
-            {displayedBookings.map((entry) => {
-              if (entry.kind === 'booking') return renderBookingCard(entry.booking);
-              const canCancelOrder = entry.bookings.some((booking) => booking.can_cancel);
-              const orderTotal = entry.bookings.reduce((total, booking) => total + Number(booking.final_amount || 0), 0);
+            {displayedBookings.map((item) => {
+              const { day, monthLabel } = formatDayBadge(item.booking_date);
+              const affected = item.booking_type !== 'package' ? affectedByBooking[item.booking_id] : null;
+              const affectedPending = affected?.status === 'PENDING' && item.status === 'confirmed';
+
+              let secondaryLine = item.sub_note || '';
+              if (item.status === 'holding') {
+                secondaryLine = `${formatCountdown(item.hold_expires_at)} còn lại để thanh toán`;
+              } else if (item.status === 'resubmit_requested') {
+                secondaryLine = 'Nhân viên yêu cầu gửi lại chứng từ.';
+              } else if (affectedPending) {
+                secondaryLine = `${AFFECTED_CAUSES[affected.cause] || affected.cause}: chọn đổi slot, hoàn tiền hoặc điểm bồi hoàn trước giờ chơi. Quá giờ chơi hệ thống tự cấp điểm bồi hoàn.`;
+              } else if (affected?.status === 'RESOLVED') {
+                secondaryLine = `${AFFECTED_CAUSES[affected.cause] || affected.cause} · ${AFFECTED_CHOICES[affected.choice] || affected.choice}`
+                  + (affected.choice === 'POINTS' && affected.compensationPoints != null ? ` (+${affected.compensationPoints} điểm)` : '')
+                  + (affected.defaultChoice ? ' · tự động do quá giờ chơi' : '');
+              }
+
               return (
-                <article key={`order-${entry.order_id}`} className={styles.bookingCard} style={{ display: 'block' }}>
-                  <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-                    <div>
-                      <h2 className={styles.facilityCourtTitle}>Order #{entry.order_id}</h2>
+                <article key={item.booking_type + '-' + item.booking_id} className={styles.bookingCard + (item.booking_type === 'session' ? ' ' + styles.bookingChild : '')}>
+                  {/* Khối trái: Ô lịch Ngày/Tháng + Thông tin sân */}
+                  <div className={styles.cardLeft}>
+                    <div className={styles.dateBox}>
+                      <strong className={styles.dateDay}>{day}</strong>
+                      <span className={styles.dateMonth}>{monthLabel}</span>
+                    </div>
+
+                    <div className={styles.bookingDetails}>
+                      <div className={styles.titleRow}>
+                        <h2 className={styles.facilityCourtTitle}>
+                          {item.facility_name} · {item.court_name}
+                        </h2>
+                        <span className={`${styles.statusBadge} ${getBadgeClass(item.status)}`}>
+                          {item.status_name}
+                        </span>
+                      </div>
+
                       <p className={styles.timeMetaLine}>
-                        {entry.facility_name} · {entry.bookings.length} booking ranges · Total {orderTotal.toLocaleString('vi-VN')} VND
+                        {item.booking_code} · {item.time_range}
+                        {item.booker_label ? ` · ${item.booker_label}` : ''}
                       </p>
                     </div>
+                  </div>
+
+                  {/* Khối phải: Giá tiền thực trả (final_amount) + Các nút thao tác theo trạng thái */}
+                  <div className={styles.cardRight}>
+                    <strong className={styles.priceText}>
+                      {formatVnd(item.final_amount)}
+                    </strong>
+
                     <div className={styles.actionGroup}>
-                      <span className={`${styles.statusBadge} ${getBadgeClass(entry.status)}`}>{entry.status_name}</span>
-                      {canCancelOrder && (
+                      {/* Nút Xem chi tiết (UC17 #3-5, FR35, FR51, FR52, FR57) */}
+                      <button
+                        type="button"
+                        className={styles.outlineActionBtn}
+                        onClick={() => setDetailTarget(item)}
+                      >
+                        Xem chi tiết
+                      </button>
+
+                      {/* 1. Trạng thái holding -> Nút Tiếp tục thanh toán */}
+                      {item.status === 'holding' && canPayHistoryEntry(item, nowMs) && (
                         <button
                           type="button"
-                          className={styles.outlineActionBtn}
-                          onClick={() => setCancelTarget(entry)}
+                          className={styles.primaryActionBtn}
+                          onClick={() => handleGoToPayment(item)}
                         >
-                          Cancel Order
+                          Tiếp tục thanh toán
                         </button>
                       )}
+
+                      {/* 2. Trạng thái resubmit_requested -> Nút Gửi lại chứng từ */}
+                      {item.status === 'resubmit_requested' && canPayHistoryEntry(item, nowMs) && (
+                        <button
+                          type="button"
+                          className={styles.primaryActionBtn}
+                          onClick={() => handleGoToPayment(item)}
+                        >
+                          Gửi lại chứng từ
+                        </button>
+                      )}
+
+                      {/* 3. Trạng thái chờ xác nhận -> Xem thanh toán */}
+                      {item.status === 'awaiting_confirmation' && item.booking_type !== 'session' && (
+                        <button type="button" className={styles.outlineActionBtn} onClick={() => handleGoToPayment(item)}>
+                          Xem thanh toán
+                        </button>
+                      )}
+
+                      {item.booking_type === 'package' && (item.status === 'confirmed' ||
+                        (item.single_order && item.status === 'cancelled_by_player')) && (
+                        <>
+                          <button
+                            type="button"
+                            className={styles.outlineActionBtn}
+                            onClick={() => showPackageSessions(item)}
+                            disabled={packageLoading != null}
+                            aria-expanded={expandedPackages.includes(item.booking_id)}
+                          >
+                            {packageLoading === item.booking_id ? 'Đang tải…' : expandedPackages.includes(item.booking_id) ? 'Thu gọn lịch' : item.single_order ? 'Xem lịch trong đơn' : 'Xem lịch gói'}
+                          </button>
+                          {item.single_order && item.status === 'confirmed' && (
+                            <button
+                              type="button"
+                              className={styles.outlineActionBtn}
+                              onClick={() => setCancelTarget(item)}
+                            >
+                              Hủy đơn
+                            </button>
+                          )}
+                        </>
+                      )}
+
+                      {/* UC22: Booking bị ảnh hưởng -> Player chọn đổi slot miễn phí, hoàn tiền hoặc điểm bồi hoàn */}
+                      {affectedPending && (
+                        <>
+                          <button
+                            type="button"
+                            className={styles.primaryActionBtn}
+                            disabled={affectedLoading}
+                            onClick={() => beginAffectedAction(item, affected.id, 'RESCHEDULE')}
+                          >
+                            Đổi slot miễn phí
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.outlineActionBtn}
+                            disabled={affectedLoading}
+                            onClick={() => beginAffectedAction(item, affected.id, 'POINTS')}
+                          >
+                            Nhận điểm
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.outlineActionBtn}
+                            disabled={affectedLoading}
+                            onClick={() => beginAffectedAction(item, affected.id, 'REFUND')}
+                          >
+                            Hoàn tiền
+                          </button>
+                        </>
+                      )}
+
+                      {item.booking_type !== 'package' && !['holding', 'awaiting_confirmation', 'resubmit_requested', 'expired', 'payment_rejected'].includes(item.status) && (
+                        <button type="button" className={styles.outlineActionBtn}
+                          onClick={() => navigate('/my-bookings/' + item.booking_id + '/reschedules')}>
+                          Lịch sử đổi lịch
+                        </button>
+                      )}
+
+                      {item.booking_type !== 'package' && item.status !== 'holding' && (
+                        <button type="button" className={styles.outlineActionBtn}
+                          onClick={() => navigate('/my-complaints?bookingId=' + item.booking_id)}>Khiếu nại</button>
+                      )}
+
+                      {/* Đánh giá sân sau khi hoàn tất buổi chơi (UC31) */}
+                      {item.can_review && (
+                        <button
+                          type="button"
+                          className={styles.primaryActionBtn}
+                          onClick={() => openReviewModal(item)}
+                        >
+                          Đánh giá
+                        </button>
+                      )}
+
+                      {/* 4. Trạng thái confirmed (Đơn lẻ) -> Mở kèo, Đổi lịch, Hủy lịch */}
+                      {item.status === 'confirmed' && item.booking_type !== 'package' && !affectedPending && (
+                        <>
+                          {item.can_open_match && (
+                            <button
+                              type="button"
+                              className={styles.outlineActionBtn}
+                              onClick={() => navigate('/open-matches')}
+                            >
+                              Mở kèo
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className={styles.outlineActionBtn}
+                            onClick={() => handleRescheduleClick(item)}
+                            disabled={rescheduleLoading}
+                          >
+                            Đổi lịch
+                          </button>
+                          {item.can_cancel && (
+                            <button
+                              type="button"
+                              className={styles.outlineActionBtn}
+                              onClick={() => setCancelTarget(item)}
+                            >
+                              Hủy lịch
+                            </button>
+                          )}
+                        </>
+                      )}
+
                     </div>
                   </header>
                   {entry.bookings.map((booking) => renderBookingCard(booking, true))}
@@ -544,22 +841,203 @@ export default function MyBookingsPage() {
         )}
       </main>
 
-      {/* Hộp xác nhận Hủy booking theo chuẩn BR07 / MSG66 */}
-      {cancelTarget && (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
+      {detailTarget && (
+        <HistoryDetailDialog key={detailTarget.booking_type + ':' + detailTarget.booking_id}
+          item={detailTarget} now={nowMs} onClose={() => setDetailTarget(null)} onPayment={handleGoToPayment} />
+      )}
+
+      {/* UC21: Modal chọn slot mới & xem chênh lệch đổi lịch */}
+      {rescheduleTarget && (
+        <Modal labelledBy="reschedule-title" busy={rescheduleSubmitting} onDismiss={() => setRescheduleTarget(null)}>
           <div className={styles.modalCard}>
-            <h3 className={styles.modalTitle}>
-              {cancelTarget.kind === 'order'
-                ? `Cancel Order #${cancelTarget.order_id}?`
-                : `Cancel booking ${cancelTarget.booking_code}?`}
+            <h3 id="reschedule-title" className={styles.modalTitle}>
+              {rescheduleTarget.affected ? 'Đổi slot miễn phí' : 'Đổi lịch đặt sân'} — {rescheduleTarget.booking.booking_code}
+            </h3>
+            <p className={styles.modalBody} style={{ marginBottom: 14 }}>
+              Cơ sở: <strong>{rescheduleTarget.booking.facility_name}</strong> · Sân hiện tại: {rescheduleTarget.booking.court_name} ({rescheduleTarget.booking.time_range})
+            </p>
+
+            {rescheduleDeadline && <p>Hạn đổi lịch: {new Date(serverTimestamp(rescheduleDeadline))
+              .toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</p>}
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel} htmlFor="new-court">Chọn sân mới</label>
+              <select id="new-court"
+                className={styles.formInput}
+                value={selectedCourtId}
+                onChange={(e) => { setSelectedCourtId(e.target.value); setQuote(null); }}
+              >
+                {availableCourts.length > 0 ? (
+                  availableCourts.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name || ('Sân ' + c.id)}</option>
+                  ))
+                ) : (
+                  <option value="">Không có sân khả dụng</option>
+                )}
+              </select>
+            </div>
+
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel} htmlFor="new-play-date">Ngày chơi mới</label>
+              <input
+                type="date" id="new-play-date"
+                className={styles.formInput}
+                value={newPlayDate}
+                min={today()}
+                onChange={(e) => { setNewPlayDate(e.target.value); setQuote(null); }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Giờ bắt đầu</label>
+                <select
+                  className={styles.formInput}
+                  value={startMin}
+                  onChange={(e) => {
+                    const nextStart = Number(e.target.value);
+                    setStartMin(nextStart);
+                    if (endMin <= nextStart) setEndMin(nextStart + 30);
+                    setQuote(null);
+                  }}
+                >
+                  {TIME_OPTIONS.filter((t) => t.value < 1440).map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Giờ kết thúc</label>
+                <select
+                  className={styles.formInput}
+                  value={endMin}
+                  onChange={(e) => { setEndMin(Number(e.target.value)); setQuote(null); }}
+                >
+                  {TIME_OPTIONS.filter((t) => t.value > startMin).map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {!rescheduleTarget.affected && <div style={{ marginBottom: 12 }}>
+              <button
+                type="button"
+                className={styles.outlineActionBtn}
+                style={{ width: '100%' }}
+                onClick={handlePreviewQuote}
+                disabled={quoteLoading || !selectedCourtId}
+              >
+                {quoteLoading ? 'Đang kiểm tra...' : '🔍 Kiểm tra chênh lệch giá'}
+              </button>
+            </div>}
+
+            {quoteError && <p className={styles.errorBanner} style={{ margin: '8px 0' }}>{quoteError}</p>}
+
+            {quote && (
+              <div className={styles.quoteBox}>
+                <div className={styles.quoteRow}>
+                  <span>Giá slot cũ:</span>
+                  <strong>{formatVnd(Number(quote.oldListAmount || 0))}</strong>
+                </div>
+                <div className={styles.quoteRow}>
+                  <span>Giá slot mới:</span>
+                  <strong>{formatVnd(Number(quote.newListAmount || 0))}</strong>
+                </div>
+                <div className={styles.quoteRow}>
+                  <span>Đã thanh toán:</span>
+                  <strong>{formatVnd(Number(quote.amountPaid))}</strong>
+                </div>
+                <div className={styles.quoteRow}>
+                  <span>Phụ thu chênh lệch:</span>
+                  <strong style={{ color: quote.extraAmount > 0 ? '#b45309' : '#0d8a52' }}>
+                    {quote.extraAmount > 0 ? `+${formatVnd(Number(quote.extraAmount))}` : '0 VND (Đổi miễn phí)'}
+                  </strong>
+                </div>
+                {quote.noDifferenceRefund && (
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
+                    * Slot mới rẻ hơn: Hệ thống không hoàn lại tiền chênh lệch.
+                  </p>
+                )}
+                {quote.extraAmount > 0 && (
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: '#b45309' }}>
+                    * Cần hoàn tất chuyển khoản phụ thu trong vòng 5 phút sau khi bấm xác nhận.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.outlineActionBtn}
+                onClick={() => setRescheduleTarget(null)}
+                disabled={rescheduleSubmitting}
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                className={styles.primaryActionBtn}
+                onClick={handleConfirmReschedule}
+                disabled={!selectedCourtId || !newPlayDate || (!rescheduleTarget.affected && !quote) || rescheduleSubmitting}
+              >
+                {rescheduleSubmitting ? 'Đang xử lý...' : (rescheduleTarget.affected ? 'Xác nhận đổi slot' : (quote?.extraAmount > 0 ? 'Tiếp tục thanh toán phụ thu' : 'Xác nhận đổi lịch'))}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* UC22: Hộp xác nhận lựa chọn cho booking bị ảnh hưởng */}
+      {choiceTarget && (
+        <Modal labelledBy="affected-choice-title" busy={choiceSubmitting} onDismiss={() => setChoiceTarget(null)}>
+          <div className={styles.modalCard}>
+            <h3 id="affected-choice-title" className={styles.modalTitle}>
+              {choiceTarget.choice === 'REFUND' ? 'Yêu cầu hoàn tiền' : 'Nhận điểm bồi hoàn'} cho {choiceTarget.booking.booking_code}?
             </h3>
             <p className={styles.modalBody}>
-              <strong>MSG66 (BR07):</strong>{' '}
-              {cancelTarget.kind === 'order'
-                ? `This cancels the entire order and all ${cancelTarget.bookings.length} booking ranges: ${cancelTarget.bookings.map((booking) => `${booking.court_name}, ${booking.time_range}`).join('; ')}.`
-                : `Cancel booking ${cancelTarget.booking_code} (${cancelTarget.facility_name} · ${cancelTarget.court_name}, ${cancelTarget.time_range})?`}
-              You will <strong>not be refunded</strong>; any used loyalty points and discount
-              vouchers will <strong>not be returned</strong>.
+              Booking {choiceTarget.booking.booking_code} ({choiceTarget.booking.facility_name} · {choiceTarget.booking.court_name},{' '}
+              {choiceTarget.booking.time_range}) sẽ chuyển sang <strong>Địa điểm đã hủy</strong> và slot được giải phóng. Điểm và voucher
+              đã dùng được trả lại.{' '}
+              {choiceTarget.choice === 'REFUND'
+                ? 'Chủ sân sẽ chuyển khoản thủ công số tiền đã thanh toán; điểm đã tích từ booking này bị thu hồi tương ứng.'
+                : 'Bạn nhận điểm bồi hoàn tương ứng số tiền đã thanh toán (1 điểm = 500đ) tại địa điểm này.'}{' '}
+              Không thể đổi lựa chọn sau khi xác nhận.
+            </p>
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.outlineActionBtn}
+                onClick={() => setChoiceTarget(null)}
+                disabled={choiceSubmitting}
+              >
+                Quay lại
+              </button>
+              <button
+                type="button"
+                className={styles.primaryActionBtn}
+                onClick={handleConfirmChoice}
+                disabled={choiceSubmitting}
+              >
+                {choiceSubmitting ? 'Đang gửi...' : 'Xác nhận'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Hộp xác nhận Hủy booking theo chuẩn BR07 / MSG66 */}
+      {cancelTarget && (
+        <Modal labelledBy="cancel-booking-title" busy={cancelling} onDismiss={() => setCancelTarget(null)}>
+          <div className={styles.modalCard}>
+            <h3 id="cancel-booking-title" className={styles.modalTitle}>
+              {cancelTarget.single_order ? 'Hủy đơn đặt sân?' : `Hủy lịch ${cancelTarget.booking_code}?`}
+            </h3>
+            <p className={styles.modalBody}>
+              {cancelTarget.single_order
+                ? 'Tất cả booking chưa đến giờ chơi trong đơn sẽ bị hủy. Tiền, điểm và voucher đã dùng không được hoàn lại.'
+                : `Hủy lịch ${cancelTarget.booking_code} (${cancelTarget.facility_name} · ${cancelTarget.court_name}, ${cancelTarget.time_range})? Tiền, điểm và voucher đã dùng không được hoàn lại.`}
             </p>
             <div className={styles.modalActions}>
               <button
@@ -568,7 +1046,7 @@ export default function MyBookingsPage() {
                 onClick={() => setCancelTarget(null)}
                 disabled={cancelling}
               >
-                Keep Booking
+                Giữ lịch đặt
               </button>
               <button
                 type="button"
@@ -576,11 +1054,81 @@ export default function MyBookingsPage() {
                 onClick={handleConfirmCancel}
                 disabled={cancelling}
               >
-                {cancelling ? 'Cancelling...' : 'Confirm Cancel'}
+                {cancelling ? 'Đang hủy…' : 'Xác nhận hủy'}
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
+      )}
+
+      {/* UC31: Modal Đánh giá sân sau khi hoàn tất buổi chơi */}
+      {reviewTarget && (
+        <Modal labelledBy="review-booking-title" busy={reviewSubmitting} onDismiss={() => setReviewTarget(null)}>
+          <div className={styles.modalCard}>
+            <h3 id="review-booking-title" className={styles.modalTitle}>
+              Đánh giá buổi chơi — {reviewTarget.booking_code}
+            </h3>
+            <p className={styles.modalBody} style={{ marginBottom: 12 }}>
+              {reviewTarget.facility_name} · {reviewTarget.court_name} ({reviewTarget.booking_date} · {reviewTarget.time_range})
+            </p>
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel}>Số sao đánh giá (1–5 sao)</label>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setReviewRating(star)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 8,
+                      border: reviewRating === star ? '1.5px solid #0d8a52' : '1px solid #cbd5e1',
+                      background: reviewRating === star ? '#e8f5ee' : '#fff',
+                      color: reviewRating >= star ? '#f59e0b' : '#94a3b8',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {star} ★
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel} htmlFor="review-comment">
+                Nhận xét (không bắt buộc · tối đa 1.000 ký tự)
+              </label>
+              <textarea
+                id="review-comment"
+                rows={4}
+                maxLength={1000}
+                className={styles.formInput}
+                placeholder="Chia sẻ trải nghiệm của bạn về mặt sân, ánh sáng, dịch vụ..."
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+              />
+            </div>
+            {reviewError && <p className={styles.errorBanner}>{reviewError}</p>}
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.outlineActionBtn}
+                onClick={() => setReviewTarget(null)}
+                disabled={reviewSubmitting}
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                className={styles.primaryActionBtn}
+                onClick={handleSubmitReview}
+                disabled={reviewSubmitting}
+              >
+                {reviewSubmitting ? 'Đang gửi…' : 'Gửi đánh giá'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

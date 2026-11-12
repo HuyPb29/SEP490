@@ -15,8 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.sep490.bms.dto.location.BatchOfferDto;
 import com.sep490.bms.dto.location.CreateBatchOfferRequest;
 import com.sep490.bms.dto.location.UpdateBatchOfferRequest;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.enums.VoucherStatus;
+import com.sep490.bms.entity.enums.VoucherTargetGroup;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import com.sep490.bms.entity.location.BatchOffer;
 import com.sep490.bms.entity.promotion.Voucher;
 import com.sep490.bms.exception.AppException;
@@ -47,6 +50,7 @@ public class BatchOfferService {
     private final VoucherRepository voucherRepository;
     private final LocationAccessService locationAccessService;
     private final LocationManagementService locationManagementService;
+    private final EntityManager em;
 
     /** UC09 - Owner xem ưu đãi theo lô của địa điểm đang chọn (header X-Location-Id). */
     @Transactional(readOnly = true)
@@ -64,12 +68,14 @@ public class BatchOfferService {
     @Transactional
     public BatchOfferDto create(UserPrincipal user, CreateBatchOfferRequest request) {
         Location location = locationAccessService.selectedLocation(user);
+        em.refresh(location, LockModeType.PESSIMISTIC_WRITE);
         requireActiveLocation(location, "thêm ưu đãi");
 
         String name = requireName(request.getName());
         LocalDate startDate = requireDate(request.getStartDate(), "Ngày bắt đầu");
         LocalDate endDate = requireDate(request.getEndDate(), "Ngày kết thúc");
         ensureDateRange(startDate, endDate);
+        ensureNoOverlap(location.getId(), startDate, endDate, null);
         BigDecimal minAmount = requireAmount(request.getMinPackageAmount());
         Voucher voucher = requireVoucher(location.getId(), request.getVoucherId(), startDate, endDate);
 
@@ -89,6 +95,8 @@ public class BatchOfferService {
     public BatchOfferDto update(UserPrincipal user, Long batchOfferId, UpdateBatchOfferRequest request) {
         BatchOffer entity = requireOffer(batchOfferId);
         Location location = locationManagementService.ownedLocation(user, entity.getLocationId());
+        em.refresh(location, LockModeType.PESSIMISTIC_WRITE);
+        em.refresh(entity, LockModeType.PESSIMISTIC_WRITE);
         requireActiveLocation(location, "cập nhật ưu đãi");
 
         if (request.getName() != null) {
@@ -97,6 +105,7 @@ public class BatchOfferService {
         LocalDate startDate = request.getStartDate() == null ? entity.getStartDate() : request.getStartDate();
         LocalDate endDate = request.getEndDate() == null ? entity.getEndDate() : request.getEndDate();
         ensureDateRange(startDate, endDate);
+        ensureNoOverlap(location.getId(), startDate, endDate, entity.getId());
         entity.setStartDate(startDate);
         entity.setEndDate(endDate);
 
@@ -104,18 +113,9 @@ public class BatchOfferService {
             entity.setMinPackageAmount(requireAmount(request.getMinPackageAmount()));
         }
 
-        Voucher voucher;
-        if (request.getVoucherId() != null && !request.getVoucherId().equals(entity.getVoucherId())) {
-            voucher = requireVoucher(location.getId(), request.getVoucherId(), startDate, endDate);
-            entity.setVoucherId(voucher.getId());
-        } else {
-            voucher = voucherRepository.findById(entity.getVoucherId()).orElse(null);
-            // Đổi khoảng chạy của ưu đãi cũng phải kiểm lại: kéo dài end_date quá hạn voucher là
-            // khách đạt ngưỡng nhưng nhận voucher đã hết hiệu lực.
-            if (voucher != null && (request.getStartDate() != null || request.getEndDate() != null)) {
-                ensureVoucherCovers(voucher, startDate, endDate);
-            }
-        }
+        Long voucherId = request.getVoucherId() == null ? entity.getVoucherId() : request.getVoucherId();
+        Voucher voucher = requireVoucher(location.getId(), voucherId, startDate, endDate);
+        entity.setVoucherId(voucher.getId());
 
         return BatchOfferDto.fromEntity(batchOfferRepository.save(entity), voucher);
     }
@@ -170,6 +170,9 @@ public class BatchOfferService {
         if (!locationId.equals(voucher.getLocationId())) {
             throw new AppException("Voucher không thuộc địa điểm này");
         }
+        if (voucher.getTargetGroup() != VoucherTargetGroup.SPECIFIED) {
+            throw new AppException("Ưu đãi đặt theo lô cần voucher dành cho Player chỉ định (BR47)");
+        }
         if (voucher.getStatus() == VoucherStatus.EXPIRED) {
             throw new AppException("Voucher đã hết hiệu lực, không thể gắn vào ưu đãi");
         }
@@ -222,6 +225,12 @@ public class BatchOfferService {
     }
 
     /** ck_batch_dates: end_date >= start_date. */
+    private void ensureNoOverlap(Long locationId, LocalDate startDate, LocalDate endDate, Long excludedId) {
+        if (batchOfferRepository.countOverlapping(locationId, startDate, endDate, excludedId) > 0) {
+            throw new AppException("Thời gian trùng với ưu đãi đặt theo lô khác (BR47)", HttpStatus.CONFLICT);
+        }
+    }
+
     private void ensureDateRange(LocalDate startDate, LocalDate endDate) {
         if (endDate.isBefore(startDate)) {
             throw new AppException("Ngày kết thúc phải sau hoặc bằng ngày bắt đầu");

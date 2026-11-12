@@ -18,6 +18,7 @@ import com.sep490.bms.dto.feedback.CreateReviewRequest;
 import com.sep490.bms.dto.feedback.HideReviewRequest;
 import com.sep490.bms.dto.feedback.ReviewReplyRequest;
 import com.sep490.bms.dto.feedback.ReviewResponse;
+import com.sep490.bms.dto.feedback.ReviewSummaryResponse;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.feedback.ReviewService;
 
@@ -25,6 +26,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API đọc, gửi, phản hồi và kiểm duyệt đánh giá sân.
+ *
  * Feature: F8 – Đánh giá và khiếu nại
  * Owner: Hoàng
  * UC: UC12 – Xem thông tin sân công khai; UC31 – Đánh giá sân; UC32 – Quản lý đánh giá sân
@@ -43,6 +46,22 @@ public class ReviewController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(ApiResponse.success(reviewService.listCourtReviews(id, page, size)));
+    }
+
+    /** UC12 – đánh giá công khai của cả địa điểm (mọi sân), mới nhất lên đầu. */
+    @GetMapping("/api/locations/{id}/reviews")
+    public ResponseEntity<ApiResponse<PageResponse<ReviewResponse>>> getLocationsByIdReviews(
+            @PathVariable("id") Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(ApiResponse.success(reviewService.listLocationReviews(id, page, size)));
+    }
+
+    /** UC12 – điểm trung bình, tổng số và phân bố số sao của địa điểm. */
+    @GetMapping("/api/locations/{id}/review-summary")
+    public ResponseEntity<ApiResponse<ReviewSummaryResponse>> getLocationsByIdReviewSummary(
+            @PathVariable("id") Long id) {
+        return ResponseEntity.ok(ApiResponse.success(reviewService.getLocationReviewSummary(id)));
     }
 
     /** UC31 – Player đánh giá booking đã hoàn thành. */

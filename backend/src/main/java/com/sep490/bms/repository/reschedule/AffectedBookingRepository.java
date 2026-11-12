@@ -5,6 +5,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.reschedule.AffectedBooking;
 
+/**
+ * Truy cập booking bị ảnh hưởng và kiểm tra trường hợp còn chờ Player lựa chọn.
+ */
 @Repository
 public interface AffectedBookingRepository extends JpaRepository<AffectedBooking, Long> {
     boolean existsByBookingIdAndStatus(Long bookingId,com.sep490.bms.entity.enums.AffectedStatus status);

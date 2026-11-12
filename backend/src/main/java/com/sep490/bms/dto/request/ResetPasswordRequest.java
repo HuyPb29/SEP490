@@ -10,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận email, mã OTP và mật khẩu mới để hoàn tất khôi phục mật khẩu.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

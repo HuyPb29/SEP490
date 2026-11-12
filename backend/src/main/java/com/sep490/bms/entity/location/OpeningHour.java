@@ -12,6 +12,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu giờ mở và đóng cửa định kỳ của địa điểm theo thứ trong tuần.
+ */
 @Entity
 @Table(name = "opening_hour")
 @Getter

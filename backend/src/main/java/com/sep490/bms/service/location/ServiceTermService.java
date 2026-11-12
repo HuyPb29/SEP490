@@ -12,12 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.sep490.bms.dto.location.CreateServiceTermRequest;
 import com.sep490.bms.dto.location.ServiceTermDto;
-import com.sep490.bms.entity.Account;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.ServiceTerm;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.AccountRepository;
-import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.account.AccountRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.security.UserPrincipal;
 

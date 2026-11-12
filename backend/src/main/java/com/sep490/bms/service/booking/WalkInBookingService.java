@@ -17,7 +17,7 @@ import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.booking.WalkInBookingItem;
 import com.sep490.bms.dto.booking.WalkInBookingRequest;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.BookingType;
@@ -35,13 +35,15 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * Đặt sân tại quầy (UC16, BR43): Staff tạo booking cho khách liên hệ trực tiếp với sân, nhập tên và số điện
- * thoại khách; không có đội, voucher, điểm. Slot được giữ 5 phút như booking online (BR03); Staff thấy tiền
- * đã về (BR33) thì xác nhận. Staff chỉ làm việc ở địa điểm của mình (NFR07, BR60).
+ * thoại khách; không có đội, voucher, điểm. Slot được giữ 5 phút (BR43, P34), ngắn hơn đặt online (10 phút,
+ * D164); Staff thấy tiền đã về (BR33) thì xác nhận. Staff chỉ làm việc ở địa điểm của mình (NFR07, BR60).
  */
 @Service
 @RequiredArgsConstructor
 public class WalkInBookingService {
 
+    /** Thời gian giữ chỗ của booking tại quầy (BR43, P34): cố định 5 phút. */
+    static final int HOLD_MINUTES = 5;
     private static final int MAX_PAGE_SIZE = 100;
 
     private final LocationAccessService locationAccessService;
@@ -94,7 +96,7 @@ public class WalkInBookingService {
                 .listAmount(amount)
                 .finalAmount(amount)
                 .status(BookingStatus.HOLDING)
-                .holdExpiresAt(createdAt.plusMinutes(BookingService.HOLD_MINUTES))
+                .holdExpiresAt(createdAt.plusMinutes(HOLD_MINUTES))
                 .createdAt(createdAt)
                 .build());
         bookingService.saveSlots(booking, BookingService.toSlots(prices));

@@ -8,6 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Trả thông tin đánh giá sân, phản hồi của Owner và trạng thái hiển thị.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

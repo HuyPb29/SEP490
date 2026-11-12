@@ -6,6 +6,9 @@ import io.swagger.v3.oas.models.*;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.*;
 
+/**
+ * Cấu hình thông tin OpenAPI, xác thực Bearer JWT và header chọn địa điểm.
+ */
 @Configuration
 public class OpenApiConfig {
     @Bean public org.springdoc.core.customizers.OpenApiCustomizer locationHeader() {
@@ -22,7 +25,7 @@ public class OpenApiConfig {
 
     @Bean public OpenAPI bmsOpenAPI() {
         return new OpenAPI().info(new Info().title("BMS API").version("1.0")
-            .description("F1 và F5/F6 theo SRS v18; Owner gửi X-Location-Id. Package, booking tại quầy và thanh toán có service. Voucher/points/payment accrual thực hiện trong transaction nghiệp vụ. Các route chưa triển khai trả HTTP 501."))
+            .description("BMS theo đặc tả v19. Owner gửi X-Location-Id cho thao tác theo địa điểm. Voucher, điểm và ghi nhận thanh toán thực hiện trong giao dịch nghiệp vụ."))
             .components(new Components().addSecuritySchemes("bearerAuth", new SecurityScheme()
                 .type(SecurityScheme.Type.HTTP).scheme("bearer").bearerFormat("JWT")))
             .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));

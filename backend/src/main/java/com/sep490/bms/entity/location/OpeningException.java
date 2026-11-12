@@ -14,6 +14,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu khung giờ mở cửa ngoại lệ của địa điểm vào một ngày cụ thể.
+ */
 @Entity
 @Table(name = "opening_exception")
 @Getter

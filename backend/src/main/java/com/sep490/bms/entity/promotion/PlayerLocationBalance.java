@@ -16,6 +16,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu số dư điểm và tổng chi tiêu của một Player tại một địa điểm.
+ */
 @Entity
 @Table(name = "player_location_balance")
 @Getter

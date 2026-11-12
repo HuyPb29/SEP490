@@ -22,7 +22,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.operation.OperationQueryRepository;
 import com.sep490.bms.repository.operation.OperationQueryRepository.BookingDetailRow;

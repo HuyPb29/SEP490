@@ -19,15 +19,15 @@ import org.junit.jupiter.api.Test;
 import com.sep490.bms.dto.booking.ScheduleResponse;
 import com.sep490.bms.dto.booking.ScheduleResponse.SlotCell;
 import com.sep490.bms.dto.booking.ScheduleResponse.SlotStatus;
-import com.sep490.bms.entity.Account;
-import com.sep490.bms.entity.Location;
-import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.booking.BookingSlot;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.booking.BookingSlotRepository;
 import com.sep490.bms.security.UserPrincipal;
@@ -35,6 +35,9 @@ import com.sep490.bms.service.booking.SlotAvailabilityService.OpeningWindow;
 import com.sep490.bms.service.location.CourtQueryService;
 import com.sep490.bms.service.location.LocationQueryService;
 
+/**
+ * Kiểm tra cách hiển thị lịch sân, giá và trạng thái slot theo giờ mở cửa và bảo trì.
+ */
 class ScheduleServiceTests {
 
     private static final Long LOCATION = 1L;

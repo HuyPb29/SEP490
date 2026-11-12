@@ -8,7 +8,7 @@ import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import com.sep490.bms.entity.Account;
+import com.sep490.bms.entity.account.Account;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -16,6 +16,9 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 
+/**
+ * Phát và xác minh JWT, đọc định danh tài khoản và kiểm tra phiên bản token.
+ */
 @Component
 public class JwtTokenProvider {
 

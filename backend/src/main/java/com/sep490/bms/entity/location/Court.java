@@ -15,6 +15,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu thông tin sân con, địa điểm quản lý và trạng thái hoạt động.
+ */
 @Entity
 @Table(name = "court")
 @Getter

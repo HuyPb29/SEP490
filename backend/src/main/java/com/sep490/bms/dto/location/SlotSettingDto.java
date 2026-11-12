@@ -2,7 +2,7 @@ package com.sep490.bms.dto.location;
 
 import java.time.LocalDateTime;
 
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.location.LocationSlotSetting;
 

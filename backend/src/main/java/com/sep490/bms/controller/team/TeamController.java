@@ -23,6 +23,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API tạo, tìm và xem thông tin đội.
+ *
  * Feature: F7 – Đội và kèo
  * Owner: Hoàng
  * UC: UC27 – Quản lý đội

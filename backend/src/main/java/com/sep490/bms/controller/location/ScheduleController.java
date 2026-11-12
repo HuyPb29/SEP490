@@ -18,6 +18,8 @@ import com.sep490.bms.service.booking.ScheduleService;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp lịch sân theo ngày, gồm trạng thái và giá của từng slot.
+ *
  * Feature: F3 – Tìm và đặt sân
  * Owner: Minh
  * UC: UC13 – Xem lịch sân

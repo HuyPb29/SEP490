@@ -23,12 +23,25 @@ import com.sep490.bms.dto.feedback.CreateComplaintRequest;
 import com.sep490.bms.dto.feedback.ForwardComplaintRequest;
 import com.sep490.bms.dto.feedback.RejectComplaintRequest;
 import com.sep490.bms.dto.feedback.ResolveComplaintRequest;
-import com.sep490.bms.entity.Account;
-import com.sep490.bms.entity.Location;
-import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.ComplaintResult;
 import com.sep490.bms.entity.enums.ComplaintStatus;
+import com.sep490.bms.entity.enums.PaymentStatus;
+import com.sep490.bms.entity.enums.DiscountType;
+import com.sep490.bms.entity.enums.VoucherSource;
+import com.sep490.bms.entity.enums.VoucherStatus;
+import com.sep490.bms.entity.enums.VoucherTargetGroup;
+import com.sep490.bms.entity.promotion.Voucher;
+import com.sep490.bms.entity.promotion.VoucherGrant;
+import com.sep490.bms.entity.reschedule.RescheduleRequest;
+import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
+import com.sep490.bms.dto.request.ReschedulePaymentDecision;
+import com.sep490.bms.service.booking.SlotAvailabilityService;
+import com.sep490.bms.service.payment.PaymentService;
+import com.sep490.bms.service.reschedule.RescheduleService;
 import com.sep490.bms.entity.enums.PointTransactionType;
 import com.sep490.bms.entity.feedback.Complaint;
 import com.sep490.bms.entity.notification.Notification;
@@ -37,8 +50,8 @@ import com.sep490.bms.entity.promotion.PlayerLocationBalance;
 import com.sep490.bms.entity.promotion.PointTransaction;
 import com.sep490.bms.entity.reschedule.RefundRequest;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.AccountRepository;
-import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.account.AccountRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.feedback.ComplaintRepository;
@@ -61,6 +74,7 @@ import lombok.RequiredArgsConstructor;
 public class ComplaintService {
 
     private static final int MAX_PAGE_SIZE = 50;
+    private static final BigDecimal LATE_PAYMENT_VOUCHER_VALUE = BigDecimal.valueOf(10_000);
     private static final Set<String> PLAYER_TYPES = Set.of("PAYMENT_ISSUE", "COURT_SERVICE", "OTHER", Complaint.TYPE_LATE_PAYMENT_CONFIRMATION);
 
     private final ComplaintRepository complaintRepository;
@@ -76,13 +90,25 @@ public class ComplaintService {
     private final com.sep490.bms.service.reschedule.BookingChangeSupport bookingChanges;
     private final jakarta.persistence.EntityManager entityManager;
     private final com.sep490.bms.service.promotion.LoyaltyPointService loyalty;
+    private final SlotAvailabilityService availability;
+    private final PaymentService paymentService;
+    private final RescheduleService reschedules;
 
     // ---------------------------------------------------------------- Gửi khiếu nại
 
     @Transactional
     public ComplaintResponse createComplaint(UserPrincipal user, CreateComplaintRequest request) {
         String type = request.getComplaintType().trim().toUpperCase();
-        Complaint complaint = complaintRepository.save(buildPlayerComplaint(user, type, request));
+        Complaint complaint = complaintRepository.saveAndFlush(buildPlayerComplaint(user, type, request));
+        if (Complaint.TYPE_LATE_PAYMENT_CONFIRMATION.equals(type)) {
+            grantLatePaymentVoucher(complaint);
+            Long owner = locationRepository.findById(complaint.getLocationId()).orElseThrow().getOwnerId();
+            notify(owner, "COMPLAINT_SUBMITTED", "Khiếu nại chậm xác nhận thanh toán",
+                    truncate(complaint.getContent(), 500), complaint);
+            notifyRequester(complaint, "LATE_PAYMENT_VOUCHER", "Đã nhận voucher bồi thường",
+                    "Đã gửi khiếu nại trực tiếp tới Owner và tặng voucher 10.000 đ (MSG88).");
+            return toResponses(List.of(complaint)).get(0);
+        }
 
         String title = "Có khiếu nại mới từ người chơi";
         for (Account staff : accountRepository.findByRoleAndLocationId(Role.STAFF, complaint.getLocationId())) {
@@ -125,9 +151,14 @@ public class ComplaintService {
             throw new AppException("Khiếu nại xác nhận thanh toán trễ phải gắn với khoản thanh toán");
         }
         if (request.getPaymentId() != null) {
-            Payment payment = findPayment(request.getPaymentId());
-            if (!booking.getId().equals(payment.getBookingId())) {
+            Payment payment = latePayment ? paymentRepository.findByIdForUpdate(request.getPaymentId())
+                    .orElseThrow(() -> new AppException("Không tìm thấy giao dịch", HttpStatus.NOT_FOUND))
+                    : findPayment(request.getPaymentId());
+            if (!belongsToBooking(payment, booking)) {
                 throw new AppException("Khoản thanh toán không thuộc booking này");
+            }
+            if (latePayment && !waitedLongEnough(payment, LocalDateTime.now())) {
+                throw new AppException("Giao dịch chưa chờ quá 15 phút trong giờ mở cửa hoặc đã được xử lý (P24)");
             }
         }
         if (latePayment && complaintRepository.existsByPaymentIdAndComplaintType(request.getPaymentId(), type)) {
@@ -140,10 +171,48 @@ public class ComplaintService {
                 .playerId(user.getId())
                 .createdBy(user.getId())
                 .complaintType(type)
+                .status(latePayment ? ComplaintStatus.PENDING_OWNER : ComplaintStatus.SUBMITTED)
                 .content(request.getContent().trim())
                 .build();
     }
 
+    @Transactional(readOnly = true)
+    public boolean latePaymentEligible(UserPrincipal user, Long bookingId, Long paymentId) {
+        Booking booking = findBooking(bookingId);
+        if (!user.getId().equals(booking.getPlayerId())) {
+            throw new AppException("Booking không thuộc Player", HttpStatus.FORBIDDEN);
+        }
+        Payment payment = findPayment(paymentId);
+        return belongsToBooking(payment, booking) && waitedLongEnough(payment, LocalDateTime.now())
+                && !complaintRepository.existsByPaymentIdAndComplaintType(paymentId, Complaint.TYPE_LATE_PAYMENT_CONFIRMATION);
+    }
+
+    private boolean belongsToBooking(Payment payment, Booking booking) {
+        if (!booking.getLocationId().equals(payment.getLocationId())) return false;
+        if (booking.getId().equals(payment.getBookingId())) return true;
+        if (booking.getPackageId() != null && booking.getPackageId().equals(payment.getPackageId())) return true;
+        if (payment.getRescheduleRequestId() == null) return false;
+        RescheduleRequest request = entityManager.find(RescheduleRequest.class, payment.getRescheduleRequestId());
+        return request != null && booking.getId().equals(request.getBookingId());
+    }
+
+    private boolean waitedLongEnough(Payment payment, LocalDateTime now) {
+        return payment.getStatus() == PaymentStatus.AWAITING_CONFIRMATION
+                && availability.exceededOpeningTime(payment.getLocationId(), payment.getSubmittedAt(), now,
+                        Payment.LATE_CONFIRMATION_WAIT);
+    }
+
+    private void grantLatePaymentVoucher(Complaint complaint) {
+        Voucher voucher = Voucher.builder().locationId(complaint.getLocationId())
+                .name("Bồi thường chậm xác nhận thanh toán")
+                .source(VoucherSource.COMPENSATION).targetGroup(VoucherTargetGroup.SPECIFIED)
+                .discountType(DiscountType.AMOUNT).discountValue(LATE_PAYMENT_VOUCHER_VALUE)
+                .maxUsesPerPlayer(1).maxTotalUses(1).budget(LATE_PAYMENT_VOUCHER_VALUE)
+                .allowPoints(true).maxPointPercent(50).status(VoucherStatus.PUBLISHED).build();
+        entityManager.persist(voucher);
+        entityManager.persist(VoucherGrant.builder().voucherId(voucher.getId()).playerId(complaint.getPlayerId())
+                .note("Khiếu nại #" + complaint.getId()).build());
+    }
 
     // ---------------------------------------------------------------- Xem khiếu nại
 
@@ -218,8 +287,9 @@ public class ComplaintService {
 
         String note = request.getNote() == null || request.getNote().isBlank() ? null : request.getNote().trim();
         switch (result) {
-            case REFUND -> createRefundRequest(complaint, request.getRefundAmount(), note);
+            case REFUND -> createRefundRequest(complaint, request, note);
             case POINTS -> grantCompensationPoints(owner.getId(), complaint, request.getCompensationPoints(), note);
+            case LATE_PAYMENT_CONFIRMED -> confirmLatePayment(owner, complaint);
             default -> { }
         }
 
@@ -250,7 +320,21 @@ public class ComplaintService {
         return toResponses(List.of(complaint)).get(0);
     }
 
-    private void createRefundRequest(Complaint complaint, BigDecimal amount, String note) {
+    private void confirmLatePayment(UserPrincipal owner, Complaint complaint) {
+        Payment payment = findPayment(complaint.getPaymentId());
+        if (payment.getStatus() == PaymentStatus.CONFIRMED) return;
+        if (payment.getRescheduleRequestId() != null) {
+            var result = reschedules.decidePayment(owner, payment.getId(), true,
+                    new ReschedulePaymentDecision(null, null));
+            if (result.getStatus() != com.sep490.bms.entity.enums.RescheduleStatus.APPROVED) {
+                throw new AppException("Phụ thu không còn đủ điều kiện xác nhận", HttpStatus.CONFLICT);
+            }
+        } else {
+            paymentService.confirm(owner, payment.getId(), new ConfirmPaymentRequest(null));
+        }
+    }
+
+    private void createRefundRequest(Complaint complaint, ResolveComplaintRequest request, String note) {
         if (complaint.getBookingId() == null) {
             throw new AppException("Khiếu nại không gắn booking nên không tạo được yêu cầu hoàn tiền");
         }
@@ -258,20 +342,34 @@ public class ComplaintService {
         Long compensated = entityManager.createQuery("select count(a) from AffectedBooking a where a.bookingId=:b and a.status='RESOLVED' and a.choice='POINTS'", Long.class)
                 .setParameter("b", booking.getId()).getSingleResult();
         if (compensated > 0) throw new AppException("Booking đã nhận điểm bồi hoàn, không thể chuyển sang hoàn tiền", HttpStatus.CONFLICT);
-        BigDecimal available=bookingChanges.refundableAmount(booking);
+        boolean confirmed = bookingChanges.basePayments(booking).stream()
+                .anyMatch(payment -> payment.getStatus() == com.sep490.bms.entity.enums.PaymentStatus.CONFIRMED);
+        BigDecimal verified = confirmed ? null : request.getVerifiedUnrecordedAmount();
+        LocalDate originalPaymentDate;
+        if (confirmed) {
+            originalPaymentDate = bookingChanges.originalPaymentDate(booking);
+        } else {
+            originalPaymentDate = request.getOriginalTransferDate();
+            if (verified == null || originalPaymentDate == null) {
+                throw new AppException("Khoản thu chưa ghi doanh thu cần số tiền đã xác minh và ngày chuyển khoản gốc (UC23 A4)");
+            }
+        }
+        BigDecimal available = confirmed ? bookingChanges.refundableAmount(booking) : verified;
+        BigDecimal amount = request.getRefundAmount();
         BigDecimal requested=entityManager.createQuery("select coalesce(sum(case when r.refundedAmount is not null then r.refundedAmount else r.suggestedAmount end),0) from RefundRequest r where r.bookingId=:b",BigDecimal.class)
                 .setParameter("b",booking.getId()).getSingleResult();
         BigDecimal suggested = amount != null ? amount : available.subtract(requested);
         if (suggested.signum() <= 0 || suggested.compareTo(available.subtract(requested)) > 0) {
             throw new AppException("Số tiền hoàn phải lớn hơn 0 và không vượt quá số tiền booking");
         }
-        LocalDate originalPaymentDate = bookingChanges.originalPaymentDate(booking);
+
 
         RefundRequest refund=refundRequestRepository.saveAndFlush(RefundRequest.builder()
                 .locationId(complaint.getLocationId())
                 .bookingId(booking.getId())
                 .complaintId(complaint.getId())
                 .suggestedAmount(suggested)
+                .verifiedUnrecordedAmount(verified)
                 .originalPaymentDate(originalPaymentDate)
                 .reason(note != null ? note : "Hoàn tiền theo khiếu nại #" + complaint.getId())
                 .build());
@@ -429,6 +527,12 @@ public class ComplaintService {
                         .filter(java.util.Objects::nonNull).collect(Collectors.toSet())).stream()
                 .collect(Collectors.toMap(Booking::getId, Booking::getBookingCode));
 
+        var latePaymentIds = complaints.stream()
+                .filter(c -> Complaint.TYPE_LATE_PAYMENT_CONFIRMATION.equals(c.getComplaintType()))
+                .map(Complaint::getPaymentId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        var reschedulePaymentIds = latePaymentIds.isEmpty() ? java.util.Set.<Long>of() : paymentRepository
+                .findAllById(latePaymentIds).stream().filter(p -> p.getRescheduleRequestId() != null)
+                .map(Payment::getId).collect(Collectors.toSet());
         return complaints.stream().map(c -> ComplaintResponse.builder()
                 .id(c.getId())
                 .locationId(c.getLocationId())
@@ -436,6 +540,7 @@ public class ComplaintService {
                 .bookingId(c.getBookingId())
                 .bookingCode(c.getBookingId() == null ? null : bookingCodes.get(c.getBookingId()))
                 .paymentId(c.getPaymentId())
+                .reschedulePayment(c.getPaymentId() != null && reschedulePaymentIds.contains(c.getPaymentId()))
                 .playerId(c.getPlayerId())
                 .playerName(c.getPlayerId() == null ? null : playerNames.get(c.getPlayerId()))
                 .createdBy(c.getCreatedBy())

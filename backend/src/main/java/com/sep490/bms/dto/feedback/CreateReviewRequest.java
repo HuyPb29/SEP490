@@ -10,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận điểm đánh giá và bình luận của Player cho booking.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

@@ -10,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Đóng gói kết quả phân trang cùng số trang, kích thước trang và tổng số phần tử.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

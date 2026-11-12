@@ -13,15 +13,18 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.common.PageResponse;
-import com.sep490.bms.dto.UserDto;
+import com.sep490.bms.dto.account.UserDto;
 import com.sep490.bms.dto.request.UpdateStatusRequest;
 import com.sep490.bms.security.UserPrincipal;
-import com.sep490.bms.service.AdminService;
+import com.sep490.bms.service.account.AdminService;
 
 import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Cung cấp cho Admin API tìm kiếm, xem chi tiết và khóa hoặc mở khóa tài khoản.
+ */
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor

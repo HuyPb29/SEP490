@@ -19,6 +19,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Owner xem và cập nhật cấu hình slot áp dụng cho các sân của địa điểm.
+ *
  * Feature: F2 – Quản lý địa điểm
  * Owner: Minh Anh
  * UC: UC08 – Quản lý giờ mở cửa và slot

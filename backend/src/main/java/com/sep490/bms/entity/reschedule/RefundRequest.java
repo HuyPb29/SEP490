@@ -21,6 +21,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu yêu cầu hoàn tiền, số tiền gợi ý, số tiền thực hoàn và thông tin đối chiếu điểm.
+ */
 @Entity
 @Table(name = "refund_request")
 @Getter
@@ -51,6 +54,10 @@ public class RefundRequest {
 
     @Column(name = "refunded_amount", precision = 12, scale = 0)
     private BigDecimal refundedAmount;
+
+    /** Khoản thu Owner xác minh ngoài doanh thu, dùng làm trần cho nhánh UC23 A4. */
+    @Column(name = "verified_unrecorded_amount", precision = 12, scale = 0)
+    private BigDecimal verifiedUnrecordedAmount;
 
     /** Amount already removed from loyalty spend at approval/recording (BR52); never repeat a settlement. */
     @Column(name = "loyalty_settled_amount", nullable = false, precision = 12, scale = 0)

@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -20,7 +21,7 @@ import com.sep490.bms.dto.booking.BookingDetailResponse;
 import com.sep490.bms.dto.booking.BookingListItem;
 import com.sep490.bms.dto.booking.PackageDetailResponse;
 import com.sep490.bms.dto.booking.PackageListItem;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;
@@ -32,6 +33,7 @@ import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.booking.BookingRepository.PackageSessionCount;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.feedback.ReviewService;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.payment.PaymentService;
 
@@ -52,6 +54,8 @@ public class BookingQueryService {
     private final LocationQueryService locationQueryService;
     private final BookingService bookingService;
     private final PaymentService paymentService;
+    /** F8: booking nào còn đánh giá được (UC31). */
+    private final ReviewService reviewService;
 
     /**
      * UC17 #1–2, FR51: booking lẻ của Player kèm trạng thái hiện tại, gồm cả booking đã hết hạn, bị từ chối
@@ -69,8 +73,10 @@ public class BookingQueryService {
                 PageRequest.of(page, size));
         Map<Long, Location> locations = locationQueryService.getByIds(result.map(Booking::getLocationId).toSet());
         Map<Long, Court> courts = courtsByIds(result.map(Booking::getCourtId).toSet());
+        Set<Long> reviewable = reviewService.reviewableBookingIds(result.getContent());
         return PageResponse.from(result.map(booking -> toListItem(booking, locations.get(booking.getLocationId()),
-                courts.get(booking.getCourtId()), booking.getHoldExpiresAt(), now)));
+                courts.get(booking.getCourtId()), booking.getHoldExpiresAt(), now,
+                reviewable.contains(booking.getId()))));
     }
 
     /**
@@ -116,6 +122,7 @@ public class BookingQueryService {
                 .resubmitReason(payment.map(Payment::getResubmitReason).orElse(null))
                 .resubmitDeadline(payment.map(Payment::getResubmitDeadline).orElse(null))
                 .receiptNo(payment.map(Payment::getReceiptNo).orElse(null))
+                .canReview(reviewService.reviewableBookingIds(List.of(booking)).contains(booking.getId()))
                 .build();
     }
 
@@ -175,6 +182,7 @@ public class BookingQueryService {
         Location location = locationQueryService.getByIds(List.of(pkg.getLocationId())).get(pkg.getLocationId());
         List<Booking> sessions = bookingRepository.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(pkg.getId());
         Map<Long, Court> courts = courtsByIds(sessions.stream().map(Booking::getCourtId).collect(Collectors.toSet()));
+        Set<Long> reviewable = reviewService.reviewableBookingIds(sessions);
         Optional<Payment> payment = paymentService.findForPackage(pkg.getId());
         BookingStatus status = shownStatus(pkg.getStatus(), pkg.getHoldExpiresAt(), now);
 
@@ -202,7 +210,7 @@ public class BookingQueryService {
                 // Buổi đang giữ chỗ theo hạn giữ chỗ của cả gói
                 .sessions(sessions.stream()
                         .map(session -> toListItem(session, location, courts.get(session.getCourtId()),
-                                pkg.getHoldExpiresAt(), now))
+                                pkg.getHoldExpiresAt(), now, reviewable.contains(session.getId())))
                         .toList())
                 .build();
     }
@@ -227,7 +235,7 @@ public class BookingQueryService {
 
     /** holdExpiresAt: hạn giữ chỗ của booking lẻ, hoặc của cả gói khi là buổi trong gói. */
     private static BookingListItem toListItem(Booking booking, Location location, Court court,
-            LocalDateTime holdExpiresAt, LocalDateTime now) {
+            LocalDateTime holdExpiresAt, LocalDateTime now, boolean canReview) {
         BookingStatus status = shownStatus(booking.getStatus(), holdExpiresAt, now);
         return BookingListItem.builder()
                 .id(booking.getId())
@@ -242,6 +250,7 @@ public class BookingQueryService {
                 .status(status)
                 .holdExpiresAt(status == BookingStatus.HOLDING ? holdExpiresAt : null)
                 .createdAt(booking.getCreatedAt())
+                .canReview(canReview)
                 .build();
     }
 

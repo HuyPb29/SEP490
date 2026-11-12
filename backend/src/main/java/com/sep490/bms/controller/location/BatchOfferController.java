@@ -25,6 +25,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Owner xem, thêm, cập nhật và xóa ưu đãi đặt theo lô của địa điểm.
+ *
  * Feature: F2 – Quản lý địa điểm
  * Owner: Minh Anh
  * UC: UC09 – Quản lý bảng giá và ưu đãi đặt theo lô

@@ -19,6 +19,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu một lượt voucher được cấp riêng cho Player, cùng hạn dùng và trạng thái.
+ */
 @Entity
 @Table(name = "voucher_grant")
 @Getter

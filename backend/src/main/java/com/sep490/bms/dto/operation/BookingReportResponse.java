@@ -10,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Tổng hợp lượt đặt và tỷ lệ hủy trong kỳ theo ngày và theo sân.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

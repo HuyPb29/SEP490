@@ -14,6 +14,9 @@ import org.springframework.stereotype.Repository;
 import com.sep490.bms.entity.enums.ComplaintStatus;
 import com.sep490.bms.entity.feedback.Complaint;
 
+/**
+ * Truy vấn khiếu nại theo người gửi hoặc địa điểm và khóa bản ghi khi xử lý.
+ */
 @Repository
 public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
 

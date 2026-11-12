@@ -10,6 +10,9 @@ import lombok.RequiredArgsConstructor;
 import java.util.List;
 import org.springframework.http.*;
 import com.sep490.bms.service.promotion.LoyaltyMilestoneService;
+/**
+ * Cho Owner xem, tạo và cập nhật mốc chi tiêu nhận voucher tại địa điểm.
+ */
 @RestController @RequiredArgsConstructor @PreAuthorize("hasRole('OWNER')")
 @io.swagger.v3.oas.annotations.tags.Tag(name="F6 - UC26 Loyalty Rewards")
 public class LoyaltyMilestoneController {

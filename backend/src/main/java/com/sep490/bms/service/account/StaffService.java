@@ -1,0 +1,119 @@
+package com.sep490.bms.service.account;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.sep490.bms.dto.account.UserDto;
+import com.sep490.bms.dto.request.*;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.account.AccountAuditAction;
+import com.sep490.bms.entity.account.AccountStatus;
+import com.sep490.bms.entity.account.Role;
+import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.account.AccountRepository;
+import com.sep490.bms.security.*;
+
+import lombok.RequiredArgsConstructor;
+
+/**
+ * Quản lý tài khoản Staff tại địa điểm của Owner, gồm tạo, vô hiệu hóa và cấp lại mật khẩu.
+ */
+@Service
+@RequiredArgsConstructor
+public class StaffService {
+    private final AccountRepository accountRepository;
+    private final LocationAccessService locationAccess;
+    private final PasswordEncoder passwordEncoder;
+    private final AccountAuditService audit;
+    private final OtpLockService otpLock;
+
+    @Transactional(readOnly = true)
+    public List<UserDto> getStaffList(UserPrincipal user, String status, String search) {
+        Long locationId = ownerLocation(user);
+        AccountStatus requested = null;
+        if (status != null && !status.isBlank()) {
+            try { requested = AccountStatus.valueOf(status.trim().toUpperCase()); }
+            catch (IllegalArgumentException ex) { throw new AppException("Trạng thái không hợp lệ"); }
+        }
+        final AccountStatus filter = requested;
+        String term = search == null ? "" : search.trim().toLowerCase();
+        return accountRepository.findByRoleAndLocationId(Role.STAFF, locationId).stream()
+            .filter(a -> filter == null || a.getStatus() == filter)
+            .filter(a -> java.util.stream.Stream.of(a.getFullName(), a.getUsername(), a.getPhone())
+                .anyMatch(v -> v != null && v.toLowerCase().contains(term)))
+            .map(UserDto::fromEntity).toList();
+    }
+
+    @Transactional
+    public UserDto createStaff(UserPrincipal user, CreateStaffRequest request) {
+        Long locationId = ownerLocation(user);
+        if(request.getUsername()==null || !request.getUsername().matches(ValidationRules.USERNAME))
+            throw new AppException(ValidationRules.USERNAME_MESSAGE);
+        if(request.getPhone()==null || request.getPhone().isBlank()) throw new AppException("Số điện thoại bắt buộc");
+        otpLock.acquire("phone:"+request.getPhone());
+        if (accountRepository.existsByPhone(request.getPhone())) {
+            String message = "Số điện thoại này đã được dùng. (MSG112)";
+            throw new AppException(message, HttpStatus.CONFLICT, java.util.Map.of("phone", message));
+        }
+        if (accountRepository.existsByUsername(request.getUsername())) {
+            String message = "Tên đăng nhập này đã được dùng. (MSG112)";
+            throw new AppException(message, HttpStatus.BAD_REQUEST, java.util.Map.of("username", message));
+        }
+        Account staff = Account.builder().username(request.getUsername()).email(null)
+            .phone(request.getPhone()).fullName(request.getFullName().trim())
+            .passwordHash(passwordEncoder.encode(request.getPassword()))
+            .role(Role.STAFF).locationId(locationId).status(AccountStatus.ACTIVE).build();
+        Account saved = accountRepository.save(staff);
+        audit.record(user.getId(), user.getRole(), saved, AccountAuditAction.STAFF_CREATED, null, null);
+        return UserDto.fromEntity(saved);
+    }
+
+    @Transactional
+    public UserDto updateStaffStatus(UserPrincipal user, Long id, UpdateStatusRequest request) {
+        Account staff = managedStaff(user, id);
+        String status = request.getStatus().trim().toUpperCase();
+        if (!"DISABLED".equals(status)) throw new AppException("Owner chỉ được vô hiệu hóa tài khoản Staff (FR07)");
+        if (staff.getStatus() == AccountStatus.LOCKED) {
+            throw new AppException("Chỉ Admin được mở khóa tài khoản đã bị khóa", HttpStatus.FORBIDDEN);
+        }
+        AccountStatus previousStatus = staff.getStatus();
+        staff.setStatus(AccountStatus.valueOf(status));
+        if (staff.getStatus() == AccountStatus.DISABLED && previousStatus != staff.getStatus()) staff.revokeTokens();
+        staff.setUpdatedAt(LocalDateTime.now());
+        Account saved = accountRepository.save(staff);
+        audit.record(user.getId(), user.getRole(), saved, AccountAuditAction.STAFF_STATUS_CHANGED, previousStatus, request.getReason());
+        return UserDto.fromEntity(saved);
+    }
+
+    @Transactional
+    public void resetStaffPassword(UserPrincipal user, Long id, StaffPasswordRequest request) {
+        Account staff = managedStaff(user, id);
+        staff.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        staff.revokeTokens();
+        staff.setUpdatedAt(LocalDateTime.now());
+        accountRepository.save(staff);
+        audit.record(user.getId(), user.getRole(), staff, AccountAuditAction.STAFF_PASSWORD_RESET, null, null);
+    }
+
+    private Long ownerLocation(UserPrincipal user) {
+        if (user.getRole() != Role.OWNER) throw new AppException("Chỉ Owner được quản lý nhân viên", HttpStatus.FORBIDDEN);
+        Location location = locationAccess.selectedLocation(user);
+        if (!"ACTIVE".equals(location.getStatus())) throw new AppException("Địa điểm đã bị khóa", HttpStatus.FORBIDDEN);
+        return location.getId();
+    }
+
+    private Account managedStaff(UserPrincipal user, Long id) {
+        Long locationId = ownerLocation(user);
+        Account staff = accountRepository.findByIdForUpdate(id).orElseThrow(() -> new AppException("Không tìm thấy nhân viên", HttpStatus.NOT_FOUND));
+        if (staff.getRole() != Role.STAFF || !locationId.equals(staff.getLocationId())) {
+            throw new AppException("Không có quyền quản lý nhân viên này", HttpStatus.FORBIDDEN);
+        }
+        return staff;
+    }
+}

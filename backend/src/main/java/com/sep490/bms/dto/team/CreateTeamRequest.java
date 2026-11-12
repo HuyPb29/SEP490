@@ -8,6 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận tên đội mới do Player tạo.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

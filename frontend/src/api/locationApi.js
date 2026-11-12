@@ -1,408 +1,270 @@
-import axios from 'axios';
+import api, { apiErrorMessage as formatApiError } from './index'
+import { getSelectedLocation, getToken as getSessionToken, selectLocation } from './session'
 
-// Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_DATA = false;
-// UC11, UC12, and UC13 use the Backend when available and fall back to local demo data offline.
-export const USE_MOCK_SEARCH = false;
+/**
+ * Lớp gọi API cho feature F2 (Quản lý địa điểm) và UC10 (Bảo trì sân).
+ * Sử dụng chung instance `api` (Axios baseURL '/api') đã tự động gắn JWT và X-Location-Id.
+ */
 
-const MOCK_FACILITIES = [
-  {
-    facility_id: 1,
-    facility_name: 'Smash Arena',
-    address: '12 Tran Thai Tong',
-    district: 'Cau Giay',
-    city: 'Hanoi',
-    latitude: 21.0362,
-    longitude: 105.7885,
-    contact_phone: '0912345678',
-    status: 'active',
-    distance_km: 0.8,
-    rating: 4.9,
-    courts_count: 8,
-    open_hours: '5:00–23:00',
-    available_slots: 6,
-    pin_pos: { top: '38%', left: '46%', short_name: 'Smash Arena' }
-  },
-  {
-    facility_id: 2,
-    facility_name: 'Green Shuttle Club',
-    address: '88 Nguyen Khanh Toan',
-    district: 'Cau Giay',
-    city: 'Hanoi',
-    latitude: 21.0381,
-    longitude: 105.7982,
-    contact_phone: '0987654321',
-    status: 'active',
-    distance_km: 1.6,
-    rating: 4.7,
-    courts_count: 6,
-    open_hours: '6:00–22:00',
-    available_slots: 2,
-    pin_pos: { top: '66%', left: '68%', short_name: 'Green Shuttle' }
-  },
-  {
-    facility_id: 3,
-    facility_name: 'Hanoi Badminton Hub',
-    address: '25 Ho Tung Mau',
-    district: 'Nam Tu Liem',
-    city: 'Hanoi',
-    latitude: 21.0375,
-    longitude: 105.7731,
-    contact_phone: '0909112233',
-    status: 'active',
-    distance_km: 2.4,
-    rating: 4.8,
-    courts_count: 10,
-    open_hours: '5:30–23:00',
-    available_slots: 11,
-    pin_pos: { top: '72%', left: '25%', short_name: 'Badminton Hub' }
-  },
-  {
-    facility_id: 4,
-    facility_name: 'Dich Vong Badminton Court',
-    address: '3 Dich Vong Hau',
-    district: 'Cau Giay',
-    city: 'Hanoi',
-    latitude: 21.0312,
-    longitude: 105.7851,
-    contact_phone: '0933445566',
-    status: 'active',
-    distance_km: 3.1,
-    rating: 4.5,
-    courts_count: 4,
-    open_hours: '6:00–21:30',
-    available_slots: 1,
-    pin_pos: { top: '22%', left: '68%', short_name: 'Dich Vong' }
-  },
-  {
-    facility_id: 5,
-    facility_name: 'Locked Court (Test BR62)',
-    address: '99 Xuan Thuy',
-    district: 'Cau Giay',
-    city: 'Hanoi',
-    latitude: 21.0368,
-    longitude: 105.7821,
-    contact_phone: '0944556677',
-    status: 'locked', // Test BR62
-    distance_km: 0.5,
-    rating: 4.0,
-    courts_count: 5,
-    open_hours: '6:00–22:00',
-    available_slots: 4,
-    pin_pos: { top: '50%', left: '50%', short_name: 'Xuan Thuy' }
-  }
-];
-
-function calcHaversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-  return Number((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1));
+export function getToken() {
+  return getSessionToken()
 }
 
-// Đổi LocationSummaryResponse của Backend về cấu trúc màn hình UC11 đang dùng
-function mapLocationSummary(location) {
-  return {
-    facility_id: location.id,
-    facility_name: location.name,
-    address: location.address,
-    latitude: location.latitude,
-    longitude: location.longitude,
-    distance_km: location.distanceKm ?? null,
-  };
+export function getStoredLocationId() {
+  const id = Number(getSelectedLocation())
+  return Number.isFinite(id) && id > 0 ? id : null
 }
 
-function getMockFacilitySearch({ keyword, userLat, userLng, page, limit }) {
-  const normalizedKeyword = keyword.trim().toLowerCase();
-  let items = MOCK_FACILITIES.filter((item) => item.status === 'active');
+export function storeLocationId(locationId) {
+  selectLocation(locationId)
+}
 
-  if (normalizedKeyword) {
-    items = items.filter((item) =>
-      [item.facility_name, item.address, item.district, item.city]
-        .some((value) => value.toLowerCase().includes(normalizedKeyword))
-    );
-  }
-
-  if (userLat != null && userLng != null) {
-    items = items.map((item) => ({
-      ...item,
-      distance_km: calcHaversineKm(userLat, userLng, item.latitude, item.longitude),
-    }));
-  }
-
-  items.sort((a, b) => a.distance_km - b.distance_km);
-
+function ownerConfig(locationId, extra = {}) {
+  const selectedId = locationId ?? getStoredLocationId()
+  if (!selectedId) return extra
   return {
-    success: true,
-    isFallback: true,
-    code: 200,
-    data: {
-      items: items.slice((page - 1) * limit, page * limit).map((item) => ({
-        ...item,
-        display_address: item.facility_id === 1
-          ? '12 Tran Thai Tong, Cau Giay, Hanoi'
-          : `${item.address}, ${item.district}`,
-      })),
-      pagination: {
-        page,
-        limit,
-        total_items: items.length,
-        total_pages: Math.ceil(items.length / limit),
-      },
+    ...extra,
+    locationId: selectedId,
+    headers: {
+      ...extra.headers,
+      'X-Location-Id': String(selectedId),
     },
-  };
-}
-
-export async function searchLocations({ keyword = '', userLat = null, userLng = null, page = 1, limit = 20 }) {
-  if (USE_MOCK_SEARCH) {
-    await new Promise((r) => setTimeout(r, 250));
-    return getMockFacilitySearch({ keyword, userLat, userLng, page, limit });
-  }
-
-  const params = {};
-  if (keyword.trim()) params.q = keyword.trim();
-  if (userLat != null && userLng != null) {
-    params.lat = userLat;
-    params.lng = userLng;
-  }
-  try {
-    const response = await axios.get('/api/locations', { params });
-    return {
-      success: response.data.success,
-      data: { items: (response.data.data || []).map(mapLocationSummary) },
-    };
-  } catch (error) {
-    if (!error.response || error.response.status >= 500) {
-      console.warn('Location search API is unavailable; showing demo locations.', error);
-      return getMockFacilitySearch({ keyword, userLat, userLng, page, limit });
-    }
-    throw error;
   }
 }
 
-// Demo data used when the Backend is unavailable.
-const MOCK_FACILITY_DETAILS = {
-  1: {
-    facility_id: 1,
-    facility_name: 'Smash Arena',
-    rating: 4.9,
-    review_count: 128,
-    address: '12 Tran Thai Tong, Cau Giay, Hanoi',
-    open_hours: '5:00–23:00 daily',
-    courts_count: 8,
-    contact_phone: '0912 345 678',
-    price_table: [
-      { time_range: '5:00 – 16:00', weekday_price: '60,000 VND / slot', weekend_price: '70,000 VND / slot' },
-      { time_range: '16:00 – 23:00', weekday_price: '80,000 VND / slot', weekend_price: '90,000 VND / slot' },
-    ],
-    reviews: [
-      {
-        review_id: 101,
-        reviewer_name: 'Tuan Nguyen',
-        stars: 5,
-        comment: 'New court mats, non-glare lighting. Staff verified payment quickly.',
-        owner_reply: 'Owner: Thank you, see you again!',
-      },
-      {
-        review_id: 102,
-        reviewer_name: 'Ha Linh',
-        stars: 4,
-        comment: 'Peak hours are a bit hard to book, should book a few days in advance.',
-        owner_reply: null,
-      },
-    ],
-  },
-};
-
-const TIME_HEADERS = ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'];
-
-const MOCK_COURT_SCHEDULE = [
-  {
-    court_id: 1,
-    court_name: 'Court 1',
-    slots: [
-      { time: '17:00', status: 'booked', price: 80000 },
-      { time: '17:30', status: 'booked', price: 80000 },
-      { time: '18:00', status: 'booked', price: 80000 },
-      { time: '18:30', status: 'booked', price: 80000 },
-      { time: '19:00', status: 'available', price: 80000 },
-      { time: '19:30', status: 'available', price: 80000 },
-      { time: '20:00', status: 'available', price: 80000 },
-      { time: '20:30', status: 'available', price: 80000 },
-    ],
-  },
-  {
-    court_id: 2,
-    court_name: 'Court 2',
-    slots: [
-      { time: '17:00', status: 'available', price: 80000 },
-      { time: '17:30', status: 'available', price: 80000 },
-      { time: '18:00', status: 'available', price: 80000 },
-      { time: '18:30', status: 'available', price: 80000 },
-      { time: '19:00', status: 'available', price: 80000, defaultSelected: true },
-      { time: '19:30', status: 'available', price: 80000, defaultSelected: true },
-      { time: '20:00', status: 'holding', price: 80000 },
-      { time: '20:30', status: 'holding', price: 80000 },
-    ],
-  },
-  {
-    court_id: 3,
-    court_name: 'Court 3',
-    slots: [
-      { time: '17:00', status: 'maintenance', price: 80000 },
-      { time: '17:30', status: 'maintenance', price: 80000 },
-      { time: '18:00', status: 'maintenance', price: 80000 },
-      { time: '18:30', status: 'maintenance', price: 80000 },
-      { time: '19:00', status: 'maintenance', price: 80000 },
-      { time: '19:30', status: 'maintenance', price: 80000 },
-      { time: '20:00', status: 'available', price: 80000 },
-      { time: '20:30', status: 'available', price: 80000 },
-    ],
-  },
-  {
-    court_id: 4,
-    court_name: 'Court 4',
-    slots: [
-      { time: '17:00', status: 'available', price: 80000 },
-      { time: '17:30', status: 'available', price: 80000 },
-      { time: '18:00', status: 'booked', price: 80000 },
-      { time: '18:30', status: 'booked', price: 80000 },
-      { time: '19:00', status: 'booked', price: 80000 },
-      { time: '19:30', status: 'booked', price: 80000 },
-      { time: '20:00', status: 'available', price: 80000 },
-      { time: '20:30', status: 'available', price: 80000 },
-    ],
-  },
-  {
-    court_id: 5,
-    court_name: 'Court 5',
-    slots: [
-      { time: '17:00', status: 'available', price: 80000 },
-      { time: '17:30', status: 'available', price: 80000 },
-      { time: '18:00', status: 'available', price: 80000 },
-      { time: '18:30', status: 'available', price: 80000 },
-      { time: '19:00', status: 'available', price: 80000 },
-      { time: '19:30', status: 'booked', price: 80000 },
-      { time: '20:00', status: 'booked', price: 80000 },
-      { time: '20:30', status: 'booked', price: 80000 },
-    ],
-  },
-];
-
-export async function getLocationDetailAndSchedule(facilityId = 1, playDate = '2026-10-24') {
-  if (USE_MOCK_DATA) {
-    await new Promise((r) => setTimeout(r, 200));
-    const detail = getMockFacilityDetail(facilityId);
-    return {
-      success: true,
-      data: {
-        facility: detail,
-        play_date: playDate,
-        time_headers: TIME_HEADERS,
-        courts: MOCK_COURT_SCHEDULE,
-      },
-    };
-  }
-
-  // Backend returns ApiResponse<LocationDetailResponse> and ApiResponse<ScheduleResponse>.
-  try {
-    const [detailRes, scheduleRes] = await Promise.all([
-      axios.get(`/api/locations/${facilityId}`),
-      axios.get(`/api/locations/${facilityId}/schedules`, {
-        params: { date: playDate },
-      }),
-    ]);
-
-    const detail = detailRes.data?.data;
-    const schedule = scheduleRes.data?.data;
-    if (!detail || !Array.isArray(schedule?.courts)) {
-      throw new Error('Unexpected location detail or schedule response.');
-    }
-
-    const mappedCourts = schedule.courts.map((court) => ({
-      court_id: court.courtId,
-      court_name: court.name,
-      slots: (court.slots || []).map((slot) => ({
-        time: slot.time,
-        status: String(slot.status || '').toLowerCase(),
-        price: slot.price ?? 0,
-        bookingInfo: slot.bookerName
-          ? {
-              name: slot.bookerName,
-              phone: slot.bookerPhone,
-              note: slot.note,
-            }
-          : null,
-      })),
-    }));
-
-    const openingHours = detail.openingHours || [];
-    const mappedFacility = {
-      ...detail,
-      facility_id: detail.id,
-      facility_name: detail.name,
-      contact_phone: detail.contactPhone,
-      open_hours: openingHours
-        .map((hours) => `${hours.openTime}–${hours.closeTime}`)
-        .join(', '),
-      courts_count: mappedCourts.length,
-      rating: detail.rating ?? null,
-      review_count: detail.reviewCount ?? 0,
-      price_table: detail.price_table || [],
-      reviews: detail.reviews || [],
-    };
-
-    return {
-      success: true,
-      data: {
-        facility: mappedFacility,
-        play_date: schedule.date || playDate,
-        time_headers: mappedCourts[0]?.slots.map((slot) => slot.time) || [],
-        courts: mappedCourts,
-      },
-    };
-  } catch (error) {
-    if (!error.response || error.response.status >= 500) {
-      console.warn('Location detail API is unavailable; showing demo location details.', error);
-      return {
-        success: true,
-        data: {
-          facility: getMockFacilityDetail(facilityId),
-          play_date: playDate,
-          time_headers: TIME_HEADERS,
-          courts: MOCK_COURT_SCHEDULE,
-        },
-      };
-    }
-    console.error('Error loading location data:', error);
-    return {
-      success: false,
-      data: null,
-      error: error.response?.data?.message || error.message || 'Could not load location details.',
-    };
-  }
+export function apiErrorMessage(error) {
+  return formatApiError(error, 'Đã có lỗi xảy ra. Vui lòng thử lại.')
 }
 
-function getMockFacilityDetail(facilityId) {
-  const summary = MOCK_FACILITIES.find((item) => item.facility_id === facilityId);
-  const template = MOCK_FACILITY_DETAILS[1];
-  if (!summary) return template;
+// ---------------------------------------------------------------- UC07: địa điểm & sân
 
-  return {
-    ...template,
-    facility_id: summary.facility_id,
-    facility_name: summary.facility_name,
-    rating: summary.rating,
-    address: summary.facility_id === 1
-      ? '12 Tran Thai Tong, Cau Giay, Hanoi'
-      : `${summary.address}, ${summary.district}`,
-    open_hours: `${summary.open_hours} daily`,
-    courts_count: summary.courts_count,
-    contact_phone: summary.contact_phone,
-  };
+/** GET /api/owner/locations — trả về LocationDetailDto[] kèm sẵn danh sách sân. */
+export async function getOwnerLocations() {
+  const { data } = await api.get('/owner/locations')
+  return data?.data ?? []
+}
+
+/** POST /api/owner/locations/{id}/courts */
+export async function createCourt(locationId, payload) {
+  const { data } = await api.post(`/owner/locations/${locationId}/courts`, payload, ownerConfig(locationId))
+  return data?.data
+}
+
+/** PATCH /api/owner/courts/{id} — cần X-Location-Id vì path không có id địa điểm. */
+export async function updateCourt(courtId, payload, locationId) {
+  const { data } = await api.patch(`/owner/courts/${courtId}`, payload, ownerConfig(locationId))
+  return data?.data
+}
+
+/** PATCH /api/owner/locations/{id} — sửa hồ sơ địa điểm (UC07). */
+export async function updateOwnerLocation(locationId, payload) {
+  const { data } = await api.patch(`/owner/locations/${locationId}`, payload, ownerConfig(locationId))
+  return data?.data
+}
+
+// ------------------------------------------------------------ UC09: bảng giá theo sân
+
+/** GET /api/owner/courts/{id}/price-rules — trả về PriceRuleDto[] của một sân. */
+export async function getCourtPriceRules(courtId, locationId) {
+  const { data } = await api.get(`/owner/courts/${courtId}/price-rules`, ownerConfig(locationId))
+  return data?.data ?? []
+}
+
+/** POST /api/owner/courts/{id}/price-rules */
+export async function createPriceRule(courtId, payload, locationId) {
+  const { data } = await api.post(`/owner/courts/${courtId}/price-rules`, payload, ownerConfig(locationId))
+  return data?.data
+}
+
+/** PATCH /api/owner/price-rules/{id} — path không có id địa điểm nên phải gửi X-Location-Id. */
+export async function updatePriceRule(priceRuleId, payload, locationId) {
+  const { data } = await api.patch(`/owner/price-rules/${priceRuleId}`, payload, ownerConfig(locationId))
+  return data?.data
+}
+
+/** DELETE /api/owner/price-rules/{id} */
+export async function deletePriceRule(priceRuleId, locationId) {
+  await api.delete(`/owner/price-rules/${priceRuleId}`, ownerConfig(locationId))
+}
+
+// --------------------------------------------------------- UC09: ưu đãi đặt theo lô
+
+/** GET /api/owner/batch-offers — ưu đãi của địa điểm đang chọn (X-Location-Id). */
+export async function getBatchOffers(locationId) {
+  const { data } = await api.get('/owner/batch-offers', ownerConfig(locationId))
+  return data?.data ?? []
+}
+
+/** POST /api/owner/batch-offers */
+export async function createBatchOffer(payload, locationId) {
+  const { data } = await api.post('/owner/batch-offers', payload, ownerConfig(locationId))
+  return data?.data
+}
+
+/** PATCH /api/owner/batch-offers/{id} */
+export async function updateBatchOffer(offerId, payload, locationId) {
+  const { data } = await api.patch(`/owner/batch-offers/${offerId}`, payload, ownerConfig(locationId))
+  return data?.data
+}
+
+/** DELETE /api/owner/batch-offers/{id} */
+export async function deleteBatchOffer(offerId, locationId) {
+  await api.delete(`/owner/batch-offers/${offerId}`, ownerConfig(locationId))
+}
+
+/** GET /api/owner/vouchers — chỉ lấy voucher PUBLISHED để gắn vào ưu đãi. */
+export async function getPublishedVouchers(locationId) {
+  const { data } = await api.get('/owner/vouchers', ownerConfig(locationId, {
+    params: { status: 'PUBLISHED', page: 0, size: 100 },
+  }))
+  return data?.data?.content ?? []
+}
+
+// ------------------------------------------------------------ UC06: Admin quản lý địa điểm
+
+/** GET /api/admin/locations?status=ACTIVE|LOCKED — AdminLocationDto[]. */
+export async function getAdminLocations(status) {
+  const params = status ? { status } : undefined
+  const { data } = await api.get('/admin/locations', { params })
+  return data?.data ?? []
+}
+
+/** GET /api/admin/locations/{id} */
+export async function getAdminLocation(locationId) {
+  const { data } = await api.get(`/admin/locations/${locationId}`)
+  return data?.data
+}
+
+/** PATCH /api/admin/locations/{id} — body {"status":"LOCKED"} hoặc {"status":"ACTIVE"}. */
+export async function updateLocationStatus(locationId, status) {
+  const { data } = await api.patch(`/admin/locations/${locationId}`, { status })
+  return data?.data
+}
+
+/** GET /api/admin/service-registrations?status=PENDING — đơn đăng ký sử dụng dịch vụ. */
+export async function getAdminServiceRegistrations(status) {
+  const params = status ? { status } : undefined
+  const { data } = await api.get('/admin/service-registrations', { params })
+  return data?.data ?? []
+}
+
+/** POST /api/admin/service-registrations/{id}/approve — không có body. */
+export async function approveServiceRegistration(requestId) {
+  const { data } = await api.post(`/admin/service-registrations/${requestId}/approve`)
+  return data?.data
+}
+
+/** POST /api/admin/service-registrations/{id}/reject — body {"reason": "..."}. */
+export async function rejectServiceRegistration(requestId, reason) {
+  const { data } = await api.post(`/admin/service-registrations/${requestId}/reject`, { reason })
+  return data?.data
+}
+
+/** GET /api/admin/locations/{id}/service-terms */
+export async function getLocationServiceTerms(locationId) {
+  const { data } = await api.get(`/admin/locations/${locationId}/service-terms`)
+  return data?.data ?? []
+}
+
+/** POST /api/admin/locations/{id}/service-terms — gia hạn kỳ hạn dịch vụ. */
+export async function createServiceTerm(locationId, payload) {
+  const { data } = await api.post(`/admin/locations/${locationId}/service-terms`, payload)
+  return data?.data
+}
+
+// ------------------------------------------------------------------- UC10: bảo trì sân
+
+/** GET /api/staff/courts — sân của địa điểm mà staff đang làm việc. */
+export async function getStaffCourts() {
+  const { data } = await api.get('/staff/courts')
+  return data?.data ?? []
+}
+
+/**
+ * Danh sách yêu cầu bảo trì.
+ *  - STAFF: GET /api/staff/maintenance-requests (địa điểm ghim theo tài khoản)
+ *  - OWNER: GET /api/owner/maintenance-requests (địa điểm theo X-Location-Id)
+ */
+export async function getMaintenanceRequests(role, status) {
+  const params = status ? { status } : undefined
+  const path = role === 'OWNER' ? '/owner/maintenance-requests' : '/staff/maintenance-requests'
+  const config = role === 'OWNER' ? ownerConfig(undefined, { params }) : { params }
+  const { data } = await api.get(path, config)
+  return data?.data ?? []
+}
+
+/** POST /api/staff/maintenance-requests — body {courtId, startAt, endAt, reason}. */
+export async function createMaintenanceRequest(payload) {
+  const { data } = await api.post('/staff/maintenance-requests', payload)
+  return data?.data
+}
+
+/** POST /api/staff/maintenance-requests/{id}/cancel — chỉ người tạo, chỉ khi PENDING. */
+export async function cancelMaintenanceRequest(requestId, reason) {
+  const { data } = await api.post(`/staff/maintenance-requests/${requestId}/cancel`, { reason: reason || null })
+  return data?.data
+}
+
+/** POST /api/owner/maintenance-requests/{id}/approve — không có body. */
+export async function approveMaintenanceRequest(requestId) {
+  const { data } = await api.post(`/owner/maintenance-requests/${requestId}/approve`, null, ownerConfig())
+  return data?.data
+}
+
+/** POST /api/owner/maintenance-requests/{id}/reject — body {reason}. */
+export async function rejectMaintenanceRequest(requestId, reason) {
+  const { data } = await api.post(`/owner/maintenance-requests/${requestId}/reject`, { reason }, ownerConfig())
+  return data?.data
+}
+
+// --------------------------------------- UC08: giờ mở cửa, cấu hình slot, ngày ngoại lệ
+
+/** GET /api/owner/locations/{id}/opening-hours */
+export async function getOpeningHours(locationId) {
+  const { data } = await api.get(`/owner/locations/${locationId}/opening-hours`, ownerConfig(locationId))
+  return data?.data ?? []
+}
+
+/** PUT /api/owner/locations/{id}/opening-hours — thay thế TOÀN PHẦN. */
+export async function updateOpeningHours(locationId, hours) {
+  const { data } = await api.put(`/owner/locations/${locationId}/opening-hours`, { hours }, ownerConfig(locationId))
+  return data?.data ?? []
+}
+
+/** GET /api/owner/locations/{id}/opening-exceptions?from=&to= */
+export async function getOpeningExceptions(locationId, { from, to } = {}) {
+  const params = {}
+  if (from) params.from = from
+  if (to) params.to = to
+  const { data } = await api.get(`/owner/locations/${locationId}/opening-exceptions`, ownerConfig(locationId, { params }))
+  return data?.data ?? []
+}
+
+/** POST /api/owner/locations/{id}/opening-exceptions */
+export async function createOpeningException(locationId, payload) {
+  const { data } = await api.post(`/owner/locations/${locationId}/opening-exceptions`, payload, ownerConfig(locationId))
+  return data?.data
+}
+
+/** PATCH /api/owner/opening-exceptions/{id} */
+export async function updateOpeningException(exceptionId, payload, locationId) {
+  const { data } = await api.patch(`/owner/opening-exceptions/${exceptionId}`, payload, ownerConfig(locationId))
+  return data?.data
+}
+
+/** DELETE /api/owner/opening-exceptions/{id} */
+export async function deleteOpeningException(exceptionId, locationId) {
+  await api.delete(`/owner/opening-exceptions/${exceptionId}`, ownerConfig(locationId))
+}
+
+/** GET /api/owner/courts/{id}/slot-settings */
+export async function getSlotSetting(courtId, locationId) {
+  const { data } = await api.get(`/owner/courts/${courtId}/slot-settings`, ownerConfig(locationId))
+  return data?.data
+}
+
+/** PUT /api/owner/courts/{id}/slot-settings */
+export async function updateSlotSetting(courtId, payload, locationId) {
+  const { data } = await api.put(`/owner/courts/${courtId}/slot-settings`, payload, ownerConfig(locationId))
+  return data?.data
 }

@@ -22,6 +22,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu nguyên nhân booking bị ảnh hưởng, lựa chọn của Player và kết quả xử lý.
+ */
 @Entity
 @Table(name = "affected_booking")
 @Getter

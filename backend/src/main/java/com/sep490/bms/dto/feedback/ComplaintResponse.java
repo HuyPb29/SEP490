@@ -8,6 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Trả chi tiết khiếu nại, booking hoặc giao dịch liên quan và kết quả xử lý.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -21,6 +24,7 @@ public class ComplaintResponse {
     private Long bookingId;
     private String bookingCode;
     private Long paymentId;
+    private boolean reschedulePayment;
     private Long playerId;
     private String playerName;
     private Long createdBy;

@@ -1,29 +1,69 @@
 import axios from 'axios'
-import { getAccessToken } from '../utils/authStorage'
-
-// Attach Bearer token to all outgoing requests via global axios
-axios.interceptors.request.use(
-  (config) => {
-    const token = getAccessToken()
-    if (token && !config.headers.Authorization) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
-  },
-  (error) => Promise.reject(error)
-)
+import { clearSession, getSavedUser, getToken, getSelectedLocation } from './session'
 
 const api = axios.create({ baseURL: '/api' })
 
-api.interceptors.request.use(
-  (config) => {
-    const token = getAccessToken()
-    if (token && !config.headers.Authorization) {
-      config.headers.Authorization = `Bearer ${token}`
+api.interceptors.request.use((request) => {
+  const token = request.skipAuth ? null : getToken()
+  if (token) {
+    request.headers.set('Authorization', `Bearer ${token}`)
+    const selectedLocation = request.locationId ?? getSelectedLocation()
+    const isAdminRoute = String(request.url || '').startsWith('/admin')
+    if (!isAdminRoute && getSavedUser()?.role_code === 'owner' && selectedLocation && !request.headers.has('X-Location-Id')) {
+      request.headers.set('X-Location-Id', String(selectedLocation))
     }
-    return config
-  },
-  (error) => Promise.reject(error)
-)
+  }
+  return request
+})
+
+api.interceptors.response.use((response) => response, (error) => {
+  const token = getToken()
+  if (token && error.response?.status === 401 &&
+      error.config?.headers?.get?.('Authorization') === `Bearer ${token}`) {
+    clearSession()
+    if (error.config?.url !== '/auth/logout') window.dispatchEvent(new Event('bms-session-expired'))
+  }
+  return Promise.reject(error)
+})
+
+export async function getAllPages(path, config = {}) {
+  const entries = []
+  let page = 0
+  let totalPages
+  do {
+    const { data } = await api.get(path, { ...config, params: { ...config.params, page, size: 50 } })
+    entries.push(...data.data.content)
+    totalPages = data.data.totalPages
+    page += 1
+  } while (page < totalPages)
+  return entries
+}
+
+/** Token của phiên đăng nhập hiện tại (xem session.js). */
+export function getAccessToken() {
+  return getToken()
+}
+
+/** Câu báo lỗi để hiện cho người dùng: ưu tiên message của backend (ApiResponse.message). */
+export function apiErrorMessage(err, fallback = 'Đã có lỗi xảy ra. Vui lòng thử lại.') {
+  const data = err?.response?.data
+  if (data?.errors && typeof data.errors === 'object') {
+    const first = Object.values(data.errors)[0]
+    if (first) return String(first)
+  }
+  if (data?.message && data.message !== 'No message available') return data.message
+  if (err?.response?.status === 401) return 'Vui lòng đăng nhập lại.'
+  if (err?.response?.status === 403) return 'Bạn không có quyền thực hiện thao tác này.'
+  return err?.message || fallback
+}
+
+/**
+ * Ảnh cần đăng nhập (QR thanh toán, ảnh chứng từ) không mở được bằng <img src> vì thiếu header
+ * Authorization: tải bằng axios rồi trả object URL để gắn vào <img>. Bên gọi tự revoke khi không dùng.
+ */
+export async function fetchProtectedImage(url) {
+  const res = await api.get(url.replace(/^\/api/, ''), { responseType: 'blob' })
+  return URL.createObjectURL(res.data)
+}
 
 export default api

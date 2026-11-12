@@ -16,17 +16,20 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sep490.bms.common.ApiResponse;
-import com.sep490.bms.dto.UserDto;
+import com.sep490.bms.dto.account.UserDto;
 import com.sep490.bms.dto.request.CreateStaffRequest;
 import com.sep490.bms.dto.request.StaffPasswordRequest;
 import com.sep490.bms.dto.request.UpdateStatusRequest;
 import com.sep490.bms.security.UserPrincipal;
-import com.sep490.bms.service.StaffService;
+import com.sep490.bms.service.account.StaffService;
 
 import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Cho Owner xem, tạo, vô hiệu hóa và cấp lại mật khẩu Staff tại địa điểm đang chọn.
+ */
 @RestController
 @RequestMapping("/api/owner/staff-members")
 @RequiredArgsConstructor

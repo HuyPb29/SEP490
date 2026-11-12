@@ -5,6 +5,9 @@ import jakarta.validation.constraints.Pattern;
 
 import lombok.*;
 
+/**
+ * Nhận mật khẩu mới do Owner đặt lại cho tài khoản Staff.
+ */
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class StaffPasswordRequest {
     @NotBlank

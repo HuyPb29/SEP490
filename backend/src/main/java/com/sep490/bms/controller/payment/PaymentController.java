@@ -31,6 +31,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp hướng dẫn chuyển khoản, nhận chứng từ và cho Staff hoặc Owner xử lý giao dịch đặt sân.
+ *
  * Feature: F4 – Thanh toán
  * Owner: Minh
  * UC: UC18 – Thanh toán booking; UC19 – Xác nhận thanh toán

@@ -9,6 +9,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Tổng hợp số slot khả dụng, số slot đã đặt và tỷ lệ lấp đầy theo ngày và sân.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

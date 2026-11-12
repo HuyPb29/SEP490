@@ -1,318 +1,309 @@
-import { useMemo, useState } from 'react'
-import styles from './AdminLocationsPage.module.css'
-import AdminPortalSidebar from './AdminPortalSidebar'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  apiErrorMessage,
+  approveServiceRegistration,
+  createServiceTerm,
+  getAdminLocations,
+  getAdminServiceRegistrations,
+  getLocationServiceTerms,
+  rejectServiceRegistration,
+  updateLocationStatus,
+} from '../../api/locationApi'
+import AdminLayout from '../../components/layout/AdminLayout'
+import styles from './AdminFacilitiesPage.module.css'
 
-const INITIAL_PENDING_REQUESTS = [
-  {
-    id: 'request-mydinh',
-    name: 'My Dinh Badminton Court',
-    type: 'New Owner',
-    address: '15 Le Duc Tho, Nam Tu Liem',
-    courts: 6,
-    ownerName: 'Tran Van Binh',
-    contact: '0912 000 111',
-    submitted: '23/10 14:20',
-  },
-  {
-    id: 'request-smash-2',
-    name: 'Smash Arena 2',
-    type: 'Add Location',
-    address: '40 Quang Trung, Ha Dong',
-    courts: 5,
-    ownerName: 'Nguyen Van Hung',
-    contact: '',
-    submitted: '23/10 09:05',
-  },
-  {
-    id: 'request-long-bien',
-    name: 'Long Bien Club',
-    type: 'New Owner',
-    address: '7 Nguyen Van Cu, Long Bien',
-    courts: 4,
-    ownerName: 'Le Thu Ha',
-    contact: '0988 222 333',
-    submitted: '22/10 17:40',
-  },
-]
-
-const INITIAL_FACILITIES = [
-  {
-    id: 'facility-smash-arena',
-    name: 'Smash Arena',
-    owner: 'Nguyen Van Hung',
-    status: 'Active',
-    serviceStartDate: '2026-01-01',
-    serviceEndDate: '2026-12-31',
-    servicePeriodKind: 'range',
-    courts: 8,
-    bookings: 3412,
-  },
-  {
-    id: 'facility-green-shuttle',
-    name: 'Green Shuttle Club',
-    owner: 'Pham Minh',
-    status: 'Active',
-    serviceStartDate: '2026-01-01',
-    serviceEndDate: '2026-10-27',
-    servicePeriodKind: 'expires',
-    courts: 6,
-    bookings: 1980,
-  },
-  {
-    id: 'facility-dich-vong',
-    name: 'Dich Vong Badminton Court',
-    owner: 'Do Lan',
-    status: 'Active',
-    serviceStartDate: '2026-03-15',
-    serviceEndDate: '2027-03-14',
-    servicePeriodKind: 'range',
-    courts: 4,
-    bookings: 870,
-  },
-  {
-    id: 'facility-thanh-xuan',
-    name: 'Badminton Thanh Xuan',
-    owner: 'Vu Tung',
-    status: 'Locked',
-    serviceStartDate: '2025-10-01',
-    serviceEndDate: '2026-09-30',
-    servicePeriodKind: 'expired',
-    courts: 5,
-    bookings: 1204,
-  },
-]
-
-const TOTAL_FACILITY_COUNT = 24
 const EXTENSION_OPTIONS = [
-  { months: 12, label: '12 months (1 year)' },
-  { months: 24, label: '24 months (2 years)' },
-  { months: 36, label: '36 months (3 years)' },
+  { months: 12, label: '12 tháng (1 năm)' },
+  { months: 24, label: '24 tháng (2 năm)' },
+  { months: 36, label: '36 tháng (3 năm)' },
 ]
 
-function formatDate(dateString) {
-  const [year, month, day] = dateString.split('-')
+/** Số ngày còn lại được coi là "sắp hết hạn" để tô màu cảnh báo. */
+const EXPIRING_SOON_DAYS = 30
+
+function todayIso() {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const date = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${date}`
+}
+
+function addDays(isoDate, days) {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+/** Backend tính kỳ hạn tối thiểu 12 tháng: endDate = startDate + months - 1 ngày. */
+function endDateForMonths(startIso, months) {
+  const [year, month, day] = startIso.split('-').map(Number)
+  const targetYear = year + Math.floor((month - 1 + months) / 12)
+  const targetMonth = (month - 1 + months) % 12
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate()
+  const end = new Date(Date.UTC(targetYear, targetMonth, Math.min(day, lastDay)))
+  end.setUTCDate(end.getUTCDate() - 1)
+  return end.toISOString().slice(0, 10)
+}
+
+function formatDate(value) {
+  if (!value) return '—'
+  const [year, month, day] = String(value).slice(0, 10).split('-')
   return `${day}/${month}/${year}`
 }
 
-function addMonths(dateString, months) {
-  const [year, month, day] = dateString.split('-').map(Number)
-  const targetYear = year + Math.floor((month - 1 + months) / 12)
-  const targetMonth = (month - 1 + months) % 12
-  const lastDayOfMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate()
-  const targetDay = Math.min(day, lastDayOfMonth)
-  return new Date(Date.UTC(targetYear, targetMonth, targetDay)).toISOString().slice(0, 10)
+function formatDateTime(value) {
+  if (!value) return '—'
+  const [datePart, timePart = ''] = String(value).split('T')
+  const time = timePart.slice(0, 5)
+  return `${formatDate(datePart)}${time ? ` ${time}` : ''}`
 }
 
-function isExpired(dateString) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const endDate = new Date(`${dateString}T00:00:00`)
-  return endDate < today
+function daysBetween(fromIso, toIso) {
+  const from = new Date(`${fromIso}T00:00:00Z`).getTime()
+  const to = new Date(`${toIso}T00:00:00Z`).getTime()
+  return Math.round((to - from) / 86_400_000)
 }
 
-function getErrorMessage(err) {
-  return err.response?.data?.message || err.message
-}
-
-export default function AdminLocationsPage() {
-  const [pendingRequests, setPendingRequests] = useState(INITIAL_PENDING_REQUESTS)
-  const [facilities, setFacilities] = useState(INITIAL_FACILITIES)
+export default function AdminFacilitiesPage() {
+  const [pendingRequests, setPendingRequests] = useState([])
+  const [facilities, setFacilities] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [searchKeyword, setSearchKeyword] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
   const [modal, setModal] = useState(null)
   const [statusMessage, setStatusMessage] = useState('')
   const [actionError, setActionError] = useState('')
 
+  // UC06: nạp danh sách địa điểm + đơn đăng ký đang chờ duyệt.
+  const loadAll = async () => {
+    setLoading(true)
+    try {
+      const [locations, registrations] = await Promise.all([
+        getAdminLocations(),
+        getAdminServiceRegistrations('PENDING'),
+      ])
+      setFacilities(locations)
+      setPendingRequests(registrations)
+      setActionError('')
+    } catch (err) {
+      setActionError(apiErrorMessage(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    Promise.resolve().then(() => loadAll())
+  }, [])
+
   const filteredFacilities = useMemo(() => {
     const keyword = searchKeyword.trim().toLocaleLowerCase()
-    if (!keyword) return facilities
-    return facilities.filter((facility) => facility.name.toLocaleLowerCase().includes(keyword))
-  }, [facilities, searchKeyword])
+    return facilities.filter((facility) => {
+      if (statusFilter !== 'ALL' && facility.status !== statusFilter) return false
+      if (!keyword) return true
+      return (
+        (facility.name ?? '').toLocaleLowerCase().includes(keyword) ||
+        (facility.ownerName ?? '').toLocaleLowerCase().includes(keyword)
+      )
+    })
+  }, [facilities, searchKeyword, statusFilter])
 
-  const handleApprove = (requestId) => {
+  const activeCount = facilities.filter((facility) => facility.status === 'ACTIVE').length
+  const lockedCount = facilities.filter((facility) => facility.status === 'LOCKED').length
+
+  // --------------------------------------------------- UC05: duyệt / từ chối đơn đăng ký
+
+  const handleApprove = async (request) => {
+    if (!window.confirm(`Approve "${request.locationName}"? Courts and default opening hours (06:00–24:00) will be created.`)) return
+    setSaving(true)
     try {
-      const request = pendingRequests.find((item) => item.id === requestId)
-      if (!request) throw new Error('The registration request could not be found.')
-
-      const now = new Date()
-      const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const startDateString = [
-        startDate.getFullYear(),
-        String(startDate.getMonth() + 1).padStart(2, '0'),
-        String(startDate.getDate()).padStart(2, '0'),
-      ].join('-')
-      const endDateString = addMonths(startDateString, 12)
-      setFacilities((currentFacilities) => [...currentFacilities, {
-        id: `facility-${request.id}`,
-        name: request.name,
-        owner: request.ownerName,
-        status: 'Active',
-        serviceStartDate: startDateString,
-        serviceEndDate: endDateString,
-        servicePeriodKind: 'range',
-        courts: request.courts,
-        bookings: 0,
-      }])
-      setPendingRequests((currentRequests) => currentRequests.filter((item) => item.id !== requestId))
-      setStatusMessage(request.type === 'New Owner'
-        ? `Owner account created for ${request.ownerName}. Activation email sent.`
-        : `Location added to ${request.ownerName}'s existing owner account.`)
+      await approveServiceRegistration(request.id)
+      await loadAll()
       setActionError('')
+      setStatusMessage(`Approved "${request.locationName}". Courts and default opening hours were created.`)
     } catch (err) {
-      setActionError(getErrorMessage(err))
+      setActionError(apiErrorMessage(err))
       setStatusMessage('')
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleReject = (requestId) => {
-    try {
-      const request = pendingRequests.find((item) => item.id === requestId)
-      if (!request) throw new Error('The registration request could not be found.')
-      setModal({ type: 'reject', requestId, reason: '' })
-      setActionError('')
-      setStatusMessage('')
-    } catch (err) {
-      setActionError(getErrorMessage(err))
-      setStatusMessage('')
-    }
+  const handleReject = (request) => {
+    setModal({ type: 'reject', requestId: request.id, locationName: request.locationName, reason: '' })
+    setActionError('')
+    setStatusMessage('')
   }
 
-  const handleConfirmRejection = (event) => {
+  const handleConfirmRejection = async (event) => {
     event.preventDefault()
+    if (!modal?.reason.trim()) {
+      setActionError('A rejection reason is required.')
+      return
+    }
+    setSaving(true)
     try {
-      if (!modal || modal.type !== 'reject') throw new Error('Choose a registration request to reject.')
-      const request = pendingRequests.find((item) => item.id === modal.requestId)
-      if (!request) throw new Error('The registration request could not be found.')
-      if (!modal.reason.trim()) throw new Error('A rejection reason is required.')
-      setPendingRequests((currentRequests) => currentRequests.filter((item) => item.id !== modal.requestId))
-      setStatusMessage(`Rejection email sent to ${request.ownerName}.`)
+      await rejectServiceRegistration(modal.requestId, modal.reason.trim())
+      await loadAll()
       setModal(null)
       setActionError('')
+      setStatusMessage(`Rejected "${modal.locationName}".`)
     } catch (err) {
-      setActionError(getErrorMessage(err))
-      setStatusMessage('')
+      setActionError(apiErrorMessage(err))
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleLock = (facilityId) => {
+  // ------------------------------------------------------------- UC06: khoá / mở lại
+
+  const handleLock = async (facility) => {
+    const confirmed = window.confirm(
+      `Lock "${facility.name}"? The facility will stop appearing in search and will not accept new bookings.`,
+    )
+    if (!confirmed) return
+    setSaving(true)
     try {
-      const facility = facilities.find((item) => item.id === facilityId)
-      if (!facility) throw new Error('The selected location could not be found.')
-      const confirmed = window.confirm(`Lock location ${facility.name}? The location will no longer be displayed and will not accept new bookings. The system does not process unplayed bookings of the location.`)
-      if (!confirmed) return
-      setFacilities((currentFacilities) => currentFacilities.map((item) => (
-        item.id === facilityId ? { ...item, status: 'Locked' } : item
-      )))
-      setStatusMessage(`${facility.name} has been locked.`)
+      await updateLocationStatus(facility.id, 'LOCKED')
+      await loadAll()
       setActionError('')
+      setStatusMessage(`"${facility.name}" has been locked.`)
     } catch (err) {
-      setActionError(getErrorMessage(err))
+      setActionError(apiErrorMessage(err))
       setStatusMessage('')
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleExtend = (facilityId, reopening = false) => {
+  const handleReopen = async (facility) => {
+    // Địa điểm hết kỳ hạn mà mở lại ngay sẽ bị job khoá lại đêm nay,
+    // nên bắt buộc gia hạn trước rồi mới mở.
+    if (facility.serviceActive === false) {
+      openExtendModal(facility, true)
+      return
+    }
+    setSaving(true)
     try {
-      const facility = facilities.find((item) => item.id === facilityId)
-      if (!facility) throw new Error('The selected location could not be found.')
-      setModal({ facilityId, months: 12, reopening })
+      await updateLocationStatus(facility.id, 'ACTIVE')
+      await loadAll()
       setActionError('')
+      setStatusMessage(`"${facility.name}" has been reopened.`)
     } catch (err) {
-      setActionError(getErrorMessage(err))
+      setActionError(apiErrorMessage(err))
+      setStatusMessage('')
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleReopen = (facilityId) => {
+  // ------------------------------------------------------------- UC06: gia hạn kỳ hạn
+
+  const openExtendModal = async (facility, reopening = false) => {
+    setModal({
+      type: 'extend',
+      facilityId: facility.id,
+      facilityName: facility.name,
+      months: 12,
+      startDate: '',
+      reopening,
+      currentEndDate: facility.serviceTermEndDate ?? null,
+    })
+    setActionError('')
+    setStatusMessage('')
+
+    // Kỳ hạn mới phải nối tiếp kỳ hạn xa nhất đã có, nếu không backend báo trùng.
     try {
-      const facility = facilities.find((item) => item.id === facilityId)
-      if (!facility) throw new Error('The selected location could not be found.')
-      if (isExpired(facility.serviceEndDate)) {
-        handleExtend(facilityId, true)
-        return
+      const terms = await getLocationServiceTerms(facility.id)
+      const latestEnd = terms
+        .map((term) => term.endDate)
+        .filter(Boolean)
+        .sort()
+        .at(-1) ?? null
+      const today = todayIso()
+      const startDate = latestEnd && latestEnd >= today ? addDays(latestEnd, 1) : today
+      setModal((current) => (
+        current && current.facilityId === facility.id
+          ? { ...current, startDate, currentEndDate: latestEnd }
+          : current
+      ))
+    } catch {
+      setModal((current) => (
+        current && current.facilityId === facility.id ? { ...current, startDate: todayIso() } : current
+      ))
+    }
+  }
+
+  const handleConfirmExtension = async (event) => {
+    event.preventDefault()
+    if (!modal?.startDate) {
+      setActionError('Choose a start date for the new service period.')
+      return
+    }
+    const endDate = endDateForMonths(modal.startDate, Number(modal.months))
+    setSaving(true)
+    try {
+      await createServiceTerm(modal.facilityId, { startDate: modal.startDate, endDate })
+      if (modal.reopening) {
+        await updateLocationStatus(modal.facilityId, 'ACTIVE')
       }
-      setFacilities((currentFacilities) => currentFacilities.map((item) => (
-        item.id === facilityId ? { ...item, status: 'Active' } : item
-      )))
-      setStatusMessage(`${facility.name} has been reopened.`)
+      await loadAll()
+      setModal(null)
       setActionError('')
+      setStatusMessage(modal.reopening
+        ? `"${modal.facilityName}" extended to ${formatDate(endDate)} and reopened.`
+        : `"${modal.facilityName}" service extended to ${formatDate(endDate)}.`)
     } catch (err) {
-      setActionError(getErrorMessage(err))
-      setStatusMessage('')
+      setActionError(apiErrorMessage(err))
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleConfirmExtension = (event) => {
-    event.preventDefault()
-    try {
-      if (!modal) throw new Error('Choose a location to extend.')
-      const facility = facilities.find((item) => item.id === modal.facilityId)
-      if (!facility) throw new Error('The selected location could not be found.')
-      const option = EXTENSION_OPTIONS.find((item) => item.months === Number(modal.months))
-      if (!option) throw new Error('Choose a valid extension period.')
-      const serviceEndDate = addMonths(facility.serviceEndDate, option.months)
-      setFacilities((currentFacilities) => currentFacilities.map((item) => (
-        item.id === facility.id
-          ? {
-            ...item,
-            serviceEndDate,
-            servicePeriodKind: 'range',
-            status: modal.reopening ? 'Active' : item.status,
-          }
-          : item
-      )))
-      setStatusMessage(modal.reopening
-        ? `${facility.name} has been extended and reopened.`
-        : `${facility.name} service extended by ${option.label}.`)
-      setModal(null)
-      setActionError('')
-    } catch (err) {
-      setActionError(getErrorMessage(err))
-      setStatusMessage('')
-    }
+  const updateModalField = (field, value) => {
+    setModal((current) => (current ? { ...current, [field]: value } : current))
+    setActionError('')
   }
 
   const closeModal = () => {
-    try {
-      setModal(null)
-      setActionError('')
-    } catch (err) {
-      setActionError(getErrorMessage(err))
-    }
-  }
-
-  const updateExtensionPeriod = (event) => {
-    try {
-      const months = Number(event.target.value)
-      setModal((currentModal) => currentModal ? { ...currentModal, months } : currentModal)
-    } catch (err) {
-      setActionError(getErrorMessage(err))
-    }
-  }
-
-  const updateRejectionReason = (event) => {
-    try {
-      const reason = event.target.value
-      setModal((currentModal) => currentModal ? { ...currentModal, reason } : currentModal)
-      setActionError('')
-    } catch (err) {
-      setActionError(getErrorMessage(err))
-    }
+    setModal(null)
+    setActionError('')
   }
 
   const clearStatus = () => {
-    try {
-      setStatusMessage('')
-      setActionError('')
-    } catch (err) {
-      setActionError(getErrorMessage(err))
+    setStatusMessage('')
+    setActionError('')
+  }
+
+  /** Trạng thái kỳ hạn: hết hạn / sắp hết hạn / còn hạn / chưa có kỳ hạn. */
+  const periodInfo = (facility) => {
+    const end = facility.serviceTermEndDate
+    if (!end) return { kind: 'none', text: 'Chưa có kỳ hạn' }
+    if (facility.serviceActive === false) return { kind: 'expired', text: `Hết hạn ${formatDate(end)}` }
+    const remaining = daysBetween(todayIso(), String(end).slice(0, 10))
+    if (remaining <= EXPIRING_SOON_DAYS) {
+      return { kind: 'expiring', text: `Sắp hết hạn ${formatDate(end)} (${remaining} ngày)` }
     }
+    return { kind: 'range', text: `Hiệu lực đến ${formatDate(end)}` }
   }
 
   return (
-    <div className={styles.page}>
-      <AdminPortalSidebar pendingRequestCount={pendingRequests.length} />
-
-      <main className={styles.main}>
-        <h1 className={styles.pageTitle}>Manage Service Locations</h1>
+    <AdminLayout
+      title="Quản lý địa điểm & Đăng ký dịch vụ"
+      subtitle="Kiểm duyệt đơn đăng ký của chủ sân và quản lý kỳ hạn hoạt động"
+      actions={
+        <button
+          className={styles.secondaryButton || 'cw-secondary'}
+          type="button"
+          onClick={loadAll}
+          disabled={loading}
+        >
+          {loading ? 'Đang tải…' : 'Làm mới'}
+        </button>
+      }
+    >
 
         {(statusMessage || (actionError && !modal)) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
@@ -323,30 +314,36 @@ export default function AdminLocationsPage() {
 
         <section className={`${styles.panel} ${styles.requestsPanel}`} aria-labelledby="requests-title">
           <h2 className={styles.sectionTitle} id="requests-title">
-            Pending Registration Requests ({pendingRequests.length})
+            Đơn đăng ký dịch vụ chờ duyệt ({pendingRequests.length})
           </h2>
           <div className={styles.requestList}>
             {pendingRequests.map((request) => (
               <article className={styles.requestRow} key={request.id}>
                 <div className={styles.requestInfo}>
                   <div className={styles.requestHeading}>
-                    <h3>{request.name}</h3>
-                    <span className={styles.requestType}>{request.type}</span>
+                    <h3>{request.locationName}</h3>
+                    <span className={styles.requestType}>{request.courtCount} sân</span>
                   </div>
-                  <p className={styles.requestAddress}>{request.address} · {request.courts} courts</p>
+                  <p className={styles.requestAddress}>{request.address || 'Chưa có địa chỉ'}</p>
                   <p className={styles.requestMeta}>
-                    {request.ownerName}{request.type === 'Add Location' ? ' (Existing Owner)' : ''}
-                    {request.contact ? ` · ${request.contact}` : ''} · submitted {request.submitted}
+                    {request.requesterName || 'Chưa rõ người gửi'}
+                    {request.contactPhone ? ` · ${request.contactPhone}` : ''}
+                    {request.contactEmail ? ` · ${request.contactEmail}` : ''}
+                    {` · gửi lúc ${formatDateTime(request.createdAt)}`}
                   </p>
                 </div>
                 <div className={styles.requestActions}>
-                  <button className={styles.rejectButton} type="button" onClick={() => handleReject(request.id)}>Reject</button>
-                  <button className={styles.approveButton} type="button" onClick={() => handleApprove(request.id)}>Approve</button>
+                  <button className={styles.rejectButton} type="button" onClick={() => handleReject(request)} disabled={saving}>
+                    Từ chối
+                  </button>
+                  <button className={styles.approveButton} type="button" onClick={() => handleApprove(request)} disabled={saving}>
+                    Duyệt
+                  </button>
                 </div>
               </article>
             ))}
-            {pendingRequests.length === 0 && (
-              <p className={styles.emptyState}>There are no pending registration requests.</p>
+            {!loading && pendingRequests.length === 0 && (
+              <p className={styles.emptyState}>Không có đơn đăng ký dịch vụ nào đang chờ duyệt.</p>
             )}
           </div>
         </section>
@@ -354,61 +351,83 @@ export default function AdminLocationsPage() {
         <section className={`${styles.panel} ${styles.facilitiesPanel}`} aria-labelledby="facilities-title">
           <div className={styles.facilitiesHeader}>
             <h2 className={styles.sectionTitle} id="facilities-title">
-              Locations ({TOTAL_FACILITY_COUNT + facilities.length - INITIAL_FACILITIES.length})
+              Danh sách cụm sân ({facilities.length})
+              <span className={styles.countHint}>
+                {activeCount} hoạt động · {lockedCount} đã khóa
+              </span>
             </h2>
-            <label className={styles.searchField}>
-              <span className={styles.visuallyHidden}>Search by location name</span>
-              <input
-                type="search"
-                placeholder="Search by location name"
-                value={searchKeyword}
-                onChange={(event) => setSearchKeyword(event.target.value)}
-              />
-            </label>
+            <div className={styles.filterGroup}>
+              <label className={styles.filterField}>
+                <span className={styles.visuallyHidden}>Lọc theo trạng thái</span>
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                  <option value="ALL">Tất cả trạng thái</option>
+                  <option value="ACTIVE">Hoạt động</option>
+                  <option value="LOCKED">Đã khóa</option>
+                </select>
+              </label>
+              <label className={styles.searchField}>
+                <span className={styles.visuallyHidden}>Tìm theo tên sân hoặc chủ sân</span>
+                <input
+                  type="search"
+                  placeholder="Tìm theo tên sân hoặc chủ sân"
+                  value={searchKeyword}
+                  onChange={(event) => setSearchKeyword(event.target.value)}
+                />
+              </label>
+            </div>
           </div>
 
           <div className={styles.tableScroller}>
             <div className={`${styles.facilityTable} ${styles.tableHeader}`} role="row">
-              <span role="columnheader">Location</span>
-              <span role="columnheader">Status</span>
-              <span role="columnheader">Service Period</span>
-              <span role="columnheader">Courts</span>
-              <span role="columnheader">Bookings</span>
-              <span role="columnheader">Actions</span>
+              <span role="columnheader">Địa điểm sân</span>
+              <span role="columnheader">Trạng thái</span>
+              <span role="columnheader">Kỳ hạn dịch vụ</span>
+              <span role="columnheader">Số sân</span>
+              <span role="columnheader">Hành động</span>
             </div>
-            {filteredFacilities.map((facility) => (
-              <div className={`${styles.facilityTable} ${styles.facilityRow}`} role="row" key={facility.id}>
-                <div className={styles.facilityName} role="cell">
-                  <strong>{facility.name}</strong>
-                  <span>Owner: {facility.owner}</span>
+            {filteredFacilities.map((facility) => {
+              const period = periodInfo(facility)
+              return (
+                <div className={`${styles.facilityTable} ${styles.facilityRow}`} role="row" key={facility.id}>
+                  <div className={styles.facilityName} role="cell">
+                    <strong>{facility.name}</strong>
+                    <span>Chủ sân: {facility.ownerName || '—'}</span>
+                  </div>
+                  <div className={styles.statusCell} role="cell">
+                    <span className={`${styles.statusBadge} ${facility.status === 'ACTIVE' ? styles.statusActive : styles.statusLocked}`}>
+                      {facility.status === 'ACTIVE' ? 'Hoạt động' : 'Đã khóa'}
+                    </span>
+                  </div>
+                  <div
+                    className={`${styles.servicePeriod} ${period.kind === 'expiring' ? styles.periodExpiring : ''} ${period.kind === 'expired' ? styles.periodExpired : ''}`}
+                    role="cell"
+                  >
+                    {period.text}
+                    {facility.lockedAt && facility.status === 'LOCKED' && (
+                      <span className={styles.lockedHint}>Đã khóa {formatDateTime(facility.lockedAt)}</span>
+                    )}
+                  </div>
+                  <span className={styles.numberCell} role="cell">{facility.courtCount ?? 0}</span>
+                  <div className={styles.facilityActions} role="cell">
+                    <button className={styles.extendButton} type="button" onClick={() => openExtendModal(facility)} disabled={saving}>
+                      Gia hạn
+                    </button>
+                    {facility.status === 'ACTIVE' ? (
+                      <button className={styles.lockButton} type="button" onClick={() => handleLock(facility)} disabled={saving}>
+                        Khóa
+                      </button>
+                    ) : (
+                      <button className={styles.reopenButton} type="button" onClick={() => handleReopen(facility)} disabled={saving}>
+                        Mở lại
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className={styles.statusCell} role="cell">
-                  <span className={`${styles.statusBadge} ${facility.status === 'Active' ? styles.statusActive : styles.statusLocked}`}>
-                    {facility.status}
-                  </span>
-                </div>
-                <div
-                  className={`${styles.servicePeriod} ${facility.servicePeriodKind === 'expires' ? styles.periodExpiring : ''} ${facility.servicePeriodKind === 'expired' ? styles.periodExpired : ''}`}
-                  role="cell"
-                >
-                  {facility.servicePeriodKind === 'range'
-                    ? <>{formatDate(facility.serviceStartDate)} – {formatDate(facility.serviceEndDate)}</>
-                    : <>{facility.servicePeriodKind === 'expired' ? 'Expired' : 'Expires'} {formatDate(facility.serviceEndDate)}</>}
-                </div>
-                <span className={styles.numberCell} role="cell">{facility.courts}</span>
-                <span className={styles.numberCell} role="cell">{facility.bookings.toLocaleString('en-US')}</span>
-                <div className={styles.facilityActions} role="cell">
-                  <button className={styles.extendButton} type="button" onClick={() => handleExtend(facility.id)}>Extend</button>
-                  {facility.status === 'Active' ? (
-                    <button className={styles.lockButton} type="button" onClick={() => handleLock(facility.id)}>Lock</button>
-                  ) : (
-                    <button className={styles.reopenButton} type="button" onClick={() => handleReopen(facility.id)}>Reopen</button>
-                  )}
-                </div>
-              </div>
-            ))}
-            {filteredFacilities.length === 0 && (
-              <p className={styles.emptyState}>No locations match your search.</p>
+              )
+            })}
+            {loading && <p className={styles.emptyState}>Đang tải danh sách địa điểm…</p>}
+            {!loading && filteredFacilities.length === 0 && (
+              <p className={styles.emptyState}>Không có địa điểm nào phù hợp bộ lọc.</p>
             )}
           </div>
         </section>
@@ -417,52 +436,71 @@ export default function AdminLocationsPage() {
           <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => {
             if (event.target === event.currentTarget) closeModal()
           }}>
-            <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="extend-modal-title">
-              <h2 id="extend-modal-title">
+            <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
+              <h2 id="admin-modal-title">
                 {modal.type === 'reject'
-                  ? 'Reject Registration Request'
-                  : modal.reopening ? 'Extend and Reopen Location' : 'Extend Service Period'}
+                  ? 'Từ chối đơn đăng ký dịch vụ'
+                  : modal.reopening ? 'Gia hạn và mở lại cụm sân' : 'Gia hạn kỳ hạn dịch vụ'}
               </h2>
               <p>
                 {modal.type === 'reject'
-                  ? 'Provide a reason to include in the rejection email.'
-                  : 'Select the service period to add to this location.'}
+                  ? `Chủ sở hữu của "${modal.locationName}" sẽ thấy lý do này.`
+                  : `Kỳ hạn dịch vụ mới cho "${modal.facilityName}". Hệ thống yêu cầu tối thiểu 12 tháng và không trùng lặp với kỳ hạn đang có.`}
               </p>
               <form onSubmit={modal.type === 'reject' ? handleConfirmRejection : handleConfirmExtension}>
                 {actionError && <p className={styles.modalError} role="alert">{actionError}</p>}
                 {modal.type === 'reject' ? (
                   <label className={styles.modalField}>
-                    <span>Rejection reason</span>
+                    <span>Lý do từ chối</span>
                     <textarea
                       autoFocus
                       rows="4"
+                      maxLength={500}
                       value={modal.reason}
-                      onChange={updateRejectionReason}
+                      onChange={(event) => updateModalField('reason', event.target.value)}
                     />
                   </label>
                 ) : (
-                  <label className={styles.modalField}>
-                    <span>Extension period</span>
-                    <select value={modal.months} onChange={updateExtensionPeriod}>
-                      {EXTENSION_OPTIONS.map((option) => (
-                        <option key={option.months} value={option.months}>{option.label}</option>
-                      ))}
-                    </select>
-                  </label>
+                  <>
+                    <label className={styles.modalField}>
+                      <span>Thời hạn gia hạn</span>
+                      <select value={modal.months} onChange={(event) => updateModalField('months', Number(event.target.value))}>
+                        {EXTENSION_OPTIONS.map((option) => (
+                          <option key={option.months} value={option.months}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={styles.modalField}>
+                      <span>Ngày bắt đầu</span>
+                      <input
+                        type="date"
+                        value={modal.startDate}
+                        onChange={(event) => updateModalField('startDate', event.target.value)}
+                      />
+                    </label>
+                    <p className={styles.computedDate}>
+                      Kỳ hạn mới: <strong>{formatDate(modal.startDate)}</strong> –{' '}
+                      <strong>{formatDate(endDateForMonths(modal.startDate || todayIso(), Number(modal.months)))}</strong>
+                      {modal.currentEndDate && (
+                        <span className={styles.computedHint}>Kỳ hạn hiện tại kết thúc ngày {formatDate(modal.currentEndDate)}</span>
+                      )}
+                    </p>
+                  </>
                 )}
                 <div className={styles.modalActions}>
-                  <button className={styles.cancelButton} type="button" onClick={closeModal}>Cancel</button>
-                  <button className={styles.approveButton} type="submit">
+                  <button className={styles.cancelButton} type="button" onClick={closeModal} disabled={saving}>
+                    Hủy
+                  </button>
+                  <button className={styles.approveButton} type="submit" disabled={saving}>
                     {modal.type === 'reject'
-                      ? 'Send Rejection'
-                      : modal.reopening ? 'Extend & Reopen' : 'Confirm Extension'}
+                      ? 'Gửi từ chối'
+                      : modal.reopening ? 'Gia hạn & Mở lại' : 'Xác nhận gia hạn'}
                   </button>
                 </div>
               </form>
             </section>
           </div>
         )}
-      </main>
-    </div>
+    </AdminLayout>
   )
 }

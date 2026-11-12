@@ -1,5 +1,8 @@
 package com.sep490.bms.entity.enums;
 
+/**
+ * Liệt kê các trạng thái xử lý yêu cầu cần phê duyệt.
+ */
 public enum ApprovalStatus {
     PENDING,
     APPROVED,

@@ -8,6 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận loại và nội dung khiếu nại kèm mã booking hoặc giao dịch liên quan.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

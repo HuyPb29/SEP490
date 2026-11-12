@@ -14,6 +14,8 @@ import com.sep490.bms.service.operation.OperationService;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp bảng điều hành trong ngày cho Staff tại địa điểm được phân quyền.
+ *
  * Feature: F9 – Vận hành và báo cáo
  * Owner: Hoàng
  * UC: UC34 – Xem bảng điều hành nhân viên

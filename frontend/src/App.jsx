@@ -1,220 +1,73 @@
-import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, useLocation, useParams, Navigate } from 'react-router-dom'
-import api from './api'
-import AuthProvider from './contexts/AuthContext'
-import ProtectedRoute from './routes/ProtectedRoute'
-
-import LocationSearchPage from './pages/location/LocationSearchPage'
-import LocationDetailPage from './pages/location/LocationDetailPage'
-import AuthPage from './pages/auth/AuthPage'
-import AccountSettingsPage from './pages/account/AccountSettingsPage'
-import BookingSummaryPage from './pages/booking/BookingSummaryPage'
-import BookingPaymentPage from './pages/booking/BookingPaymentPage'
-import MyBookingsPage from './pages/booking/MyBookingsPage'
-import OpenMatchesPage from './pages/matches/OpenMatchesPage'
-import StaffDashboardPage from './pages/staff/StaffDashboardPage'
-import StaffConfirmPaymentPage from './pages/staff/StaffConfirmPaymentPage'
-
-// Owner Portal — new layout-based structure
-import OwnerLayout from './pages/owner/OwnerLayout'
-import OwnerStaffPage from './pages/owner/OwnerStaffPage'
-import OwnerLocationSettingsPage from './pages/owner/OwnerLocationSettingsPage'
-import OwnerOpeningHoursPage from './pages/owner/OwnerOpeningHoursPage'
-import OwnerMaintenancePage from './pages/owner/OwnerMaintenancePage'
-import OwnerPlaceholderPage from './pages/owner/OwnerPlaceholderPage'
-
-// Legacy Owner pages (kept intact; redirect shims below)
-import OwnerReportPage from './pages/owner/OwnerReportPage'
-import OwnerCourtsPricingPage from './pages/owner/OwnerCourtsPricingPage'
-
-// Admin pages
-import AdminLocationsPage from './pages/admin/AdminLocationsPage'
-import AdminAccountsPage from './pages/admin/AdminAccountsPage'
-import AdminViolatingVouchersPage from './pages/admin/AdminViolatingVouchersPage'
-import AdminViolatingReviewsPage from './pages/admin/AdminViolatingReviewsPage'
-
-/** Default owner location id used when redirecting legacy routes */
-const DEFAULT_OWNER_LOCATION_ID = 1
+import { useEffect, useState } from 'react';
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
+import api from './api';
+import { messages } from './api/f1Rules';
+import { clearSession, watchSessionExpiry } from './api/session';
+import { F1Dialog } from './components/F1Feedback';
+import { AuthProvider } from './contexts/AuthContext';
+import { LocationProvider } from './contexts/LocationContext';
+import AppRoutes from './routes/AppRoutes';
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </BrowserRouter>
-  )
+    <AuthProvider>
+      <LocationProvider>
+        <BrowserRouter>
+          <AppContent />
+        </BrowserRouter>
+      </LocationProvider>
+    </AuthProvider>
+  );
 }
 
 function AppContent() {
-  const location = useLocation()
-
-  const isOwnerPortal    = location.pathname.startsWith('/owner/locations/')
-  const isLegacyOwner    = location.pathname === '/owner/reports' || location.pathname === '/owner/courts-pricing'
-  const isMultiSessionBooking =
-    location.pathname === '/booking/multi' || location.pathname.endsWith('/package-booking')
-  const isFrontendMockPage =
-    isMultiSessionBooking ||
-    location.pathname === '/open-matches' ||
-    location.pathname === '/staff/dashboard' ||
-    location.pathname === '/staff/confirm-payments' ||
-    isLegacyOwner ||
-    location.pathname === '/admin/locations' ||
-    location.pathname === '/admin/facilities' ||
-    location.pathname === '/admin/accounts' ||
-    location.pathname === '/admin/violating-vouchers' ||
-    location.pathname === '/admin/violating-reviews' ||
-    isOwnerPortal
-
-  const [status, setStatus] = useState(() => (isFrontendMockPage ? 'mock preview' : 'checking...'))
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [showExpiry, setShowExpiry] = useState(false);
+  const returnTo =
+    location.pathname === '/login'
+      ? location.state?.returnTo
+      : location.pathname + location.search;
 
   useEffect(() => {
-    if (isFrontendMockPage) return
+    function expired() {
+      setShowExpiry(true);
+      navigate('/login', { replace: true, state: { returnTo } });
+    }
+    window.addEventListener('bms-session-expired', expired);
+    const stop = watchSessionExpiry(() => {
+      clearSession();
+      expired();
+    });
+    return () => {
+      stop();
+      window.removeEventListener('bms-session-expired', expired);
+    };
+  }, [navigate, returnTo]);
+
+  const [status, setStatus] = useState('checking...');
+
+  useEffect(() => {
     api
       .get('/health')
       .then((res) => setStatus(res.data.status))
-      .catch(() => setStatus('backend offline'))
-  }, [isFrontendMockPage])
-  const displayedStatus = isFrontendMockPage ? 'mock preview' : status
+      .catch(() => setStatus('backend offline'));
+  }, []);
 
   return (
     <>
-      {!isFrontendMockPage && (
-        <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
-          BE: {displayedStatus}
-        </div>
+      {showExpiry && location.pathname === '/login' && (
+        <F1Dialog
+          title="Phiên đăng nhập"
+          message={messages.expiredSession}
+          onClose={() => setShowExpiry(false)}
+        />
       )}
+      <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
+        BE: {status}
+      </div>
 
-      <Routes>
-        {/* UC11: Tìm kiếm địa điểm (GET /api/v1/facilities/search) */}
-        <Route path="/" element={<LocationSearchPage />} />
-        <Route path="/locations" element={<LocationSearchPage />} />
-        <Route path="/register-service" element={<Navigate to="/owner" replace />} />
-
-        {/* UC12-13: Location details and shared booking flow. */}
-        <Route path="/locations/:id" element={<LocationDetailPage />} />
-        <Route path="/locations/:id/package-booking" element={<LocationDetailPage />} />
-        <Route path="/facilities/:id" element={<LegacyLocationRedirect />} />
-        <Route path="/facilities/:id/package-booking" element={<LegacyLocationRedirect bookingMode="custom" />} />
-        <Route path="/admin/facilities" element={<Navigate to="/admin/locations" replace />} />
-
-        {/* UC29-30: Open matches */}
-        <Route path="/open-matches" element={<OpenMatchesPage />} />
-
-        {/* UC34: Staff dashboard mock preview */}
-        <Route
-          path="/staff/dashboard"
-          element={
-            <ProtectedRoute allowedRoles={['STAFF', 'OWNER', 'ADMIN']}>
-              <StaffDashboardPage />
-            </ProtectedRoute>
-          }
-        />
-        {/* UC19: Staff payment confirmation mock preview */}
-        <Route
-          path="/staff/confirm-payments"
-          element={
-            <ProtectedRoute allowedRoles={['STAFF', 'OWNER', 'ADMIN']}>
-              <StaffConfirmPaymentPage />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* ── Legacy Owner routes — redirect to new :id-based structure ── */}
-        {/* UC35: redirect to new layout (default location 1) */}
-        <Route path="/owner/reports" element={<Navigate to={`/owner/locations/${DEFAULT_OWNER_LOCATION_ID}/reports`} replace />} />
-        {/* UC07-09: redirect to new layout */}
-        <Route path="/owner/courts-pricing" element={<Navigate to={`/owner/locations/${DEFAULT_OWNER_LOCATION_ID}/courts`} replace />} />
-        {/* /owner → redirect to default location reports */}
-        <Route path="/owner" element={<Navigate to={`/owner/locations/${DEFAULT_OWNER_LOCATION_ID}/reports`} replace />} />
-
-        {/* ── Owner Portal (new layout with sidebar) ── */}
-        <Route
-          path="/owner/locations/:id"
-          element={
-            <ProtectedRoute allowedRoles={['OWNER', 'ADMIN']}>
-              <OwnerLayout />
-            </ProtectedRoute>
-          }
-        >
-          {/* Default tab: redirect to reports */}
-          <Route index element={<Navigate to="reports" replace />} />
-
-          {/* Implemented tabs */}
-          <Route path="staff"       element={<OwnerStaffPage />} />
-          <Route path="settings"    element={<OwnerLocationSettingsPage />} />
-          <Route path="hours"       element={<OwnerOpeningHoursPage />} />
-          <Route path="maintenance" element={<OwnerMaintenancePage />} />
-
-          {/* Legacy pages served inside the new layout */}
-          <Route path="reports" element={<OwnerReportPage embedded />} />
-          <Route path="courts"  element={<OwnerCourtsPricingPage embedded />} />
-
-          {/* Placeholder tabs for future sprints */}
-          <Route path="vouchers"    element={<OwnerPlaceholderPage tab="vouchers" />} />
-          <Route path="complaints"  element={<OwnerPlaceholderPage tab="complaints" />} />
-          <Route path="refunds"     element={<OwnerPlaceholderPage tab="refunds" />} />
-          <Route path="reviews"     element={<OwnerPlaceholderPage tab="reviews" />} />
-        </Route>
-
-        {/* UC06: Admin locations mock preview */}
-        <Route
-          path="/admin/locations"
-          element={
-            <ProtectedRoute allowedRoles={['ADMIN']}>
-              <AdminLocationsPage />
-            </ProtectedRoute>
-          }
-        />
-        {/* UC04: Admin user accounts mock preview */}
-        <Route
-          path="/admin/accounts"
-          element={
-            <ProtectedRoute allowedRoles={['ADMIN']}>
-              <AdminAccountsPage />
-            </ProtectedRoute>
-          }
-        />
-        {/* UC24: Admin violating vouchers mock preview */}
-        <Route
-          path="/admin/violating-vouchers"
-          element={
-            <ProtectedRoute allowedRoles={['ADMIN']}>
-              <AdminViolatingVouchersPage />
-            </ProtectedRoute>
-          }
-        />
-        {/* UC32: Admin violating reviews mock preview */}
-        <Route
-          path="/admin/violating-reviews"
-          element={
-            <ProtectedRoute allowedRoles={['ADMIN']}>
-              <AdminViolatingReviewsPage />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
-        <Route path="/login" element={<AuthPage />} />
-        <Route path="/account/settings" element={<AccountSettingsPage />} />
-
-        {/* UC14: Tóm tắt & Xác nhận đặt sân lẻ (POST /api/v1/vouchers/apply & POST /api/bookings) */}
-        <Route path="/booking/summary" element={<BookingSummaryPage />} />
-
-        {/* UC15: Đặt nhiều buổi định kỳ hoặc tự chọn (POST /api/booking-packages/preview & /api/booking-packages) */}
-        <Route path="/booking/multi" element={<Navigate to="/" replace state={{ bookingMode: 'custom' }} />} />
-
-        {/* UC18: Thanh toán chuyển khoản & Gửi chứng từ (POST /api/v1/bookings/:id/payment-proof) */}
-        <Route path="/booking/payment" element={<BookingPaymentPage />} />
-
-        {/* UC17: Lịch sử booking của Player (GET /api/v1/players/me/bookings & POST /api/v1/bookings/:id/cancel) */}
-        <Route path="/my-bookings" element={<MyBookingsPage />} />
-      </Routes>
+      <AppRoutes />
     </>
-  )
-}
-
-function LegacyLocationRedirect({ bookingMode }) {
-  const { id } = useParams()
-  return <Navigate to={`/locations/${id}`} replace state={bookingMode ? { bookingMode } : undefined} />
+  );
 }

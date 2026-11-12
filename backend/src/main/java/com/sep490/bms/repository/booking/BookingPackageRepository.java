@@ -17,6 +17,9 @@ import com.sep490.bms.entity.enums.BookingStatus;
 
 import jakarta.persistence.LockModeType;
 
+/**
+ * Truy vấn gói theo Player, tìm gói chờ thanh toán hoặc hết hạn và khóa gói khi xử lý.
+ */
 @Repository
 public interface BookingPackageRepository extends JpaRepository<BookingPackage, Long> {
 

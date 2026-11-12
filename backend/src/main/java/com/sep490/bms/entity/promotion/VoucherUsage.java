@@ -20,6 +20,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Ghi nhận lần dùng voucher cho booking hoặc gói và thời điểm trả lại nếu có.
+ */
 @Entity
 @Table(name = "voucher_usage")
 @Getter

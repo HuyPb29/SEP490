@@ -1,30 +1,38 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
+import PublicLayout from '../../components/layout/PublicLayout';
 import { useAuth } from '../../hooks/useAuth';
-import {
-  loginApi,
-  registerPlayerApi,
-  verifyOtpApi,
-  resendOtpApi,
-  requestOtpApi,
-  resetPasswordApi,
-  USE_MOCK_AUTH,
-} from '../../api/authApi';
+import { fieldError, messages, normalizeName, otpSendError, otpSent, validEmail, validName, validPassword, validPhone, validUsername } from '../../api/f1Rules';
 import styles from './AuthPage.module.css';
+import courtPhoto from '../../assets/badminton-court.jpg';
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
-
+  const {
+    user: currentUser,
+    login: loginApi,
+    registerPlayer: registerPlayerApi,
+    verifyOtp: verifyOtpApi,
+    resendOtp: resendOtpApi,
+    forgotPassword: forgotPasswordApi,
+    resetPassword: resetPasswordApi,
+  } = useAuth();
   // Tab: 'login' (UC02) | 'register' (UC01) | 'otp' (DR25)
-  const [activeTab, setActiveTab] = useState(location.state?.isSignUp ? 'register' : 'login');
+  const [requestedTab, setActiveTab] = useState(
+    location.state?.isSignUp || new URLSearchParams(location.search).get('mode') === 'register'
+      ? 'register'
+      : 'login'
+  );
+  const activeTab = currentUser && requestedTab === 'register' ? 'login' : requestedTab;
 
   // State UC02: Đăng nhập
   const [loginIdentity, setLoginIdentity] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [visiblePassword, setVisiblePassword] = useState(null);
   const [loginError, setLoginError] = useState('');
-  const [loginNotice, setLoginNotice] = useState('');
+  const [loginFields, setLoginFields] = useState({});
+  const [loginNotice, setLoginNotice] = useState(location.state?.passwordChanged ? messages.changed : location.state?.notice || '');
   const [loginLoading, setLoginLoading] = useState(false);
 
   // State UC01: Đăng ký tài khoản Player
@@ -35,23 +43,36 @@ export default function AuthPage() {
     phone_number: '',
     password: '',
   });
-  const [registerErrors, setRegisterErrors] = useState({
-    username: '',
-    fullName: '',
-    email: '',
-    phone: '',
-    password: '',
-  });
-  const [registerApiError, setRegisterApiError] = useState('');
+  const [registerError, setRegisterError] = useState('');
+  const [registerFields, setRegisterFields] = useState({});
   const [registerLoading, setRegisterLoading] = useState(false);
 
   // State DR25: Xác thực OTP & Cooldown 60s
   const [otpEmail, setOtpEmail] = useState('');
+  const [otpPurpose, setOtpPurpose] = useState('REGISTER');
+  const [otpSending, setOtpSending] = useState(false);
+  const [resetCodeSent, setResetCodeSent] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [otpFields, setOtpFields] = useState({});
+  const [sendError, setSendError] = useState('');
+  const [registrationExpired, setRegistrationExpired] = useState(false);
+  const resettingPassword = otpPurpose === 'RESET_PASSWORD';
   const [otpCode, setOtpCode] = useState('');
   const [otpMessage, setOtpMessage] = useState('');
+  const otpDialog = useRef(null);
+  useEffect(() => {
+    const dialog = otpDialog.current;
+    if (activeTab === 'otp' && otpMessage && dialog && !dialog.open) dialog.showModal();
+  }, [activeTab, otpMessage]);
   const [otpError, setOtpError] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
+  const [cooldowns, setCooldowns] = useState({});
+  const [clock, setClock] = useState(Date.now);
+  const otpKey = otpPurpose + ':' + otpEmail.trim().toLowerCase();
+  const cooldown = Math.max(0, Math.ceil(((cooldowns[otpKey] ?? 0) - clock) / 1000));
+  const hasCooldown = Object.keys(cooldowns).length > 0;
+  const [pendingRegistrationEmail, setPendingRegistrationEmail] = useState('');
 
   const [forgotStep, setForgotStep] = useState(1);
   const [forgotIdentity, setForgotIdentity] = useState('');
@@ -66,10 +87,14 @@ export default function AuthPage() {
 
   // DR25: Bộ đếm ngược 60s giữa 2 lần gửi lại OTP
   useEffect(() => {
-    if (cooldown <= 0) return undefined;
-    const timer = setInterval(() => setCooldown((value) => value - 1), 1000);
+    if (!hasCooldown) return undefined;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setClock(now);
+      setCooldowns((current) => Object.fromEntries(Object.entries(current).filter(([, deadline]) => deadline > now)));
+    }, 1000);
     return () => clearInterval(timer);
-  }, [cooldown]);
+  }, [hasCooldown]);
 
   useEffect(() => {
     if (activeTab !== 'forgot' || forgotStep !== 2 || !forgotOtpExpiresAt) return undefined;
@@ -88,172 +113,176 @@ export default function AuthPage() {
     setLoginError('');
     setLoginNotice('');
 
-    if (!loginIdentity.trim() || !loginPassword) {
-      setLoginError('Vui lòng nhập tên đăng nhập hoặc email và mật khẩu.');
-      return;
-    }
+    const errors = {};
+    errors.identity = fieldError(loginIdentity, 'tên đăng nhập hoặc email', (value) =>
+      !value.includes('@') || validEmail(value));
+    errors.password = fieldError(loginPassword, 'mật khẩu');
+    setLoginFields(errors);
+    if (Object.values(errors).some(Boolean)) return;
 
     setLoginLoading(true);
     try {
-      const response = await loginApi({
-        username_or_email: loginIdentity,
-        password: loginPassword,
-      });
+      const user = await loginApi({ username_or_email: loginIdentity, password: loginPassword });
 
-      if (response?.success) {
-        // Lưu phiên đăng nhập thông qua useAuth / authStorage
-        login(response.data.access_token, response.data.user_info);
-        const fromPath = location.state?.from || '/';
-        navigate(fromPath);
+      const from = typeof location.state?.from === 'string' ? location.state.from : location.state?.from?.pathname;
+
+      if (from && from !== '/' && from !== '/login') {
+        navigate(from, { replace: true });
+      } else {
+        const userRole = String(user?.role || user?.role_code || '').toUpperCase();
+        if (userRole === 'ADMIN') {
+          navigate('/admin/workspace', { replace: true });
+        } else if (userRole === 'OWNER') {
+          navigate('/owner/workspace', { replace: true });
+        } else if (userRole === 'STAFF') {
+          navigate('/staff/dashboard', { replace: true });
+        } else {
+          navigate('/', { replace: true });
+        }
       }
     } catch (error) {
-      const code = error.response?.data?.code || error.code;
-      const status = error.response?.status;
-      const serverMessage = error.response?.data?.message;
-      const message =
-        status === 401 || code === 'MSG10'
-          ? '[MSG10] Tên đăng nhập hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.'
-          : serverMessage && serverMessage !== 'No message available'
-            ? serverMessage
-            : 'Không thể đăng nhập. Vui lòng thử lại sau.';
-
-      // MSG95: Tài khoản chưa xác thực OTP (status = 'unverified') -> chuyển sang tab OTP
-      if (code === 'MSG95') {
-        setOtpEmail(error.email || loginIdentity);
-        setOtpMessage(message || '[MSG95] Tài khoản chưa kích hoạt. Vui lòng xác thực mã OTP để tiếp tục.');
-        setOtpError('');
-        setCooldown(60);
-        setActiveTab('otp');
-      } else {
-        // MSG10 (Sai thông tin) hoặc MSG11 (Tài khoản bị khóa)
-        setLoginError(message);
-      }
+      const errors = error.response?.data?.errors;
+      if (errors) setLoginFields({ identity: errors.email, password: errors.password });
+      else setLoginError(error.response?.data?.message?.includes('MSG10') ? 'Thông tin đăng nhập không đúng.'
+        : error.response?.data?.message?.includes('MSG11') ? 'Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên.'
+        : error.response?.data?.message || 'Không thể đăng nhập. Vui lòng thử lại.');
     } finally {
       setLoginLoading(false);
     }
   };
 
-  // UC01: Kiểm tra dữ liệu đăng ký theo chuẩn SRS v18
-  const validateRegisterForm = () => {
-    const errors = {};
-    const { username, full_name, email, phone_number, password } = registerForm;
+  // UC01: Kiểm tra dữ liệu đăng ký theo chuẩn v19
+  const validateRegisterForm = () => ({
+    username: fieldError(registerForm.username, 'tên đăng nhập', validUsername),
+    full_name: fieldError(registerForm.full_name, 'họ tên', validName),
+    email: fieldError(registerForm.email, 'email', validEmail),
+    phone_number: fieldError(registerForm.phone_number, 'số điện thoại', validPhone),
+    password: fieldError(registerForm.password, 'mật khẩu', validPassword),
+  });
 
-    // DR22: 4-20 ký tự, bắt đầu bằng chữ thường a-z, chỉ chứa a-z, 0-9, ., _
-    if (!/^[a-z][a-z0-9._]{3,19}$/.test(username.trim())) {
-      errors.username =
-        'Tên đăng nhập phải từ 4-20 ký tự, bắt đầu bằng chữ cái thường và chỉ chứa chữ cái thường, chữ số, dấu chấm hoặc gạch dưới.';
-    }
-    // DR24: Họ tên 2-50 ký tự, chỉ chứa chữ cái và khoảng trắng
-    if (!/^[\p{L}\s]{2,50}$/u.test(full_name.trim())) {
-      errors.fullName = 'Họ và tên phải từ 2-50 ký tự và chỉ chứa chữ cái cùng khoảng trắng.';
-    }
-    // DR17: Định dạng email hợp lệ
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      errors.email = 'Vui lòng nhập địa chỉ email hợp lệ.';
-    }
-    // DR01: Số điện thoại đúng 10 chữ số, bắt đầu bằng số 0
-    if (!/^0\d{9}$/.test(phone_number.trim())) {
-      errors.phone = 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0.';
-    }
-    // DR23: Mật khẩu 8-32 ký tự, ít nhất 1 chữ cái, 1 chữ số, không khoảng trắng
-    if (
-      password.length < 8 ||
-      password.length > 32 ||
-      !/[A-Za-z]/.test(password) ||
-      !/\d/.test(password) ||
-      /\s/.test(password)
-    ) {
-      errors.password =
-        'Mật khẩu phải từ 8-32 ký tự, bao gồm ít nhất một chữ cái, một chữ số và không chứa khoảng trắng.';
-    }
-    return errors;
-  };
-
-  // UC01: Xử lý đăng ký Player (POST /api/v1/auth/register/player)
+  // UC01: Xử lý đăng ký Player (POST /api/auth/register)
   const handleRegisterSubmit = async (event) => {
     event.preventDefault();
-    setRegisterErrors({
-      username: '',
-      fullName: '',
-      email: '',
-      phone: '',
-      password: '',
-    });
-    setRegisterApiError('');
-
+    if (currentUser) return;
+    setRegisterError('');
     const errors = validateRegisterForm();
-    if (Object.keys(errors).length > 0) {
-      setRegisterErrors(errors);
-      return;
-    }
+    setRegisterFields(errors);
+    if (Object.values(errors).some(Boolean)) return;
 
     setRegisterLoading(true);
     try {
-      const response = await registerPlayerApi(registerForm);
+      const response = await registerPlayerApi({ ...registerForm, full_name: normalizeName(registerForm.full_name) });
       if (response?.success) {
-        // DR25 / MSG08: Tự động chuyển sang tab OTP sau khi tạo tài khoản 'unverified'
-        setOtpEmail(registerForm.email.trim());
-        setOtpMessage(response.message || '[MSG08] Mã xác thực đã được gửi đến email của bạn.');
+        setOtpPurpose('REGISTER');
+        setOtpEmail(response.data.email);
+        setPendingRegistrationEmail(response.data.email);
+        setRegisterForm((form) => ({ ...form, password: '' }));
+        setOtpMessage(otpSent(response.data.email));
+        setRegistrationExpired(false);
+        setOtpFields({});
+        setSendError('');
         setOtpCode('');
         setOtpError('');
-        setCooldown(60);
+        const sentAt = Date.now();
+        setClock(sentAt);
+        setCooldowns((current) => ({ ...current, ['REGISTER:' + response.data.email.toLowerCase()]: sentAt + 60_000 }));
         setActiveTab('otp');
       }
     } catch (error) {
-      setRegisterApiError(
-        error.response?.data?.message || error.message || 'Không thể tạo tài khoản. Vui lòng thử lại sau.'
-      );
+      const { errors, message } = error.response?.data ?? {};
+      if (errors) {
+        setRegisterFields({ ...errors, full_name: errors.fullName, phone_number: errors.phone });
+      } else {
+        setRegisterError(error.response?.status === 429 ? otpSendError(error) : message || 'Không thể gửi mã xác minh. Vui lòng thử lại.');
+      }
     } finally {
       setRegisterLoading(false);
     }
   };
 
-  // Xác thực mã OTP 6 chữ số (POST /api/v1/auth/verify-otp)
+  // Xác thực mã OTP 6 chữ số (POST /api/auth/verify-email)
   const handleVerifyOtpSubmit = async (event) => {
     event.preventDefault();
     setOtpError('');
-    if (!/^\d{6}$/.test(otpCode.trim())) {
-      setOtpError('Mã xác thực phải gồm đúng 6 chữ số.');
-      return;
-    }
+    if (registrationExpired || (resettingPassword && !resetCodeSent)) return;
+    const errors = {
+      otp: fieldError(otpCode, 'mã xác minh', (value) => /^\d{6}$/.test(value)),
+      password: resettingPassword ? fieldError(newPassword, 'mật khẩu mới', validPassword) : undefined,
+      confirmation: resettingPassword
+        ? fieldError(confirmPassword, 'xác nhận mật khẩu mới') ||
+          (confirmPassword !== newPassword ? 'Xác nhận mật khẩu mới không khớp.' : undefined)
+        : undefined,
+    };
+    setOtpFields(errors);
+    if (Object.values(errors).some(Boolean)) return;
 
     setOtpLoading(true);
     try {
-      const response = await verifyOtpApi({
-        email: otpEmail,
-        otp_code: otpCode.trim(),
-        purpose: 'register',
-      });
-      if (response?.success) {
-        // MSG94: Kích hoạt status = 'active' thành công -> quay về tab Đăng nhập
-        setLoginIdentity(otpEmail);
-        setLoginPassword('');
-        setLoginNotice(response.message || '[MSG94] Xác thực email thành công. Bạn có thể đăng nhập ngay bây giờ.');
-        setActiveTab('login');
-      }
+      const email = otpEmail.trim();
+      if (resettingPassword) await resetPasswordApi({ email, otp: otpCode, newPassword });
+      else await verifyOtpApi({ email, otp_code: otpCode });
+      setLoginIdentity(email);
+      setLoginPassword('');
+      setNewPassword('');
+      setOtpCode('');
+      setConfirmPassword('');
+      if (!resettingPassword) setPendingRegistrationEmail('');
+      setLoginNotice(resettingPassword ? messages.reset : messages.verified);
+      setActiveTab('login');
     } catch (error) {
-      setOtpError(
-        error.response?.data?.message || error.message || 'Mã xác thực không hợp lệ hoặc đã hết hạn.'
-      );
+      const message = error.response?.data?.message || 'Không thể xác minh mã. Vui lòng thử lại.';
+      setOtpError(message);
+      if (!resettingPassword && message.includes('Vui lòng đăng ký lại')) {
+        setRegistrationExpired(true);
+        setPendingRegistrationEmail('');
+      }
     } finally {
       setOtpLoading(false);
     }
   };
 
-  // Gửi lại mã OTP (POST /api/v1/auth/resend-otp)
-  const handleResendOtp = async () => {
-    if (cooldown > 0 || !otpEmail.trim()) return;
+  const openOtpForm = (purpose) => {
+    setOtpPurpose(purpose);
+    setRegistrationExpired(false);
+    setOtpEmail(purpose === 'REGISTER' ? pendingRegistrationEmail : loginIdentity.includes('@') ? loginIdentity.trim() : '');
+    setOtpCode('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setOtpFields({});
+    setSendError('');
+    setResetCodeSent(false);
+    setOtpMessage('');
     setOtpError('');
+    setActiveTab('otp');
+  };
+
+  const handleSendOtp = async () => {
+    if (registrationExpired || cooldown > 0 || otpSending || otpLoading) return;
+    const email = otpEmail.trim();
+    const emailError = fieldError(email, 'email', validEmail);
+    setOtpFields({ email: emailError });
+    if (emailError) return;
+    setOtpError('');
+    setSendError('');
+    setOtpSending(true);
     try {
-      const response = await resendOtpApi({ email: otpEmail.trim(), purpose: 'register' });
-      setOtpMessage(response.message || 'Mã xác thực mới đã được gửi đến email của bạn.');
-      setCooldown(60);
+      if (resettingPassword && !resetCodeSent) await forgotPasswordApi(email);
+      else await resendOtpApi({ email, purpose: otpPurpose });
+      if (resettingPassword) setResetCodeSent(true);
+      setOtpMessage(resettingPassword ? messages.forgot : otpSent(email));
+      setOtpCode('');
+      const sentAt = Date.now();
+      setClock(sentAt);
+      setCooldowns((current) => ({ ...current, [otpKey]: sentAt + 60_000 }));
     } catch (error) {
-      setOtpError(
-        error.response?.data?.message ||
-          error.message ||
-          'Không thể gửi lại mã xác thực.'
-      );
+      const message = otpSendError(error);
+      setSendError(message);
+      if (!resettingPassword && message.includes('Vui lòng đăng ký lại')) {
+        setRegistrationExpired(true);
+        setPendingRegistrationEmail('');
+      }
+    } finally {
+      setOtpSending(false);
     }
   };
 
@@ -347,316 +376,182 @@ export default function AuthPage() {
 
   const updateRegisterField = (field, value) => {
     setRegisterForm((current) => ({ ...current, [field]: value }));
-    const errorKey = field === 'full_name' ? 'fullName' : field === 'phone_number' ? 'phone' : field;
-    setRegisterErrors((prev) => ({ ...prev, [errorKey]: '' }));
-    setRegisterApiError('');
+    setRegisterError('');
+    setRegisterFields((fields) => ({ ...fields, [field]: undefined }));
   };
 
   return (
-    <div className={styles.splitLayout}>
-      <aside className={styles.leftPanel}>
-        <div className={styles.brandHeader} onClick={() => navigate('/')}>
-          <span className={styles.brandIcon}>⚡</span>
-          <span className={styles.brandName}>Courtly</span>
-        </div>
-        <div className={styles.heroCopy}>
-          <h1 className={styles.heroHeading}>Đặt sân cầu lông dễ dàng, nhanh chóng</h1>
-          <p className={styles.heroDescription}>
-            Một tài khoản tiện lợi để đặt sân, ghép trận giao lưu, áp dụng ưu đãi và tích điểm tại mọi địa điểm.
-          </p>
-        </div>
-      </aside>
+    <PublicLayout fullWidth>
+      <div className={styles.splitLayout}>
+        <aside className={styles.leftPanel}>
+          <img className={styles.courtPhoto} src={courtPhoto} width="1600" height="900" alt="" fetchPriority="high" />
+          <Link className={styles.brandHeader} to="/">
+            <span className={styles.brandIcon} aria-hidden="true">C</span>
+            <span className={styles.brandName}>Courtly</span>
+          </Link>
+          <div className={styles.heroCopy}>
+            <p className={styles.heroHeading}>Hẹn nhau trên sân.</p>
+            <p className={styles.heroDescription}>
+              Đặt sân, quản lý lịch chơi và sử dụng điểm thưởng trong cùng một tài khoản.
+            </p>
+          </div>
+          <footer className={styles.photoCredit}>Ảnh sân trong nhà · <a href="https://commons.wikimedia.org/wiki/File:Indoor_badminton_court.jpg">Alanands3</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></footer>
+        </aside>
 
-      <main className={styles.rightPanel}>
-        <section className={styles.authCard}>
-          {activeTab !== 'forgot' && (
-            <div className={styles.tabGroup} role="tablist" aria-label="Tài khoản">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === 'login'}
-                className={`${styles.tabBtn} ${activeTab === 'login' ? styles.tabActive : ''}`}
-                onClick={() => setActiveTab('login')}
-              >
-                Đăng nhập
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === 'register'}
-                className={`${styles.tabBtn} ${activeTab === 'register' ? styles.tabActive : ''}`}
-                onClick={() => setActiveTab('register')}
-              >
-                Đăng ký
-              </button>
-            </div>
-          )}
-
-          {activeTab === 'forgot' && (
-            <section className={styles.formContainer} aria-live="polite">
-              {forgotStep === 1 && (
-                <form onSubmit={handleRequestPasswordOtp}>
-                  <h2 className={styles.cardTitle}>Quên mật khẩu · Bước 1/3</h2>
-                  <p className={styles.stepDescription}>Nhập tên đăng nhập hoặc email liên kết với tài khoản của bạn.</p>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label} htmlFor="forgot-identity">
-                      Tên đăng nhập hoặc Email
-                    </label>
-                    <input
-                      id="forgot-identity"
-                      className={`${styles.input} ${forgotError ? styles.inputError : ''}`}
-                      type="text"
-                      autoComplete="username"
-                      value={forgotIdentity}
-                      onChange={(event) => {
-                        setForgotIdentity(event.target.value);
-                        setForgotError('');
-                      }}
-                      placeholder="Tên đăng nhập hoặc Email"
-                    />
-                    {forgotError && (
-                      <p className={styles.errorText} role="alert">
-                        {forgotError}
-                      </p>
-                    )}
-                  </div>
-                  <button className={styles.primaryBtn} type="submit" disabled={forgotLoading}>
-                    {forgotLoading ? 'Đang gửi mã...' : 'Gửi mã OTP'}
-                  </button>
-                  <p className={styles.cardFooterText}>
-                    <button
-                      type="button"
-                      className={styles.inlineSwitchBtn}
-                      onClick={() => setActiveTab('login')}
-                    >
-                      Quay lại đăng nhập
-                    </button>
-                  </p>
-                </form>
-              )}
-
-              {forgotStep === 2 && (
-                <form onSubmit={handleVerifyPasswordOtp}>
-                  <h2 className={styles.cardTitle}>Xác thực mã OTP · Bước 2/3</h2>
-                  <p className={styles.stepDescription}>Nhập mã 6 chữ số đã được gửi tới {forgotIdentity}.</p>
-                  {USE_MOCK_AUTH && (
-                    <div className={styles.testOtpHint}>
-                      Mã thử nghiệm cục bộ: <strong>123456</strong>
-                    </div>
-                  )}
-                  <div className={styles.otpExpiry} role="timer">
-                    {forgotSecondsLeft > 0 ? `Mã hết hạn sau ${forgotCountdown}` : 'Mã OTP đã hết hạn'}
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label} htmlFor="forgot-otp">
-                      Mã OTP (6 chữ số)
-                    </label>
-                    <input
-                      id="forgot-otp"
-                      className={`${styles.input} ${styles.otpInput} ${
-                        forgotError ? styles.inputError : ''
-                      }`}
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      value={forgotOtp}
-                      onChange={(event) => {
-                        setForgotOtp(event.target.value.replace(/\D/g, ''));
-                        setForgotError('');
-                      }}
-                      placeholder="000000"
-                    />
-                    {forgotError && (
-                      <p className={styles.errorText} role="alert">
-                        {forgotError}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    className={styles.primaryBtn}
-                    type="submit"
-                    disabled={forgotLoading || forgotSecondsLeft <= 0}
-                  >
-                    {forgotLoading ? 'Đang xác thực...' : 'Xác thực OTP'}
-                  </button>
-                  <p className={styles.cardFooterText}>
-                    <button
-                      type="button"
-                      className={styles.inlineSwitchBtn}
-                      onClick={() => {
-                        setForgotStep(1);
-                        setForgotError('');
-                      }}
-                    >
-                      Yêu cầu mã mới
-                    </button>
-                  </p>
-                </form>
-              )}
-
-              {forgotStep === 3 && (
-                <form onSubmit={handleResetPassword}>
-                  <h2 className={styles.cardTitle}>Đặt lại mật khẩu · Bước 3/3</h2>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label} htmlFor="forgot-new-password">
-                      Mật khẩu mới
-                    </label>
-                    <input
-                      id="forgot-new-password"
-                      className={`${styles.input} ${forgotError ? styles.inputError : ''}`}
-                      type="password"
-                      autoComplete="new-password"
-                      value={forgotNewPassword}
-                      onChange={(event) => {
-                        setForgotNewPassword(event.target.value);
-                        setForgotError('');
-                      }}
-                      placeholder="8-32 ký tự, gồm chữ và số"
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label} htmlFor="forgot-confirm-password">
-                      Xác nhận mật khẩu mới
-                    </label>
-                    <input
-                      id="forgot-confirm-password"
-                      className={`${styles.input} ${forgotError ? styles.inputError : ''}`}
-                      type="password"
-                      autoComplete="new-password"
-                      value={forgotConfirmPassword}
-                      onChange={(event) => {
-                        setForgotConfirmPassword(event.target.value);
-                        setForgotError('');
-                      }}
-                      placeholder="Nhập lại mật khẩu mới"
-                    />
-                    {forgotError && (
-                      <p className={styles.errorText} role="alert">
-                        {forgotError}
-                      </p>
-                    )}
-                  </div>
-                  <button className={styles.primaryBtn} type="submit" disabled={forgotLoading}>
-                    {forgotLoading ? 'Đang lưu mật khẩu...' : 'Đặt lại mật khẩu'}
-                  </button>
-                </form>
-              )}
-            </section>
-          )}
+        <div className={styles.rightPanel}>
+          <section className={styles.authCard}>
+          <div className={styles.tabGroup} role="group" aria-label="Thao tác tài khoản">
+            <button
+              type="button"
+              aria-pressed={activeTab === 'login'}
+              className={`${styles.tabBtn} ${activeTab === 'login' ? styles.tabActive : ''}`}
+              onClick={() => setActiveTab('login')}
+            >
+              Đăng nhập
+            </button>
+            {!currentUser && <button
+              type="button"
+              aria-pressed={activeTab === 'register'}
+              className={`${styles.tabBtn} ${activeTab === 'register' ? styles.tabActive : ''}`}
+              onClick={() => setActiveTab('register')}
+            >
+              Đăng ký
+            </button>}
+            {!currentUser && (pendingRegistrationEmail || activeTab === 'otp' && !resettingPassword) && <button
+              type="button"
+              aria-pressed={activeTab === 'otp'}
+              className={`${styles.tabBtn} ${activeTab === 'otp' ? styles.tabActive : ''}`}
+              onClick={() => openOtpForm('REGISTER')}
+            >
+              Xác thực email
+            </button>}
+          </div>
 
           {activeTab === 'login' && (
-            <form className={styles.formContainer} onSubmit={handleLoginSubmit}>
-              <h2 className={styles.cardTitle}>Chào mừng trở lại</h2>
-              {loginNotice && <div className={styles.infoBanner}>{loginNotice}</div>}
+            <form className={styles.formContainer} onSubmit={handleLoginSubmit} noValidate>
+              <div className={styles.cardHeader}>
+                <h1 className={styles.cardTitle}>Đăng nhập</h1>
+                <p className={styles.cardSubtitle}>
+                  Nhập thông tin tài khoản để tiếp tục đặt sân và quản lý lịch chơi.
+                </p>
+              </div>
+              {loginNotice && <div role="status" className={loginNotice === location.state?.notice ? styles.infoBanner : styles.toast}>{loginNotice}</div>}
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="login-identity">
-                  Tên đăng nhập hoặc Email
+                  Tên đăng nhập hoặc email
                 </label>
                 <input
                   id="login-identity"
-                  className={styles.input}
+                  className={`${styles.input} ${loginFields.identity ? styles.inputError : ''}`}
                   type="text"
                   autoComplete="username"
                   value={loginIdentity}
                   onChange={(event) => {
                     setLoginIdentity(event.target.value);
+                    setLoginFields((fields) => ({ ...fields, identity: undefined }));
                     setLoginError('');
                   }}
-                  placeholder="Tên đăng nhập hoặc Email"
+                  placeholder="Nhập tên đăng nhập hoặc email"
+                  aria-invalid={Boolean(loginFields.identity)}
+                  aria-describedby={loginFields.identity ? 'login-identity-error' : undefined}
                 />
+                {loginFields.identity && <p id="login-identity-error" role="alert" className={styles.errorText}>{loginFields.identity}</p>}
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="login-password">
-                  Mật khẩu
-                </label>
-                <input
-                  id="login-password"
-                  className={`${styles.input} ${loginError ? styles.inputError : ''}`}
-                  type="password"
-                  autoComplete="current-password"
-                  value={loginPassword}
-                  onChange={(event) => {
-                    setLoginPassword(event.target.value);
-                    setLoginError('');
-                  }}
-                  placeholder="Nhập mật khẩu của bạn"
-                />
-                {loginError && <p className={styles.errorText}>{loginError}</p>}
-              </div>
-              <div className={styles.forgotRow}>
-                <button
-                  type="button"
-                  className={`${styles.inlineSwitchBtn} ${styles.greenLink}`}
-                  onClick={() => {
-                    setForgotStep(1);
-                    setForgotIdentity(loginIdentity);
-                    setForgotError('');
-                    setForgotOtp('');
-                    setForgotOtpExpiresAt('');
-                    setForgotNewPassword('');
-                    setForgotConfirmPassword('');
-                    setActiveTab('forgot');
-                  }}
-                >
-                  Quên mật khẩu?
-                </button>
+                <div className={styles.labelRow}>
+                  <label className={styles.label} htmlFor="login-password">
+                    Mật khẩu
+                  </label>
+                  <button type="button" className={styles.inlineSwitchBtn} onClick={() => openOtpForm('RESET_PASSWORD')}>
+                    Quên mật khẩu?
+                  </button>
+                </div>
+                <div className={styles.passwordInputWrap}>
+                  <input
+                    id="login-password"
+                    className={`${styles.input} ${styles.passwordInput} ${loginFields.password || loginError ? styles.inputError : ''}`}
+                    type={visiblePassword === 'login' ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={loginPassword}
+                    onChange={(event) => {
+                      setLoginPassword(event.target.value);
+                      setLoginFields((fields) => ({ ...fields, password: undefined }));
+                      setLoginError('');
+                    }}
+                    placeholder="Nhập mật khẩu"
+                    aria-invalid={Boolean(loginFields.password)}
+                    aria-describedby={loginFields.password ? 'login-password-error' : undefined}
+                  />
+                  <button
+                    type="button"
+                    className={styles.passwordToggle}
+                    aria-controls="login-password"
+                    aria-pressed={visiblePassword === 'login'}
+                    onClick={() => setVisiblePassword(visiblePassword === 'login' ? null : 'login')}
+                  >
+                    {visiblePassword === 'login' ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  </button>
+                </div>
+                {loginFields.password && <p id="login-password-error" role="alert" className={styles.errorText}>{loginFields.password}</p>}
+                {loginError && <p role="alert" className={styles.errorText}>{loginError}</p>}
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={loginLoading}>
-                {loginLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+                {loginLoading ? 'Đang đăng nhập…' : 'Đăng nhập'}
               </button>
-              <p className={styles.cardFooterText}>
-                Bạn là chủ sân?{' '}
-                <Link to="/owner/register" className={styles.greenLinkBold}>
-                  Đăng ký địa điểm ngay
-                </Link>
-              </p>
+              {!currentUser && <p className={styles.cardFooterText}>
+                Bạn chưa có tài khoản?{' '}
+                <button
+                  type="button"
+                  className={styles.inlineSwitchBtn}
+                  onClick={() => setActiveTab('register')}
+                >
+                  Đăng ký ngay
+                </button>
+              </p>}
             </form>
           )}
 
           {activeTab === 'register' && (
-            <form className={styles.formContainer} onSubmit={handleRegisterSubmit}>
-              <h2 className={styles.cardTitle}>Tạo tài khoản mới</h2>
-              {registerApiError && (
-                <p className={styles.errorText} role="alert">
-                  {registerApiError}
+            <form className={styles.formContainer} onSubmit={handleRegisterSubmit} noValidate>
+              <div className={styles.cardHeader}>
+                <h1 className={styles.cardTitle}>Tạo tài khoản người chơi</h1>
+                <p className={styles.cardSubtitle}>
+                  Điền thông tin bên dưới để đăng ký và nhận mã xác thực qua email.
                 </p>
-              )}
-              <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="register-username">
-                  Tên đăng nhập
-                </label>
-                <input
-                  id="register-username"
-                  className={`${styles.input} ${registerErrors.username ? styles.inputError : ''}`}
-                  value={registerForm.username}
-                  onChange={(event) => updateRegisterField('username', event.target.value)}
-                  autoComplete="username"
-                  placeholder="Ví dụ: player_01"
-                />
-                {registerErrors.username && (
-                  <p className={styles.errorText} role="alert">
-                    {registerErrors.username}
-                  </p>
-                )}
               </div>
-              <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="register-name">
-                  Họ và tên
-                </label>
-                <input
-                  id="register-name"
-                  className={`${styles.input} ${registerErrors.fullName ? styles.inputError : ''}`}
-                  value={registerForm.full_name}
-                  onChange={(event) => updateRegisterField('full_name', event.target.value)}
-                  autoComplete="name"
-                  placeholder="Ví dụ: Nguyễn Minh Anh"
-                />
-                {registerErrors.fullName && (
-                  <p className={styles.errorText} role="alert">
-                    {registerErrors.fullName}
-                  </p>
-                )}
+              <div className={styles.twoColRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.label} htmlFor="register-username">
+                    Tên đăng nhập
+                  </label>
+                  <input
+                    id="register-username"
+                    className={`${styles.input} ${registerFields.username ? styles.inputError : ''}`}
+                    value={registerForm.username}
+                    onChange={(event) => updateRegisterField('username', event.target.value)}
+                    autoComplete="username"
+                    placeholder="Ví dụ: player_01"
+                    aria-invalid={Boolean(registerFields.username)}
+                    aria-describedby={registerFields.username ? 'register-username-error' : undefined}
+                  />
+                  {registerFields.username && <p id="register-username-error" role="alert" className={styles.errorText}>{registerFields.username}</p>}
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.label} htmlFor="register-name">
+                    Họ và tên
+                  </label>
+                  <input
+                    id="register-name"
+                    className={`${styles.input} ${registerFields.full_name ? styles.inputError : ''}`}
+                    value={registerForm.full_name}
+                    onChange={(event) => updateRegisterField('full_name', event.target.value)}
+                    autoComplete="name"
+                    placeholder="Ví dụ: Nguyễn Minh Anh"
+                    aria-invalid={Boolean(registerFields.full_name)}
+                    aria-describedby={registerFields.full_name ? 'register-name-error' : undefined}
+                  />
+                  {registerFields.full_name && <p id="register-name-error" role="alert" className={styles.errorText}>{registerFields.full_name}</p>}
+                </div>
               </div>
               <div className={styles.twoColRow}>
                 <div className={styles.formGroup}>
@@ -665,18 +560,16 @@ export default function AuthPage() {
                   </label>
                   <input
                     id="register-email"
-                    className={`${styles.input} ${registerErrors.email ? styles.inputError : ''}`}
+                    className={`${styles.input} ${registerFields.email ? styles.inputError : ''}`}
                     type="email"
                     value={registerForm.email}
                     onChange={(event) => updateRegisterField('email', event.target.value)}
                     autoComplete="email"
                     placeholder="minhanh@gmail.com"
+                    aria-invalid={Boolean(registerFields.email)}
+                    aria-describedby={registerFields.email ? 'register-email-error' : undefined}
                   />
-                  {registerErrors.email && (
-                    <p className={styles.errorText} role="alert">
-                      {registerErrors.email}
-                    </p>
-                  )}
+                  {registerFields.email && <p id="register-email-error" role="alert" className={styles.errorText}>{registerFields.email}</p>}
                 </div>
                 <div className={styles.formGroup}>
                   <label className={styles.label} htmlFor="register-phone">
@@ -684,44 +577,52 @@ export default function AuthPage() {
                   </label>
                   <input
                     id="register-phone"
-                    className={`${styles.input} ${registerErrors.phone ? styles.inputError : ''}`}
+                    className={`${styles.input} ${registerFields.phone_number ? styles.inputError : ''}`}
                     type="tel"
                     value={registerForm.phone_number}
                     onChange={(event) => updateRegisterField('phone_number', event.target.value)}
                     autoComplete="tel"
                     placeholder="0912345678"
+                    aria-invalid={Boolean(registerFields.phone_number)}
+                    aria-describedby={registerFields.phone_number ? 'register-phone-error' : undefined}
                   />
-                  {registerErrors.phone && (
-                    <p className={styles.errorText} role="alert">
-                      {registerErrors.phone}
-                    </p>
-                  )}
+                  {registerFields.phone_number && <p id="register-phone-error" role="alert" className={styles.errorText}>{registerFields.phone_number}</p>}
                 </div>
               </div>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="register-password">
                   Mật khẩu
                 </label>
-                <input
-                  id="register-password"
-                  className={`${styles.input} ${registerErrors.password ? styles.inputError : ''}`}
-                  type="password"
-                  value={registerForm.password}
-                  onChange={(event) => updateRegisterField('password', event.target.value)}
-                  autoComplete="new-password"
-                  placeholder="8-32 ký tự, gồm chữ và số"
-                />
-                {registerErrors.password && (
-                  <p className={styles.errorText} role="alert">
-                    {registerErrors.password}
-                  </p>
-                )}
+                <div className={styles.passwordInputWrap}>
+                  <input
+                    id="register-password"
+                    className={`${styles.input} ${styles.passwordInput} ${registerFields.password || registerError ? styles.inputError : ''}`}
+                    type={visiblePassword === 'register' ? 'text' : 'password'}
+                    value={registerForm.password}
+                    onChange={(event) => updateRegisterField('password', event.target.value)}
+                    autoComplete="new-password"
+                    placeholder="8–32 ký tự, gồm chữ và số"
+                    aria-invalid={Boolean(registerFields.password)}
+                    aria-describedby={registerFields.password ? 'register-password-error' : undefined}
+                  />
+                  <button
+                    type="button"
+                    className={styles.passwordToggle}
+                    aria-controls="register-password"
+                    aria-pressed={visiblePassword === 'register'}
+                    onClick={() => setVisiblePassword(visiblePassword === 'register' ? null : 'register')}
+                  >
+                    {visiblePassword === 'register' ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  </button>
+                </div>
+                {registerFields.password && <p id="register-password-error" role="alert" className={styles.errorText}>{registerFields.password}</p>}
+                {registerError && <p role="alert" className={styles.errorText}>{registerError}</p>}
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={registerLoading}>
-                {registerLoading ? 'Đang tạo tài khoản...' : 'Tạo tài khoản và nhận mã'}
+                {registerLoading ? 'Đang gửi mã…' : 'Đăng ký và nhận mã'}
               </button>
               <p className={styles.cardFooterText}>
-                Đã có tài khoản?{' '}
+                Bạn đã có tài khoản?{' '}
                 <button
                   type="button"
                   className={styles.inlineSwitchBtn}
@@ -733,64 +634,111 @@ export default function AuthPage() {
             </form>
           )}
 
-          {activeTab === 'otp' && (
-            <form className={styles.formContainer} onSubmit={handleVerifyOtpSubmit}>
-              <h2 className={styles.cardTitle}>Xác thực email</h2>
-              {otpMessage && <div className={styles.infoBanner}>{otpMessage}</div>}
-              {USE_MOCK_AUTH && (
-                <div className={styles.testOtpHint}>
-                  Mã thử nghiệm cục bộ: <strong>123456</strong>
-                </div>
-              )}
+          {activeTab === 'otp' && (resettingPassword || !currentUser) && (
+            <form className={styles.formContainer} onSubmit={handleVerifyOtpSubmit} noValidate>
+              <div className={styles.cardHeader}>
+                <h1 className={styles.cardTitle}>{resettingPassword ? 'Đặt lại mật khẩu' : 'Xác thực email'}</h1>
+                <p className={styles.cardSubtitle}>
+                  {resettingPassword
+                    ? 'Nhập email đã đăng ký để nhận mã xác thực và tạo mật khẩu mới.'
+                    : 'Nhập mã xác thực gồm 6 chữ số đã được gửi tới email của bạn.'}
+                </p>
+              </div>
+              <dialog ref={otpDialog} className={styles.sessionDialog} aria-label="Mã xác minh" onClose={() => setOtpMessage('')}>
+                <p>{otpMessage}</p>
+                <button type="button" className={styles.primaryBtn} onClick={() => otpDialog.current.close()}>Đã hiểu</button>
+              </dialog>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="otp-email">
                   Địa chỉ email
                 </label>
                 <input
                   id="otp-email"
-                  className={styles.input}
+                  className={`${styles.input} ${otpFields.email ? styles.inputError : ''}`}
                   type="email"
                   value={otpEmail}
+                  readOnly={!resettingPassword || resetCodeSent}
+                  required
                   onChange={(event) => setOtpEmail(event.target.value)}
                   autoComplete="email"
+                  aria-describedby={otpFields.email ? "otp-email-error" : undefined}
                 />
+                {otpFields.email && <p id="otp-email-error" role="alert" className={styles.errorText}>{otpFields.email}</p>}
               </div>
-              <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="otp-code">
-                  Mã xác thực 6 chữ số
-                </label>
-                <input
-                  id="otp-code"
-                  className={`${styles.input} ${styles.otpInput} ${
-                    otpError ? styles.inputError : ''
-                  }`}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={otpCode}
-                  onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))}
-                  autoComplete="one-time-code"
-                />
-                {otpError && <p className={styles.errorText}>{otpError}</p>}
+              {!registrationExpired && (!resettingPassword || resetCodeSent) && (
+                <>
+                  <div className={styles.formGroup}>
+                    <label className={styles.label} htmlFor="otp-code">
+                      Mã xác thực gồm 6 số
+                    </label>
+                    <input
+                      id="otp-code"
+                      className={`${styles.input} ${styles.otpInput} ${
+                        otpFields.otp || otpError ? styles.inputError : ''
+                      }`}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))}
+                      autoComplete="one-time-code"
+                      aria-describedby={otpFields.otp ? "otp-code-error" : undefined}
+                    />
+                    {otpFields.otp && <p id="otp-code-error" role="alert" className={styles.errorText}>{otpFields.otp}</p>}
+                  </div>
+                  {resettingPassword && (
+                    <>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label} htmlFor="reset-password">Mật khẩu mới</label>
+                        <input id="reset-password" className={`${styles.input} ${otpFields.password ? styles.inputError : ''}`} type="password"
+                          autoComplete="new-password" value={newPassword} required
+                          onChange={(event) => setNewPassword(event.target.value)}
+                          aria-describedby={otpFields.password ? "reset-password-error" : undefined} />
+                        {otpFields.password && <p id="reset-password-error" role="alert" className={styles.errorText}>{otpFields.password}</p>}
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label} htmlFor="reset-confirm">Xác nhận mật khẩu mới</label>
+                        <input id="reset-confirm" className={`${styles.input} ${otpFields.confirmation ? styles.inputError : ''}`} type="password" autoComplete="new-password"
+                          value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)}
+                          aria-describedby={otpFields.confirmation ? "reset-confirm-error" : undefined} />
+                        {otpFields.confirmation && <p id="reset-confirm-error" role="alert" className={styles.errorText}>{otpFields.confirmation}</p>}
+                      </div>
+                    </>
+                  )}
+                  <button className={styles.primaryBtn} type="submit" disabled={otpLoading || otpSending}>
+                    {otpLoading ? 'Đang xác thực…' : resettingPassword ? 'Đặt lại mật khẩu' : 'Xác thực mã'}
+                  </button>
+                </>
+              )}
+              {otpError && <p role="alert" className={styles.errorText}>{otpError}</p>}
+              <div className={styles.otpActionRow}>
+                {registrationExpired ? (
+                  <button type="button" className={styles.inlineSwitchBtn} onClick={() => setActiveTab('register')}>
+                    Đăng ký lại
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.inlineSwitchBtn}
+                    disabled={cooldown > 0 || otpLoading || otpSending}
+                    onClick={handleSendOtp}
+                  >
+                    {otpSending
+                      ? 'Đang gửi…'
+                      : cooldown > 0
+                        ? `Gửi lại sau ${cooldown} giây`
+                        : resettingPassword && !resetCodeSent
+                          ? 'Gửi mã đặt lại mật khẩu'
+                          : 'Gửi lại mã'}
+                  </button>
+                )}
               </div>
-              <button className={styles.primaryBtn} type="submit" disabled={otpLoading}>
-                {otpLoading ? 'Đang xác thực...' : 'Xác thực mã'}
-              </button>
-              <p className={styles.cardFooterText}>
-                Chưa nhận được mã?{' '}
-                <button
-                  type="button"
-                  className={styles.inlineSwitchBtn}
-                  disabled={cooldown > 0}
-                  onClick={handleResendOtp}
-                >
-                  {cooldown > 0 ? `Gửi lại sau ${cooldown}s` : 'Gửi lại mã'}
-                </button>
-              </p>
+              {sendError && <p role="alert" className={styles.errorText}>{sendError}</p>}
             </form>
           )}
-        </section>
-      </main>
-    </div>
+          </section>
+        </div>
+      </div>
+    </PublicLayout>
   );
 }

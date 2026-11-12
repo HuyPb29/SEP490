@@ -20,6 +20,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu khiếu nại gắn với booking hoặc giao dịch và quá trình Staff, Owner xử lý.
+ */
 @Entity
 @Table(name = "complaint")
 @Getter

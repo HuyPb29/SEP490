@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.location.ServiceTerm;
 
+/**
+ * Tra cứu lịch sử kỳ hạn dịch vụ và ngày hết hạn mới nhất của địa điểm.
+ */
 @Repository
 public interface ServiceTermRepository extends JpaRepository<ServiceTerm, Long> {
 

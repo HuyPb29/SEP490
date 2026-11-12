@@ -11,16 +11,19 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sep490.bms.common.ApiResponse;
-import com.sep490.bms.dto.UserDto;
+import com.sep490.bms.dto.account.UserDto;
 import com.sep490.bms.dto.request.ChangePasswordRequest;
 import com.sep490.bms.dto.request.UpdateProfileRequest;
 import com.sep490.bms.security.UserPrincipal;
-import com.sep490.bms.service.UserService;
+import com.sep490.bms.service.account.UserService;
 
 import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Cung cấp API xem hồ sơ, cập nhật thông tin cá nhân và đổi mật khẩu.
+ */
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
