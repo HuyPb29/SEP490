@@ -47,32 +47,6 @@ function groupSlotsIntoRanges(selectedSlots) {
   return ranges;
 }
 
-function groupSlotsByCourtAndRange(slots, bookingDate) {
-  const ordered = [...slots].sort((a, b) => Number(a.courtId) - Number(b.courtId) || a.timeIdx - b.timeIdx);
-  const ranges = [];
-  ordered.forEach((slot) => {
-    const previous = ranges[ranges.length - 1];
-    const endTime = addThirtyMinutes(slot.time);
-    if (previous && previous.court_id === slot.courtId && previous.slots.at(-1).end_time === `${slot.time}:00`) {
-      previous.slots.push({ start_time: `${slot.time}:00`, end_time: `${endTime}:00` });
-      previous.total_list_price += slot.price;
-    } else {
-      ranges.push({
-        court_id: slot.courtId,
-        court_name: slot.courtName,
-        booking_date: slot.date || bookingDate,
-        slots: [{ start_time: `${slot.time}:00`, end_time: `${endTime}:00` }],
-        total_list_price: slot.price,
-      });
-    }
-  });
-  return ranges;
-}
-
-function localDateKey(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
 export default function BookingSummaryPage() {
   const navigate = useNavigate();
   const { user } = useAuth();

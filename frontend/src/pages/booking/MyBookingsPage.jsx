@@ -674,6 +674,7 @@ export default function MyBookingsPage() {
                         {item.booking_code} · {item.time_range}
                         {item.booker_label ? ` · ${item.booker_label}` : ''}
                       </p>
+                      {secondaryLine ? <p className={styles.subNoteLine}>{secondaryLine}</p> : null}
                     </div>
                   </div>
 
@@ -832,8 +833,7 @@ export default function MyBookingsPage() {
                       )}
 
                     </div>
-                  </header>
-                  {entry.bookings.map((booking) => renderBookingCard(booking, true))}
+                  </div>
                 </article>
               );
             })}

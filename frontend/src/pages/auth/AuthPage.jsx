@@ -74,17 +74,6 @@ export default function AuthPage() {
   const hasCooldown = Object.keys(cooldowns).length > 0;
   const [pendingRegistrationEmail, setPendingRegistrationEmail] = useState('');
 
-  const [forgotStep, setForgotStep] = useState(1);
-  const [forgotIdentity, setForgotIdentity] = useState('');
-  const [forgotOtp, setForgotOtp] = useState('');
-  const [forgotOtpExpiresAt, setForgotOtpExpiresAt] = useState('');
-  const [forgotNowMs, setForgotNowMs] = useState(() => Date.now());
-  const [forgotResetToken, setForgotResetToken] = useState('');
-  const [forgotNewPassword, setForgotNewPassword] = useState('');
-  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
-  const [forgotError, setForgotError] = useState('');
-  const [forgotLoading, setForgotLoading] = useState(false);
-
   // DR25: Bộ đếm ngược 60s giữa 2 lần gửi lại OTP
   useEffect(() => {
     if (!hasCooldown) return undefined;
@@ -95,17 +84,6 @@ export default function AuthPage() {
     }, 1000);
     return () => clearInterval(timer);
   }, [hasCooldown]);
-
-  useEffect(() => {
-    if (activeTab !== 'forgot' || forgotStep !== 2 || !forgotOtpExpiresAt) return undefined;
-    const timer = setInterval(() => setForgotNowMs(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [activeTab, forgotStep, forgotOtpExpiresAt]);
-
-  const forgotSecondsLeft = forgotOtpExpiresAt
-    ? Math.max(0, Math.ceil((new Date(forgotOtpExpiresAt).getTime() - forgotNowMs) / 1000))
-    : 0;
-  const forgotCountdown = `${String(Math.floor(forgotSecondsLeft / 60)).padStart(2, '0')}:${String(forgotSecondsLeft % 60).padStart(2, '0')}`;
 
   // UC02: Xử lý đăng nhập (POST /api/auth/login)
   const handleLoginSubmit = async (event) => {
@@ -283,94 +261,6 @@ export default function AuthPage() {
       }
     } finally {
       setOtpSending(false);
-    }
-  };
-
-  const handleRequestPasswordOtp = async (event) => {
-    event.preventDefault();
-    setForgotError('');
-    if (!forgotIdentity.trim()) {
-      setForgotError('Vui lòng nhập tên đăng nhập hoặc email.');
-      return;
-    }
-    setForgotLoading(true);
-    try {
-      const response = await requestOtpApi({ username_or_email: forgotIdentity.trim() });
-      const expiresAt = response.data?.otp_expires_at;
-      if (!expiresAt) throw new Error('Không nhận được thời gian hết hạn OTP. Vui lòng thử lại.');
-      setForgotOtpExpiresAt(expiresAt);
-      setForgotNowMs(Date.now());
-      setForgotOtp('');
-      setForgotStep(2);
-    } catch (error) {
-      setForgotError(error.response?.data?.message || error.message || 'Không thể yêu cầu mã đặt lại mật khẩu.');
-    } finally {
-      setForgotLoading(false);
-    }
-  };
-
-  const handleVerifyPasswordOtp = async (event) => {
-    event.preventDefault();
-    setForgotError('');
-    if (!/^\d{6}$/.test(forgotOtp)) {
-      setForgotError('Mã OTP phải gồm đúng 6 chữ số.');
-      return;
-    }
-    if (forgotSecondsLeft <= 0) {
-      setForgotError('Mã OTP này đã hết hạn. Vui lòng yêu cầu mã mới để tiếp tục.');
-      return;
-    }
-    setForgotLoading(true);
-    try {
-      const response = await verifyOtpApi({
-        username_or_email: forgotIdentity.trim(),
-        otp_code: forgotOtp,
-        purpose: 'password_reset',
-      });
-      setForgotResetToken(response.data?.reset_token || '');
-      setForgotStep(3);
-    } catch (error) {
-      setForgotError(error.response?.data?.message || error.message || 'Không thể xác thực mã OTP.');
-    } finally {
-      setForgotLoading(false);
-    }
-  };
-
-  const handleResetPassword = async (event) => {
-    event.preventDefault();
-    setForgotError('');
-    if (forgotNewPassword !== forgotConfirmPassword) {
-      setForgotError('Mật khẩu mới và xác nhận mật khẩu không khớp.');
-      return;
-    }
-    if (
-      forgotNewPassword.length < 8 ||
-      forgotNewPassword.length > 32 ||
-      !/[A-Za-z]/.test(forgotNewPassword) ||
-      !/\d/.test(forgotNewPassword) ||
-      /\s/.test(forgotNewPassword)
-    ) {
-      setForgotError(
-        'Mật khẩu phải từ 8-32 ký tự, bao gồm ít nhất một chữ cái, một chữ số và không chứa khoảng trắng.'
-      );
-      return;
-    }
-    setForgotLoading(true);
-    try {
-      const response = await resetPasswordApi({
-        username_or_email: forgotIdentity.trim(),
-        reset_token: forgotResetToken,
-        new_password: forgotNewPassword,
-      });
-      setLoginIdentity(forgotIdentity.trim());
-      setLoginPassword('');
-      setLoginNotice(response.message || 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập ngay bây giờ.');
-      setActiveTab('login');
-      setForgotStep(1);
-    } catch (error) {
-      setForgotError(error.response?.data?.message || error.message || 'Không thể đặt lại mật khẩu.');
-    } finally {
-      setForgotLoading(false);
     }
   };
 
