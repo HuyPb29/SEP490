@@ -11,10 +11,11 @@ public class F6OpenApiConfig {
     public GroupedOpenApi f6LoyaltyOpenApi(@org.springframework.beans.factory.annotation.Qualifier("locationHeader")
             org.springdoc.core.customizers.OpenApiCustomizer locationHeader) {
         return GroupedOpenApi.builder().group("f6-loyalty")
-                .pathsToMatch("/api/me/loyalty-*","/api/owner/loyalty-*","/api/owner/loyalty-milestones/**")
+                .pathsToMatch("/api/me/loyalty-*","/api/owner/loyalty-*","/api/owner/loyalty-milestones/**",
+                        "/api/owner/loyalty-adjustments/**")
                 .addOpenApiCustomizer(locationHeader)
                 .addOpenApiCustomizer(api -> api.getInfo().setDescription("UC25–UC26. Điểm và mốc tổng tiền theo địa điểm. "
-                        + "Trần dùng điểm cố định 50% sau voucher hoặc trên giá niêm yết khi dùng riêng điểm (FR82)."))
+                        + "Điểm dùng theo cấu hình voucher UC24, hoặc tối đa 50% khi không dùng voucher."))
                 .addOpenApiCustomizer(api -> api.getPaths().forEach((path,item) -> item.readOperationsMap().forEach((method,op) -> {
                     for(String code:java.util.List.of("400","401","403","404","409"))
                         op.getResponses().addApiResponse(code,new ApiResponse().description("ApiResponse: validation/auth/scope/resource/conflict"));

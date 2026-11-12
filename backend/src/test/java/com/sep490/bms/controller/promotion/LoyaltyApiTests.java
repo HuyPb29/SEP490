@@ -256,6 +256,51 @@ class LoyaltyApiTests {
         assertThat(tx.<BigDecimal>execute(s -> em.find(Booking.class,b.getId()).getFinalAmount())).isEqualByComparingTo("6000");
     }
 
+    @Test void pointGrantLookupOnlyExposesEligibleBookingsInTheSelectedVenue() throws Exception {
+        Booking booking=booking(10000);
+        String playersPath="/api/owner/loyalty-adjustments/players";
+        mvc.perform(get(playersPath).header("Authorization",token(player)).header("X-Location-Id",location.getId()))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(playersPath).param("q","  " + player.getUsername().toUpperCase(Locale.ROOT) + "  ")
+                .param("size","1").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].id").value(player.getId()))
+                .andExpect(jsonPath("$.data.content[0].email").doesNotExist());
+        mvc.perform(get(playersPath).param("q",other.getUsername()).header("Authorization",token(owner))
+                .header("X-Location-Id",location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
+        mvc.perform(get(playersPath + "/" + player.getId() + "/bookings").param("q",booking.getBookingCode())
+                .header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].id").value(booking.getId()));
+        mvc.perform(get(playersPath + "/" + other.getId() + "/bookings")
+                .header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
+
+        Location foreign=locations.saveAndFlush(Location.builder().ownerId(other.getId()).name("Other venue").address("Other")
+                .contactPhone("0987654321").latitude(BigDecimal.ONE).longitude(BigDecimal.ONE).build());
+        try {
+            mvc.perform(get(playersPath).header("Authorization",token(owner)).header("X-Location-Id",foreign.getId()))
+                    .andExpect(status().isForbidden());
+            mvc.perform(get(playersPath + "/" + player.getId() + "/bookings").header("Authorization",token(owner))
+                    .header("X-Location-Id",foreign.getId())).andExpect(status().isForbidden());
+        } finally {
+            locations.deleteById(foreign.getId());
+        }
+
+        String adjustmentPath="/api/owner/loyalty-adjustments";
+        for (Account recipient : List.of(other, player)) {
+            var request=post(adjustmentPath).header("Authorization",token(owner)).header("X-Location-Id",location.getId())
+                    .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                            "playerId",recipient.getId(),"bookingId",booking.getId(),"points",5,"reason","Service issue")));
+            if (recipient.equals(other)) {
+                mvc.perform(request).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.bookingId").exists());
+            } else {
+                mvc.perform(request).andExpect(status().isCreated()).andExpect(jsonPath("$.data.balanceAfter").value(5));
+            }
+        }
+    }
+
     @Test void nonStackingVoucherRollsBackQuotaAndBudgetWhenCheckoutIncludesPoints() {
         seed(20);
         Booking b=booking(10000);
@@ -321,12 +366,15 @@ class LoyaltyApiTests {
         assertThat(balance().getPointBalance()).isEqualTo(9);
         assertThat(balance().getTotalPaid()).isEqualByComparingTo("9000");
     }
-    @Test void openApiIncludesSixRoutesAndOwnerLocationHeader() throws Exception {
+    @Test void openApiIncludesPointGrantLookupsAndOwnerLocationHeader() throws Exception {
         String body=mvc.perform(get("/v3/api-docs/f6-loyalty")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         JsonNode api=json.readTree(body);
-        assertThat(api.path("paths").size()).isEqualTo(5); // six operations, GET/POST share one path
+        assertThat(api.path("paths").size()).isEqualTo(7); // eight operations, GET/POST share one path
         assertThat(api.at("/paths/~1api~1owner~1loyalty-milestones/post/responses/201").isMissingNode()).isFalse();
         assertThat(api.at("/paths/~1api~1owner~1loyalty-adjustments/post/parameters").toString()).contains("X-Location-Id");
+        assertThat(api.at("/paths/~1api~1owner~1loyalty-adjustments~1players/get/parameters").toString()).contains("X-Location-Id");
+        assertThat(api.at("/paths/~1api~1owner~1loyalty-adjustments~1players~1{playerId}~1bookings/get/parameters").toString())
+                .contains("X-Location-Id");
         Files.writeString(Path.of("target/f6-loyalty-openapi.json"),json.writerWithDefaultPrettyPrinter().writeValueAsString(api));
     }
 

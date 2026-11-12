@@ -28,6 +28,17 @@ public class LoyaltyPointController {
   @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
   return ApiResponse.success(service.history(user,locationId,type,page,size));
  }
+ @GetMapping("/api/owner/loyalty-adjustments/players") @PreAuthorize("hasRole('OWNER')")
+ public ApiResponse<PageResponse<PointGrantPlayerResponse>> pointGrantPlayers(@AuthenticationPrincipal UserPrincipal user,
+  @RequestParam(defaultValue="") String q,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+  return ApiResponse.success(service.pointGrantPlayers(user,q,page,size));
+ }
+ @GetMapping("/api/owner/loyalty-adjustments/players/{playerId}/bookings") @PreAuthorize("hasRole('OWNER')")
+ public ApiResponse<PageResponse<PointGrantBookingResponse>> pointGrantBookings(@AuthenticationPrincipal UserPrincipal user,
+  @PathVariable Long playerId,@RequestParam(defaultValue="") String q,
+  @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+  return ApiResponse.success(service.pointGrantBookings(user,playerId,q,page,size));
+ }
  @PostMapping("/api/owner/loyalty-adjustments") @PreAuthorize("hasRole('OWNER')")
  public ResponseEntity<ApiResponse<PointTransactionResponse>> adjust(@AuthenticationPrincipal UserPrincipal user,@Valid @RequestBody LoyaltyAdjustmentRequest request) {
   return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(service.adjust(user,request)));

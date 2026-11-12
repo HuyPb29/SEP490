@@ -4,6 +4,7 @@ import { voucherGrantState } from '../../api/bookingApi'
 import WorkspaceLayout, { ActionForm, EmptyState, Field, Section, StatusPill } from '../WorkspaceLayout'
 import { money, today, useResource } from '../workspaceSupport'
 import { defaultPointPercent } from '../../utils/checkoutPoints'
+import PointGrantForm from './PointGrantForm'
 
 const loadPersonalVouchers = (signal) => getAllPages('/me/vouchers', { signal })
 const loadBalances = (signal) => getAllPages('/me/loyalty-balances', { signal })
@@ -15,7 +16,7 @@ const optionalNumber = (value) => value === '' || value == null ? null : Number(
 
 const voucherStatus = { PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', EXPIRED: 'Hết hạn', DISABLED: 'Đã vô hiệu hóa' }
 const grantLabels = { AVAILABLE: 'Có thể sử dụng', USED: 'Đã sử dụng', EXPIRED: 'Hết hạn', UNAVAILABLE: 'Chưa khả dụng' }
-const pointTypes = { EARN: 'Tích điểm', REDEEM: 'Dùng điểm', RESTORE: 'Hoàn điểm', REVOKE: 'Thu hồi điểm', ADJUST: 'Điều chỉnh', COMPENSATION: 'Bồi hoàn' }
+const pointTypes = { EARN: 'Tích điểm', REDEEM: 'Dùng điểm', RETURN: 'Hoàn điểm', REVOKE: 'Thu hồi điểm', ADJUST: 'Điều chỉnh' }
 
 function VoucherDescription({ voucher, showCampaign = true }) {
   return <div className="cw-voucher-heading">
@@ -79,6 +80,7 @@ function PersonalRewards() {
         <ul className="cw-records">{history.data?.map((item) => <li className="cw-record" key={item.id}>
           <div><p className="cw-record-title">{pointTypes[item.type] ?? item.type} · {name(item.locationId)}</p>
             <small>{item.createdAt?.replace('T', ' ')}{item.reason && ' · ' + item.reason}
+              {item.bookingId && ' · Booking #' + item.bookingId}{item.packageId && ' · Gói #' + item.packageId}
               {item.earningRate && ' · ' + money(item.earningRate) + '/điểm'}</small></div>
           <div><strong>{item.points > 0 ? '+' : ''}{item.points} điểm</strong><small className="block">Số dư {item.balanceAfter}</small></div>
         </li>)}</ul>
@@ -242,14 +244,8 @@ export function OwnerPromotions({ location, refreshLocation }) {
       })} after={refreshLocation}>
         <Field label="VND để tích 1 điểm" name="pointEarningRate" type="number" min={1000} max={100000} defaultValue={location.pointEarningRate ?? 10000} required />
       </ActionForm>
-      <ActionForm label="Cộng điểm bồi hoàn" action={(form) => api.post('/owner/loyalty-adjustments', {
-        ...form, bookingId: Number(form.bookingId), points: Number(form.points),
-      })}>
-        <Field label="ID booking của Player" name="bookingId" type="number" min={1} required />
-        <Field label="Điểm cộng" name="points" type="number" min={1} required />
-        <Field label="Lý do" name="reason" maxLength={255} required />
-      </ActionForm>
     </Section>
+    <PointGrantForm locationId={location.id} />
     <Milestones />
   </>
 }

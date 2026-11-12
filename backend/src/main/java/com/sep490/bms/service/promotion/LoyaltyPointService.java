@@ -22,6 +22,8 @@ import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.promotion.*;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.promotion.*;
+import com.sep490.bms.repository.account.AccountRepository;
+import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.security.*;
 import jakarta.persistence.*;
 import jakarta.validation.Valid;
@@ -43,10 +45,15 @@ public class LoyaltyPointService {
     private final LoyaltyMilestoneService milestones;
     private final LocationAccessService scope;
     private final EntityManager em;
+    private final AccountRepository accounts;
+    private final BookingRepository bookings;
 
     private Pageable page(int page,int size) {
+        return lookupPage(page,size).withSort(Sort.by(Sort.Direction.DESC,"id"));
+    }
+    private PageRequest lookupPage(int page,int size) {
         if(page<0 || size<1 || size>100) throw new AppException("Phân trang không hợp lệ");
-        return PageRequest.of(page,size,Sort.by(Sort.Direction.DESC,"id"));
+        return PageRequest.of(page,size);
     }
     private void role(UserPrincipal u,Role r) {
         if(u==null || u.getRole()!=r) throw new AppException("Không có quyền thực hiện",HttpStatus.FORBIDDEN);
@@ -63,6 +70,21 @@ public class LoyaltyPointService {
                     locationId==null ? c.conjunction():c.equal(b.get("locationId"),locationId));
             return c.and(r.get("balanceId").in(sub),type==null ? c.conjunction():c.equal(r.get("type"),type));
         },page(page,size)).map(PointTransactionResponse::from));
+    }
+    public PageResponse<PointGrantPlayerResponse> pointGrantPlayers(UserPrincipal user,String query,int page,int size) {
+        role(user,Role.OWNER);
+        return PageResponse.from(accounts.findPointGrantPlayers(
+                scope.selectedLocation(user).getId(),pointGrantQuery(query),lookupPage(page,size)));
+    }
+    public PageResponse<PointGrantBookingResponse> pointGrantBookings(UserPrincipal user,Long playerId,String query,int page,int size) {
+        role(user,Role.OWNER);
+        return PageResponse.from(bookings.findPointGrantBookings(
+                scope.selectedLocation(user).getId(),playerId,pointGrantQuery(query),lookupPage(page,size)));
+    }
+    private String pointGrantQuery(String query) {
+        String value=query.strip();
+        if(value.length()>100) throw new AppException("Từ khóa tìm kiếm tối đa 100 ký tự");
+        return value;
     }
     private <T> T lock(Class<T> type,Long id) {
         em.flush(); // Preserve target state changed earlier in this transaction.
@@ -95,6 +117,10 @@ public class LoyaltyPointService {
         Booking b=lock(Booking.class,r.bookingId());
         if(!location.equals(b.getLocationId())) throw new AppException("Booking không thuộc địa điểm đã chọn",HttpStatus.FORBIDDEN);
         if(b.getPlayerId()==null || b.getBookingType()==BookingType.WALK_IN) throw new AppException("Booking không có Player nhận điểm");
+        if(r.playerId()!=null && !r.playerId().equals(b.getPlayerId())) {
+            String message="Booking không thuộc Player đã chọn. (MSG02)";
+            throw new AppException(message,HttpStatus.BAD_REQUEST,Map.of("bookingId",message));
+        }
         PlayerLocationBalance balance=balance(b.getPlayerId(),location,true);
         return PointTransactionResponse.from(change(balance,b.getId(),null,PointTransactionType.ADJUST,r.points(),null,r.reason().trim(),u.getId()));
     }

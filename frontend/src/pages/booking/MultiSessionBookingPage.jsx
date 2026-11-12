@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiErrorMessage } from '../../api';
 import { toMinutes, toTimeLabel } from '../../api/bookingApi';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import { ConfirmDialog } from '../../components/common/WorkspacePrimitives';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import { formatVnd, today as getTodayStr } from '../../utils/formatters';
@@ -108,6 +109,7 @@ export default function MultiSessionBookingPage() {
   const [notice, setNotice] = useState('');
   const [rewardSubmitError, setRewardSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [confirmPoints, setConfirmPoints] = useState(false);
 
   useEffect(() => {
     if (!facilityId) return;
@@ -370,6 +372,11 @@ export default function MultiSessionBookingPage() {
   return (
     <div className={styles.pageWrapper + ' cw-workspace'}>
       <PublicHeader user={user} />
+      {confirmPoints && <ConfirmDialog title="Xác nhận dùng điểm" onCancel={() => setConfirmPoints(false)}
+        onConfirm={() => { setConfirmPoints(false); confirmSchedule(); }}>
+        Dùng {selectedPoints} điểm để giảm {formatCurrency(preview?.pointDiscount ?? 0)}?
+        Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy booking. (MSG39)
+      </ConfirmDialog>}
 
       <main className={styles.mainContainer}>
         <div style={{ marginBottom: 10 }}>
@@ -783,7 +790,8 @@ export default function MultiSessionBookingPage() {
                   Thanh toán 1 lần cho toàn bộ gói (BR52). Sau khi xác nhận, gói được giữ chỗ 15 phút (P27).
                 </span>
               </div>
-              <button type="button" className={styles.confirmScheduleBtn} disabled={submitting || !preview || invalidPoints || distinctDays < 2 || conflictedSessions.length > 0} onClick={confirmSchedule}>
+              <button type="button" className={styles.confirmScheduleBtn} disabled={submitting || !preview || invalidPoints || distinctDays < 2 || conflictedSessions.length > 0}
+                onClick={() => selectedPoints > 0 ? setConfirmPoints(true) : confirmSchedule()}>
                 {submitting ? 'Đang giữ chỗ gói...' : 'Xác nhận lịch đặt'}
               </button>
             </section>
