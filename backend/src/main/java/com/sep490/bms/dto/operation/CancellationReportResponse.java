@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -37,6 +39,7 @@ public class CancellationReportResponse {
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+    @Schema(name = "CancellationReportDayItem")
     public static class DayItem {
         private LocalDate date;
         private long cancelledByPlayer;
