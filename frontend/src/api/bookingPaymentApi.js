@@ -11,12 +11,17 @@ export async function loadPayment({ kind, id }, signal) {
   const { data: { data: detail } } = await api.get(path, { signal })
   const payment = kind === 'reschedule' && detail.extraAmount > 0 && detail.status !== 'PENDING_PAYMENT'
     ? (await api.get(`${path}/payment`, { signal })).data.data
-    : null
+    : kind !== 'reschedule' && detail.paymentId
+      ? (await api.get(`/payments/${detail.paymentId}`, { signal })).data.data
+      : null
   const resubmitting = (payment?.status ?? detail.status) === 'RESUBMIT_REQUESTED'
   const awaiting = detail.status === 'AWAITING_CONFIRMATION' && !resubmitting
-  const canPay = detail.status === (kind === 'reschedule' ? 'PENDING_PAYMENT' : 'HOLDING') || resubmitting
+  const canPay = detail.status === (kind === 'reschedule' ? 'PENDING_PAYMENT' : 'HOLDING')
+    || (resubmitting && Boolean(payment?.id ?? detail.paymentId))
   const result = {
-    code: detail.bookingCode || (kind === 'reschedule' ? `Reschedule #${id}` : `Package #${id}`),
+    code: detail.bookingCode || (kind === 'reschedule' ? `Đổi lịch #${id}`
+      : detail.packageType === 'DAY' ? `Đơn #${id}` : `Gói #${id}`),
+    bookingId: kind === 'reschedule' ? detail.bookingId : kind === 'package' ? detail.sessions?.[0]?.id : id,
     status: detail.status,
     amount: detail.extraAmount ?? detail.finalAmount,
     awaiting,
@@ -25,11 +30,31 @@ export async function loadPayment({ kind, id }, signal) {
     resubmitting,
     deadline: resubmitting ? (payment?.resubmitDeadline ?? detail.resubmitDeadline) : detail.holdExpiresAt,
     reason: payment?.resubmitReason ?? detail.resubmitReason,
-    resubmitsLeft: payment?.resubmitsLeft ?? detail.resubmitsLeft,
+    resubmitsLeft: payment?.resubmitsLeft ?? detail.resubmitsLeft ?? detail.remainingResubmissions,
+    receivedAmount: payment?.receivedAmount,
+    rejectReason: payment?.rejectReason,
+    receiptNo: payment?.receiptNo ?? detail.receiptNo,
+    confirmedAt: payment?.confirmedAt,
+    submittedAt: payment?.submittedAt,
   }
   if (!canPay) return result
-  const { data: { data: instructions } } = await api.get(`${path}/payment-instructions`, { signal })
-  return { ...result, instructions, amount: instructions.amountDue }
+  try {
+    const { data: { data: instructions } } = await api.get(`${path}/payment-instructions`, { signal })
+    return { ...result, instructions, amount: instructions.amountDue,
+      deadline: result.deadline ?? instructions.holdExpiresAt }
+  } catch (cause) {
+    const message = cause.response?.data?.message || ''
+    if (message.includes('MSG33') || message.includes('MSG52')) {
+      return { ...result, status: 'EXPIRED', canPay: false }
+    }
+    if (cause.response?.status === 409) {
+      const { data: { data: current } } = await api.get(path, { signal })
+      if (current.status !== detail.status) return { ...result, status: current.status, canPay: false,
+        awaiting: current.status === 'AWAITING_CONFIRMATION', receiptNo: current.receiptNo,
+        paymentId: current.paymentId }
+    }
+    throw cause
+  }
 }
 
 export async function submitPaymentProof({ kind, id }, payment, proof) {

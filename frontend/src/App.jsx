@@ -161,7 +161,7 @@ function AppContent() {
           <Route path="/booking/multi" element={<MultiSessionBookingPage />} />
 
           {/* UC18 và UC21: Chuyển khoản và gửi chứng từ cho booking, gói hoặc phụ thu */}
-          <Route path="/booking/payment" element={<BookingPaymentPage key={location.search} />} />
+          <Route path="/booking/payment" element={<RequireRole roles={['player']}><BookingPaymentPage key={location.search} /></RequireRole>} />
 
           {/* UC17 và F5: Lịch sử, trạng thái đổi lịch và hủy booking của Player */}
           <Route path="/my-bookings" element={<RequireRole roles={['player']}><MyBookingsPage /></RequireRole>} />
