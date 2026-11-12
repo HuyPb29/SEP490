@@ -5,11 +5,19 @@
 - F1 dùng tên đăng nhập 6–32 ký tự cho tài khoản mới theo SRS. Thay đổi dùng chung cho đăng ký Player và tạo Staff. Tài khoản hiện có giữ tên đăng nhập. OTP vẫn cho tối đa 5 lần nhập mỗi mã theo xác nhận của người dùng.
 - Schema tạo mới đã đồng bộ. DB đã tồn tại cần áp `backend/src/main/resources/db/20261112_srs_username_length.sql` trước khi triển khai phiên bản mới. Seed mới dùng tên Admin `admin1`.
 - Build và lint frontend qua. Playwright F1 trên Edge với API mô phỏng qua 3/3. Backend qua 45/45 trên `BMS_Test`, gồm áp migration hai lần, kiểm biên username và vòng đời OTP. Migration đã áp riêng trên `BMS_Test`.
-- F6 và F5 chưa sửa. Giai đoạn 3 sẽ viết E2E sau khi hoàn tất các luồng liên quan.
+- UC24 dùng cấu hình từng voucher theo lựa chọn của người dùng. Owner có thể tắt kết hợp điểm hoặc nhập trần 1–100% trên số tiền sau voucher. Voucher cũ và voucher hệ thống giữ mặc định 50%. Trần 100% vẫn giữ số tiền phải trả dương. Checkout đơn lẻ, đơn trong ngày và gói kiểm lại chính sách khi tạo booking. Lượt voucher, ngân sách và điểm chỉ thay đổi khi tạo thành công.
+- DB đã tồn tại cần áp `backend/src/main/resources/db/20261112_uc24_voucher_point_policy.sql` trước khi chạy phiên bản UC24. Migration đã được kiểm hai lần trên `BMS_Test`. Backend voucher, điểm và checkout đạt 130/130. Build/lint frontend và hai ca Playwright UC24 với API mô phỏng đã qua.
+- UC25, UC26 và F5 còn lại. Giai đoạn 3 sẽ viết E2E sau khi hoàn tất các luồng liên quan.
 
-## Cần chốt UC24 trước khi sửa F6
+## Cần chốt UC25 trước khi sửa tiếp F6
 
-SRS UC24 N1.6 ghi Owner cài được quyền kết hợp voucher với điểm và tỷ lệ tối đa cho từng voucher. FR82 trong cùng SRS quy định luôn cho kết hợp và cố định trần 50% số tiền còn lại sau voucher. API hiện thực thi FR82. Cần chọn chính sách cố định để Voucher Form hiển thị quy tắc, hoặc cho Owner cấu hình và mở rộng hợp đồng backend.
+SRS UC25 N5 yêu cầu Owner chọn Player rồi xác định booking liên quan trong Point Grant. API hiện nhận bookingId và tự xác định Player. BE thiếu API Owner tra cứu Player và booking tương ứng trong địa điểm đã chọn. Cần chốt bổ sung tra cứu để làm picker theo SRS, hoặc tiếp tục dùng bookingId làm đầu vào.
+
+## Tự kiểm UC24
+
+1. Đăng nhập Owner, chọn địa điểm, mở Ưu đãi và điểm. Tạo và công bố một voucher cho kết hợp điểm với trần 25% và một voucher tắt kết hợp. Thử lưu với tỷ lệ ngoài 1–100% và kiểm tra lỗi dưới trường.
+2. Đăng nhập Player có số dư, áp voucher trần 25% vào booking còn 100.000đ sau voucher. Nếu số dư đủ, nhập 50 điểm để giảm 25.000đ, còn 75.000đ. Nhập 51 điểm để thấy MSG38 và xác nhận bị chặn. Áp voucher tắt kết hợp để kiểm tra ô điểm bị khóa.
+3. Kiểm tra lượt và ngân sách sau thao tác Áp rồi sau Xác nhận tạo booking. Thử một đơn trong ngày và một gói nhiều buổi để kiểm tra trần áp dụng trên toàn đơn. Đăng nhập Admin, vô hiệu voucher đã công bố và thử áp lại.
 
 ## Tự kiểm F1
 

@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import styles from './BookingSummaryPage.module.css';
 import { formatVnd } from '../../utils/formatters';
+import { checkoutPointLimit, checkoutRewardErrorField, defaultPointPercent, pointInputError } from '../../utils/checkoutPoints';
 import { CheckoutProgress, ConfirmDialog, Feedback } from '../../components/common/WorkspacePrimitives';
 import { PublicHeader } from '../../components/layout/PublicLayout';
 
@@ -96,6 +97,7 @@ export default function BookingSummaryPage() {
   const [quote, setQuote] = useState(null);
   const [quoteError, setQuoteError] = useState('');
   const [pointsError, setPointsError] = useState('');
+  const [pointSubmitError, setPointSubmitError] = useState('');
 
   // State Đội bóng (DR03 / BR09)
   const [teamError, setTeamError] = useState('');
@@ -146,10 +148,11 @@ export default function BookingSummaryPage() {
   const listPrice = Number(quote?.listAmount ?? 0);
   const voucherDiscount = Number(appliedVoucher?.discountAmount ?? 0);
   const remainingAfterVoucher = listPrice - voucherDiscount;
-  const pointsAllowed = Math.min(availablePoints, Math.floor(remainingAfterVoucher / 1000));
+  const pointPercent = appliedVoucher?.allowPoints === false ? 0 : appliedVoucher?.maxPointPercent ?? defaultPointPercent;
+  const pointsAllowed = checkoutPointLimit(remainingAfterVoucher, availablePoints, pointPercent);
   const requestedPoints = Number(pointsInput);
-  const validPoints = Number.isInteger(requestedPoints) &&
-    (requestedPoints === 0 || (requestedPoints >= 2 && requestedPoints <= pointsAllowed));
+  const pointValidation = pointInputError(requestedPoints, availablePoints, pointsAllowed, pointPercent);
+  const validPoints = !pointValidation;
   const pointsUsed = validPoints ? requestedPoints : 0;
   const pointsDiscount = pointsUsed * 500;
   const pricingSummary = { listPrice, voucherDiscount, remainingAfterVoucher, pointsUsed, pointsDiscount,
@@ -186,6 +189,7 @@ export default function BookingSummaryPage() {
   // Xử lý Áp dụng hoặc Bỏ mã Voucher
   const handleVoucherAction = async () => {
     setVoucherError('');
+    setPointSubmitError('');
 
     // Nếu đang có mã được áp dụng -> bấm nút sẽ Bỏ mã
     if (appliedVoucher) {
@@ -203,15 +207,13 @@ export default function BookingSummaryPage() {
       const code = voucherInput.trim().toUpperCase();
       const selection = selectedGrant ? { grantId: selectedGrant } : { code };
       const checked = await applyVoucherApi({ locationId: quote.locationId, orderAmount: quote.listAmount, selection });
+      if (checked.allowPoints === false) setPointsInput('');
       setAppliedVoucher({ ...checked, selection, label: selectedGrant
         ? checkoutVouchers.grants.find((grant) => grant.grantId === selectedGrant)?.voucher.name : code });
     } catch (err) {
       const message = err.response?.data?.message;
-      setVoucherError(
-        message && message !== 'No message available'
-          ? message
-          : 'Mã giảm giá không dùng được. Vui lòng kiểm tra lại (MSG34).'
-      );
+      const reason = message && message !== 'No message available' ? message : 'Vui lòng kiểm tra lại.';
+      setVoucherError(checkoutRewardErrorField(reason) === 'voucher' ? reason : `Mã giảm giá không dùng được: ${reason} (MSG34)`);
     } finally {
       setVoucherLoading(false);
     }
@@ -221,6 +223,8 @@ export default function BookingSummaryPage() {
   const handleConfirmBooking = async () => {
     if (!quote || quote.conflictSessions || submitting || voucherLoading || !validPoints || !validNote) return;
     setSubmitError('');
+    setVoucherError('');
+    setPointSubmitError('');
     setSubmitting(true);
     try {
       const payload = {
@@ -261,7 +265,12 @@ export default function BookingSummaryPage() {
         const refreshed = await (isOrder ? previewDayOrderApi : previewBookingApi)(selection).catch(() => null);
         if (refreshed) setQuote(refreshed);
       }
-      setSubmitError(message || 'Không thể xác nhận đặt sân. Vui lòng thử lại.');
+      const field = checkoutRewardErrorField(message);
+      if (field === 'voucher') {
+        setAppliedVoucher(null);
+        setVoucherError(message);
+      } else if (field === 'points') setPointSubmitError(message);
+      else setSubmitError(message || 'Không thể xác nhận đặt sân. Vui lòng thử lại.');
     } finally {
       setSubmitting(false);
     }
@@ -438,7 +447,7 @@ export default function BookingSummaryPage() {
                 </select>
               </div>}
 
-              {voucherError && <p className={styles.errorText}>{voucherError}</p>}
+              {voucherError && <p className={styles.errorText} role="alert">{voucherError}</p>}
 
               {pointsError && <p role="alert" className={styles.errorText}>{pointsError}</p>}
 
@@ -452,21 +461,19 @@ export default function BookingSummaryPage() {
                 <div className={styles.pointsInfo}>
                   <strong className={styles.pointsTitle}>Dùng điểm thưởng</strong>
                   <span className={styles.pointsSub}>
-                    Bạn đang có {availablePoints} điểm tại địa điểm này (1 điểm = 500 VND). Tối đa 50% số tiền còn lại sau voucher.
+                    Bạn đang có {availablePoints} điểm tại địa điểm này (1 điểm = 500 VND).{' '}
+                    {pointPercent === 0 ? 'Voucher này không dùng cùng điểm.'
+                      : `Tối đa ${pointPercent}% ${appliedVoucher ? 'số tiền còn lại sau voucher' : 'giá niêm yết'}.`}
                   </span>
                 </div>
 
                 <input type="number" aria-label="Số điểm muốn dùng" min="0" max={pointsAllowed}
-                  placeholder="0" value={pointsInput} disabled={submitting || voucherLoading}
-                  onChange={(event) => setPointsInput(event.target.value)} />
-                {!validPoints && <p role="alert" className={styles.errorText}>
-                  {requestedPoints > 0 && requestedPoints < 2
-                    ? 'Mỗi lần dùng điểm phải giảm ít nhất 1.000 đồng và không vượt số dư. (MSG37)'
-                    : requestedPoints > availablePoints
-                      ? `Số điểm không đủ. Số dư hiện tại: ${availablePoints} điểm (MSG37).`
-                      : pointsAllowed < 2
-                        ? 'Booking này chưa đủ điều kiện dùng điểm.'
-                        : `Nhập 0 hoặc từ 2 đến ${pointsAllowed} điểm (tối đa 50% giá còn lại).`}
+                  placeholder="0" value={pointsInput} disabled={submitting || voucherLoading || pointPercent === 0}
+                  aria-invalid={Boolean(pointValidation || pointSubmitError)}
+                  aria-describedby={pointValidation || pointSubmitError ? 'checkout-point-error' : undefined}
+                  onChange={(event) => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
+                {(pointValidation || pointSubmitError) && <p id="checkout-point-error" role="alert" className={styles.errorText}>
+                  {pointValidation || pointSubmitError}
                 </p>}
               </div>
             </section>

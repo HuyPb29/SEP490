@@ -51,6 +51,18 @@ class LoyaltyPointPreviewTests {
     }
 
     @Test
+    void campaignCapCanBlockPointsOrSetAnotherPercentage() {
+        BigDecimal afterVoucher = new BigDecimal("100000");
+        assertThatThrownBy(() -> service.preview(PLAYER, LOCATION, afterVoucher, 2, 0))
+                .hasMessageContaining("MSG40");
+        assertThat(service.preview(PLAYER, LOCATION, afterVoucher, 50, 25)).isEqualByComparingTo("25000");
+        assertThatThrownBy(() -> service.preview(PLAYER, LOCATION, afterVoucher, 51, 25))
+                .hasMessageContaining("tối đa 50 điểm");
+        assertThatThrownBy(() -> service.preview(PLAYER, LOCATION, afterVoucher, 200, 100))
+                .hasMessageContaining("tối đa 199 điểm");
+    }
+
+    @Test
     void capRoundsDownToWholePoints() {
         assertThat(preview("130000", 130)).isEqualByComparingTo("65000");
         assertThat(preview("130100", 130)).isEqualByComparingTo("65000");

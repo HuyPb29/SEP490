@@ -22,6 +22,7 @@ import com.sep490.bms.dto.booking.BookingResponse;
 import com.sep490.bms.dto.booking.BookingSummaryResponse;
 import com.sep490.bms.dto.booking.BookingSummaryResponse.SlotPrice;
 import com.sep490.bms.dto.promotion.VoucherCheckRequest;
+import com.sep490.bms.dto.promotion.VoucherCheckResponse;
 import com.sep490.bms.dto.promotion.VoucherSelection;
 import com.sep490.bms.dto.request.BookingRequest;
 import com.sep490.bms.entity.account.Account;
@@ -93,9 +94,10 @@ public class BookingService {
         Map<Integer, BigDecimal> prices = priceCalculator.rangePrices(
                 court.getId(), request.date(), request.startMinute(), request.endMinute());
         BigDecimal listAmount = prices.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal voucherDiscount = voucherDiscount(player, location.getId(), listAmount, request);
+        VoucherCheckResponse voucher = checkVoucher(player, location.getId(), listAmount, request);
+        BigDecimal voucherDiscount = voucher == null ? BigDecimal.ZERO : voucher.discountAmount();
         BigDecimal afterVoucher = listAmount.subtract(voucherDiscount);
-        BigDecimal pointDiscount = pointDiscount(player, location.getId(), afterVoucher, request);
+        BigDecimal pointDiscount = pointDiscount(player, location.getId(), afterVoucher, request, voucher);
 
         return BookingSummaryResponse.builder()
                 .locationId(location.getId())
@@ -281,7 +283,7 @@ public class BookingService {
         }
     }
 
-    /** UC14 #5, FR75: trừ điểm khi tạo booking. LoyaltyPointService kiểm tra lại số dư và trần 50% (BR41). */
+    /** UC14 #5, FR75: trừ điểm khi tạo booking, kiểm tra lại số dư và trần áp dụng. */
     private void usePoints(Long bookingId, BookingRequest request) {
         Integer points = request.pointsToUse();
         if (points == null || points == 0) {
@@ -347,15 +349,14 @@ public class BookingService {
      * UC14 #4: chỉ kiểm tra và tính số giảm, chưa trừ lượt (FR74). Lượt bị trừ khi tạo booking.
      * Không chọn voucher thì giảm 0; voucher không dùng được thì báo MSG34 kèm lý do.
      */
-    private BigDecimal voucherDiscount(UserPrincipal player, Long locationId, BigDecimal listAmount,
+    private VoucherCheckResponse checkVoucher(UserPrincipal player, Long locationId, BigDecimal listAmount,
             BookingRequest request) {
         VoucherSelection selection = voucherSelection(request);
         if (selection == null) {
-            return BigDecimal.ZERO;
+            return null;
         }
         try {
-            return voucherService.check(player, new VoucherCheckRequest(locationId, listAmount, selection))
-                    .discountAmount();
+            return voucherService.check(player, new VoucherCheckRequest(locationId, listAmount, selection));
         } catch (AppException e) {
             if (e.getStatus() != HttpStatus.BAD_REQUEST) {
                 throw e;
@@ -366,15 +367,17 @@ public class BookingService {
 
     /**
      * UC14 #5: chỉ kiểm tra và tính số giảm, chưa trừ điểm (FR75). Điểm bị trừ khi tạo booking.
-     * Tính sau voucher vì trần 50% lấy trên số tiền còn lại sau voucher (BR41).
+     * Tính sau voucher và dùng trần của voucher nếu được áp dụng (UC24).
      */
     private BigDecimal pointDiscount(UserPrincipal player, Long locationId, BigDecimal afterVoucher,
-            BookingRequest request) {
+            BookingRequest request, VoucherCheckResponse voucher) {
         Integer points = request.pointsToUse();
         if (points == null || points == 0) {
             return BigDecimal.ZERO;
         }
-        return loyaltyPointService.preview(player.getId(), locationId, afterVoucher, points);
+        return voucher == null
+                ? loyaltyPointService.preview(player.getId(), locationId, afterVoucher, points)
+                : loyaltyPointService.preview(player.getId(), locationId, afterVoucher, points, voucher.pointPercent());
     }
 
     /** Voucher công khai chọn bằng mã, voucher được tặng chọn bằng grantId; cả hai đều trống là không dùng voucher. */

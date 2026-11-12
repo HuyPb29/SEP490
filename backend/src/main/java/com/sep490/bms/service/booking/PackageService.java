@@ -36,6 +36,7 @@ import com.sep490.bms.dto.booking.PackageDetailResponse;
 import com.sep490.bms.dto.booking.PackageRequest;
 import com.sep490.bms.dto.booking.PackageRequest.WeeklySlot;
 import com.sep490.bms.dto.promotion.VoucherCheckRequest;
+import com.sep490.bms.dto.promotion.VoucherCheckResponse;
 import com.sep490.bms.dto.promotion.VoucherSelection;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
@@ -185,6 +186,7 @@ public class PackageService {
                 .voucherDiscount(quote.voucherDiscount())
                 .pointsUsed(quote.pointsUsed())
                 .pointDiscount(quote.pointDiscount())
+                .maxPointPercent(quote.maxPointPercent())
                 .finalAmount(quote.finalAmount())
                 .batchOffer(offer)
                 .build();
@@ -478,7 +480,7 @@ public class PackageService {
         }
     }
 
-    /** UC15 #6, FR75: trừ điểm trên cả gói; LoyaltyPointService kiểm tra lại số dư và trần 50% (BR41). */
+    /** UC15 #6, FR75: trừ điểm trên cả gói, kiểm tra lại số dư và trần áp dụng. */
     private void usePoints(Long packageId, PackageRequest request) {
         Integer points = request.pointsToUse();
         if (points == null || points == 0) {
@@ -624,7 +626,7 @@ public class PackageService {
 
     /** Số tiền của cả gói và của từng buổi đặt được. */
     record Quote(List<Priced> sessions, BigDecimal listAmount, BigDecimal voucherDiscount, int pointsUsed,
-            BigDecimal pointDiscount) {
+            BigDecimal pointDiscount, int maxPointPercent) {
 
         BigDecimal finalAmount() {
             return listAmount.subtract(voucherDiscount).subtract(pointDiscount);
@@ -779,20 +781,27 @@ public class PackageService {
 
     /**
      * UC15 #6, BR14, BR41: giá niêm yết của từng buổi đặt được; voucher áp một lần trên tổng gói, điểm tính sau
-     * voucher, tối đa 50% số tiền còn lại. Chỉ kiểm tra và tính, chưa trừ (FR74, FR75).
+     * voucher theo trần của chiến dịch. Chỉ kiểm tra và tính, chưa trừ (FR74, FR75).
      */
     private Quote quote(UserPrincipal player, Location location, List<Planned> bookable, PackageRequest request) {
         List<Priced> priced = price(bookable);
         BigDecimal listAmount = sum(priced);
         if (priced.isEmpty()) {
-            return new Quote(priced, listAmount, BigDecimal.ZERO, 0, BigDecimal.ZERO);
+            return new Quote(priced, listAmount, BigDecimal.ZERO, 0, BigDecimal.ZERO, LoyaltyPointService.MAX_POINT_PERCENT);
         }
-        BigDecimal voucherDiscount = voucherDiscount(player, location.getId(), listAmount, request);
+        VoucherCheckResponse voucher = checkVoucher(player, location.getId(), listAmount, request);
+        BigDecimal voucherDiscount = voucher == null ? BigDecimal.ZERO : voucher.discountAmount();
+        int maxPointPercent = voucher == null ? LoyaltyPointService.MAX_POINT_PERCENT : voucher.pointPercent();
         int points = request.pointsToUse() == null ? 0 : request.pointsToUse();
-        BigDecimal pointDiscount = points == 0 ? BigDecimal.ZERO
-                : loyaltyPointService.preview(player.getId(), location.getId(), listAmount.subtract(voucherDiscount), points);
+        BigDecimal pointDiscount = BigDecimal.ZERO;
+        if (points != 0) {
+            BigDecimal afterVoucher = listAmount.subtract(voucherDiscount);
+            pointDiscount = voucher == null
+                    ? loyaltyPointService.preview(player.getId(), location.getId(), afterVoucher, points)
+                    : loyaltyPointService.preview(player.getId(), location.getId(), afterVoucher, points, maxPointPercent);
+        }
         return new Quote(allocate(priced, voucherDiscount, points, pointDiscount),
-                listAmount, voucherDiscount, points, pointDiscount);
+                listAmount, voucherDiscount, points, pointDiscount, maxPointPercent);
     }
 
     /** Giá niêm yết từng slot 30 phút của mỗi buổi (FR20), như booking lẻ. */
@@ -870,15 +879,14 @@ public class PackageService {
      * Chỉ kiểm tra và tính số giảm của voucher trên tổng gói (BR14); voucher không dùng được thì báo MSG34
      * kèm lý do, như booking lẻ.
      */
-    private BigDecimal voucherDiscount(UserPrincipal player, Long locationId, BigDecimal listAmount,
+    private VoucherCheckResponse checkVoucher(UserPrincipal player, Long locationId, BigDecimal listAmount,
             PackageRequest request) {
         VoucherSelection selection = voucherSelection(request);
         if (selection == null) {
-            return BigDecimal.ZERO;
+            return null;
         }
         try {
-            return voucherService.check(player, new VoucherCheckRequest(locationId, listAmount, selection))
-                    .discountAmount();
+            return voucherService.check(player, new VoucherCheckRequest(locationId, listAmount, selection));
         } catch (AppException e) {
             if (e.getStatus() != HttpStatus.BAD_REQUEST) {
                 throw e;

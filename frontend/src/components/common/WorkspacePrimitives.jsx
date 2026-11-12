@@ -146,21 +146,29 @@ export function ActionForm({
   children,
   tone = 'primary',
   preserve = false,
+  successMessage,
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [pendingForm, setPendingForm] = useState(null);
+  const usesFieldErrors = typeof children === 'function';
 
   async function execute(form) {
     setBusy(true);
     setMessage(null);
+    setFieldErrors({});
     try {
       const result = await action(Object.fromEntries(new FormData(form)));
       if (!preserve) form.reset();
-      setMessage({ text: result?.data?.message || 'Đã lưu.' });
+      setMessage({ text: successMessage || result?.data?.message || 'Đã lưu.' });
       after?.(result);
     } catch (error) {
-      setMessage({ error: true, text: errorMessage(error) });
+      const errors = error.response?.data?.errors;
+      if (usesFieldErrors && errors && Object.keys(errors).length) {
+        setFieldErrors(Object.fromEntries(Object.entries(errors).map(([name, text]) => [name.split('.').at(-1), text])));
+      }
+      else setMessage({ error: true, text: errorMessage(error) });
     } finally {
       setBusy(false);
     }
@@ -173,14 +181,23 @@ export function ActionForm({
     else execute(event.currentTarget);
   }
 
+  function invalid(event) {
+    if (!usesFieldErrors) return;
+    event.preventDefault();
+    const { name, validity } = event.target;
+    const text = validity.valueMissing ? 'Vui lòng nhập thông tin. (MSG01)' : 'Giá trị không đúng định dạng. (MSG02)';
+    setFieldErrors((current) => ({ ...current, [name]: text }));
+  }
+
   return (
     <>
-      <form onSubmit={submit} className="cw-form">
+      <form onSubmit={submit} onInvalid={invalid}
+        onChange={usesFieldErrors ? () => setFieldErrors({}) : undefined} className="cw-form">
         <fieldset
           disabled={busy}
           className={children ? 'cw-form-fields' : 'cw-form-fields cw-form-fields--action'}
         >
-          {children}
+          {usesFieldErrors ? children(fieldErrors) : children}
           <button className={tone === 'danger' ? 'cw-danger' : 'action'} type="submit">
             {busy ? 'Đang xử lý…' : label}
           </button>

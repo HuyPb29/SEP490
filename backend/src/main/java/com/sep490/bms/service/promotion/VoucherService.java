@@ -123,7 +123,11 @@ public class VoucherService {
         v.setDiscountValue(r.discountValue()); v.setMinOrderAmount(r.minOrderAmount()); v.setValidFrom(r.validFrom());
         v.setValidTo(r.validTo()); v.setGrantValidDays(r.grantValidDays()); v.setMaxUsesPerPlayer(r.maxUsesPerPlayer());
         v.setMaxTotalUses(r.maxTotalUses()); v.setBudget(r.budget());
-        v.setAllowPoints(true); v.setMaxPointPercent(50); // P12/P13 fixed for every venue.
+        if (r.allowPoints() != null) {
+            v.setAllowPoints(r.allowPoints());
+        }
+        Integer configuredCap = r.maxPointPercent() != null ? r.maxPointPercent() : v.getMaxPointPercent();
+        v.setMaxPointPercent(v.isAllowPoints() ? Objects.requireNonNullElse(configuredCap, 50) : null);
     }
     @Transactional
     public VoucherResponse publish(UserPrincipal user,Long id) {
@@ -208,7 +212,8 @@ public class VoucherService {
         }
         if(discount.signum()<=0) throw new AppException("Giá trị giảm không hợp lệ");
         if(v.getBudget()!=null && v.getBudgetUsed().add(discount).compareTo(v.getBudget())>0) throw new AppException("Voucher không đủ ngân sách");
-        return new VoucherCheckResponse(v.getId(),selection.grantId(),amount,discount,amount.subtract(discount));
+        return new VoucherCheckResponse(v.getId(),selection.grantId(),amount,discount,amount.subtract(discount),
+                v.isAllowPoints(),v.getMaxPointPercent());
     }
 
     /** F3 must call inside booking-creation transaction, after saving the booking. Never expose as an HTTP mutation. */

@@ -107,15 +107,28 @@ class VoucherApiTests {
                 .finalAmount(BigDecimal.valueOf(1000)).holdExpiresAt(LocalDateTime.now().plusMinutes(10)).build(); em.persist(b); em.flush(); return b; });
     }
     @Test void ownerLifecycleRbacAndTenantScope() throws Exception {
+        var policy = json.valueToTree(write("SAVE"+suffix,VoucherTargetGroup.ALL_PLAYERS));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) policy).put("maxPointPercent",25);
         var created=mvc.perform(post("/api/owner/vouchers").header("Authorization",token(owner)).header("X-Location-Id",location.getId())
-                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(write("SAVE"+suffix,VoucherTargetGroup.ALL_PLAYERS))))
-                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("DRAFT")).andReturn();
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(policy)))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.maxPointPercent").value(25)).andReturn();
         JsonNode node=json.readTree(created.getResponse().getContentAsString()).path("data"); long id=node.path("id").asLong();
         mvc.perform(get("/api/locations/"+location.getId()+"/vouchers")).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
+        var update = json.createObjectNode().put("version",node.path("version").asInt());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) policy).put("allowPoints",false).putNull("maxPointPercent");
+        update.set("voucher",policy);
         mvc.perform(patch("/api/owner/vouchers/"+id).header("Authorization",token(owner)).header("X-Location-Id",location.getId())
-                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(new VoucherUpdateRequest(node.path("version").asInt(),write("SAVE"+suffix,VoucherTargetGroup.ALL_PLAYERS)))))
-                .andExpect(status().isOk());
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(update)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.allowPoints").value(false))
+                .andExpect(jsonPath("$.data.maxPointPercent").doesNotExist());
         mvc.perform(post("/api/owner/vouchers/"+id+"/publish").header("Authorization",token(owner)).header("X-Location-Id",location.getId())).andExpect(status().isOk());
+        var check = new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(1000),new VoucherSelection("SAVE"+suffix,null));
+        mvc.perform(post("/api/vouchers/check").header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(check)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.allowPoints").value(false))
+                .andExpect(jsonPath("$.data.maxPointPercent").doesNotExist());
+        assertThat(vouchers.findById(id).orElseThrow().getUsedCount()).isZero();
         mvc.perform(patch("/api/owner/vouchers/"+id).header("Authorization",token(owner)).header("X-Location-Id",location.getId())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(new VoucherUpdateRequest(0,write("SAVE"+suffix,VoucherTargetGroup.ALL_PLAYERS)))))
                 .andExpect(status().isConflict());

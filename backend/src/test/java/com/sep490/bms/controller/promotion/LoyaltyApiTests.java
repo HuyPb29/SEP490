@@ -55,6 +55,7 @@ class LoyaltyApiTests {
     @Autowired VoucherGrantRepository grants;
     @Autowired JwtTokenProvider jwt;
     @Autowired LoyaltyPointService points;
+    @Autowired com.sep490.bms.service.promotion.VoucherService voucherService;
     @Autowired PlatformTransactionManager manager;
     @Autowired EntityManager em;
     @Autowired JdbcTemplate jdbc;
@@ -65,10 +66,13 @@ class LoyaltyApiTests {
         // Explicitly scoped to the existing integration test database. Never runs on a production catalog.
         try(var c=Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
             if(!"BMS_Test".equalsIgnoreCase(c.getCatalog())) throw new IllegalStateException("Loyalty regression requires BMS_Test");
-            String sql = new ClassPathResource("db/20261030_uc25_uc26_loyalty.sql")
-                    .getContentAsString(StandardCharsets.UTF_8);
             for(int pass=0;pass<2;pass++) {
-                try { for(String batch:sql.split("(?im)^GO\\s*$")) if(!batch.isBlank()) try(var s=c.createStatement()) { s.execute(batch); } }
+                try {
+                    for (String migration : List.of("db/20261030_uc25_uc26_loyalty.sql", "db/20261112_uc24_voucher_point_policy.sql")) {
+                        String sql = new ClassPathResource(migration).getContentAsString(StandardCharsets.UTF_8);
+                        for(String batch:sql.split("(?im)^GO\\s*$")) if(!batch.isBlank()) try(var s=c.createStatement()) { s.execute(batch); }
+                    }
+                }
                 catch(Exception e) { try(var s=c.createStatement()) { s.execute("IF @@TRANCOUNT>0 ROLLBACK TRANSACTION"); } throw e; }
             }
         }
@@ -239,17 +243,39 @@ class LoyaltyApiTests {
         seed(20); Booking b=booking(10000);
         Voucher v=vouchers.saveAndFlush(Voucher.builder().locationId(location.getId()).name("Policy test").source(VoucherSource.CAMPAIGN)
                 .targetGroup(VoucherTargetGroup.ALL_PLAYERS).code("STACK").status(VoucherStatus.PUBLISHED).discountType(DiscountType.AMOUNT)
-                .discountValue(BigDecimal.valueOf(2000)).build());
+                .discountValue(BigDecimal.valueOf(2000)).allowPoints(true).maxPointPercent(25).build());
         tx.executeWithoutResult(s -> {
             Booking target=em.find(Booking.class,b.getId()); target.setVoucherDiscount(BigDecimal.valueOf(2000)); target.setFinalAmount(BigDecimal.valueOf(8000));
             em.persist(VoucherUsage.builder().voucherId(v.getId()).playerId(player.getId()).bookingId(b.getId()).discountAmount(BigDecimal.valueOf(2000)).build());
         });
-        // Sau voucher còn 8.000 đồng: tối đa 4.000 đồng = 8 điểm (BR41, D161).
-        assertThatThrownBy(() -> tx.execute(s -> points.redeemForBooking(b.getId(),9))).hasMessageContaining("MSG38");
+        // Sau voucher còn 8.000 đồng, chiến dịch chỉ cho giảm thêm 25% = 4 điểm.
+        assertThatThrownBy(() -> tx.execute(s -> points.redeemForBooking(b.getId(),5))).hasMessageContaining("MSG38");
         assertThatThrownBy(() -> tx.execute(s -> points.redeemForBooking(b.getId(),1))).hasMessageContaining("MSG37");
-        tx.executeWithoutResult(s -> points.redeemForBooking(b.getId(),8));
-        assertThat(balance().getPointBalance()).isEqualTo(12);
-        assertThat(tx.<BigDecimal>execute(s -> em.find(Booking.class,b.getId()).getFinalAmount())).isEqualByComparingTo("4000");
+        tx.executeWithoutResult(s -> points.redeemForBooking(b.getId(),4));
+        assertThat(balance().getPointBalance()).isEqualTo(16);
+        assertThat(tx.<BigDecimal>execute(s -> em.find(Booking.class,b.getId()).getFinalAmount())).isEqualByComparingTo("6000");
+    }
+
+    @Test void nonStackingVoucherRollsBackQuotaAndBudgetWhenCheckoutIncludesPoints() {
+        seed(20);
+        Booking b=booking(10000);
+        Voucher v=vouchers.saveAndFlush(Voucher.builder().locationId(location.getId()).name("Voucher only")
+                .source(VoucherSource.CAMPAIGN).targetGroup(VoucherTargetGroup.ALL_PLAYERS).code("VOUCHERONLY")
+                .status(VoucherStatus.PUBLISHED).discountType(DiscountType.AMOUNT).discountValue(BigDecimal.valueOf(2000))
+                .allowPoints(false).maxPointPercent(null).build());
+        var selection=new com.sep490.bms.dto.promotion.VoucherSelection(v.getCode(),null);
+
+        assertThatThrownBy(() -> tx.executeWithoutResult(s -> {
+            voucherService.consumeForBooking(b.getId(),selection);
+            points.redeemForBooking(b.getId(),2);
+        })).hasMessageContaining("MSG40");
+
+        var unchanged=vouchers.findById(v.getId()).orElseThrow();
+        assertThat(unchanged.getUsedCount()).isZero();
+        assertThat(unchanged.getBudgetUsed()).isEqualByComparingTo("0");
+        assertThat(balance().getPointBalance()).isEqualTo(20);
+        tx.executeWithoutResult(s -> voucherService.consumeForBooking(b.getId(),selection));
+        assertThat(vouchers.findById(v.getId()).orElseThrow().getUsedCount()).isEqualTo(1);
     }
     @Test void packageRedeemAndFailedReturnAreIdempotent() {
         seed(10); Booking one=booking(10000),two=booking(10000);

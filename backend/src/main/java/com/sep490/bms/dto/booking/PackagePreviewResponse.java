@@ -46,6 +46,8 @@ public class PackagePreviewResponse {
     private BigDecimal voucherDiscount;
     private int pointsUsed;
     private BigDecimal pointDiscount;
+    /** Tỷ lệ dùng điểm trên tiền còn lại sau voucher. 0 nếu voucher không cho dùng cùng điểm. */
+    private int maxPointPercent;
     private BigDecimal finalAmount;
     /** Chương trình ưu đãi đặt theo lô đang diễn ra; trống khi không có (FR44). */
     private BatchOfferStatus batchOffer;
