@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import api, { getAllPages } from '../../api'
-import WorkspaceLayout, { ActionForm, Field, Section } from '../WorkspaceLayout'
+import { isLatePaymentEligible } from '../../api/bookingPaymentApi'
+import WorkspaceLayout, { ActionForm, EmptyState, Field, Section, StatusPill } from '../WorkspaceLayout'
 import { today, useResource } from '../workspaceSupport'
 
 const staffPath = '/staff/complaints'
@@ -34,21 +35,28 @@ function OwnerDecision({ complaint, refresh }) {
   const latePayment = complaint.complaintType === 'LATE_PAYMENT_CONFIRMATION'
   const [result, setResult] = useState(latePayment ? 'LATE_PAYMENT_CONFIRMED' : 'REFUND')
   const results = latePayment ? [['LATE_PAYMENT_CONFIRMED', 'Xác nhận thanh toán trễ']] :
-    [['REFUND', 'Tạo yêu cầu hoàn tiền'], ...(complaint.playerId ? [['POINTS', 'Cộng điểm bồi hoàn']] : [])]
+    [['REFUND', 'Tạo yêu cầu hoàn tiền'], ...(complaint.playerId ? [['POINTS', 'Cộng điểm bồi hoàn']] : []),
+      ['NO_COMPENSATION', 'Ghi nhận không bồi thường']]
 
   return <>
     <ActionForm label="Xác nhận phương án" after={refresh} confirmation="Ghi nhận phương án xử lý này?"
       action={(form) => api.post(ownerPath + '/' + complaint.id + '/resolve', {
         result, note: form.note,
         refundAmount: form.refundAmount ? Number(form.refundAmount) : null,
+        verifiedUnrecordedAmount: form.verifiedUnrecordedAmount ? Number(form.verifiedUnrecordedAmount) : null,
+        originalTransferDate: form.originalTransferDate || null,
         compensationPoints: form.compensationPoints ? Number(form.compensationPoints) : null,
       })}>
       <Field label="Phương án" options={results} value={result} onChange={(event) => setResult(event.target.value)} />
-      {result === 'REFUND' && <Field label="Số tiền đề xuất (để trống dùng gợi ý của hệ thống)" name="refundAmount" type="number" min={1} />}
+      {result === 'REFUND' && <>
+        <Field label="Số tiền đề xuất (để trống dùng gợi ý của hệ thống)" name="refundAmount" type="number" min={1} />
+        <Field label="Đã thu chưa ghi doanh thu (VND, nếu có)" name="verifiedUnrecordedAmount" type="number" min={1} />
+        <Field label="Ngày chuyển khoản gốc nếu chưa ghi doanh thu" name="originalTransferDate" type="date" max={today()} />
+      </>}
       {result === 'POINTS' && <Field label="Số điểm bồi hoàn" name="compensationPoints" type="number" min={1} required />}
       <Field label="Ghi chú" name="note" maxLength={255} />
     </ActionForm>
-    <ActionForm label="Từ chối khiếu nại" after={refresh} confirmation="Xác nhận từ chối khiếu nại?"
+    <ActionForm label="Từ chối khiếu nại" tone="danger" after={refresh} confirmation="Xác nhận từ chối khiếu nại?"
       action={(form) => api.post(ownerPath + '/' + complaint.id + '/reject', form)}>
       <Field label="Lý do từ chối" name="reason" maxLength={500} required />
     </ActionForm>
@@ -67,16 +75,24 @@ function CaseDetails({ id, role, refreshList }) {
   }
   return <Section title={'Chi tiết khiếu nại #' + id} resource={detail}>
     {item && <>
-      <p>{labels[item.status] ?? item.status} · {item.bookingCode ?? 'Booking #' + item.bookingId} · {item.complaintType}</p>
+      <div className="cw-record"><strong>{item.bookingCode ?? 'Lịch đặt #' + item.bookingId}</strong>
+        <StatusPill tone={item.status === 'RESOLVED' ? 'positive' : item.status === 'REJECTED' ? 'negative' : 'pending'}>
+          {labels[item.status] ?? item.status}
+        </StatusPill>
+      </div>
       <p>{item.content}</p>
       {item.staffNote && <p>Ghi chú của Staff: {item.staffNote}</p>}
       {item.rejectReason && <p>Lý do từ chối: {item.rejectReason}</p>}
       {item.result && <p>Kết quả: {item.result === 'REFUND' ? 'Đã tạo yêu cầu hoàn tiền' : item.result}</p>}
-      {owner && item.result === 'REFUND' && <Link className="underline" to="/owner/workspace?tab=refund">Mở danh sách hoàn tiền</Link>}
+      {owner && item.result === 'REFUND' && <Link className="underline" to={'/owner/workspace?tab=refund&complaintId=' + item.id}>Mở yêu cầu hoàn tiền</Link>}
       {role === 'staff' && item.status === 'SUBMITTED' && <ActionForm label="Chuyển Owner" after={refresh}
         action={(form) => api.post(staffPath + '/' + id + '/forward', form)}>
         <Field label="Ghi chú khi chuyển Owner" name="staffNote" required maxLength={1000} />
       </ActionForm>}
+      {owner && item.status === 'PENDING_OWNER' && item.complaintType === 'LATE_PAYMENT_CONFIRMATION' &&
+        <p><Link className="underline" to={`/staff/confirm-payments?paymentId=${item.paymentId}${item.reschedulePayment ? '&type=reschedule' : ''}`}>
+          Mở giao dịch để yêu cầu bổ sung hoặc từ chối
+        </Link></p>}
       {owner && item.status === 'PENDING_OWNER' && <OwnerDecision complaint={item} refresh={refresh} />}
     </>}
   </Section>
@@ -84,14 +100,20 @@ function CaseDetails({ id, role, refreshList }) {
 
 function CaseList({ role = 'staff' }) {
   const cases = useResource(role === 'owner' ? loadOwnerCases : role === 'player' ? loadPlayerCases : loadStaffCases)
-  const [id, setId] = useState('')
+  const [params] = useSearchParams()
+  const requestedId = params.get('complaintId')
+  const [id, setId] = useState(() => /^[1-9]\d*$/.test(requestedId || '') ? requestedId : '')
+  const [status, setStatus] = useState('')
+  const visible = cases.data?.filter((item) => !status || item.status === status)
   return <>
     <Section title={role === 'player' ? 'Khiếu nại của tôi' : 'Khiếu nại tại địa điểm'} resource={cases}>
+      <Field label="Trạng thái" value={status} options={[[ '', 'Tất cả' ], ...Object.entries(labels)]}
+        onChange={(event) => { setStatus(event.target.value); setId('') }} />
       <Field label="Chọn khiếu nại" value={id} onChange={(event) => setId(event.target.value)}
-        options={[[ '', 'Chọn khiếu nại' ], ...(cases.data ?? []).map((item) => [
+        options={[[ '', 'Chọn khiếu nại' ], ...(visible ?? []).map((item) => [
           item.id, '#' + item.id + ' · ' + (item.bookingCode || 'Booking #' + item.bookingId) + ' · ' + (labels[item.status] ?? item.status),
         ])]} />
-      {cases.data?.length === 0 && <p>Chưa có khiếu nại.</p>}
+      {visible?.length === 0 && <EmptyState>Không có khiếu nại trong mục này.</EmptyState>}
     </Section>
     {id && <CaseDetails key={id} id={id} role={role} refreshList={cases.reload} />}
   </>
@@ -110,19 +132,25 @@ function StaffComplaints() {
   </>
 }
 
-function PlayerComplaintForm({ bookingId, refresh }) {
+function PlayerComplaintForm({ bookingId, paymentId, refresh }) {
   const loadBooking = useCallback((signal) => api.get('/bookings/' + bookingId, { signal }).then((response) => response.data.data), [bookingId])
   const booking = useResource(loadBooking, bookingId)
   const item = booking.data
   const types = [['COURT_SERVICE', 'Dịch vụ sân'], ['PAYMENT_ISSUE', 'Vấn đề thanh toán'], ['OTHER', 'Khác']]
-  if (item?.paymentId) types.push(['LATE_PAYMENT_CONFIRMATION', 'Xác nhận thanh toán trễ'])
+  const targetPaymentId = paymentId || item?.paymentId
+  const loadEligibility = useCallback(async (signal) => {
+    if (!targetPaymentId) return false
+    return isLatePaymentEligible(bookingId, targetPaymentId, signal)
+  }, [bookingId, targetPaymentId])
+  const eligibility = useResource(loadEligibility, targetPaymentId)
+  if (eligibility.data) types.push(['LATE_PAYMENT_CONFIRMATION', 'Xác nhận thanh toán trễ · nhận voucher 10.000 đ'])
 
   return <Section title="Gửi khiếu nại" resource={booking}>
     {item && <>
       <p>{item.bookingCode} · {item.playDate}</p>
-      <ActionForm label="Gửi khiếu nại" after={refresh} action={(form) => api.post('/complaints', {
+      <ActionForm label="Gửi khiếu nại" after={() => { eligibility.reload(); refresh() }} action={(form) => api.post('/complaints', {
         ...form, bookingId: item.id ?? Number(bookingId),
-        paymentId: form.complaintType === 'LATE_PAYMENT_CONFIRMATION' ? item.paymentId : null,
+        paymentId: form.complaintType === 'LATE_PAYMENT_CONFIRMATION' ? targetPaymentId : null,
       })}>
         <Field label="Loại khiếu nại" name="complaintType" options={types} required />
         <Field label="Nội dung" name="content" maxLength={1000} required />
@@ -137,8 +165,9 @@ export function PlayerComplaintsPage() {
   const bookingId = params.get('bookingId')
   return <WorkspaceLayout role="player" title="Khiếu nại">
     {bookingId && /^[1-9]\d*$/.test(bookingId) &&
-      <PlayerComplaintForm key={bookingId} bookingId={bookingId} refresh={() => setRevision((value) => value + 1)} />}
-    <Link to="/my-bookings" className="underline">Chọn booking trong lịch sử đặt sân</Link>
+      <PlayerComplaintForm key={bookingId + ':' + params.get('paymentId')} bookingId={bookingId}
+        paymentId={/^[1-9]\d*$/.test(params.get('paymentId') || '') ? params.get('paymentId') : null} refresh={() => setRevision((value) => value + 1)} />}
+    <Link to="/my-bookings" className="cw-secondary justify-self-start">Chọn lịch đặt sân để gửi khiếu nại</Link>
     <CaseList role="player" key={revision} />
   </WorkspaceLayout>
 }

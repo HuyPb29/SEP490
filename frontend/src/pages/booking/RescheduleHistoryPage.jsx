@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getRescheduleRequestsApi } from '../../api/bookingChangeApi'
+import { getRescheduleRequestsApi } from '../../api/bookingApi'
 import { getReschedulePaymentDetail, loadPaymentImage } from '../../api/bookingPaymentApi'
-import WorkspaceLayout, { Section } from '../WorkspaceLayout'
+import WorkspaceLayout, { EmptyState, Feedback, Section, StatusPill } from '../WorkspaceLayout'
 import { errorMessage, money, useResource } from '../workspaceSupport'
 
 const requestStatus = {
@@ -55,9 +55,10 @@ function PaymentDetails({ paymentId }) {
 
   return <div className="space-y-2">
     {detail.loading && <p role="status">Đang tải giao dịch…</p>}
-    {detail.error && <p role="alert">{detail.error} <button type="button" onClick={detail.reload}>Thử lại</button></p>}
+    {detail.error && <Feedback tone="error">{detail.error}<button className="cw-secondary" type="button" onClick={detail.reload}>Thử lại</button></Feedback>}
     {payment && <>
       <p>{paymentStatus[payment.status] ?? payment.status} · Phụ thu {money(payment.amountDue)}</p>
+      {payment.receiptNo && <p>Biên nhận: <strong>{payment.receiptNo}</strong>{payment.confirmedAt && ' · ' + payment.confirmedAt.replace('T', ' ')}</p>}
       {payment.receivedAmount != null && <p>Đã nhận {money(payment.receivedAmount)}</p>}
       {payment.resubmitReason && <p>Lý do yêu cầu gửi lại: {payment.resubmitReason}</p>}
       <div className="flex flex-wrap gap-3">
@@ -85,12 +86,13 @@ function RequestList({ bookingId }) {
   const requests = useResource(load, bookingId)
 
   return <Section title="Yêu cầu đã gửi" resource={requests}>
-    {requests.data?.length === 0 && <p>Booking này chưa có yêu cầu đổi lịch.</p>}
-    {requests.data?.map((item) => <article key={item.id} className="space-y-2 border-t py-3">
-      <h3 className="font-semibold">#{item.id} · {requestStatus[item.status] ?? item.status}</h3>
+    {requests.data?.length === 0 && <EmptyState>Lịch đặt sân này chưa có yêu cầu đổi lịch.</EmptyState>}
+    {requests.data?.map((item) => <article key={item.id} className="cw-record flex-col !items-start">
+      <h3 className="font-semibold">Yêu cầu #{item.id} <StatusPill tone={item.status === 'APPROVED' ? 'positive' : 'neutral'}>
+        {requestStatus[item.status] ?? item.status}</StatusPill></h3>
       <p>Slot yêu cầu: {item.newDate} · Sân #{item.newCourtId} · {clock(item.newStartMinute)}–{clock(item.newEndMinute)}</p>
       <p>{item.free ? 'Đổi miễn phí do sân hủy' : 'Phụ thu ' + money(item.extraAmount)}</p>
-      {item.extraAmount > 0 && <Link className="underline" to={'/booking/payment?rescheduleId=' + item.id}>
+      {item.extraAmount > 0 && <Link className="cw-secondary" to={'/booking/payment?rescheduleId=' + item.id}>
         {item.status === 'PENDING_PAYMENT' ? 'Thanh toán phụ thu' : 'Xem tình trạng và chứng từ phụ thu'}
       </Link>}
     </article>)}
@@ -100,6 +102,7 @@ function RequestList({ bookingId }) {
 export default function RescheduleHistoryPage() {
   const { bookingId } = useParams()
   return <WorkspaceLayout title="Lịch sử đổi lịch" role="player">
+    <Link className="cw-secondary justify-self-start" to="/my-bookings">‹ Về lịch đặt sân</Link>
     {/^\d+$/.test(bookingId || '') && <RequestList bookingId={bookingId} />}
   </WorkspaceLayout>
 }
