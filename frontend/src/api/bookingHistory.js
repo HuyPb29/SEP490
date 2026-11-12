@@ -21,6 +21,20 @@ export function canRescheduleBooking(reschedule, now) {
   return reschedule?.canReschedule === true && bookingTimestamp(reschedule.deadline) > now
 }
 
+export function bookingStartsAfter(playDate, startTime, now) {
+  return Boolean(playDate && startTime) && bookingTimestamp(playDate + 'T' + startTime) > now
+}
+
+export const affectedBookingActions = [
+  ['RESCHEDULE', 'Đổi slot miễn phí'],
+  ['REFUND', 'Nhận hoàn tiền'],
+  ['POINTS', 'Nhận điểm bồi hoàn'],
+]
+
+export function blocksNormalBookingActions(affected) {
+  return affected?.status === 'PENDING' || (affected?.status === 'RESOLVED' && affected.choice !== 'RESCHEDULE')
+}
+
 export async function getHistoryDetail(item, signal) {
   const path = item.booking_type === 'package' ? '/booking-packages/' : '/bookings/'
   const { data } = await api.get(path + item.booking_id, { signal })

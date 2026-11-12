@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import api, { apiErrorMessage } from '../../api'
-import { bookingStatusLabels, bookingTimestamp, canPayHistoryEntry, canRescheduleBooking, getHistoryDetail } from '../../api/bookingHistory'
+import { affectedBookingActions, blocksNormalBookingActions, bookingStatusLabels, bookingStartsAfter, bookingTimestamp, canPayHistoryEntry, canRescheduleBooking, getHistoryDetail } from '../../api/bookingHistory'
 import { formatVnd } from '../../utils/formatters'
 import styles from './MyBookingsPage.module.css'
 
@@ -11,7 +11,8 @@ function DetailRow({ label, children }) {
   return <div className={styles.quoteRow}><dt>{label}</dt><dd>{children}</dd></div>
 }
 
-export default function HistoryDetailDialog({ item, now, onClose, onPayment, onReschedule }) {
+export default function HistoryDetailDialog({ item, now, onClose, onPayment, onReschedule, affected, affectedReady,
+  affectedLoading, canCancel, onCancelBooking, onAffected }) {
   const ref = useRef(null)
   const [detail, setDetail] = useState(null)
   const [payment, setPayment] = useState(null)
@@ -69,12 +70,15 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
     payment_id: requestOpen ? detail.paymentId : null,
     resubmit_deadline: requestOpen ? payment.resubmitDeadline ?? detail.resubmitDeadline : null,
     reschedule: detail.reschedule, booking_date: detail.playDate ?? item.booking_date,
+    start_time: detail.startTime ?? item.start_time,
     court_name: detail.courtName ?? item.court_name,
     time_range: detail.startTime ? `${detail.startTime} – ${detail.endTime}` : item.time_range,
   }
   const showPayment = !error && canPayHistoryEntry(target, now)
-  const showReschedule = !error && currentStatus === 'confirmed'
+  const showReschedule = !error && currentStatus === 'confirmed' && !blocksNormalBookingActions(affected)
     && (detail?.reschedule?.pendingRequestId || canRescheduleBooking(detail?.reschedule, now))
+  const showAffected = !error && affectedReady && affected?.status === 'PENDING' && currentStatus === 'confirmed'
+    && bookingStartsAfter(target?.booking_date, target?.start_time, now)
   const viewPayment = !error && item.booking_type !== 'session' && detail?.paymentId
     && ['awaiting_confirmation', 'confirmed', 'in_use', 'completed', 'payment_rejected'].includes(currentStatus)
 
@@ -128,6 +132,14 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
         {showReschedule && <button type="button" className={styles.outlineActionBtn} onClick={() => onReschedule(target)}>
           {detail.reschedule.pendingRequestId ? 'Xem phụ thu đổi lịch' : 'Đổi lịch'}
         </button>}
+        {!error && currentStatus === 'confirmed' && canCancel(target) && <button type="button"
+          className={styles.outlineActionBtn} onClick={() => onCancelBooking(target)}>
+          {target.single_order ? 'Hủy đơn' : 'Hủy lịch'}
+        </button>}
+        {showAffected && affectedBookingActions.map(([choice, label]) => <button key={choice} type="button"
+          disabled={affectedLoading} className={styles.outlineActionBtn} onClick={() => onAffected(target, affected.id, choice)}>
+          {label}
+        </button>)}
         {showPayment && <button type="button" className={styles.primaryActionBtn} onClick={() => onPayment(target)}>
           {currentStatus === 'holding' ? 'Tiếp tục thanh toán' : 'Gửi lại chứng từ'}
         </button>}

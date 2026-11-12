@@ -217,7 +217,7 @@ export function ActionForm({
             execute(pendingForm);
           }}
         >
-          {confirmation}
+          {typeof confirmation === 'function' ? confirmation(new FormData(pendingForm)) : confirmation}
         </ConfirmDialog>
       )}
     </>

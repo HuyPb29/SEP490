@@ -13,11 +13,20 @@
 - UC25 chọn Player và booking trong Point Grant. Hai API tra cứu phân trang theo địa điểm Owner đã chọn. Backend đối chiếu Player với booking khi lưu và vẫn nhận payload cũ có bookingId. My Points hiển thị tên giao dịch hoàn điểm và booking/gói liên quan. Tóm tắt gói có xác nhận MSG39 khi dùng điểm.
 - UC26 tạo/sửa mốc dùng API hiện có. Form hiển thị lỗi dưới ô, kể cả mốc trùng, và giữ thông báo MSG03 sau khi tải lại dữ liệu.
 - Build/lint frontend qua. Backend F6 qua 22/22 trên `BMS_Test`. Hai ca Playwright với API mô phỏng qua, gồm chọn Player/booking, lỗi và lưu Point Grant, tạo/sửa mốc và lỗi mốc trùng.
-- F5 còn lại. Giai đoạn 3 sẽ viết E2E liên luồng sau F5.
+- UC21 thêm điều kiện đổi lịch và mã lỗi vào API hiện có. FE phân biệt tiếp tục phụ thu với mở yêu cầu mới, bỏ báo giá cũ khi đổi slot, và chỉ báo đổi lịch thành công sau APPROVED. PaymentProgress trả biên nhận phụ thu.
+- UC22 cập nhật danh sách booking bị ảnh hưởng, có báo lỗi/thử lại riêng và lựa chọn trong chi tiết booking. Owner thấy cảnh báo theo lý do hủy; Player thấy MSG66 trước khi tự hủy và MSG69 khi gửi yêu cầu hoàn.
+- UC21/22 qua build/lint, 58 test backend trên `BMS_Test` và 4 ca Playwright Edge với API mô phỏng. Chưa có bộ E2E liên luồng của Giai đoạn 3.
+- UC23 còn lại. Giai đoạn 3 sẽ viết E2E liên luồng sau khi hoàn tất UC23.
 
-## Cần chốt hợp đồng UC21 trước F5
+## Cần chốt hợp đồng UC23
 
-API báo giá và tạo yêu cầu đã có. BE đang gộp quá hạn với hết lượt, và gộp slot bị giữ với sân đóng/bảo trì dù service lịch phân biệt được các trường hợp. Endpoint deadline chỉ trả thời điểm. Cần chốt bổ sung điều kiện đổi lịch vào dữ liệu booking và mã lỗi ổn định trong API hiện có để FE đặt đúng MSG62/MSG28 và hiện nút đúng lúc.
+Refund List và Form gọi API hiện có. API trả bookingId và originalPaymentDate, chưa trả mã booking, trần hoàn còn lại hay mã MSG70/71/72. Cần chốt bổ sung các trường và mã lỗi vào hợp đồng hiện có, cùng cách trình bày kỳ thanh toán gốc trong lịch sử.
+
+## Tự kiểm UC21 và UC22
+
+1. Mở booking đã xác nhận còn lượt và hạn. Chọn slot rẻ hơn, kiểm giá mới, số đã trả và MSG64. Đổi lựa chọn trong lúc đang tải báo giá, kiểm nút Xác nhận chỉ bật sau báo giá mới.
+2. Đổi sang slot đắt hơn và đi qua thanh toán phụ thu. Trước khi Staff xác nhận, kiểm hai slot còn giữ và lịch Player vẫn là lịch cũ. Sau APPROVED, kiểm lịch mới và biên nhận. Nếu bị từ chối hoặc hết hạn, kiểm lịch cũ và slot mới được nhả.
+3. Player tự hủy booking sau MSG66. Dùng booking khác để Owner hủy sân sau MSG15, rồi kiểm Player thấy ba lựa chọn trong danh sách và chi tiết. Chọn hoàn tiền, kiểm MSG69 và yêu cầu trong tab Hoàn tiền của Owner.
 
 ## Tự kiểm UC25 và UC26
 

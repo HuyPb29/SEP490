@@ -48,6 +48,8 @@ function Inbox() {
       {isPlayer && item.refType === 'BOOKING' && <Link className="block underline" to="/my-bookings">Mở lịch đặt sân</Link>}
       {role === 'owner' && item.refType === 'COMPLAINT' &&
         <Link className="block underline" to={`/owner/workspace?tab=complaints&complaintId=${item.refId}`}>Xem khiếu nại</Link>}
+      {role === 'owner' && item.type === 'REFUND_REQUEST' &&
+        <Link className="block underline" to="/owner/workspace?tab=refund">Xem yêu cầu hoàn tiền</Link>}
       {isPlayer && item.type === 'LATE_PAYMENT_VOUCHER' &&
         <Link className="block underline" to="/my-rewards">Xem voucher bồi thường</Link>}
       {isPlayer && item.refType === 'COMPLAINT' &&

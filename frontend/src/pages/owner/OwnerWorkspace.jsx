@@ -81,15 +81,25 @@ function Cancellations() {
   return <Section title="Hủy booking tại địa điểm" resource={bookings}>
     <Field label="Ngày chơi" type="date" min={today()} value={date} onChange={(event) => setDate(event.target.value)} />
     {bookings.data?.length === 0 && <EmptyState>Ngày này không có lịch đặt sân có thể hủy.</EmptyState>}
-    {bookings.data?.map((item) => <details className="space-y-2 border-t py-3" key={item.id}>
+    {!bookings.loading && bookings.data?.map((item) => <details className="space-y-2 border-t py-3" key={item.id}>
       <summary>{item.bookingCode} · Sân #{item.courtId} · {clock(item.startMinute)}–{clock(item.endMinute)}</summary>
-      <ActionForm label="Xác nhận hủy" tone="danger" confirmation="Xác nhận hủy booking này?" action={(form) => api.post('/owner/bookings/' + item.id + '/cancel', {
+      <ActionForm label="Xác nhận hủy" tone="danger" confirmation={(form) => {
+        if (form.get('cause') === 'WALK_IN_CUSTOMER_REQUEST') {
+          return `Hủy ${item.bookingCode} theo yêu cầu của khách? Khoản đã thanh toán không được hoàn lại.`
+        }
+        if (item.bookingType === 'WALK_IN') {
+          return `Sân hủy booking tại quầy ${item.bookingCode}. Nhân viên cần lập khiếu nại cho khách. Tiếp tục?`
+        }
+        return `Thay đổi này ảnh hưởng 1 booking đã xác nhận (${item.bookingCode}). Khách sẽ được thông báo để chọn cách xử lý. Tiếp tục? (MSG15)`
+      }} action={(form) => api.post('/owner/bookings/' + item.id + '/cancel', {
         ...form, cause: form.cause || 'OWNER_CANCELLED',
       })} after={bookings.reload}>
-        {item.bookingType === 'WALK_IN' && <Field label="Nguyên nhân" name="cause" options={[
-          ['OWNER_CANCELLED', 'Địa điểm hủy'], ['WALK_IN_CUSTOMER_REQUEST', 'Khách tại quầy yêu cầu'],
-        ]} />}
-        <Field label="Lý do hủy" name="reason" maxLength={500} required />
+        {(errors) => <>
+          {item.bookingType === 'WALK_IN' && <Field label="Nguyên nhân" name="cause" options={[
+            ['OWNER_CANCELLED', 'Địa điểm hủy'], ['WALK_IN_CUSTOMER_REQUEST', 'Khách tại quầy yêu cầu'],
+          ]} error={errors.cause} />}
+          <Field label="Lý do hủy" name="reason" maxLength={500} required error={errors.reason} />
+        </>}
       </ActionForm>
     </details>)}
   </Section>

@@ -138,7 +138,6 @@ function bookingCard(item, packageId) {
     status_name: bookingLabels[status] || item.status,
     can_review: item.canReview === true,
     reschedule: item.reschedule,
-    can_cancel: status === 'confirmed' && Date.parse(item.playDate + 'T' + item.startTime + ':00+07:00') > Date.now(),
   };
 }
 
@@ -217,8 +216,8 @@ export async function getRescheduleRequestsApi(bookingId, signal) {
 }
 
 // UC22: Booking bị ảnh hưởng do sân hủy, bảo trì, tắt sân hoặc đổi giờ (GET /api/me/affected-bookings)
-export async function getMyAffectedBookingsApi() {
-  const { data } = await api.get('/me/affected-bookings');
+export async function getMyAffectedBookingsApi(signal) {
+  const { data } = await api.get('/me/affected-bookings', { signal });
   return data.data;
 }
 
