@@ -26,3 +26,6 @@ BAO_CAO_DU_AN_VA_TEST_CHI_TIET.md
 /test-results/
 /playwright-report/
 /frontend/screenshots/
+
+# Local browser tests and checklists
+/frontend/e2e/
