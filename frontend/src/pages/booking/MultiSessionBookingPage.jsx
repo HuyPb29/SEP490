@@ -9,6 +9,7 @@ import {
   toTimeLabel,
 } from '../../api/bookingApi'
 import { apiErrorMessage } from '../../api'
+import { usePackagePreview } from '../../hooks/usePackagePreview';
 import styles from './MultiSessionBookingPage.module.css'
 
 // value theo Date.getDay() (CN = 0); backend dùng 1 = Thứ 2 … 7 = Chủ nhật
@@ -54,6 +55,7 @@ export default function MultiSessionBookingPage() {
   const facilityName = location.state?.facilityName || ''
 
   const today = useMemo(() => toDateKey(new Date()), [])
+  const maxAllowedDate = toDateKey(new Date(parseDateKey(today).getFullYear(), parseDateKey(today).getMonth() + 3, parseDateKey(today).getDate() - 1));
   const [courts, setCourts] = useState([])
   const [teams, setTeams] = useState([])
   const [mode, setMode] = useState('recurring')
@@ -64,16 +66,20 @@ export default function MultiSessionBookingPage() {
   const [startTime, setStartTime] = useState('19:00')
   const [endTime, setEndTime] = useState('21:00')
   const [teamId, setTeamId] = useState('')
-  const [customDates, setCustomDates] = useState([])
+  const [customSessions, setCustomSessions] = useState([]);
+  const [sessionDate, setSessionDate] = useState(today);
+  const [weekdayTimes, setWeekdayTimes] = useState({});
+  const customDates = useMemo(() => [...new Set(customSessions.map((session) => session.date))], [customSessions]);
   // Xử lý buổi trùng (BR50): buổi bỏ và buổi đổi sang slot bù, theo khóa của buổi gốc
   const [removedKeys, setRemovedKeys] = useState([])
   const [replacements, setReplacements] = useState({})
   const [showCompensation, setShowCompensation] = useState(false)
   const [compensationCourtId, setCompensationCourtId] = useState(null)
+  const [compensationTargetKey, setCompensationTargetKey] = useState('ALL');
   const [compensationTime, setCompensationTime] = useState('19:00')
+  const [compensationDate, setCompensationDate] = useState('');
   const [viewMonth, setViewMonth] = useState(() => parseDateKey(today))
-  const [basePreview, setBasePreview] = useState(null)
-  const [adjustedPreview, setAdjustedPreview] = useState(null)
+  const [revision, setRevision] = useState(0);
   const [previewError, setPreviewError] = useState('')
   const [notice, setNotice] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -93,6 +99,7 @@ export default function MultiSessionBookingPage() {
   const endMinute = toMinutes(endTime)
 
   // UC15 #2, #3: PackageRequest theo mẫu Player nhập (chưa xử lý buổi trùng)
+  const resetConflictAdjustments = () => { setRemovedKeys([]); setReplacements({}); };
   const baseRequest = useMemo(() => {
     if (!courtId || endMinute <= startMinute) return null
     const common = {
@@ -106,96 +113,44 @@ export default function MultiSessionBookingPage() {
       return {
         ...common,
         packageType: 'RECURRING',
-        weeklySlots: selectedWeekdays.map((day) => ({ dayOfWeek: day === 0 ? 7 : day, startMinute, endMinute })),
+        weeklySlots: selectedWeekdays.map((day) => ({ dayOfWeek: day === 0 ? 7 : day, startMinute, endMinute, ...weekdayTimes[day] })),
       }
     }
-    if (customDates.length === 0) return null
-    return {
-      ...common,
-      packageType: 'CUSTOM',
-      sessions: [...customDates].sort().map((date) => ({ date, courtId, startMinute, endMinute })),
-    }
-  }, [courtId, fromDate, toDate, teamId, mode, selectedWeekdays, customDates, startMinute, endMinute])
+    if (customSessions.length === 0) return null;
+    const dates = customSessions.map((session) => session.date).sort();
+    return { ...common, startDate: dates[0], endDate: dates.at(-1),
+      packageType: 'CUSTOM', sessions: customSessions };
+  }, [courtId, fromDate, toDate, teamId, mode, selectedWeekdays, weekdayTimes, customSessions, startMinute, endMinute]);
 
-  // Đổi mẫu thì bỏ các xử lý buổi trùng cũ
-  useEffect(() => {
-    setRemovedKeys([])
-    setReplacements({})
-    setAdjustedPreview(null)
-  }, [baseRequest])
-
-  // UC15 #4: backend sinh buổi và đánh dấu buổi trùng
-  useEffect(() => {
-    if (!baseRequest) {
-      setBasePreview(null)
-      return undefined
-    }
-    let cancelled = false
-    const timer = setTimeout(() => {
-      previewBookingPackageApi(baseRequest)
-        .then((data) => {
-          if (cancelled) return
-          setBasePreview(data)
-          setPreviewError('')
-        })
-        .catch((err) => {
-          if (cancelled) return
-          setBasePreview(null)
-          setPreviewError(apiErrorMessage(err, 'Could not build the schedule.'))
-        })
-    }, 300)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [baseRequest])
-
+  const baseResult = usePackagePreview(baseRequest, previewBookingPackageApi, revision);
+  const activeBasePreview = baseResult?.data;
   const hasAdjustments = removedKeys.length > 0 || Object.keys(replacements).length > 0
 
   // Danh sách buổi gửi backend sau khi bỏ buổi trùng hoặc chọn slot bù (UC15 #5)
   const adjustedRequest = useMemo(() => {
-    if (!baseRequest || !basePreview || !hasAdjustments) return null
-    const sessions = basePreview.sessions
+    if (!baseRequest || !activeBasePreview || !hasAdjustments) return null;
+    const sessions = activeBasePreview.sessions
       .filter((session) => !removedKeys.includes(sessionKey(session)))
       .map((session) => {
-        const replacement = replacements[sessionKey(session)]
+        const replacement = replacements[sessionKey(session)];
         return {
-          date: session.date,
+          date: replacement?.date ?? session.date,
           courtId: replacement?.courtId ?? session.courtId,
           startMinute: replacement?.startMinute ?? session.startMinute,
           endMinute: replacement?.endMinute ?? session.endMinute,
-        }
-      })
-    return { ...baseRequest, sessions }
-  }, [baseRequest, basePreview, hasAdjustments, removedKeys, replacements])
+        };
+      });
+    return sessions.length ? { ...baseRequest, sessions } : null;
+  }, [baseRequest, activeBasePreview, hasAdjustments, removedKeys, replacements]);
 
-  // Kiểm tra lại các slot bù với backend
-  useEffect(() => {
-    if (!adjustedRequest) {
-      setAdjustedPreview(null)
-      return undefined
-    }
-    let cancelled = false
-    previewBookingPackageApi(adjustedRequest)
-      .then((data) => {
-        if (cancelled) return
-        setAdjustedPreview(data)
-        setPreviewError('')
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setAdjustedPreview(null)
-        setPreviewError(apiErrorMessage(err, 'Could not check the adjusted schedule.'))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [adjustedRequest])
-
-  const preview = hasAdjustments ? adjustedPreview : basePreview
-  const sessions = useMemo(() => preview?.sessions ?? [], [preview])
-  const conflictedSessions = sessions.filter((session) => session.conflict)
-  const finalRequest = hasAdjustments ? adjustedRequest : baseRequest
+  const adjustedResult = usePackagePreview(adjustedRequest, previewBookingPackageApi, revision);
+  const finalRequest = hasAdjustments ? adjustedRequest : baseRequest;
+  const result = hasAdjustments ? adjustedResult : baseResult;
+  const preview = result?.data;
+  const sessions = useMemo(() => preview?.sessions ?? [], [preview]);
+  const conflictedSessions = sessions.filter((session) => session.conflict);
+  const invalidPoints = false;
+  const distinctDays = new Set(sessions.map((session) => session.date)).size;
 
   const sessionsByDate = useMemo(() => {
     const map = {}
@@ -232,19 +187,28 @@ export default function MultiSessionBookingPage() {
     setNotice('')
   }
 
-  const toggleCustomDate = (dateKey) => {
-    if (mode !== 'custom') return
-    setCustomDates((current) =>
-      current.includes(dateKey) ? current.filter((date) => date !== dateKey) : [...current, dateKey]
-    )
-    setNotice('')
-  }
+  const addCustomSession = (date) => {
+    if (!courtId || date < today || date > maxAllowedDate || startMinute >= endMinute) return;
+    resetConflictAdjustments();
+    setCustomSessions((current) => current.some((session) => session.date === date && session.courtId === courtId &&
+      session.startMinute === startMinute && session.endMinute === endMinute) ? current :
+      [...current, { date, courtId, startMinute, endMinute }]);
+    setNotice('');
+  };
+
+  const toggleCustomDate = (date) => {
+    if (mode !== 'custom') return;
+    setSessionDate(date);
+    if (!customDates.includes(date)) { addCustomSession(date); return; }
+    resetConflictAdjustments();
+    setCustomSessions((current) => current.filter((session) => session.date !== date));
+  };
 
   const originalKeyOf = (session) => {
     // Buổi đang hiển thị có thể là slot bù: tìm lại buổi gốc cùng ngày trong bản xem trước ban đầu
     const replaced = Object.entries(replacements).find(
       ([key, value]) =>
-        key.startsWith(`${session.date}|`) &&
+        (value.date || key.split('|')[0]) === session.date &&
         value.courtId === session.courtId &&
         value.startMinute === session.startMinute
     )
@@ -252,6 +216,11 @@ export default function MultiSessionBookingPage() {
   }
 
   const removeAllConflicts = () => {
+    const remaining = new Set(sessions.filter((session) => !session.conflict).map((session) => session.date));
+    if (remaining.size < 2) {
+      setNotice('Gói phải có buổi trong ít nhất 2 ngày khác nhau. Vui lòng chọn slot bù thay vì bỏ. (MSG92)');
+      return;
+    }
     const keys = conflictedSessions.map(originalKeyOf)
     setRemovedKeys((current) => [...new Set([...current, ...keys])])
     setNotice(`Removed ${keys.length} conflicting sessions from your schedule.`)
@@ -260,9 +229,12 @@ export default function MultiSessionBookingPage() {
   const applyCompensation = () => {
     const replacementStart = toMinutes(compensationTime)
     const next = { ...replacements }
-    conflictedSessions.forEach((session) => {
+    const targetSessions = compensationTargetKey === 'ALL' ? conflictedSessions :
+      conflictedSessions.filter((session) => originalKeyOf(session) === compensationTargetKey);
+    targetSessions.forEach((session) => {
       const duration = session.endMinute - session.startMinute
       next[originalKeyOf(session)] = {
+        date: compensationTargetKey !== 'ALL' && compensationDate ? compensationDate : session.date,
         courtId: Number(compensationCourtId),
         startMinute: replacementStart,
         endMinute: replacementStart + duration,
@@ -275,7 +247,7 @@ export default function MultiSessionBookingPage() {
 
   const confirmSchedule = async () => {
     setNotice('')
-    if (!finalRequest || !preview) {
+    if (!finalRequest || !preview || invalidPoints || distinctDays < 2) {
       setNotice(previewError || 'Please choose a court, time and sessions first.')
       return
     }
@@ -290,6 +262,7 @@ export default function MultiSessionBookingPage() {
       sessionStorage.setItem('active_holding_booking', JSON.stringify(res.data))
       navigate(`/booking/payment?packageId=${res.data.booking_id}`)
     } catch (err) {
+      if (err.response?.status === 409 || err.response?.data?.message?.includes('MSG44')) setRevision((value) => value + 1);
       setNotice(apiErrorMessage(err, 'Could not confirm the package.'))
     } finally {
       setSubmitting(false)
@@ -439,6 +412,33 @@ export default function MultiSessionBookingPage() {
               </div>
             </div>
 
+            {mode === 'recurring' && selectedWeekdays.map((day) => <fieldset className="flex flex-wrap gap-2" key={day}>
+              <legend>{WEEKDAYS.find((entry) => entry.value === day)?.label}</legend>
+              <label>Giờ bắt đầu <select className={styles.selectInput} value={weekdayTimes[day]?.startMinute ?? startMinute}
+                onChange={(event) => {
+                  resetConflictAdjustments();
+                  const start = Number(event.target.value);
+                  setWeekdayTimes({ ...weekdayTimes, [day]: { startMinute: start, endMinute: Math.max(start + 30, weekdayTimes[day]?.endMinute ?? endMinute) } });
+                }}>{TIMES.slice(0, -1).map((time) => <option key={time} value={toMinutes(time)}>{time}</option>)}</select></label>
+              <label>Giờ kết thúc <select className={styles.selectInput} value={weekdayTimes[day]?.endMinute ?? endMinute}
+                onChange={(event) => {
+                  resetConflictAdjustments();
+                  setWeekdayTimes({ ...weekdayTimes, [day]: { startMinute: weekdayTimes[day]?.startMinute ?? startMinute, endMinute: Number(event.target.value) } });
+                }}>{TIMES.filter((time) => toMinutes(time) > (weekdayTimes[day]?.startMinute ?? startMinute))
+                  .map((time) => <option key={time} value={toMinutes(time)}>{time}</option>)}</select></label>
+            </fieldset>)}
+            {mode === 'custom' && <div className={styles.fieldGroup}>
+              <label>Ngày buổi tự chọn <input type="date" min={today} max={maxAllowedDate} value={sessionDate} onChange={(event) => setSessionDate(event.target.value)} /></label>
+              <button type="button" className={styles.removeConflictsBtn} onClick={() => addCustomSession(sessionDate)}>Thêm buổi với sân và giờ đang chọn</button>
+              <ul>{customSessions.map((session) => <li key={sessionKey(session)}>
+                {session.date} · {courts.find((court) => court.court_id === session.courtId)?.court_name || 'Sân ' + session.courtId} · {toTimeLabel(session.startMinute)}–{toTimeLabel(session.endMinute)}
+                <button type="button" className="ml-2 underline" onClick={() => {
+                  resetConflictAdjustments();
+                  setCustomSessions((current) => current.filter((item) => sessionKey(item) !== sessionKey(session)));
+                }}>Bỏ buổi</button>
+              </li>)}</ul>
+            </div>}
+
             <div className={styles.fieldGroup}>
               <label className={styles.fieldLabel} htmlFor="book-for">Book for</label>
               <select id="book-for" className={styles.selectInput} value={teamId} onChange={(event) => setTeamId(event.target.value)}>
@@ -541,7 +541,8 @@ export default function MultiSessionBookingPage() {
                   </div>
                 </div>
               )}
-              {previewError && <p className={styles.notice} role="alert">{previewError}</p>}
+              {finalRequest && !result && <p role="status">Đang kiểm tra lịch gói…</p>}
+              {(result?.error || previewError) && <p className={styles.notice} role="alert">{result?.error || previewError}</p>}
               {notice && <p className={styles.notice} role="status">{notice}</p>}
             </section>
 
@@ -555,7 +556,7 @@ export default function MultiSessionBookingPage() {
                   One-time payment. After confirming, your package is held for 15 minutes.
                 </span>
               </div>
-              <button type="button" className={styles.confirmScheduleBtn} disabled={submitting} onClick={confirmSchedule}>
+              <button type="button" className={styles.confirmScheduleBtn} disabled={submitting || !preview || invalidPoints || distinctDays < 2 || conflictedSessions.length > 0} onClick={confirmSchedule}>
                 {submitting ? 'Holding package...' : 'Confirm Schedule'}
               </button>
             </section>
@@ -590,6 +591,14 @@ export default function MultiSessionBookingPage() {
                 {TIMES.slice(0, -1).map((time) => <option key={time}>{time}</option>)}
               </select>
             </div>
+            <label>Buổi cần bù <select value={compensationTargetKey} onChange={(event) => { setCompensationTargetKey(event.target.value); setCompensationDate(''); }}>
+              <option value="ALL">Tất cả, giữ nguyên ngày</option>
+              {conflictedSessions.map((session) => <option key={originalKeyOf(session)} value={originalKeyOf(session)}>{session.date} · {session.startTime} · {session.courtName}</option>)}
+            </select></label>
+            {compensationTargetKey !== 'ALL' && <label>Ngày bù
+              <input type="date" min={mode === 'recurring' ? fromDate : today} max={mode === 'recurring' ? toDate : maxAllowedDate}
+                value={compensationDate} onChange={(event) => setCompensationDate(event.target.value)} />
+            </label>}
             <div className={styles.modalActions}>
               <button type="button" className={styles.removeConflictsBtn} onClick={() => setShowCompensation(false)}>Cancel</button>
               <button type="button" className={styles.confirmScheduleBtn} onClick={applyCompensation}>Apply replacement slot</button>

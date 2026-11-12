@@ -123,7 +123,7 @@ function AppContent() {
           {/* UC12-13: Thông tin & Lịch sân (GET /api/v1/facilities/:id & /court-schedule) */}
           <Route path="/facilities/:id" element={<FacilityDetailPage />} />
           {/* UC15: Đặt nhiều buổi */}
-          <Route path="/facilities/:id/package-booking" element={<MultiSessionBookingPage />} />
+          <Route path="/facilities/:id/package-booking" element={<RequireRole roles={['player']}><MultiSessionBookingPage /></RequireRole>} />
           {/* UC29-30: Open matches */}
           <Route path="/open-matches" element={<OpenMatchesPage />} />
 
