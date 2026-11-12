@@ -98,12 +98,13 @@ class AccountSecurityAuditTests {
     @BeforeAll void upgradeTestSchemaTwice() throws Exception {
         try (var c = Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
             if (!"BMS_Test".equalsIgnoreCase(c.getCatalog())) throw new IllegalStateException("Security regression requires BMS_Test");
-            var sql = new ClassPathResource("db/20261030_account_security_audit.sql")
-                    .getContentAsString(StandardCharsets.UTF_8);
             for (int pass = 0; pass < 2; pass++) {
                 try {
-                    for (String batch : sql.split("(?im)^GO\\s*$")) if (!batch.isBlank()) {
-                        try (var statement = c.createStatement()) { statement.execute(batch); }
+                    for (String migration : List.of("db/20261030_account_security_audit.sql", "db/20261112_srs_username_length.sql")) {
+                        var sql = new ClassPathResource(migration).getContentAsString(StandardCharsets.UTF_8);
+                        for (String batch : sql.split("(?im)^GO\\s*$")) if (!batch.isBlank()) {
+                            try (var statement = c.createStatement()) { statement.execute(batch); }
+                        }
                     }
                 } catch (Exception e) {
                     try (var statement = c.createStatement()) { statement.execute("IF @@TRANCOUNT>0 ROLLBACK TRANSACTION"); }
@@ -306,7 +307,7 @@ class AccountSecurityAuditTests {
 
     @Test void databaseRejectsInvalidNewUsernamesEvenWithLegacyAccountsPresent() {
         String original=player.getUsername();
-        for (String invalid : List.of("abc", "a".repeat(21))) {
+        for (String invalid : List.of("abcde", "1bcdef")) {
             Throwable failure=catchThrowable(()->jdbc.update("UPDATE account SET username=? WHERE id=?",invalid,player.getId()));
             assertThat(failure).isInstanceOf(org.springframework.dao.DataAccessException.class)
                     .hasRootCauseInstanceOf(java.sql.SQLException.class);
@@ -317,14 +318,14 @@ class AccountSecurityAuditTests {
     }
 
     @Test void usernameBoundariesAreEnforcedByBothAccountCreationEndpoints() throws Exception {
-        for (int length : new int[] {3,21}) {
+        for (int length : new int[] {5,33}) {
             String username="a".repeat(length);
             var fields=Map.of("username",username,"email","boundary@example.com","phone","0987654321",
                     "fullName","Test Player","password","Original123");
             assertThat(call("POST","/api/auth/register",null,json.writeValueAsString(fields),null).statusCode()).isEqualTo(400);
             assertThat(call("POST","/api/owner/staff-members",token(owner),json.writeValueAsString(fields),location.getId()).statusCode()).isEqualTo(400);
         }
-        for (int length : new int[] {4,20}) {
+        for (int length : new int[] {6,32}) {
             String username="r"+UUID.randomUUID().toString().replace("-","").substring(0,length-1);
             String email=username+"@example.com";
             pendingEmails.add(email);
@@ -365,7 +366,7 @@ class AccountSecurityAuditTests {
     }
 
     @Test void staffCreationIsAuditedAndLongReasonIsRejectedBeforeMutation() throws Exception {
-        String username = "a" + UUID.randomUUID().toString().replace("-", "").substring(0, 19);
+        String username = "a" + UUID.randomUUID().toString().replace("-", "").substring(0, 31);
         var result = call("POST", "/api/owner/staff-members", token(owner), json.writeValueAsString(
                 Map.of("username", username, "fullName", "Test Staff", "password", "StaffCreate123", "phone", "0"+String.format("%09d",Math.floorMod(UUID.randomUUID().getMostSignificantBits(),1000000000L)))), location.getId());
         assertThat(result.statusCode()).isEqualTo(201);

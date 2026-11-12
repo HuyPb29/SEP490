@@ -11,7 +11,7 @@ export const messages = {
 export const required = (label) => 'Vui lòng nhập ' + label + '.'
 export const invalid = (label) => label[0].toUpperCase() + label.slice(1) + ' không đúng định dạng.'
 export const validEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
-export const validUsername = (value) => /^[a-z][a-z0-9._]{3,19}$/.test(value.trim())
+export const validUsername = (value) => /^[a-z][a-z0-9._]{5,31}$/.test(value.trim())
 export const validPhone = (value) => /^0\d{9}$/.test(value.trim())
 export const validPassword = (value) => /^(?=.*[A-Za-z])(?=.*[0-9])\S{8,32}$/.test(value)
 export const normalizeName = (value) => value.trim().replace(/\s+/g, ' ').normalize('NFC')

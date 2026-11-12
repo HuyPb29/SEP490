@@ -53,7 +53,7 @@ CREATE TABLE account (
     CONSTRAINT ck_account_email CHECK (role NOT IN ('PLAYER','OWNER') OR email IS NOT NULL),
     CONSTRAINT ck_account_phone CHECK (role NOT IN ('PLAYER','OWNER') OR phone IS NOT NULL),
     CONSTRAINT ck_account_phone_digits CHECK (phone IS NULL OR (LEN(phone) = 10 AND phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
-    CONSTRAINT ck_account_username CHECK (LEN(username) BETWEEN 4 AND 20 AND username COLLATE Latin1_General_BIN LIKE '[a-z]%' AND username COLLATE Latin1_General_BIN NOT LIKE '%[^a-z0-9._]%')
+    CONSTRAINT ck_account_username CHECK (LEN(username) BETWEEN 6 AND 32 AND username COLLATE Latin1_General_BIN LIKE '[a-z]%' AND username COLLATE Latin1_General_BIN NOT LIKE '%[^a-z0-9._]%')
 );
 CREATE UNIQUE INDEX ux_account_email ON account (email) WHERE email IS NOT NULL;
 CREATE UNIQUE INDEX ux_account_phone ON account (phone) WHERE phone IS NOT NULL;

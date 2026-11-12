@@ -20,27 +20,27 @@ import static org.assertj.core.api.Assertions.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
- * Kiểm tra giới hạn tên đăng nhập v19, vòng đời OTP đăng ký và khóa đăng nhập tạm thời.
+ * Kiểm tra giới hạn tên đăng nhập SRS, vòng đời OTP đăng ký và khóa đăng nhập tạm thời.
  */
 class AccountSrsRulesTests {
     final AccountRepository accounts=mock(AccountRepository.class);
     final OtpRequestRepository otps=mock(OtpRequestRepository.class);
     final PasswordEncoder encoder=mock(PasswordEncoder.class);
     final AuthService service=new AuthService(accounts,otps,encoder,mock(JwtTokenProvider.class),mock(EmailService.class),mock(LocationRepository.class),new ObjectMapper(),mock(OtpLockService.class),mock(AccountAuditService.class));
-    @Test void registrationServiceRejectsUsernamesOutsideV19LengthBeforeSendingOtp() {
-        for (int length : new int[] {3,21,32}) {
+    @Test void registrationServiceRejectsUsernamesOutsideSrsLengthBeforeSendingOtp() {
+        for (int length : new int[] {4,5,33}) {
             RegisterRequest request=RegisterRequest.builder().email("a@example.com").phone("0987654321")
                     .username("a".repeat(length)).fullName("Test Player").password("Original123").build();
-            assertThatThrownBy(()->service.register(request)).hasMessageContaining("4–20");
+            assertThatThrownBy(()->service.register(request)).hasMessageContaining("6–32");
         }
         verify(otps,never()).save(any());
     }
-    @Test void verificationDiscardsLegacyPendingUsernamesThatNoLongerMeetV19Rule() throws Exception {
+    @Test void verificationDiscardsPendingUsernamesThatNoLongerMeetSrsRule() throws Exception {
         OtpRequest otp=OtpRequest.builder().expiresAt(LocalDateTime.now().plusMinutes(5)).codeHash("hash")
-                .pendingData(new ObjectMapper().writeValueAsString(java.util.Map.of("username","a".repeat(21)))).build();
+                .pendingData(new ObjectMapper().writeValueAsString(java.util.Map.of("username","a".repeat(5)))).build();
         when(otps.findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc("a@example.com",OtpPurpose.REGISTER)).thenReturn(Optional.of(otp));
         when(encoder.matches("123456","hash")).thenReturn(true);
-        assertThatThrownBy(()->service.verifyEmail(new VerifyEmailRequest("a@example.com","123456"))).hasMessageContaining("4–20");
+        assertThatThrownBy(()->service.verifyEmail(new VerifyEmailRequest("a@example.com","123456"))).hasMessageContaining("6–32");
         assertThat(otp.getPendingData()).isNull();verify(accounts,never()).save(any());
         verify(otps).discardRegistration(eq("a@example.com"),any());
     }
