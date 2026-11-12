@@ -8,6 +8,8 @@ import styles from './MyBookingsPage.module.css';
 import { formatVnd } from '../../utils/formatters';
 import { EmptyState, Feedback, Field, Modal } from '../../components/common/WorkspacePrimitives';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import ScheduleGrid from '../../components/schedule/ScheduleGrid';
+import { getVenueSchedule } from '../../api/facilityApi';
 
 // Phân nhóm 10 trạng thái chính thức theo chuẩn SRS (Sheet Trang_thai)
 const PENDING_STATUSES = ['holding', 'resubmit_requested', 'awaiting_confirmation'];
@@ -40,10 +42,12 @@ function formatSlotTime(min) {
 }
 
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
-const TIME_OPTIONS = [];
-for (let min = 0; min <= 1440; min += 30) {
-  TIME_OPTIONS.push({ value: min, label: formatSlotTime(min) });
-}
+const SLOT_MINUTES = 30;
+const dayLabelFormat = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'full', timeZone: 'UTC' });
+const toMinutes = (time) => {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+};
 
 function serverTimestamp(value) {
   if (!value) return Number.NaN;
@@ -66,7 +70,6 @@ export default function MyBookingsPage() {
     submitAffectedChoiceApi,
     previewRescheduleApi,
     createRescheduleApi,
-    getLocationCourtsApi,
   } = useBookingActions();
   const isPlayer = user?.role_code === 'player';
 
@@ -109,11 +112,13 @@ export default function MyBookingsPage() {
   // UC21: State cho Modal đổi lịch (chọn slot mới, xem chênh lệch và xác nhận)
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [rescheduleDeadline, setRescheduleDeadline] = useState(null);
-  const [availableCourts, setAvailableCourts] = useState([]);
-  const [selectedCourtId, setSelectedCourtId] = useState('');
+  // Slot mới được chọn trên bảng lịch sân: một dải khung giờ liền nhau trên cùng một sân
+  const [selectedCourtId, setSelectedCourtId] = useState(null);
   const [newPlayDate, setNewPlayDate] = useState('');
-  const [startMin, setStartMin] = useState(1080); // 18:00
-  const [endMin, setEndMin] = useState(1140);   // 19:00
+  const [startMin, setStartMin] = useState(null);
+  const [endMin, setEndMin] = useState(null);
+  const [rsSchedule, setRsSchedule] = useState(null);
+  const [rsRevision, setRsRevision] = useState(0);
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState('');
@@ -187,6 +192,70 @@ export default function MyBookingsPage() {
 
     return () => clearInterval(timer);
   }, []);
+
+  // UC21/UC22: Tải bảng lịch sân của địa điểm theo ngày đang xem trong modal đổi lịch
+  const rsLocationId = rescheduleTarget?.booking.location_id;
+  const rsBookingId = rescheduleTarget?.booking.booking_id;
+  const rsKey = rsLocationId && newPlayDate ? rsBookingId + ':' + newPlayDate + ':' + rsRevision : null;
+  useEffect(() => {
+    if (!rsKey) return undefined;
+    const controller = new AbortController();
+    getVenueSchedule(rsLocationId, newPlayDate, controller.signal, rsBookingId).then((data) => {
+      if (!controller.signal.aborted) setRsSchedule({ key: rsKey, data, maxDate: data.max_date });
+    }).catch((error) => {
+      if (!controller.signal.aborted) setRsSchedule((prev) => ({
+        key: rsKey,
+        maxDate: prev?.maxDate ?? null,
+        error: error.response?.data?.message || 'Không tải được lịch sân.',
+      }));
+    });
+    return () => controller.abort();
+  }, [rsKey, rsLocationId, rsBookingId, newPlayDate]);
+  const rsCurrent = rsSchedule?.key === rsKey ? rsSchedule : null;
+  const rsMaxDate = rsSchedule?.maxDate ?? null;
+  const rsSelected = useMemo(() => {
+    if (selectedCourtId == null || startMin == null || !rsCurrent?.data) return [];
+    const court = rsCurrent.data.courts.find((c) => c.court_id === selectedCourtId);
+    return (court?.slots || [])
+      .filter((s) => toMinutes(s.time) >= startMin && toMinutes(s.time) < endMin)
+      .map((s) => ({ courtId: court.court_id, courtName: court.court_name, time: s.time, price: Number(s.price) }));
+  }, [rsCurrent, selectedCourtId, startMin, endMin]);
+
+  const clearRescheduleSlot = () => {
+    setSelectedCourtId(null);
+    setStartMin(null);
+    setEndMin(null);
+    setQuote(null);
+    setQuoteError('');
+  };
+
+  const chooseRescheduleDate = (value) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value < today() || (rsMaxDate && value > rsMaxDate)) return;
+    setNewPlayDate(value);
+    clearRescheduleSlot();
+  };
+
+  const shiftRescheduleDate = (offset) => {
+    const value = new Date(newPlayDate + 'T12:00:00Z');
+    value.setUTCDate(value.getUTCDate() + offset);
+    chooseRescheduleDate(value.toISOString().slice(0, 10));
+  };
+
+  // Chọn slot trên bảng: bấm ô liền kề để kéo dài, bấm ô đầu/cuối để bớt, bấm ô khác sân/không liền kề để chọn lại
+  const pickRescheduleSlot = (court, slot) => {
+    const t = toMinutes(slot.time);
+    setQuote(null);
+    setQuoteError('');
+    const sameCourt = selectedCourtId === court.court_id && startMin != null;
+    if (sameCourt && t === endMin) { setEndMin(t + SLOT_MINUTES); return; }
+    if (sameCourt && t + SLOT_MINUTES === startMin) { setStartMin(t); return; }
+    if (sameCourt && t === startMin && t + SLOT_MINUTES === endMin) { clearRescheduleSlot(); return; }
+    if (sameCourt && t === startMin) { setStartMin(t + SLOT_MINUTES); return; }
+    if (sameCourt && t + SLOT_MINUTES === endMin) { setEndMin(t); return; }
+    setSelectedCourtId(court.court_id);
+    setStartMin(t);
+    setEndMin(t + SLOT_MINUTES);
+  };
 
   const pendingCount = useMemo(
     () => bookings.filter((b) => PENDING_STATUSES.includes(b.status)).length,
@@ -349,22 +418,11 @@ export default function MyBookingsPage() {
   const openRescheduleModal = async (booking, affected = null, deadline = null) => {
     setRescheduleTarget({ booking, affected });
     setRescheduleDeadline(deadline);
-    setNewPlayDate(booking.booking_date || today());
-    setStartMin(1080);
-    setEndMin(1140);
-    setQuote(null);
-    setQuoteError('');
-    setAvailableCourts([]);
-    setSelectedCourtId('');
-    try {
-      if (booking.location_id) {
-        const courts = await getLocationCourtsApi(booking.location_id);
-        setAvailableCourts(courts);
-        if (courts.length > 0) setSelectedCourtId(String(courts[0].id));
-      }
-    } catch (error) {
-      setQuoteError(error.response?.data?.message || 'Không tải được danh sách sân.');
-    }
+    const playDate = booking.booking_date && booking.booking_date >= today() ? booking.booking_date : today();
+    setNewPlayDate(playDate);
+    clearRescheduleSlot();
+    setRsSchedule(null);
+    if (!booking.location_id) setQuoteError('Không xác định được địa điểm của booking này.');
   };
 
   const beginAffectedAction = async (booking, affectedId, choice) => {
@@ -411,7 +469,7 @@ export default function MyBookingsPage() {
   };
 
   const handlePreviewQuote = async () => {
-    if (!rescheduleTarget || !selectedCourtId || !newPlayDate) return;
+    if (!rescheduleTarget || selectedCourtId == null || startMin == null || !newPlayDate) return;
     setQuoteLoading(true);
     setQuoteError('');
     try {
@@ -432,7 +490,7 @@ export default function MyBookingsPage() {
   };
 
   const handleConfirmReschedule = async () => {
-    if (!rescheduleTarget || !selectedCourtId || !newPlayDate || rescheduleSubmitting) return;
+    if (!rescheduleTarget || selectedCourtId == null || startMin == null || !newPlayDate || rescheduleSubmitting) return;
     setRescheduleSubmitting(true);
     setQuoteError('');
     const slot = {
@@ -848,7 +906,7 @@ export default function MyBookingsPage() {
 
       {/* UC21: Modal chọn slot mới & xem chênh lệch đổi lịch */}
       {rescheduleTarget && (
-        <Modal labelledBy="reschedule-title" busy={rescheduleSubmitting} onDismiss={() => setRescheduleTarget(null)}>
+        <Modal labelledBy="reschedule-title" className={styles.rescheduleModal} busy={rescheduleSubmitting} onDismiss={() => setRescheduleTarget(null)}>
           <div className={styles.modalCard}>
             <h3 id="reschedule-title" className={styles.modalTitle}>
               {rescheduleTarget.affected ? 'Đổi slot miễn phí' : 'Đổi lịch đặt sân'} — {rescheduleTarget.booking.booking_code}
@@ -859,66 +917,35 @@ export default function MyBookingsPage() {
 
             {rescheduleDeadline && <p>Hạn đổi lịch: {new Date(serverTimestamp(rescheduleDeadline))
               .toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</p>}
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="new-court">Chọn sân mới</label>
-              <select id="new-court"
-                className={styles.formInput}
-                value={selectedCourtId}
-                onChange={(e) => { setSelectedCourtId(e.target.value); setQuote(null); }}
-              >
-                {availableCourts.length > 0 ? (
-                  availableCourts.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name || ('Sân ' + c.id)}</option>
-                  ))
-                ) : (
-                  <option value="">Không có sân khả dụng</option>
-                )}
-              </select>
-            </div>
-
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="new-play-date">Ngày chơi mới</label>
-              <input
-                type="date" id="new-play-date"
-                className={styles.formInput}
-                value={newPlayDate}
-                min={today()}
-                onChange={(e) => { setNewPlayDate(e.target.value); setQuote(null); }}
-              />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Giờ bắt đầu</label>
-                <select
-                  className={styles.formInput}
-                  value={startMin}
-                  onChange={(e) => {
-                    const nextStart = Number(e.target.value);
-                    setStartMin(nextStart);
-                    if (endMin <= nextStart) setEndMin(nextStart + 30);
-                    setQuote(null);
-                  }}
-                >
-                  {TIME_OPTIONS.filter((t) => t.value < 1440).map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
+            {rsLocationId && <>
+              <div className={styles.rsDateBar}>
+                <button type="button" className={styles.rsNavBtn} aria-label="Ngày trước"
+                  disabled={newPlayDate <= today()} onClick={() => shiftRescheduleDate(-1)}>‹</button>
+                <span className={styles.rsDateLabel}>{newPlayDate && dayLabelFormat.format(new Date(newPlayDate + 'T12:00:00Z'))}</span>
+                <button type="button" className={styles.rsNavBtn} aria-label="Ngày sau"
+                  disabled={!rsMaxDate || newPlayDate >= rsMaxDate} onClick={() => shiftRescheduleDate(1)}>›</button>
+                <input type="date" className={styles.formInput} aria-label="Chọn ngày chơi mới"
+                  style={{ width: 'auto', marginInlineStart: 'auto' }}
+                  min={today()} max={rsMaxDate || undefined} value={newPlayDate}
+                  onChange={(e) => chooseRescheduleDate(e.target.value)} />
               </div>
 
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Giờ kết thúc</label>
-                <select
-                  className={styles.formInput}
-                  value={endMin}
-                  onChange={(e) => { setEndMin(Number(e.target.value)); setQuote(null); }}
-                >
-                  {TIME_OPTIONS.filter((t) => t.value > startMin).map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
+              {!rsCurrent && <p role="status" className={styles.modalBody}>Đang tải lịch sân…</p>}
+              {rsCurrent?.error && <p role="alert" className={styles.errorBanner}>
+                {rsCurrent.error}{' '}
+                <button type="button" className="underline" onClick={() => setRsRevision((v) => v + 1)}>Thử lại</button>
+              </p>}
+              {rsCurrent?.data?.time_headers.length === 0 && <p className={styles.modalBody}>Ngày này chưa có khung giờ mở đặt.</p>}
+              {rsCurrent?.data?.time_headers.length > 0 && <ScheduleGrid schedule={rsCurrent.data} selected={rsSelected}
+                allowBooking showBooker={false} onSlot={pickRescheduleSlot} onInspect={() => {}} />}
+
+              <p className={styles.modalBody} aria-live="polite" style={{ margin: '0 0 12px' }}>
+                {rsSelected.length > 0
+                  ? <>Slot mới: <strong>{rsSelected[0].courtName} · {formatSlotTime(startMin)}–{formatSlotTime(endMin)}</strong>
+                    {' '}({(endMin - startMin)} phút · giá niêm yết {formatVnd(rsSelected.reduce((sum, s) => sum + s.price, 0))})</>
+                  : 'Bấm vào ô trống trên bảng để chọn slot mới. Bấm các ô liền kề cùng sân để kéo dài thời gian.'}
+              </p>
+            </>}
 
             {!rescheduleTarget.affected && <div style={{ marginBottom: 12 }}>
               <button
@@ -926,7 +953,7 @@ export default function MyBookingsPage() {
                 className={styles.outlineActionBtn}
                 style={{ width: '100%' }}
                 onClick={handlePreviewQuote}
-                disabled={quoteLoading || !selectedCourtId}
+                disabled={quoteLoading || rsSelected.length === 0}
               >
                 {quoteLoading ? 'Đang kiểm tra...' : '🔍 Kiểm tra chênh lệch giá'}
               </button>
@@ -980,7 +1007,7 @@ export default function MyBookingsPage() {
                 type="button"
                 className={styles.primaryActionBtn}
                 onClick={handleConfirmReschedule}
-                disabled={!selectedCourtId || !newPlayDate || (!rescheduleTarget.affected && !quote) || rescheduleSubmitting}
+                disabled={rsSelected.length === 0 || (!rescheduleTarget.affected && !quote) || rescheduleSubmitting}
               >
                 {rescheduleSubmitting ? 'Đang xử lý...' : (rescheduleTarget.affected ? 'Xác nhận đổi slot' : (quote?.extraAmount > 0 ? 'Tiếp tục thanh toán phụ thu' : 'Xác nhận đổi lịch'))}
               </button>

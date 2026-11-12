@@ -63,8 +63,9 @@ export async function getPublicVenue(id, signal) {
   }
 }
 
-export async function getVenueSchedule(id, date, signal) {
-  const response = await api.get('/locations/' + id + '/schedules', { params: { date }, signal })
+// bookingId (tùy chọn): booking đang đổi lịch; buổi trong gói được xem tới hết thời hạn gói (BR31)
+export async function getVenueSchedule(id, date, signal, bookingId) {
+  const response = await api.get('/locations/' + id + '/schedules', { params: { date, bookingId }, signal })
   const schedule = body(response)
   const courts = schedule.courts.map((court) => ({
     court_id: court.courtId,
