@@ -89,7 +89,7 @@ export default function AuthPage() {
     setLoginNotice('');
 
     if (!loginIdentity.trim() || !loginPassword) {
-      setLoginError('Enter your username or email and password.');
+      setLoginError('Vui lòng nhập tên đăng nhập hoặc email và mật khẩu.');
       return;
     }
 
@@ -101,7 +101,7 @@ export default function AuthPage() {
       });
 
       if (response?.success) {
-        // Save auth session via useAuth / authStorage
+        // Lưu phiên đăng nhập thông qua useAuth / authStorage
         login(response.data.access_token, response.data.user_info);
         const fromPath = location.state?.from || '/';
         navigate(fromPath);
@@ -110,16 +110,17 @@ export default function AuthPage() {
       const code = error.response?.data?.code || error.code;
       const status = error.response?.status;
       const serverMessage = error.response?.data?.message;
-      const message = status === 401 || code === 'MSG10'
-        ? 'The username or password is incorrect. Please check and try again.'
-        : serverMessage && serverMessage !== 'No message available'
-          ? serverMessage
-          : 'We couldn’t sign you in. Please try again.';
+      const message =
+        status === 401 || code === 'MSG10'
+          ? '[MSG10] Tên đăng nhập hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.'
+          : serverMessage && serverMessage !== 'No message available'
+            ? serverMessage
+            : 'Không thể đăng nhập. Vui lòng thử lại sau.';
 
       // MSG95: Tài khoản chưa xác thực OTP (status = 'unverified') -> chuyển sang tab OTP
       if (code === 'MSG95') {
         setOtpEmail(error.email || loginIdentity);
-        setOtpMessage(message);
+        setOtpMessage(message || '[MSG95] Tài khoản chưa kích hoạt. Vui lòng xác thực mã OTP để tiếp tục.');
         setOtpError('');
         setCooldown(60);
         setActiveTab('otp');
@@ -140,19 +141,19 @@ export default function AuthPage() {
     // DR22: 4-20 ký tự, bắt đầu bằng chữ thường a-z, chỉ chứa a-z, 0-9, ., _
     if (!/^[a-z][a-z0-9._]{3,19}$/.test(username.trim())) {
       errors.username =
-        'Username must be 4-20 characters, start with a lowercase letter, and contain only letters, numbers, periods, or underscores.';
+        'Tên đăng nhập phải từ 4-20 ký tự, bắt đầu bằng chữ cái thường và chỉ chứa chữ cái thường, chữ số, dấu chấm hoặc gạch dưới.';
     }
     // DR24: Họ tên 2-50 ký tự, chỉ chứa chữ cái và khoảng trắng
     if (!/^[\p{L}\s]{2,50}$/u.test(full_name.trim())) {
-      errors.fullName = 'Full name must be 2-50 characters and contain only letters and spaces.';
+      errors.fullName = 'Họ và tên phải từ 2-50 ký tự và chỉ chứa chữ cái cùng khoảng trắng.';
     }
     // DR17: Định dạng email hợp lệ
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      errors.email = 'Enter a valid email address.';
+      errors.email = 'Vui lòng nhập địa chỉ email hợp lệ.';
     }
     // DR01: Số điện thoại đúng 10 chữ số, bắt đầu bằng số 0
     if (!/^0\d{9}$/.test(phone_number.trim())) {
-      errors.phone = 'Phone number must contain 10 digits and start with 0.';
+      errors.phone = 'Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0.';
     }
     // DR23: Mật khẩu 8-32 ký tự, ít nhất 1 chữ cái, 1 chữ số, không khoảng trắng
     if (
@@ -163,7 +164,7 @@ export default function AuthPage() {
       /\s/.test(password)
     ) {
       errors.password =
-        'Password must be 8-32 characters, include at least one letter and one number, and contain no spaces.';
+        'Mật khẩu phải từ 8-32 ký tự, bao gồm ít nhất một chữ cái, một chữ số và không chứa khoảng trắng.';
     }
     return errors;
   };
@@ -192,7 +193,7 @@ export default function AuthPage() {
       if (response?.success) {
         // DR25 / MSG08: Tự động chuyển sang tab OTP sau khi tạo tài khoản 'unverified'
         setOtpEmail(registerForm.email.trim());
-        setOtpMessage(response.message || 'A verification code has been sent to your email.');
+        setOtpMessage(response.message || '[MSG08] Mã xác thực đã được gửi đến email của bạn.');
         setOtpCode('');
         setOtpError('');
         setCooldown(60);
@@ -200,7 +201,7 @@ export default function AuthPage() {
       }
     } catch (error) {
       setRegisterApiError(
-        error.response?.data?.message || error.message || 'Could not create your account.'
+        error.response?.data?.message || error.message || 'Không thể tạo tài khoản. Vui lòng thử lại sau.'
       );
     } finally {
       setRegisterLoading(false);
@@ -212,7 +213,7 @@ export default function AuthPage() {
     event.preventDefault();
     setOtpError('');
     if (!/^\d{6}$/.test(otpCode.trim())) {
-      setOtpError('The verification code must be exactly 6 digits.');
+      setOtpError('Mã xác thực phải gồm đúng 6 chữ số.');
       return;
     }
 
@@ -227,12 +228,12 @@ export default function AuthPage() {
         // MSG94: Kích hoạt status = 'active' thành công -> quay về tab Đăng nhập
         setLoginIdentity(otpEmail);
         setLoginPassword('');
-        setLoginNotice(response.message || 'Email verified. You can now sign in.');
+        setLoginNotice(response.message || '[MSG94] Xác thực email thành công. Bạn có thể đăng nhập ngay bây giờ.');
         setActiveTab('login');
       }
     } catch (error) {
       setOtpError(
-        error.response?.data?.message || error.message || 'Invalid verification code.'
+        error.response?.data?.message || error.message || 'Mã xác thực không hợp lệ hoặc đã hết hạn.'
       );
     } finally {
       setOtpLoading(false);
@@ -245,13 +246,13 @@ export default function AuthPage() {
     setOtpError('');
     try {
       const response = await resendOtpApi({ email: otpEmail.trim(), purpose: 'register' });
-      setOtpMessage(response.message || 'A new verification code has been sent.');
+      setOtpMessage(response.message || 'Mã xác thực mới đã được gửi đến email của bạn.');
       setCooldown(60);
     } catch (error) {
       setOtpError(
         error.response?.data?.message ||
           error.message ||
-          'Could not resend the verification code.'
+          'Không thể gửi lại mã xác thực.'
       );
     }
   };
@@ -260,20 +261,20 @@ export default function AuthPage() {
     event.preventDefault();
     setForgotError('');
     if (!forgotIdentity.trim()) {
-      setForgotError('Enter your username or email.');
+      setForgotError('Vui lòng nhập tên đăng nhập hoặc email.');
       return;
     }
     setForgotLoading(true);
     try {
       const response = await requestOtpApi({ username_or_email: forgotIdentity.trim() });
       const expiresAt = response.data?.otp_expires_at;
-      if (!expiresAt) throw new Error('The OTP expiry time was not returned. Please try again.');
+      if (!expiresAt) throw new Error('Không nhận được thời gian hết hạn OTP. Vui lòng thử lại.');
       setForgotOtpExpiresAt(expiresAt);
       setForgotNowMs(Date.now());
       setForgotOtp('');
       setForgotStep(2);
     } catch (error) {
-      setForgotError(error.response?.data?.message || error.message || 'Could not request a password reset code.');
+      setForgotError(error.response?.data?.message || error.message || 'Không thể yêu cầu mã đặt lại mật khẩu.');
     } finally {
       setForgotLoading(false);
     }
@@ -283,11 +284,11 @@ export default function AuthPage() {
     event.preventDefault();
     setForgotError('');
     if (!/^\d{6}$/.test(forgotOtp)) {
-      setForgotError('The OTP must contain exactly 6 digits.');
+      setForgotError('Mã OTP phải gồm đúng 6 chữ số.');
       return;
     }
     if (forgotSecondsLeft <= 0) {
-      setForgotError('This OTP has expired. Request a new code to continue.');
+      setForgotError('Mã OTP này đã hết hạn. Vui lòng yêu cầu mã mới để tiếp tục.');
       return;
     }
     setForgotLoading(true);
@@ -300,7 +301,7 @@ export default function AuthPage() {
       setForgotResetToken(response.data?.reset_token || '');
       setForgotStep(3);
     } catch (error) {
-      setForgotError(error.response?.data?.message || error.message || 'Could not verify the OTP.');
+      setForgotError(error.response?.data?.message || error.message || 'Không thể xác thực mã OTP.');
     } finally {
       setForgotLoading(false);
     }
@@ -310,14 +311,19 @@ export default function AuthPage() {
     event.preventDefault();
     setForgotError('');
     if (forgotNewPassword !== forgotConfirmPassword) {
-      setForgotError('New Password and Confirm New Password must match.');
+      setForgotError('Mật khẩu mới và xác nhận mật khẩu không khớp.');
       return;
     }
     if (
-      forgotNewPassword.length < 8 || forgotNewPassword.length > 32 ||
-      !/[A-Za-z]/.test(forgotNewPassword) || !/\d/.test(forgotNewPassword) || /\s/.test(forgotNewPassword)
+      forgotNewPassword.length < 8 ||
+      forgotNewPassword.length > 32 ||
+      !/[A-Za-z]/.test(forgotNewPassword) ||
+      !/\d/.test(forgotNewPassword) ||
+      /\s/.test(forgotNewPassword)
     ) {
-      setForgotError('Password must be 8-32 characters, include at least one letter and one number, and contain no spaces.');
+      setForgotError(
+        'Mật khẩu phải từ 8-32 ký tự, bao gồm ít nhất một chữ cái, một chữ số và không chứa khoảng trắng.'
+      );
       return;
     }
     setForgotLoading(true);
@@ -329,11 +335,11 @@ export default function AuthPage() {
       });
       setLoginIdentity(forgotIdentity.trim());
       setLoginPassword('');
-      setLoginNotice(response.message || 'Password reset successfully. You can now sign in.');
+      setLoginNotice(response.message || 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập ngay bây giờ.');
       setActiveTab('login');
       setForgotStep(1);
     } catch (error) {
-      setForgotError(error.response?.data?.message || error.message || 'Could not reset the password.');
+      setForgotError(error.response?.data?.message || error.message || 'Không thể đặt lại mật khẩu.');
     } finally {
       setForgotLoading(false);
     }
@@ -354,9 +360,9 @@ export default function AuthPage() {
           <span className={styles.brandName}>Courtly</span>
         </div>
         <div className={styles.heroCopy}>
-          <h1 className={styles.heroHeading}>Book badminton courts with ease</h1>
+          <h1 className={styles.heroHeading}>Đặt sân cầu lông dễ dàng, nhanh chóng</h1>
           <p className={styles.heroDescription}>
-            One account to book courts, join matches, use vouchers, and earn points at every venue.
+            Một tài khoản tiện lợi để đặt sân, ghép trận giao lưu, áp dụng ưu đãi và tích điểm tại mọi địa điểm.
           </p>
         </div>
       </aside>
@@ -364,36 +370,38 @@ export default function AuthPage() {
       <main className={styles.rightPanel}>
         <section className={styles.authCard}>
           {activeTab !== 'forgot' && (
-          <div className={styles.tabGroup} role="tablist" aria-label="Account">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'login'}
-              className={`${styles.tabBtn} ${activeTab === 'login' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('login')}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'register'}
-              className={`${styles.tabBtn} ${activeTab === 'register' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('register')}
-            >
-              Sign up
-            </button>
-          </div>
+            <div className={styles.tabGroup} role="tablist" aria-label="Tài khoản">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'login'}
+                className={`${styles.tabBtn} ${activeTab === 'login' ? styles.tabActive : ''}`}
+                onClick={() => setActiveTab('login')}
+              >
+                Đăng nhập
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'register'}
+                className={`${styles.tabBtn} ${activeTab === 'register' ? styles.tabActive : ''}`}
+                onClick={() => setActiveTab('register')}
+              >
+                Đăng ký
+              </button>
+            </div>
           )}
 
           {activeTab === 'forgot' && (
             <section className={styles.formContainer} aria-live="polite">
               {forgotStep === 1 && (
                 <form onSubmit={handleRequestPasswordOtp}>
-                  <h2 className={styles.cardTitle}>Forgot Password · Step 1 of 3</h2>
-                  <p className={styles.stepDescription}>Enter the username or email linked to your account.</p>
+                  <h2 className={styles.cardTitle}>Quên mật khẩu · Bước 1/3</h2>
+                  <p className={styles.stepDescription}>Nhập tên đăng nhập hoặc email liên kết với tài khoản của bạn.</p>
                   <div className={styles.formGroup}>
-                    <label className={styles.label} htmlFor="forgot-identity">Username or Email</label>
+                    <label className={styles.label} htmlFor="forgot-identity">
+                      Tên đăng nhập hoặc Email
+                    </label>
                     <input
                       id="forgot-identity"
                       className={`${styles.input} ${forgotError ? styles.inputError : ''}`}
@@ -404,16 +412,24 @@ export default function AuthPage() {
                         setForgotIdentity(event.target.value);
                         setForgotError('');
                       }}
-                      placeholder="Username or Email"
+                      placeholder="Tên đăng nhập hoặc Email"
                     />
-                    {forgotError && <p className={styles.errorText} role="alert">{forgotError}</p>}
+                    {forgotError && (
+                      <p className={styles.errorText} role="alert">
+                        {forgotError}
+                      </p>
+                    )}
                   </div>
                   <button className={styles.primaryBtn} type="submit" disabled={forgotLoading}>
-                    {forgotLoading ? 'Requesting code...' : 'Send OTP'}
+                    {forgotLoading ? 'Đang gửi mã...' : 'Gửi mã OTP'}
                   </button>
                   <p className={styles.cardFooterText}>
-                    <button type="button" className={styles.inlineSwitchBtn} onClick={() => setActiveTab('login')}>
-                      Back to sign in
+                    <button
+                      type="button"
+                      className={styles.inlineSwitchBtn}
+                      onClick={() => setActiveTab('login')}
+                    >
+                      Quay lại đăng nhập
                     </button>
                   </p>
                 </form>
@@ -421,17 +437,25 @@ export default function AuthPage() {
 
               {forgotStep === 2 && (
                 <form onSubmit={handleVerifyPasswordOtp}>
-                  <h2 className={styles.cardTitle}>Verify OTP · Step 2 of 3</h2>
-                  <p className={styles.stepDescription}>Enter the 6-digit code sent for {forgotIdentity}.</p>
-                  {USE_MOCK_AUTH && <div className={styles.testOtpHint}>Local test code: <strong>123456</strong></div>}
+                  <h2 className={styles.cardTitle}>Xác thực mã OTP · Bước 2/3</h2>
+                  <p className={styles.stepDescription}>Nhập mã 6 chữ số đã được gửi tới {forgotIdentity}.</p>
+                  {USE_MOCK_AUTH && (
+                    <div className={styles.testOtpHint}>
+                      Mã thử nghiệm cục bộ: <strong>123456</strong>
+                    </div>
+                  )}
                   <div className={styles.otpExpiry} role="timer">
-                    {forgotSecondsLeft > 0 ? `Code expires in ${forgotCountdown}` : 'Code expired'}
+                    {forgotSecondsLeft > 0 ? `Mã hết hạn sau ${forgotCountdown}` : 'Mã OTP đã hết hạn'}
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.label} htmlFor="forgot-otp">6-digit OTP</label>
+                    <label className={styles.label} htmlFor="forgot-otp">
+                      Mã OTP (6 chữ số)
+                    </label>
                     <input
                       id="forgot-otp"
-                      className={`${styles.input} ${styles.otpInput} ${forgotError ? styles.inputError : ''}`}
+                      className={`${styles.input} ${styles.otpInput} ${
+                        forgotError ? styles.inputError : ''
+                      }`}
                       type="text"
                       inputMode="numeric"
                       autoComplete="one-time-code"
@@ -443,14 +467,29 @@ export default function AuthPage() {
                       }}
                       placeholder="000000"
                     />
-                    {forgotError && <p className={styles.errorText} role="alert">{forgotError}</p>}
+                    {forgotError && (
+                      <p className={styles.errorText} role="alert">
+                        {forgotError}
+                      </p>
+                    )}
                   </div>
-                  <button className={styles.primaryBtn} type="submit" disabled={forgotLoading || forgotSecondsLeft <= 0}>
-                    {forgotLoading ? 'Verifying code...' : 'Verify OTP'}
+                  <button
+                    className={styles.primaryBtn}
+                    type="submit"
+                    disabled={forgotLoading || forgotSecondsLeft <= 0}
+                  >
+                    {forgotLoading ? 'Đang xác thực...' : 'Xác thực OTP'}
                   </button>
                   <p className={styles.cardFooterText}>
-                    <button type="button" className={styles.inlineSwitchBtn} onClick={() => { setForgotStep(1); setForgotError(''); }}>
-                      Request a new code
+                    <button
+                      type="button"
+                      className={styles.inlineSwitchBtn}
+                      onClick={() => {
+                        setForgotStep(1);
+                        setForgotError('');
+                      }}
+                    >
+                      Yêu cầu mã mới
                     </button>
                   </p>
                 </form>
@@ -458,34 +497,48 @@ export default function AuthPage() {
 
               {forgotStep === 3 && (
                 <form onSubmit={handleResetPassword}>
-                  <h2 className={styles.cardTitle}>Reset Password · Step 3 of 3</h2>
+                  <h2 className={styles.cardTitle}>Đặt lại mật khẩu · Bước 3/3</h2>
                   <div className={styles.formGroup}>
-                    <label className={styles.label} htmlFor="forgot-new-password">New Password</label>
+                    <label className={styles.label} htmlFor="forgot-new-password">
+                      Mật khẩu mới
+                    </label>
                     <input
                       id="forgot-new-password"
                       className={`${styles.input} ${forgotError ? styles.inputError : ''}`}
                       type="password"
                       autoComplete="new-password"
                       value={forgotNewPassword}
-                      onChange={(event) => { setForgotNewPassword(event.target.value); setForgotError(''); }}
-                      placeholder="8-32 chars, letters & numbers"
+                      onChange={(event) => {
+                        setForgotNewPassword(event.target.value);
+                        setForgotError('');
+                      }}
+                      placeholder="8-32 ký tự, gồm chữ và số"
                     />
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.label} htmlFor="forgot-confirm-password">Confirm New Password</label>
+                    <label className={styles.label} htmlFor="forgot-confirm-password">
+                      Xác nhận mật khẩu mới
+                    </label>
                     <input
                       id="forgot-confirm-password"
                       className={`${styles.input} ${forgotError ? styles.inputError : ''}`}
                       type="password"
                       autoComplete="new-password"
                       value={forgotConfirmPassword}
-                      onChange={(event) => { setForgotConfirmPassword(event.target.value); setForgotError(''); }}
-                      placeholder="Re-enter your new password"
+                      onChange={(event) => {
+                        setForgotConfirmPassword(event.target.value);
+                        setForgotError('');
+                      }}
+                      placeholder="Nhập lại mật khẩu mới"
                     />
-                    {forgotError && <p className={styles.errorText} role="alert">{forgotError}</p>}
+                    {forgotError && (
+                      <p className={styles.errorText} role="alert">
+                        {forgotError}
+                      </p>
+                    )}
                   </div>
                   <button className={styles.primaryBtn} type="submit" disabled={forgotLoading}>
-                    {forgotLoading ? 'Saving password...' : 'Reset Password'}
+                    {forgotLoading ? 'Đang lưu mật khẩu...' : 'Đặt lại mật khẩu'}
                   </button>
                 </form>
               )}
@@ -494,11 +547,11 @@ export default function AuthPage() {
 
           {activeTab === 'login' && (
             <form className={styles.formContainer} onSubmit={handleLoginSubmit}>
-              <h2 className={styles.cardTitle}>Welcome back</h2>
+              <h2 className={styles.cardTitle}>Chào mừng trở lại</h2>
               {loginNotice && <div className={styles.infoBanner}>{loginNotice}</div>}
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="login-identity">
-                  Username or Email
+                  Tên đăng nhập hoặc Email
                 </label>
                 <input
                   id="login-identity"
@@ -510,12 +563,12 @@ export default function AuthPage() {
                     setLoginIdentity(event.target.value);
                     setLoginError('');
                   }}
-                  placeholder="Username or Email"
+                  placeholder="Tên đăng nhập hoặc Email"
                 />
               </div>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="login-password">
-                  Password
+                  Mật khẩu
                 </label>
                 <input
                   id="login-password"
@@ -527,7 +580,7 @@ export default function AuthPage() {
                     setLoginPassword(event.target.value);
                     setLoginError('');
                   }}
-                  placeholder="Enter your password"
+                  placeholder="Nhập mật khẩu của bạn"
                 />
                 {loginError && <p className={styles.errorText}>{loginError}</p>}
               </div>
@@ -546,16 +599,16 @@ export default function AuthPage() {
                     setActiveTab('forgot');
                   }}
                 >
-                  Forgot password?
+                  Quên mật khẩu?
                 </button>
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={loginLoading}>
-                {loginLoading ? 'Signing in...' : 'Sign in'}
+                {loginLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               </button>
               <p className={styles.cardFooterText}>
-                Are you a location owner?{' '}
+                Bạn là chủ sân?{' '}
                 <Link to="/owner/register" className={styles.greenLinkBold}>
-                  Register your facility
+                  Đăng ký địa điểm ngay
                 </Link>
               </p>
             </form>
@@ -563,7 +616,7 @@ export default function AuthPage() {
 
           {activeTab === 'register' && (
             <form className={styles.formContainer} onSubmit={handleRegisterSubmit}>
-              <h2 className={styles.cardTitle}>Create your account</h2>
+              <h2 className={styles.cardTitle}>Tạo tài khoản mới</h2>
               {registerApiError && (
                 <p className={styles.errorText} role="alert">
                   {registerApiError}
@@ -571,7 +624,7 @@ export default function AuthPage() {
               )}
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="register-username">
-                  Username
+                  Tên đăng nhập
                 </label>
                 <input
                   id="register-username"
@@ -579,7 +632,7 @@ export default function AuthPage() {
                   value={registerForm.username}
                   onChange={(event) => updateRegisterField('username', event.target.value)}
                   autoComplete="username"
-                  placeholder="e.g. player_01"
+                  placeholder="Ví dụ: player_01"
                 />
                 {registerErrors.username && (
                   <p className={styles.errorText} role="alert">
@@ -589,7 +642,7 @@ export default function AuthPage() {
               </div>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="register-name">
-                  Full name
+                  Họ và tên
                 </label>
                 <input
                   id="register-name"
@@ -597,7 +650,7 @@ export default function AuthPage() {
                   value={registerForm.full_name}
                   onChange={(event) => updateRegisterField('full_name', event.target.value)}
                   autoComplete="name"
-                  placeholder="e.g. Nguyen Minh Anh"
+                  placeholder="Ví dụ: Nguyễn Minh Anh"
                 />
                 {registerErrors.fullName && (
                   <p className={styles.errorText} role="alert">
@@ -627,7 +680,7 @@ export default function AuthPage() {
                 </div>
                 <div className={styles.formGroup}>
                   <label className={styles.label} htmlFor="register-phone">
-                    Phone number
+                    Số điện thoại
                   </label>
                   <input
                     id="register-phone"
@@ -647,7 +700,7 @@ export default function AuthPage() {
               </div>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="register-password">
-                  Password
+                  Mật khẩu
                 </label>
                 <input
                   id="register-password"
@@ -656,7 +709,7 @@ export default function AuthPage() {
                   value={registerForm.password}
                   onChange={(event) => updateRegisterField('password', event.target.value)}
                   autoComplete="new-password"
-                  placeholder="8-32 chars, letters & numbers"
+                  placeholder="8-32 ký tự, gồm chữ và số"
                 />
                 {registerErrors.password && (
                   <p className={styles.errorText} role="alert">
@@ -665,16 +718,16 @@ export default function AuthPage() {
                 )}
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={registerLoading}>
-                {registerLoading ? 'Creating account...' : 'Create account and get code'}
+                {registerLoading ? 'Đang tạo tài khoản...' : 'Tạo tài khoản và nhận mã'}
               </button>
               <p className={styles.cardFooterText}>
-                Already have an account?{' '}
+                Đã có tài khoản?{' '}
                 <button
                   type="button"
                   className={styles.inlineSwitchBtn}
                   onClick={() => setActiveTab('login')}
                 >
-                  Sign in
+                  Đăng nhập
                 </button>
               </p>
             </form>
@@ -682,16 +735,16 @@ export default function AuthPage() {
 
           {activeTab === 'otp' && (
             <form className={styles.formContainer} onSubmit={handleVerifyOtpSubmit}>
-              <h2 className={styles.cardTitle}>Verify your email</h2>
+              <h2 className={styles.cardTitle}>Xác thực email</h2>
               {otpMessage && <div className={styles.infoBanner}>{otpMessage}</div>}
               {USE_MOCK_AUTH && (
                 <div className={styles.testOtpHint}>
-                  Local test code: <strong>123456</strong>
+                  Mã thử nghiệm cục bộ: <strong>123456</strong>
                 </div>
               )}
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="otp-email">
-                  Email address
+                  Địa chỉ email
                 </label>
                 <input
                   id="otp-email"
@@ -704,7 +757,7 @@ export default function AuthPage() {
               </div>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="otp-code">
-                  6-digit verification code
+                  Mã xác thực 6 chữ số
                 </label>
                 <input
                   id="otp-code"
@@ -721,17 +774,17 @@ export default function AuthPage() {
                 {otpError && <p className={styles.errorText}>{otpError}</p>}
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={otpLoading}>
-                {otpLoading ? 'Verifying...' : 'Verify code'}
+                {otpLoading ? 'Đang xác thực...' : 'Xác thực mã'}
               </button>
               <p className={styles.cardFooterText}>
-                Didn't receive a code?{' '}
+                Chưa nhận được mã?{' '}
                 <button
                   type="button"
                   className={styles.inlineSwitchBtn}
                   disabled={cooldown > 0}
                   onClick={handleResendOtp}
                 >
-                  {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+                  {cooldown > 0 ? `Gửi lại sau ${cooldown}s` : 'Gửi lại mã'}
                 </button>
               </p>
             </form>
