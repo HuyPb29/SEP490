@@ -5,7 +5,9 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sep490.bms.dto.request.*;
@@ -50,16 +52,19 @@ class AccountRulesTests {
             email, mock(LocationRepository.class), mapper, mock(OtpLockService.class), mock(AccountAuditService.class));
 
     @Test
-    void hourlyAndDailyOtpLimitsRejectBeforeSending() {
+    void otpLimitsRejectBeforeSendingAndProvideRetryTime() {
         Account player = Account.builder().role(Role.PLAYER).status(AccountStatus.ACTIVE).build();
         when(accounts.findByEmail("player@example.com")).thenReturn(Optional.of(player));
-        for (long[] counts : new long[][] {{1, 1, 1}, {0, 5, 5}, {0, 0, 10}}) {
-            when(otps.countByEmailAndCreatedAtAfter(eq("player@example.com"), any()))
-                    .thenReturn(counts[0], counts[1], counts[2]);
+        LocalDateTime now = LocalDateTime.now();
+        var cooldown = List.of(now.minusSeconds(30));
+        var hourly = IntStream.rangeClosed(1, 5).mapToObj(i -> now.minusMinutes(10L * i)).toList();
+        var daily = IntStream.rangeClosed(1, 10).mapToObj(i -> now.minusHours(2L * i)).toList();
+        for (var sends : List.of(cooldown, hourly, daily)) {
+            when(otps.findRecentSendTimes(eq("player@example.com"), any(), any())).thenReturn(sends);
             assertThatThrownBy(() -> auth.forgotPassword(new ForgotPasswordRequest("player@example.com")))
                     .isInstanceOfSatisfying(AppException.class, ex -> {
                         assertThat(ex.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
-                        assertThat(ex.getMessage()).contains("MSG107");
+                        assertThat(ex.getMessage()).contains("MSG107", "Vui lòng thử lại sau");
                     });
         }
         verify(otps, never()).save(any());

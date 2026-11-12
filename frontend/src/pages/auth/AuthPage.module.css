@@ -288,3 +288,36 @@
     gap: 0;
   }
 }
+
+.sessionDialog {
+  margin: auto;
+  max-width: min(26rem, calc(100% - 2rem));
+  padding: 1.5rem;
+  border: 1px solid #dbe5ec;
+  border-radius: 12px;
+  color: #172534;
+  background: #fff;
+}
+.sessionDialog::backdrop {
+  background: #17253470;
+}
+.sessionDialog h2 {
+  font-weight: 700;
+}
+.sessionDialog p {
+  margin: 0.5rem 0 1rem;
+}
+.passwordToggle { align-self: start; min-height: 32px; color: #27624a; font-size: .8rem; font-weight: 650; cursor: pointer; text-align: left; }
+
+.toast {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 60;
+  max-width: calc(100vw - 2rem);
+  padding: .75rem 1rem;
+  border: 1px solid #91bfa6;
+  border-radius: .65rem;
+  background: #eaf8ef;
+  color: #153f2a;
+}

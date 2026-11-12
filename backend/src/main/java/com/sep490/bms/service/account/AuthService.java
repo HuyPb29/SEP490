@@ -2,11 +2,13 @@ package com.sep490.bms.service.account;
 
 import com.sep490.bms.service.integration.EmailService;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -75,16 +77,22 @@ public class AuthService {
         }
 
         if (accountRepository.existsByEmail(email)) {
-            throw new AppException("Địa chỉ email đã được sử dụng bởi tài khoản khác (MSG09)");
+            String message = "Email này đã được dùng cho một tài khoản khác. (MSG09)";
+            throw new AppException(message, HttpStatus.BAD_REQUEST, Map.of("email", message));
         }
-
         if (accountRepository.existsByPhone(phone)) {
-            throw new AppException("Số điện thoại đã được sử dụng bởi tài khoản khác");
+            String message = "Số điện thoại này đã được dùng. (MSG112)";
+            throw new AppException(message, HttpStatus.BAD_REQUEST, Map.of("phone", message));
         }
 
         String username = request.getUsername();
-        if (username == null || !USERNAME_PATTERN.matcher(username).matches()) throw new AppException(ValidationRules.USERNAME_MESSAGE);
-        if (accountRepository.existsByUsername(username)) throw new AppException("Tên đăng nhập đã tồn tại");
+        if (username == null || !USERNAME_PATTERN.matcher(username).matches()) {
+            throw new AppException(ValidationRules.USERNAME_MESSAGE);
+        }
+        if (accountRepository.existsByUsername(username)) {
+            String message = "Tên đăng nhập này đã được dùng. (MSG112)";
+            throw new AppException(message, HttpStatus.BAD_REQUEST, Map.of("username", message));
+        }
         checkOtpLimit(email);
 
         String otpCode = generateOtpCode();
@@ -129,16 +137,16 @@ public class AuthService {
 
         OtpRequest otpRequest = otpRequestRepository
                 .findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER)
-                .orElseThrow(() -> new AppException("Yêu cầu xác thực không tồn tại hoặc đã hết hạn (MSG96)"));
+                .orElseThrow(() -> new AppException("Mã xác minh đã hết hạn. Vui lòng đăng ký lại. (MSG96)"));
 
         if (!otpRequest.getExpiresAt().isAfter(LocalDateTime.now())) {
             otpRequest.setPendingData(null);otpRequest.setUsedAt(LocalDateTime.now());
             otpRequestRepository.discardRegistration(email,LocalDateTime.now());
-            throw new InvalidOtpException("Mã xác thực đã hết hạn. Vui lòng đăng ký lại (MSG96)");
+            throw new InvalidOtpException("Mã xác minh đã hết hạn. Vui lòng đăng ký lại. (MSG96)");
         }
 
         if (otpRequest.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
-            throw new AppException("Bạn đã nhập sai mã xác thực quá số lần quy định. Vui lòng gửi lại mã mới (MSG95)");
+            throw new AppException("Mã xác minh đã hết hạn. Vui lòng gửi mã mới. (MSG96)");
         }
 
         if (!passwordEncoder.matches(otp, otpRequest.getCodeHash())) {
@@ -146,9 +154,9 @@ public class AuthService {
             otpRequest.setFailedAttempts(attempts);
             otpRequestRepository.save(otpRequest);
             if (attempts == MAX_FAILED_ATTEMPTS) {
-                throw new InvalidOtpException("Bạn đã nhập sai mã xác thực quá số lần quy định. Vui lòng gửi lại mã mới (MSG95)");
+                throw new InvalidOtpException("Mã xác minh đã hết hạn. Vui lòng gửi mã mới. (MSG96)");
             }
-            throw new InvalidOtpException();
+            throw new InvalidOtpException(incorrectOtp(attempts));
         }
 
         otpRequest.setUsedAt(LocalDateTime.now());
@@ -211,14 +219,13 @@ public class AuthService {
         OtpPurpose purpose = request.getPurpose();
 
         if (purpose == OtpPurpose.REGISTER) {
-            checkOtpLimit(email);
             OtpRequest latest = otpRequestRepository
                     .findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(email, OtpPurpose.REGISTER)
-                    .orElseThrow(() -> new AppException("Không tìm thấy thông tin đăng ký đang chờ cho email này"));
+                    .orElseThrow(() -> new AppException("Mã xác minh đã hết hạn. Vui lòng đăng ký lại. (MSG96)"));
             if(!latest.getExpiresAt().isAfter(LocalDateTime.now()) || latest.getPendingData()==null) {
                 latest.setPendingData(null);latest.setUsedAt(LocalDateTime.now());
                 otpRequestRepository.discardRegistration(email,LocalDateTime.now());
-                throw new InvalidOtpException("Đăng ký đã hết hạn; vui lòng đăng ký lại (MSG96)");
+                throw new InvalidOtpException("Mã xác minh đã hết hạn. Vui lòng đăng ký lại. (MSG96)");
             }
 
             if (accountRepository.existsByEmail(email)) {
@@ -237,6 +244,7 @@ public class AuthService {
                 throw new AppException("Số điện thoại đã được sử dụng hoặc đang chờ xác thực bởi yêu cầu khác", HttpStatus.CONFLICT);
             }
 
+            checkOtpLimit(email);
             String newOtp = generateOtpCode();
             String codeHash = passwordEncoder.encode(newOtp);
 
@@ -404,12 +412,27 @@ public class AuthService {
         return String.valueOf(code);
     }
 
+    private String incorrectOtp(int attempts) {
+        return "Mã xác minh không đúng. Bạn còn " + (MAX_FAILED_ATTEMPTS - attempts) + " lần nhập. (MSG95)";
+    }
+
     private void checkOtpLimit(String email) {
         LocalDateTime now = LocalDateTime.now();
-        if (otpRequestRepository.countByEmailAndCreatedAtAfter(email, now.minusSeconds(60)) > 0
-                || otpRequestRepository.countByEmailAndCreatedAtAfter(email, now.minusHours(1)) >= 5
-                || otpRequestRepository.countByEmailAndCreatedAtAfter(email, now.minusDays(1)) >= 10) {
-            throw new AppException("Vượt giới hạn gửi OTP: chờ 60 giây, tối đa 5 lần/giờ và 10 lần/ngày (MSG107)", HttpStatus.TOO_MANY_REQUESTS);
+        var recent = otpRequestRepository.findRecentSendTimes(email, now.minusDays(1), PageRequest.of(0, 10));
+        if (recent.isEmpty()) return;
+        LocalDateTime retryAt = recent.get(0).plusSeconds(60);
+        if (recent.size() >= 5) {
+            LocalDateTime hourlyRetry = recent.get(4).plusHours(1);
+            if (hourlyRetry.isAfter(retryAt)) retryAt = hourlyRetry;
+        }
+        if (recent.size() >= 10) {
+            LocalDateTime dailyRetry = recent.get(9).plusDays(1);
+            if (dailyRetry.isAfter(retryAt)) retryAt = dailyRetry;
+        }
+        if (retryAt.isAfter(now)) {
+            long minutes = Math.max(1, (long) Math.ceil(Duration.between(now, retryAt).toMillis() / 60_000.0));
+            throw new AppException("Bạn đã gửi mã quá số lần cho phép. Vui lòng thử lại sau "
+                    + minutes + " phút. (MSG107)", HttpStatus.TOO_MANY_REQUESTS);
         }
     }
 }

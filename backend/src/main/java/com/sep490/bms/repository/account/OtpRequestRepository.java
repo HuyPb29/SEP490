@@ -1,6 +1,10 @@
 package com.sep490.bms.repository.account;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+
+import org.springframework.data.domain.Pageable;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -27,6 +31,9 @@ public interface OtpRequestRepository extends JpaRepository<OtpRequest, Long> {
             @Param("now") java.time.LocalDateTime now, @Param("excludeOwn") int excludeOwn);
 
     long countByEmailAndCreatedAtAfter(String email, java.time.LocalDateTime since);
+
+    @Query("select o.createdAt from OtpRequest o where o.email = :email and o.createdAt > :since order by o.createdAt desc")
+    List<LocalDateTime> findRecentSendTimes(@Param("email") String email, @Param("since") LocalDateTime since, Pageable limit);
 
     @Modifying(flushAutomatically=true)
     @Query("update OtpRequest o set o.pendingData=null,o.usedAt=coalesce(o.usedAt,:now) where o.email=:email and o.purpose=com.sep490.bms.entity.account.OtpPurpose.REGISTER")

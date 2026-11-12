@@ -66,7 +66,7 @@ class AccountSrsRulesTests {
             assertThat(otp.getFailedAttempts()).isEqualTo(i);
         }
         assertThatThrownBy(() -> service.verifyEmail(new VerifyEmailRequest("a@example.com", "123456")))
-                .hasMessageContaining("MSG95");
+                .hasMessageContaining("MSG96");
         assertThat(otp.getPendingData()).isEqualTo("private");
         verify(accounts, never()).save(any());
     }

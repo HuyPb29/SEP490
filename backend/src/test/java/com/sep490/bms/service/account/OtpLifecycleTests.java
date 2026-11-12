@@ -42,7 +42,7 @@ class OtpLifecycleTests {
             assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "000000")).isInstanceOf(AppException.class);
             assertThat(otps.findById(pending.getId()).orElseThrow().getFailedAttempts()).isEqualTo(i);
         }
-        assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "123456")).hasMessageContaining("MSG95");
+        assertThatThrownBy(() -> verify(OtpPurpose.REGISTER, "123456")).hasMessageContaining("MSG96");
         assertThat(accounts.findByEmail(email)).isEmpty();
 
         jdbc.update("update otp_request set created_at=? where id=?", LocalDateTime.now().minusMinutes(2), pending.getId());
