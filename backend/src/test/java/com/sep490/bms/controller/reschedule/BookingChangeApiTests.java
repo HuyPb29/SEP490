@@ -205,7 +205,13 @@ class BookingChangeApiTests {
         assertThat(jdbc.queryForObject("select booking_code from booking where id=?",String.class,booking.getId())).isEqualTo(booking.getBookingCode());
     }
     @Test void extraPaymentHoldsBothThenConfirmsAndEarnsPoints() throws Exception {
+        String detail="/api/bookings/"+booking.getId();
+        mvc.perform(get(detail).header("Authorization",token(player)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.reschedule.canReschedule").value(true));
         Long id=create(660);assertThat(active(booking.getPlayDate())).isEqualTo(2);assertThat(active(LocalDate.now().plusDays(3))).isEqualTo(2);
+        mvc.perform(get(detail).header("Authorization",token(player)))
+                .andExpect(jsonPath("$.data.reschedule.canReschedule").value(false))
+                .andExpect(jsonPath("$.data.reschedule.pendingRequestId").value(id));
         mvc.perform(paymentProof(id)).andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("AWAITING_CONFIRMATION"));
         Long pay=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);
         // UC18–19 retain Minh's booking contract; UC21 uses its own routes and payment type.
@@ -223,6 +229,11 @@ class BookingChangeApiTests {
         mvc.perform(get("/api/reschedule-payments/"+pay).header("Authorization",token(other))).andExpect(status().isForbidden());
         mvc.perform(post("/api/staff/reschedule-payments/"+pay+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("APPROVED"));
+        mvc.perform(get("/api/reschedule-requests/"+id+"/payment").header("Authorization",token(player)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.receiptNo").isNotEmpty());
+        mvc.perform(get(detail).header("Authorization",token(player)))
+                .andExpect(jsonPath("$.data.reschedule.canReschedule").value(false))
+                .andExpect(jsonPath("$.data.reschedule.pendingRequestId").doesNotExist());
         assertThat(active(booking.getPlayDate())).isZero();
         assertThat(jdbc.queryForObject("select point_balance from player_location_balance where location_id=?",Integer.class,location.getId())).isEqualTo(2);
         mvc.perform(post("/api/staff/reschedule-payments/"+pay+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId())).andExpect(status().isConflict());
@@ -356,7 +367,21 @@ class BookingChangeApiTests {
         mvc.perform(post(url).header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(new ReschedulePreviewRequest(court,LocalDate.now().plusDays(40),600,660)))).andExpect(status().isOk());
         mvc.perform(post(url).header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(new ReschedulePreviewRequest(court,LocalDate.now().plusMonths(3),600,660)))).andExpect(status().isBadRequest());
+                .content(json.writeValueAsString(new ReschedulePreviewRequest(court,LocalDate.now().plusMonths(3),600,660))))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.code").value("MSG62"))
+                .andExpect(jsonPath("$.errors.reason").value("OUTSIDE_PACKAGE"));
+    }
+
+    @Test void occupiedSlotAndExhaustedQuotaHaveDifferentCodes() throws Exception {
+        String url="/api/bookings/"+booking.getId()+"/reschedule-requests/preview";
+        var occupied = new ReschedulePreviewRequest(court,booking.getPlayDate(),booking.getStartMinute(),booking.getEndMinute());
+        mvc.perform(post(url).header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(occupied))).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errors.code").value("MSG28")).andExpect(jsonPath("$.errors.reason").value("SLOT_TAKEN"));
+        create(630);
+        mvc.perform(post(url).header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON).content(slot(660)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.errors.code").value("MSG62"))
+                .andExpect(jsonPath("$.errors.reason").value("LIMIT_REACHED"));
     }
     @Test void courtAndHoursApiChangesMarkAffectedBookings() throws Exception {
         mvc.perform(put("/api/owner/locations/"+location.getId()+"/opening-hours").header("Authorization",token(owner))

@@ -64,7 +64,8 @@ class BookingQueryServiceTests {
     private final PaymentService payments = mock(PaymentService.class);
     private final ReviewService reviews = mock(ReviewService.class);
     private final BookingQueryService service =
-            new BookingQueryService(bookings, packages, courts, locations, bookingService, payments, reviews);
+            new BookingQueryService(bookings, packages, courts, locations, bookingService, payments, reviews,
+                    mock(com.sep490.bms.service.reschedule.RescheduleService.class));
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 

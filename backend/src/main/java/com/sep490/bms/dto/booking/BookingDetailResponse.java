@@ -66,4 +66,5 @@ public class BookingDetailResponse {
     private String receiptNo;
     /** UC31: booking đã hoàn thành và chưa được đánh giá thì hiện nút Đánh giá. */
     private boolean canReview;
+    private RescheduleEligibility reschedule;
 }

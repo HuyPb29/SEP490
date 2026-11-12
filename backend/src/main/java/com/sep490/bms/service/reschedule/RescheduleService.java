@@ -3,6 +3,7 @@ package com.sep490.bms.service.reschedule;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
+import com.sep490.bms.dto.booking.RescheduleEligibility;
 import com.sep490.bms.dto.request.*;
 import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.location.Location;
@@ -32,6 +33,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 @Transactional
 public class RescheduleService {
+    private static final int MAX_CHANGES = 1;
     private final EntityManager em;
     private final BookingChangeSupport support;
     private final SlotAvailabilityService availability;
@@ -63,7 +65,8 @@ public class RescheduleService {
             String qrImageUrl, String transferContent) {}
     public record PaymentView(Payment payment, List<PaymentProof> proofs) {}
     public record PaymentProgress(Long id, PaymentStatus status, LocalDateTime resubmitDeadline,
-            String resubmitReason, int resubmitsLeft, BigDecimal receivedAmount, BigDecimal remainingAmount) {}
+            String resubmitReason, int resubmitsLeft, BigDecimal receivedAmount, BigDecimal remainingAmount,
+            String receiptNo, LocalDateTime confirmedAt, String rejectReason, LocalDateTime submittedAt) {}
 
     public List<Payment> staffPayments(UserPrincipal u,PaymentStatus status) {
         Long location=access.selectedLocation(u).getId();
@@ -88,6 +91,45 @@ public class RescheduleService {
     }
     private boolean pending(RescheduleRequest r) {
         return r.getStatus() == RescheduleStatus.PENDING_PAYMENT || r.getStatus() == RescheduleStatus.AWAITING_CONFIRMATION;
+    }
+    @Transactional(readOnly = true)
+    public Map<Long, RescheduleEligibility> eligibility(Collection<Booking> bookings, LocalDateTime now) {
+        List<Long> ids=bookings.stream()
+                .filter(b -> b.getStatus()==BookingStatus.CONFIRMED && b.getBookingType()!=BookingType.WALK_IN)
+                .map(Booking::getId).toList();
+        if(ids.isEmpty()) return Map.of();
+
+        Set<Long> paid=new HashSet<>(em.createQuery("""
+                select b.id from Booking b where b.id in :ids
+                    and exists (select l.id from Location l where l.id=b.locationId and l.status='ACTIVE')
+                    and exists (select p.id from Payment p where p.status=:confirmed
+                        and (p.bookingId=b.id or (b.packageId is not null and p.packageId=b.packageId)))
+                """,Long.class).setParameter("ids",ids).setParameter("confirmed",PaymentStatus.CONFIRMED).getResultList());
+        Set<Long> affected=new HashSet<>(em.createQuery("""
+                select a.bookingId from AffectedBooking a where a.bookingId in :ids and a.status=:status
+                """,Long.class).setParameter("ids",ids).setParameter("status",AffectedStatus.PENDING).getResultList());
+        Map<Long,Long> open=new HashMap<>();
+        em.createQuery("""
+                select r from RescheduleRequest r where r.bookingId in :ids
+                    and (r.approveDeadline is null or r.approveDeadline > :now)
+                    and (r.status=:awaiting or (r.status=:unpaid and (r.holdExpiresAt is null or r.holdExpiresAt > :now)))
+                order by r.id desc
+                """,RescheduleRequest.class).setParameter("ids",ids).setParameter("now",now)
+                .setParameter("awaiting",RescheduleStatus.AWAITING_CONFIRMATION)
+                .setParameter("unpaid",RescheduleStatus.PENDING_PAYMENT).getResultList()
+                .forEach(request -> open.putIfAbsent(request.getBookingId(),request.getId()));
+
+        Map<Long,RescheduleEligibility> result=new HashMap<>();
+        for(Booking b:bookings) {
+            if(b.getStatus()!=BookingStatus.CONFIRMED || b.getBookingType()==BookingType.WALK_IN) continue;
+            Long id=b.getId();
+            LocalDateTime deadline=deadline(b);
+            Long pendingRequestId=open.get(id);
+            boolean eligible=paid.contains(id) && !affected.contains(id) && pendingRequestId==null
+                    && now.isBefore(deadline) && b.getRescheduleCount()<MAX_CHANGES;
+            result.put(id,new RescheduleEligibility(eligible,deadline,pendingRequestId));
+        }
+        return result;
     }
     public List<RescheduleRequest> requests(UserPrincipal u, Long bookingId) {
         Booking b = support.booking(bookingId); support.player(u, b);
@@ -124,12 +166,23 @@ public class RescheduleService {
     public RescheduleRequest createFree(Booking b, ReschedulePreviewRequest slot) {
         return createFor(b,slot,true);
     }
+    private static AppException changeError(String code,String reason,String message,HttpStatus status) {
+        return new AppException(message + " (" + code + ")",status,Map.of("code",code,"reason",reason));
+    }
+
+    private static AppException blocked(String reason,String message,HttpStatus status) {
+        return changeError("MSG62",reason,"Không đổi lịch được: " + message,status);
+    }
+
     private Quote quote(Booking b, ReschedulePreviewRequest slot, boolean free) {
         support.confirmed(b); support.paid(b);
         if (b.getBookingType() == BookingType.WALK_IN) throw new AppException("Booking tại quầy không đổi lịch online");
-        if (!free && (b.getRescheduleCount() >= 1 || !LocalDateTime.now().isBefore(deadline(b))))
-            throw new AppException("Đã hết hạn hoặc hết lượt đổi lịch", HttpStatus.CONFLICT);
-        if (all(b).stream().anyMatch(this::pending)) throw new AppException("Đang có yêu cầu đổi lịch", HttpStatus.CONFLICT);
+        if (!free && b.getRescheduleCount() >= MAX_CHANGES)
+            throw blocked("LIMIT_REACHED","đã hết lượt đổi lịch.",HttpStatus.CONFLICT);
+        if (!free && !LocalDateTime.now().isBefore(deadline(b)))
+            throw blocked("DEADLINE_PASSED","đã quá hạn đổi lịch.",HttpStatus.CONFLICT);
+        if (all(b).stream().anyMatch(this::pending))
+            throw blocked("REQUEST_PENDING","đang có yêu cầu đổi lịch.",HttpStatus.CONFLICT);
         if (!free && !em.createQuery("select a from AffectedBooking a where a.bookingId=:id and a.status=:s", AffectedBooking.class)
                 .setParameter("id", b.getId()).setParameter("s", AffectedStatus.PENDING).getResultList().isEmpty())
             throw new AppException("Hãy chọn xử lý booking bị ảnh hưởng", HttpStatus.CONFLICT);
@@ -140,23 +193,28 @@ public class RescheduleService {
         if (!c.getLocationId().equals(b.getLocationId()) || !c.isActive() || !"ACTIVE".equals(l.getStatus()))
             throw new AppException("Sân phải hoạt động và thuộc cùng địa điểm");
         LocalDateTime newStart = slot.date().atStartOfDay().plusMinutes(slot.startMinute());
-        if (!newStart.isAfter(LocalDateTime.now())) throw new AppException("Slot mới phải ở tương lai");
+        if (!newStart.isAfter(LocalDateTime.now()))
+            throw blocked("SLOT_IN_PAST","slot mới phải ở tương lai.",HttpStatus.BAD_REQUEST);
         BookingPackage pkg = b.getPackageId()==null ? null : em.find(BookingPackage.class,b.getPackageId());
         // BR31: buổi trong gói đổi trong thời hạn gói; booking lẻ và booking của đơn đặt lẻ (BR64) theo BR02.
         if (pkg!=null && pkg.getPackageType()!=PackageType.DAY) {
             if (slot.date().isBefore(pkg.getStartDate()) || slot.date().isAfter(pkg.getEndDate()))
-                throw new AppException("Slot mới ngoài thời hạn gói");
+                throw blocked("OUTSIDE_PACKAGE","slot mới nằm ngoài thời hạn gói.",HttpStatus.BAD_REQUEST);
         } else if (slot.date().isAfter(LocalDate.now().plusDays(l.getAdvanceBookingDays())))
-            throw new AppException("Slot mới vượt hạn đặt trước");
-        // Minh's shared slot API reports a problem instead of returning an availability boolean.
-        // Preserve UC21's rejection rule for closed, occupied or maintenance-blocked target slots.
-        if (availability.findProblem(l.getId(),c.getId(),slot.date(),slot.startMinute(),slot.endMinute()).isPresent())
-            throw new AppException("Slot mới không còn trống hoặc ngoài giờ mở cửa",HttpStatus.CONFLICT);
+            throw blocked("ADVANCE_LIMIT","slot mới vượt hạn đặt trước.",HttpStatus.BAD_REQUEST);
+        var problem=availability.findProblem(l.getId(),c.getId(),slot.date(),slot.startMinute(),slot.endMinute());
+        if(problem.isPresent()) {
+            throw switch(problem.get()) {
+                case TAKEN -> changeError("MSG28","SLOT_TAKEN","Slot vừa có người giữ hoặc đặt. Vui lòng chọn slot khác.",HttpStatus.CONFLICT);
+                case CLOSED -> changeError("MSG31","SLOT_CLOSED","Slot mới ngoài giờ mở cửa.",HttpStatus.CONFLICT);
+                case MAINTENANCE -> changeError("MSG31","SLOT_MAINTENANCE","Slot mới đang bảo trì.",HttpStatus.CONFLICT);
+            };
+        }
         BigDecimal newPrice = prices.totalPrice(c.getId(),slot.date(),slot.startMinute(),slot.endMinute());
         BigDecimal extra = free ? BigDecimal.ZERO : newPrice.subtract(b.getListAmount()).max(BigDecimal.ZERO);
         LocalDateTime approve = (newStart.isBefore(support.start(b)) ? newStart : support.start(b)).minusMinutes(bufferMinutes);
         if (extra.signum()>0 && !approve.isAfter(LocalDateTime.now()))
-            throw new AppException("Không còn thời gian xác nhận phụ thu",HttpStatus.CONFLICT);
+            throw blocked("APPROVAL_DEADLINE","không còn thời gian xác nhận phụ thu.",HttpStatus.CONFLICT);
         return new Quote(b.getListAmount(),newPrice,support.paidAmount(b),extra,deadline(b),approve,free);
     }
     private RescheduleRequest createFor(Booking b, ReschedulePreviewRequest slot, boolean free) {
@@ -219,7 +277,8 @@ public class RescheduleService {
                 .findFirst()
                 .map(payment -> new PaymentProgress(payment.getId(), payment.getStatus(), payment.getResubmitDeadline(),
                         payment.getResubmitReason(), Math.max(0, Payment.MAX_RESUBMITS - payment.getResubmitCount()),
-                        payment.receivedSoFar(), payment.remainingAmount()))
+                        payment.receivedSoFar(), payment.remainingAmount(), payment.getReceiptNo(),
+                        payment.getConfirmedAt(), payment.getRejectReason(), payment.getSubmittedAt()))
                 .orElse(null);
     }
 

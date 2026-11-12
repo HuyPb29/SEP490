@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import api, { apiErrorMessage } from '../../api'
-import { bookingStatusLabels, bookingTimestamp, canPayHistoryEntry, getHistoryDetail } from '../../api/bookingHistory'
+import { bookingStatusLabels, bookingTimestamp, canPayHistoryEntry, canRescheduleBooking, getHistoryDetail } from '../../api/bookingHistory'
 import { formatVnd } from '../../utils/formatters'
 import styles from './MyBookingsPage.module.css'
 
@@ -11,7 +11,7 @@ function DetailRow({ label, children }) {
   return <div className={styles.quoteRow}><dt>{label}</dt><dd>{children}</dd></div>
 }
 
-export default function HistoryDetailDialog({ item, now, onClose, onPayment }) {
+export default function HistoryDetailDialog({ item, now, onClose, onPayment, onReschedule }) {
   const ref = useRef(null)
   const [detail, setDetail] = useState(null)
   const [payment, setPayment] = useState(null)
@@ -68,8 +68,13 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment }) {
     ...item, status: currentStatus, hold_expires_at: detail.holdExpiresAt,
     payment_id: requestOpen ? detail.paymentId : null,
     resubmit_deadline: requestOpen ? payment.resubmitDeadline ?? detail.resubmitDeadline : null,
+    reschedule: detail.reschedule, booking_date: detail.playDate ?? item.booking_date,
+    court_name: detail.courtName ?? item.court_name,
+    time_range: detail.startTime ? `${detail.startTime} – ${detail.endTime}` : item.time_range,
   }
   const showPayment = !error && canPayHistoryEntry(target, now)
+  const showReschedule = !error && currentStatus === 'confirmed'
+    && (detail?.reschedule?.pendingRequestId || canRescheduleBooking(detail?.reschedule, now))
   const viewPayment = !error && item.booking_type !== 'session' && detail?.paymentId
     && ['awaiting_confirmation', 'confirmed', 'in_use', 'completed', 'payment_rejected'].includes(currentStatus)
 
@@ -120,6 +125,9 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment }) {
       )}
       <div className={styles.modalActions}>
         <button type="button" className={styles.outlineActionBtn} onClick={onClose}>Đóng</button>
+        {showReschedule && <button type="button" className={styles.outlineActionBtn} onClick={() => onReschedule(target)}>
+          {detail.reschedule.pendingRequestId ? 'Xem phụ thu đổi lịch' : 'Đổi lịch'}
+        </button>}
         {showPayment && <button type="button" className={styles.primaryActionBtn} onClick={() => onPayment(target)}>
           {currentStatus === 'holding' ? 'Tiếp tục thanh toán' : 'Gửi lại chứng từ'}
         </button>}

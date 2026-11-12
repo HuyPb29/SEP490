@@ -39,4 +39,5 @@ public class BookingListItem {
     private LocalDateTime createdAt;
     /** UC31: booking đã hoàn thành và chưa được đánh giá thì hiện nút Đánh giá. */
     private boolean canReview;
+    private RescheduleEligibility reschedule;
 }

@@ -216,6 +216,8 @@ function PaymentDesk({ role, surcharge }) {
     const { action, id } = decision;
     setDecision(null);
     setIsProcessing(true);
+    setMessage('');
+    setErrorMessage('');
     const submit = surcharge ? decideReschedulePayment : decideStaffBookingPayment;
     const label = formatPaymentLabel(activePayment);
     try {
@@ -224,8 +226,10 @@ function PaymentDesk({ role, surcharge }) {
         result = await submit(id, action, { receivedAmount: isOverpaid ? parsedReceived : null });
         const receipt = result.receiptNo ? ' Biên nhận ' + result.receiptNo + '.' : '';
         const excess = isOverpaid ? ' Đã thông báo Chủ sân về khoản chuyển thừa. (MSG55)' : '';
-        setMessage(result.status === 'EXPIRED' ? 'Đã hết hạn thanh toán. (MSG33)'
-          : 'Đã xác nhận thanh toán cho ' + label + '. (MSG46)' + receipt + excess);
+        if (result.status === 'EXPIRED') setMessage('Đã hết hạn thanh toán. (MSG33)');
+        else if (surcharge && result.status !== 'APPROVED') {
+          setErrorMessage('Đổi lịch không thành công. Booking giữ giờ cũ. (MSG65)');
+        } else setMessage('Đã xác nhận thanh toán cho ' + label + '. (MSG46)' + receipt + excess);
       } else if (action === 'request-resubmission') {
         result = await submit(id, action, { reason: reason.text, playerAtFault: reason.playerAtFault,
           receivedAmount: isShortfall ? parsedReceived : null });
@@ -236,8 +240,9 @@ function PaymentDesk({ role, surcharge }) {
         setMessage(result.status === 'REJECTED' ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ. (MSG52)'
           : 'Đã yêu cầu bổ sung chứng từ cho ' + label + '. (MSG50)' + deadline + attempts);
       } else {
-        await submit(id, action, { reason: reason.text });
-        setMessage('Đã từ chối thanh toán cho ' + label + '. (MSG51)');
+        result = await submit(id, action, { reason: reason.text });
+        setMessage(result?.status === 'EXPIRED' ? 'Đã hết hạn thanh toán. (MSG33)'
+          : 'Đã từ chối thanh toán cho ' + label + '. (MSG51)');
       }
       reload();
     } catch (error) {

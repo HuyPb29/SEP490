@@ -137,6 +137,7 @@ function bookingCard(item, packageId) {
     status,
     status_name: bookingLabels[status] || item.status,
     can_review: item.canReview === true,
+    reschedule: item.reschedule,
     can_cancel: status === 'confirmed' && Date.parse(item.playDate + 'T' + item.startTime + ':00+07:00') > Date.now(),
   };
 }
@@ -234,8 +235,8 @@ export async function submitAffectedChoiceApi(affectedId, choice, slot = null) {
 }
 
 // UC21: Xem trước chênh lệch giá khi đổi lịch (POST /api/bookings/{id}/reschedule-requests/preview)
-export async function previewRescheduleApi(bookingId, slot) {
-  const { data } = await api.post('/bookings/' + bookingId + '/reschedule-requests/preview', slot);
+export async function previewRescheduleApi(bookingId, slot, signal) {
+  const { data } = await api.post('/bookings/' + bookingId + '/reschedule-requests/preview', slot, { signal });
   return data.data;
 }
 
@@ -246,8 +247,8 @@ export async function createRescheduleApi(bookingId, slot) {
 }
 
 // Lấy danh sách sân hoạt động của cơ sở để chọn slot đổi lịch (GET /api/locations/{locationId}/courts)
-export async function getLocationCourtsApi(locationId) {
-  const { data } = await api.get('/locations/' + locationId + '/courts');
+export async function getLocationCourtsApi(locationId, signal) {
+  const { data } = await api.get('/locations/' + locationId + '/courts', { signal });
   return (data.data || []).map((court) => ({
     ...court,
     court_id: court.id,

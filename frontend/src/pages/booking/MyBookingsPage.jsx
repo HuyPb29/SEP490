@@ -1,6 +1,6 @@
 import HistoryDetailDialog from './HistoryDetailDialog';
-import { bookingStatusLabels, canPayHistoryEntry } from '../../api/bookingHistory';
-import { useState, useEffect, useMemo } from 'react';
+import { bookingStatusLabels, canPayHistoryEntry, canRescheduleBooking } from '../../api/bookingHistory';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
@@ -59,8 +59,6 @@ export default function MyBookingsPage() {
     cancelDayOrderApi,
     createBookingReviewApi,
     getPackageSessionsApi,
-    getRescheduleDeadlineApi,
-    getRescheduleRequestsApi,
     getMyAffectedBookingsApi,
     getAffectedBookingApi,
     submitAffectedChoiceApi,
@@ -97,7 +95,6 @@ export default function MyBookingsPage() {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewError, setReviewError] = useState('');
 
-  const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const [packageLoading, setPackageLoading] = useState(null);
   const [expandedPackages, setExpandedPackages] = useState([]);
   // UC22: Bản ghi affected mới nhất theo booking và hộp xác nhận lựa chọn
@@ -110,6 +107,7 @@ export default function MyBookingsPage() {
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [rescheduleDeadline, setRescheduleDeadline] = useState(null);
   const [availableCourts, setAvailableCourts] = useState([]);
+  const [courtsLoading, setCourtsLoading] = useState(false);
   const [selectedCourtId, setSelectedCourtId] = useState('');
   const [newPlayDate, setNewPlayDate] = useState('');
   const [startMin, setStartMin] = useState(1080); // 18:00
@@ -118,6 +116,14 @@ export default function MyBookingsPage() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState('');
   const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
+  const quoteRequest = useRef(null);
+  const courtsRequest = useRef(null);
+  const deadlinePassed = rescheduleDeadline && serverTimestamp(rescheduleDeadline) <= nowMs;
+
+  useEffect(() => () => {
+    quoteRequest.current?.abort();
+    courtsRequest.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (!isPlayer) return undefined;
@@ -149,8 +155,15 @@ export default function MyBookingsPage() {
       if (updating || document.visibilityState === 'hidden') return;
       updating = true;
       try {
-        const items = await getMyBookingsApi();
-        if (active) setBookings((current) => [...items, ...current.filter((item) => item.booking_type === 'session')]);
+        const [items, packages] = await Promise.all([
+          getMyBookingsApi(),
+          Promise.allSettled(expandedPackages.map(getPackageSessionsApi)),
+        ]);
+        if (active) setBookings((current) => [
+          ...items,
+          ...packages.flatMap((result, index) => result.status === 'fulfilled' ? result.value
+            : current.filter((item) => item.package_id === expandedPackages[index])),
+        ]);
       } catch {
         // Keep the last successful list while polling.
       } finally {
@@ -158,7 +171,7 @@ export default function MyBookingsPage() {
       }
     }, 12_000);
     return () => { active = false; clearInterval(timer); };
-  }, [isPlayer, loading, fetchError, reload, getMyBookingsApi]);
+  }, [isPlayer, loading, fetchError, reload, expandedPackages, getMyBookingsApi, getPackageSessionsApi]);
 
   // BR03: Đếm lùi thời gian thực cho các booking đang giữ chỗ (holding)
   useEffect(() => {
@@ -346,24 +359,43 @@ export default function MyBookingsPage() {
     }
   };
 
+  const clearQuote = () => {
+    quoteRequest.current?.abort();
+    setQuote(null);
+    setQuoteError('');
+    setQuoteLoading(false);
+  };
+
+  const closeRescheduleModal = () => {
+    clearQuote();
+    courtsRequest.current?.abort();
+    setRescheduleTarget(null);
+  };
+
   const openRescheduleModal = async (booking, affected = null, deadline = null) => {
     setRescheduleTarget({ booking, affected });
     setRescheduleDeadline(deadline);
     setNewPlayDate(booking.booking_date || today());
     setStartMin(1080);
     setEndMin(1140);
-    setQuote(null);
-    setQuoteError('');
+    clearQuote();
     setAvailableCourts([]);
     setSelectedCourtId('');
+    courtsRequest.current?.abort();
+    const controller = new AbortController();
+    courtsRequest.current = controller;
+    setCourtsLoading(true);
     try {
       if (booking.location_id) {
-        const courts = await getLocationCourtsApi(booking.location_id);
+        const courts = await getLocationCourtsApi(booking.location_id, controller.signal);
+        if (controller.signal.aborted) return;
         setAvailableCourts(courts);
         if (courts.length > 0) setSelectedCourtId(String(courts[0].id));
       }
     } catch (error) {
-      setQuoteError(error.response?.data?.message || 'Không tải được danh sách sân.');
+      if (!controller.signal.aborted) setQuoteError(error.response?.data?.message || 'Không tải được danh sách sân.');
+    } finally {
+      if (!controller.signal.aborted) setCourtsLoading(false);
     }
   };
 
@@ -388,32 +420,23 @@ export default function MyBookingsPage() {
     }
   };
 
-  const handleRescheduleClick = async (booking) => {
-    setRescheduleLoading(true);
-    setFeedbackBanner('');
-    try {
-      const [latest] = await getRescheduleRequestsApi(booking.booking_id);
-      if (latest?.status === 'PENDING_PAYMENT' && serverTimestamp(latest.holdExpiresAt) > Date.now()) {
-        navigate('/booking/payment?rescheduleId=' + latest.id);
-        return;
-      }
-      if (latest?.status === 'AWAITING_CONFIRMATION') {
-        navigate('/booking/payment?rescheduleId=' + latest.id);
-        return;
-      }
-      const deadline = await getRescheduleDeadlineApi(booking.booking_id);
-      await openRescheduleModal(booking, null, deadline);
-    } catch (error) {
-      setFeedbackBanner(error.response?.data?.message || 'Không tải được yêu cầu đổi lịch.');
-    } finally {
-      setRescheduleLoading(false);
+  const handleRescheduleClick = (booking) => {
+    const { reschedule } = booking;
+    if (reschedule?.pendingRequestId) {
+      navigate('/booking/payment?rescheduleId=' + reschedule.pendingRequestId);
+      return;
     }
+    if (!canRescheduleBooking(reschedule, nowMs)) return;
+    setFeedbackBanner('');
+    openRescheduleModal(booking, null, reschedule.deadline);
   };
 
   const handlePreviewQuote = async () => {
-    if (!rescheduleTarget || !selectedCourtId || !newPlayDate) return;
+    if (!rescheduleTarget || !selectedCourtId || !newPlayDate || deadlinePassed || rescheduleSubmitting) return;
+    clearQuote();
+    const controller = new AbortController();
+    quoteRequest.current = controller;
     setQuoteLoading(true);
-    setQuoteError('');
     try {
       const slot = {
         courtId: Number(selectedCourtId),
@@ -421,18 +444,18 @@ export default function MyBookingsPage() {
         startMinute: Number(startMin),
         endMinute: Number(endMin),
       };
-      const result = await previewRescheduleApi(rescheduleTarget.booking.booking_id, slot);
-      setQuote(result);
+      const result = await previewRescheduleApi(rescheduleTarget.booking.booking_id, slot, controller.signal);
+      if (!controller.signal.aborted) setQuote(result);
     } catch (err) {
-      setQuote(null);
-      setQuoteError(err.response?.data?.message || 'Slot mới không hợp lệ hoặc không khả dụng.');
+      if (!controller.signal.aborted) setQuoteError(err.response?.data?.message || 'Slot mới không hợp lệ hoặc không khả dụng.');
     } finally {
-      setQuoteLoading(false);
+      if (!controller.signal.aborted) setQuoteLoading(false);
     }
   };
 
   const handleConfirmReschedule = async () => {
-    if (!rescheduleTarget || !selectedCourtId || !newPlayDate || rescheduleSubmitting) return;
+    if (!rescheduleTarget || !selectedCourtId || !newPlayDate || rescheduleSubmitting ||
+        (!rescheduleTarget.affected && (!quote || deadlinePassed))) return;
     setRescheduleSubmitting(true);
     setQuoteError('');
     const slot = {
@@ -448,7 +471,7 @@ export default function MyBookingsPage() {
         setFeedbackBanner(result.choice === 'RESCHEDULE'
           ? `Booking ${rescheduleTarget.booking.booking_code} đã được đổi slot miễn phí.`
           : `Đã quá giờ chơi. Hệ thống tự cộng ${result.compensationPoints ?? 0} điểm bồi hoàn.`);
-        setRescheduleTarget(null);
+        closeRescheduleModal();
         const [items, affectedList] = await Promise.all([getMyBookingsApi(), getMyAffectedBookingsApi()]);
         setExpandedPackages([]);
         setBookings(items);
@@ -460,18 +483,22 @@ export default function MyBookingsPage() {
       } else {
         // UC21: Đổi lịch bình thường
         const req = await createRescheduleApi(rescheduleTarget.booking.booking_id, slot);
-        if (req.extraAmount === 0 || req.status === 'APPROVED') {
+        if (req.status === 'APPROVED') {
           setFeedbackBanner(`Đổi lịch thành công cho booking ${rescheduleTarget.booking.booking_code}!`);
-          setRescheduleTarget(null);
+          closeRescheduleModal();
           const items = await getMyBookingsApi();
           setExpandedPackages([]);
           setBookings(items);
-        } else {
-          setRescheduleTarget(null);
+        } else if (req.status === 'PENDING_PAYMENT' || req.status === 'AWAITING_CONFIRMATION') {
+          closeRescheduleModal();
           navigate('/booking/payment?rescheduleId=' + req.id);
+        } else {
+          setQuote(null);
+          setQuoteError('Đổi lịch không thành công. Booking giữ giờ cũ. (MSG65)');
         }
       }
     } catch (err) {
+      setQuote(null);
       setQuoteError(err.response?.data?.message || 'Không thể tạo yêu cầu đổi lịch.');
     } finally {
       setRescheduleSubmitting(false);
@@ -812,14 +839,13 @@ export default function MyBookingsPage() {
                               Mở kèo
                             </button>
                           )}
-                          <button
+                          {(item.reschedule?.pendingRequestId || canRescheduleBooking(item.reschedule, nowMs)) && <button
                             type="button"
                             className={styles.outlineActionBtn}
                             onClick={() => handleRescheduleClick(item)}
-                            disabled={rescheduleLoading}
                           >
-                            Đổi lịch
-                          </button>
+                            {item.reschedule?.pendingRequestId ? 'Xem phụ thu đổi lịch' : 'Đổi lịch'}
+                          </button>}
                           {item.can_cancel && (
                             <button
                               type="button"
@@ -843,12 +869,13 @@ export default function MyBookingsPage() {
 
       {detailTarget && (
         <HistoryDetailDialog key={detailTarget.booking_type + ':' + detailTarget.booking_id}
-          item={detailTarget} now={nowMs} onClose={() => setDetailTarget(null)} onPayment={handleGoToPayment} />
+          item={detailTarget} now={nowMs} onClose={() => setDetailTarget(null)} onPayment={handleGoToPayment}
+          onReschedule={(booking) => { setDetailTarget(null); handleRescheduleClick(booking); }} />
       )}
 
       {/* UC21: Modal chọn slot mới & xem chênh lệch đổi lịch */}
       {rescheduleTarget && (
-        <Modal labelledBy="reschedule-title" busy={rescheduleSubmitting} onDismiss={() => setRescheduleTarget(null)}>
+        <Modal labelledBy="reschedule-title" busy={rescheduleSubmitting} onDismiss={closeRescheduleModal}>
           <div className={styles.modalCard}>
             <h3 id="reschedule-title" className={styles.modalTitle}>
               {rescheduleTarget.affected ? 'Đổi slot miễn phí' : 'Đổi lịch đặt sân'} — {rescheduleTarget.booking.booking_code}
@@ -858,20 +885,21 @@ export default function MyBookingsPage() {
             </p>
 
             {rescheduleDeadline && <p>Hạn đổi lịch: {new Date(serverTimestamp(rescheduleDeadline))
-              .toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</p>}
+              .toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })} (MSG61)</p>}
             <div className={styles.formGroup}>
               <label className={styles.formLabel} htmlFor="new-court">Chọn sân mới</label>
               <select id="new-court"
                 className={styles.formInput}
                 value={selectedCourtId}
-                onChange={(e) => { setSelectedCourtId(e.target.value); setQuote(null); }}
+                disabled={courtsLoading || rescheduleSubmitting}
+                onChange={(e) => { setSelectedCourtId(e.target.value); clearQuote(); }}
               >
                 {availableCourts.length > 0 ? (
                   availableCourts.map((c) => (
                     <option key={c.id} value={c.id}>{c.name || ('Sân ' + c.id)}</option>
                   ))
                 ) : (
-                  <option value="">Không có sân khả dụng</option>
+                  <option value="">{courtsLoading ? 'Đang tải sân…' : 'Không có sân khả dụng'}</option>
                 )}
               </select>
             </div>
@@ -883,7 +911,8 @@ export default function MyBookingsPage() {
                 className={styles.formInput}
                 value={newPlayDate}
                 min={today()}
-                onChange={(e) => { setNewPlayDate(e.target.value); setQuote(null); }}
+                disabled={rescheduleSubmitting}
+                onChange={(e) => { setNewPlayDate(e.target.value); clearQuote(); }}
               />
             </div>
 
@@ -893,11 +922,12 @@ export default function MyBookingsPage() {
                 <select
                   className={styles.formInput}
                   value={startMin}
+                  disabled={rescheduleSubmitting}
                   onChange={(e) => {
                     const nextStart = Number(e.target.value);
                     setStartMin(nextStart);
                     if (endMin <= nextStart) setEndMin(nextStart + 30);
-                    setQuote(null);
+                    clearQuote();
                   }}
                 >
                   {TIME_OPTIONS.filter((t) => t.value < 1440).map((t) => (
@@ -911,7 +941,8 @@ export default function MyBookingsPage() {
                 <select
                   className={styles.formInput}
                   value={endMin}
-                  onChange={(e) => { setEndMin(Number(e.target.value)); setQuote(null); }}
+                  disabled={rescheduleSubmitting}
+                  onChange={(e) => { setEndMin(Number(e.target.value)); clearQuote(); }}
                 >
                   {TIME_OPTIONS.filter((t) => t.value > startMin).map((t) => (
                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -926,13 +957,15 @@ export default function MyBookingsPage() {
                 className={styles.outlineActionBtn}
                 style={{ width: '100%' }}
                 onClick={handlePreviewQuote}
-                disabled={quoteLoading || !selectedCourtId}
+                disabled={quoteLoading || !selectedCourtId || !newPlayDate || Boolean(deadlinePassed) || rescheduleSubmitting}
               >
                 {quoteLoading ? 'Đang kiểm tra...' : '🔍 Kiểm tra chênh lệch giá'}
               </button>
             </div>}
 
-            {quoteError && <p className={styles.errorBanner} style={{ margin: '8px 0' }}>{quoteError}</p>}
+            {(deadlinePassed || quoteError) && <p role="alert" className={styles.errorBanner} style={{ margin: '8px 0' }}>
+              {deadlinePassed ? 'Không đổi lịch được: đã quá hạn đổi lịch. (MSG62)' : quoteError}
+            </p>}
 
             {quote && (
               <div className={styles.quoteBox}>
@@ -956,12 +989,13 @@ export default function MyBookingsPage() {
                 </div>
                 {quote.noDifferenceRefund && (
                   <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
-                    * Slot mới rẻ hơn: Hệ thống không hoàn lại tiền chênh lệch theo quy định BR08.
+                    Slot mới có giá thấp hơn. Phần chênh lệch không được hoàn lại. (MSG64)
                   </p>
                 )}
                 {quote.extraAmount > 0 && (
                   <p style={{ margin: '4px 0 0', fontSize: 12, color: '#b45309' }}>
-                    * Cần hoàn tất chuyển khoản phụ thu trong vòng 5 phút sau khi bấm xác nhận (BR32).
+                    Booking giữ lịch cũ cho đến khi phụ thu được xác nhận trước {new Date(serverTimestamp(quote.approveDeadline))
+                      .toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}. (MSG63)
                   </p>
                 )}
               </div>
@@ -971,7 +1005,7 @@ export default function MyBookingsPage() {
               <button
                 type="button"
                 className={styles.outlineActionBtn}
-                onClick={() => setRescheduleTarget(null)}
+                onClick={closeRescheduleModal}
                 disabled={rescheduleSubmitting}
               >
                 Đóng
@@ -980,7 +1014,7 @@ export default function MyBookingsPage() {
                 type="button"
                 className={styles.primaryActionBtn}
                 onClick={handleConfirmReschedule}
-                disabled={!selectedCourtId || !newPlayDate || (!rescheduleTarget.affected && !quote) || rescheduleSubmitting}
+                disabled={!selectedCourtId || !newPlayDate || (!rescheduleTarget.affected && (!quote || Boolean(deadlinePassed))) || rescheduleSubmitting}
               >
                 {rescheduleSubmitting ? 'Đang xử lý...' : (rescheduleTarget.affected ? 'Xác nhận đổi slot' : (quote?.extraAmount > 0 ? 'Tiếp tục thanh toán phụ thu' : 'Xác nhận đổi lịch'))}
               </button>

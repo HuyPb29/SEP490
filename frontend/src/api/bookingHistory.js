@@ -17,6 +17,10 @@ export function bookingTimestamp(value) {
   return value ? Date.parse(/Z$|[+-]\d{2}:\d{2}$/.test(value) ? value : value + '+07:00') : NaN
 }
 
+export function canRescheduleBooking(reschedule, now) {
+  return reschedule?.canReschedule === true && bookingTimestamp(reschedule.deadline) > now
+}
+
 export async function getHistoryDetail(item, signal) {
   const path = item.booking_type === 'package' ? '/booking-packages/' : '/bookings/'
   const { data } = await api.get(path + item.booking_id, { signal })
