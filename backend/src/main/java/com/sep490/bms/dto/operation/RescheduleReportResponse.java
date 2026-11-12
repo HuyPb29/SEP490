@@ -5,6 +5,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -38,6 +40,7 @@ public class RescheduleReportResponse {
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+    @Schema(name = "RescheduleReportDayItem")
     public static class DayItem {
         private LocalDate date;
         private long requests;
