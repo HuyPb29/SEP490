@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import WalkInBookingDialog from './WalkInBookingDialog'
+import ReconciliationDialog from './ReconciliationDialog'
 import styles from './StaffDashboardPage.module.css'
 
 const initialTransactions = [
@@ -56,6 +57,8 @@ const initialStats = {
 
 export default function StaffDashboardPage() {
   const navigate = useNavigate()
+  const { search } = useLocation()
+  const [showReconciliation, setShowReconciliation] = useState(() => new URLSearchParams(search).get('modal') === 'reconciliation')
   const [transactions] = useState(initialTransactions)
   const [stats] = useState(initialStats)
   const [banners] = useState({ urgent: true, courtEnding: true })
@@ -117,7 +120,7 @@ export default function StaffDashboardPage() {
             <span>Confirm Payments</span>
             <span className={styles.paymentBadge}>{stats.awaitingConfirmation}</span>
           </button>
-          <button className={styles.navItem} type="button">Daily Reconciliation</button>
+          <button className={styles.navItem} type="button" onClick={() => setShowReconciliation(true)}>Đối soát cuối ngày</button>
           <button className={styles.navItem} type="button">Maintenance Requests</button>
           <button className={styles.navItem} type="button" onClick={() => navigate('/staff/complaints')}>Khiếu nại</button>
         </nav>
@@ -226,6 +229,8 @@ export default function StaffDashboardPage() {
           </article>
         </section>
       </main>
+
+      {showReconciliation && <ReconciliationDialog onClose={() => setShowReconciliation(false)} />}
 
       {showCounterBooking && (
         <WalkInBookingDialog onClose={() => setShowCounterBooking(false)} />

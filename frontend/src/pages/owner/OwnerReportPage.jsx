@@ -164,6 +164,7 @@ export default function OwnerReportPage() {
         <Link className={styles.navItem} to="/owner/workspace">Quản lý địa điểm</Link>
         <Link className={styles.navItem} to="/owner/courts-pricing">Sân và bảng giá</Link>
         <Link className={`${styles.navItem} ${styles.navItemActive}`} to="/owner/reports" aria-current="page">Báo cáo</Link>
+        <Link className={styles.navItem} to="/owner/reconciliations">Đối soát doanh thu</Link>
       </nav>
     </aside>
     <main className={styles.main}>

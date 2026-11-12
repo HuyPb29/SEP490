@@ -29,6 +29,7 @@ import WorkspaceNav from './components/navigation/WorkspaceNav'
 const PlayerComplaintsPage = lazy(() => import('./pages/feedback/CourtComplaintsPage')
   .then((module) => ({ default: module.PlayerComplaintsPage })))
 const CourtComplaintsPage = lazy(() => import('./pages/feedback/CourtComplaintsPage'))
+const OwnerReconciliationPage = lazy(() => import('./pages/owner/OwnerReconciliationPage'))
 const OwnerReportPage = lazy(() => import('./pages/owner/OwnerReportPage'))
 const OwnerWorkspace = lazy(() => import('./pages/owner/OwnerWorkspace'))
 const MultiSessionBookingPage = lazy(() => import('./pages/booking/MultiSessionBookingPage'))
@@ -133,6 +134,7 @@ function AppContent() {
           {/* UC19 và UC21: Xác nhận thanh toán và phụ thu */}
           <Route path="/staff/confirm-payments" element={<RequireRole roles={['staff', 'owner']} selectedVenue><StaffConfirmPaymentPage /></RequireRole>} />
           {/* UC35: Báo cáo vận hành và doanh thu */}
+          <Route path="/owner/reconciliations" element={<RequireRole roles={['owner']} selectedVenue><OwnerReconciliationPage /></RequireRole>} />
           <Route path="/owner/reports" element={<RequireRole roles={['owner']} selectedVenue><OwnerReportPage /></RequireRole>} />
           {/* UC07-09: Sân và bảng giá của Owner */}
           <Route path="/owner/courts-pricing" element={<RequireRole roles={['owner']} selectedVenue><OwnerCourtsPricingPage /></RequireRole>} />
