@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { getFacilityDetailAndSchedule } from '../../api/facilityApi';
+import VenueInformation from './VenueInformation';
 import styles from './FacilityDetailPage.module.css';
 
 export default function FacilityDetailPage() {
@@ -15,6 +16,7 @@ export default function FacilityDetailPage() {
   );
   const [facility, setFacility] = useState(null);
   const [loadError, setLoadError] = useState('');
+  const [reload, setReload] = useState(0);
   const [timeHeaders, setTimeHeaders] = useState([]);
   const [courts, setCourts] = useState([]);
 
@@ -28,7 +30,7 @@ export default function FacilityDetailPage() {
     const loadData = async () => {
       const res = await getFacilityDetailAndSchedule(Number(id), playDate);
       if (res?.success) {
-        setLoadError('');
+        setLoadError(res.data.scheduleError || '');
         setFacility(res.data.facility);
         setTimeHeaders(res.data.time_headers);
         setCourts(res.data.courts);
@@ -55,7 +57,7 @@ export default function FacilityDetailPage() {
       }
     };
     loadData();
-  }, [id, playDate]);
+  }, [id, playDate, reload]);
 
   // UC14, BR64 (D164): chọn tùy ý các slot trống trong ngày, trên một hoặc nhiều sân, liền nhau hay không.
   // Các slot liền nhau trên một sân thành một booking; nhiều dải thì gom thành một đơn đặt lẻ.
@@ -227,6 +229,7 @@ export default function FacilityDetailPage() {
             </div>
           </div>
 
+          {loadError && <p role="alert">{loadError}</p>}
           <div className={styles.legendRow}>
             <span className={styles.legendItem}>
               <i className={`${styles.legendBox} ${styles.boxAvailable}`} /> Available
@@ -318,49 +321,7 @@ export default function FacilityDetailPage() {
           </div>
         </section>
 
-        <section className={styles.bottomGrid}>
-          <div className={styles.bottomCard}>
-            <h2 className={styles.sectionTitle}>Price Table</h2>
-            <table className={styles.priceTable}>
-              <thead>
-                <tr>
-                  <th>Time Range</th>
-                  <th>Mon – Fri</th>
-                  <th>Sat, Sun</th>
-                </tr>
-              </thead>
-              <tbody>
-                {facility.price_table.map((row) => (
-                  <tr key={row.time_range}>
-                    <td>{row.time_range}</td>
-                    <td>{row.weekday_price}</td>
-                    <td>{row.weekend_price}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className={styles.bottomCard}>
-            <h2 className={styles.sectionTitle}>Reviews</h2>
-            <div className={styles.reviewList}>
-              {facility.reviews.map((rev) => (
-                <div key={rev.review_id} className={styles.reviewItem}>
-                  <div className={styles.reviewerHeader}>
-                    <strong>{rev.reviewer_name}</strong> ·{' '}
-                    <span className={styles.stars}>
-                      {'★'.repeat(rev.stars)}{'☆'.repeat(5 - rev.stars)}
-                    </span>
-                  </div>
-                  <p className={styles.reviewComment}>{rev.comment}</p>
-                  {rev.owner_reply && (
-                    <div className={styles.ownerReplyBox}>{rev.owner_reply}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+        <VenueInformation key={facility.facility_id} facility={facility} retryVenue={() => setReload((value) => value + 1)} />
       </main>
     </div>
   );

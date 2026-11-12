@@ -1,212 +1,94 @@
-import axios from 'axios';
+import api from './index'
 
-// Toggle kết nối Backend thật/giả lập
-export const USE_MOCK_DATA = false;
-// UC11 đã nối Backend thật; UC12, UC13 vẫn dùng USE_MOCK_DATA
-function mapLocationSummary(location) {
-  return {
-    facility_id: location.id,
-    facility_name: location.name,
-    address: location.address,
-    latitude: location.latitude,
-    longitude: location.longitude,
-    distance_km: location.distanceKm ?? null,
-  };
-}
+const weekdays = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật']
+const amount = new Intl.NumberFormat('vi-VN')
+const body = (response) => response.data.data
 
 export async function searchFacilities({ keyword = '', signal } = {}) {
   const params = keyword.trim() ? { q: keyword.trim() } : {}
-  const response = await axios.get('/api/locations', { params, signal })
-  return { success: true, data: { items: response.data.data.map(mapLocationSummary) } }
+  const response = await api.get('/locations', { params, signal })
+  return { success: true, data: { items: body(response).map((venue) => ({
+    ...venue, facility_id: venue.id, facility_name: venue.name,
+  })) } }
 }
 
-// Mock data & API cho UC12 & UC13
-const MOCK_FACILITY_DETAILS = {
-  1: {
-    facility_id: 1,
-    facility_name: 'Smash Arena',
-    rating: 4.9,
-    review_count: 128,
-    address: '12 Tran Thai Tong, Cau Giay, Hanoi',
-    open_hours: '5:00–23:00 daily',
-    courts_count: 8,
-    contact_phone: '0912 345 678',
-    price_table: [
-      { time_range: '5:00 – 16:00', weekday_price: '60,000 VND / slot', weekend_price: '70,000 VND / slot' },
-      { time_range: '16:00 – 23:00', weekday_price: '80,000 VND / slot', weekend_price: '90,000 VND / slot' },
-    ],
-    reviews: [
-      {
-        review_id: 101,
-        reviewer_name: 'Tuan Nguyen',
-        stars: 5,
-        comment: 'New court mats, non-glare lighting. Staff verified payment quickly.',
-        owner_reply: 'Owner: Thank you, see you again!',
-      },
-      {
-        review_id: 102,
-        reviewer_name: 'Ha Linh',
-        stars: 4,
-        comment: 'Peak hours are a bit hard to book, should book a few days in advance.',
-        owner_reply: null,
-      },
-    ],
-  },
-};
+export async function getVenueReviews(id, page, signal) {
+  const response = await api.get('/locations/' + id + '/reviews', { params: { page, size: 20 }, signal })
+  const result = body(response)
+  return { ...result, content: result.content.filter((review) => !review.hidden) }
+}
 
-const TIME_HEADERS = ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'];
-
-const MOCK_COURT_SCHEDULE = [
-  {
-    court_id: 1,
-    court_name: 'Court 1',
-    slots: [
-      { time: '17:00', status: 'booked', price: 80000 },
-      { time: '17:30', status: 'booked', price: 80000 },
-      { time: '18:00', status: 'booked', price: 80000 },
-      { time: '18:30', status: 'booked', price: 80000 },
-      { time: '19:00', status: 'available', price: 80000 },
-      { time: '19:30', status: 'available', price: 80000 },
-      { time: '20:00', status: 'available', price: 80000 },
-      { time: '20:30', status: 'available', price: 80000 },
-    ],
-  },
-  {
-    court_id: 2,
-    court_name: 'Court 2',
-    slots: [
-      { time: '17:00', status: 'available', price: 80000 },
-      { time: '17:30', status: 'available', price: 80000 },
-      { time: '18:00', status: 'available', price: 80000 },
-      { time: '18:30', status: 'available', price: 80000 },
-      { time: '19:00', status: 'available', price: 80000, defaultSelected: true },
-      { time: '19:30', status: 'available', price: 80000, defaultSelected: true },
-      { time: '20:00', status: 'holding', price: 80000 },
-      { time: '20:30', status: 'holding', price: 80000 },
-    ],
-  },
-  {
-    court_id: 3,
-    court_name: 'Court 3',
-    slots: [
-      { time: '17:00', status: 'maintenance', price: 80000 },
-      { time: '17:30', status: 'maintenance', price: 80000 },
-      { time: '18:00', status: 'maintenance', price: 80000 },
-      { time: '18:30', status: 'maintenance', price: 80000 },
-      { time: '19:00', status: 'maintenance', price: 80000 },
-      { time: '19:30', status: 'maintenance', price: 80000 },
-      { time: '20:00', status: 'available', price: 80000 },
-      { time: '20:30', status: 'available', price: 80000 },
-    ],
-  },
-  {
-    court_id: 4,
-    court_name: 'Court 4',
-    slots: [
-      { time: '17:00', status: 'available', price: 80000 },
-      { time: '17:30', status: 'available', price: 80000 },
-      { time: '18:00', status: 'booked', price: 80000 },
-      { time: '18:30', status: 'booked', price: 80000 },
-      { time: '19:00', status: 'booked', price: 80000 },
-      { time: '19:30', status: 'booked', price: 80000 },
-      { time: '20:00', status: 'available', price: 80000 },
-      { time: '20:30', status: 'available', price: 80000 },
-    ],
-  },
-  {
-    court_id: 5,
-    court_name: 'Court 5',
-    slots: [
-      { time: '17:00', status: 'available', price: 80000 },
-      { time: '17:30', status: 'available', price: 80000 },
-      { time: '18:00', status: 'available', price: 80000 },
-      { time: '18:30', status: 'available', price: 80000 },
-      { time: '19:00', status: 'available', price: 80000 },
-      { time: '19:30', status: 'booked', price: 80000 },
-      { time: '20:00', status: 'booked', price: 80000 },
-      { time: '20:30', status: 'booked', price: 80000 },
-    ],
-  },
-];
-
-export async function getFacilityDetailAndSchedule(facilityId = 1, playDate = '2026-10-24') {
-  if (USE_MOCK_DATA) {
-    await new Promise((r) => setTimeout(r, 200));
-    const detail = MOCK_FACILITY_DETAILS[facilityId] || MOCK_FACILITY_DETAILS[1];
-    return {
-      success: true,
-      data: {
-        facility: detail,
-        play_date: playDate,
-        time_headers: TIME_HEADERS,
-        courts: MOCK_COURT_SCHEDULE,
-      },
-    };
+export async function getPublicVenue(id, signal) {
+  const path = '/locations/' + id
+  const [detailResponse, courtsResponse, ratingResponse] = await Promise.allSettled([
+    api.get(path, { signal }),
+    api.get(path + '/courts', { signal }),
+    api.get(path + '/review-summary', { signal }),
+  ])
+  if (detailResponse.status === 'rejected') throw detailResponse.reason
+  const detail = body(detailResponse.value)
+  const courts = courtsResponse.status === 'fulfilled' ? body(courtsResponse.value) : []
+  const rating = ratingResponse.status === 'fulfilled' ? body(ratingResponse.value) : null
+  const courtDetails = await Promise.allSettled(courts.map(({ id: courtId }) =>
+    api.get('/courts/' + courtId, { signal }).then(body)
+  ))
+  const priceTable = courtDetails.flatMap((result) => result.status === 'fulfilled'
+    ? (result.value.priceRules || []).map((rule) => ({
+      id: result.value.id + ':' + rule.id,
+      court_name: result.value.name,
+      days_label: rule.applyDays?.length ? [...rule.applyDays].sort((a, b) => a - b).map((day) => weekdays[day - 1]).join(', ') : 'Hằng ngày',
+      time_range: rule.startTime + ' – ' + rule.endTime,
+      price_label: amount.format(rule.pricePerSlot) + ' đ / 30 phút',
+      valid_from: rule.validFrom,
+      valid_to: rule.validTo,
+    }))
+    : [])
+  const hours = (detail.openingHours || []).map((entry) => ({
+    ...entry, dayName: weekdays[entry.dayOfWeek - 1],
+  }))
+  return {
+    ...detail,
+    facility_id: detail.id,
+    facility_name: detail.name,
+    contact_phone: detail.contactPhone,
+    open_hours: hours.map((entry) => entry.dayName + ': ' + entry.openTime + '–' + entry.closeTime).join(' · ') || 'Chưa cập nhật',
+    opening_hours_list: hours,
+    courts_list: courts,
+    courts_count: courts.length,
+    courts_error: courtsResponse.status === 'rejected',
+    price_error: courtsResponse.status === 'rejected' || courtDetails.some((result) => result.status === 'rejected'),
+    rating: rating?.averageRating ?? null,
+    review_count: rating?.reviewCount ?? 0,
+    price_table: priceTable,
   }
+}
 
-  // Backend returns ApiResponse<LocationDetailResponse> and ApiResponse<ScheduleResponse>.
-  try {
-    const [detailRes, scheduleRes] = await Promise.all([
-      axios.get(`/api/locations/${facilityId}`),
-      axios.get(`/api/locations/${facilityId}/schedules`, {
-        params: { date: playDate },
-      }),
-    ]);
+export async function getVenueSchedule(id, date, signal) {
+  const response = await api.get('/locations/' + id + '/schedules', { params: { date }, signal })
+  const schedule = body(response)
+  const courts = schedule.courts.map((court) => ({
+    court_id: court.courtId,
+    court_name: court.name,
+    slots: (court.slots || []).map((slot) => ({
+      time: slot.time,
+      status: slot.status.toLowerCase(),
+      price: slot.price,
+      bookingInfo: slot.bookerName || slot.bookerPhone || slot.note ? {
+        name: slot.bookerName,
+        phone: slot.bookerPhone,
+        note: slot.note,
+      } : null,
+    })),
+  }))
+  return { play_date: schedule.date, max_date: schedule.maxDate, time_headers: courts[0]?.slots.map((slot) => slot.time) || [], courts }
+}
 
-    const detail = detailRes.data?.data;
-    const schedule = scheduleRes.data?.data;
-    if (!detail || !Array.isArray(schedule?.courts)) {
-      throw new Error('Unexpected facility detail or schedule response.');
-    }
-
-    const mappedCourts = schedule.courts.map((court) => ({
-      court_id: court.courtId,
-      court_name: court.name,
-      slots: (court.slots || []).map((slot) => ({
-        time: slot.time,
-        status: String(slot.status || '').toLowerCase(),
-        price: slot.price ?? 0,
-        bookingInfo: slot.bookerName
-          ? {
-              name: slot.bookerName,
-              phone: slot.bookerPhone,
-              note: slot.note,
-            }
-          : null,
-      })),
-    }));
-
-    const openingHours = detail.openingHours || [];
-    const mappedFacility = {
-      ...detail,
-      facility_id: detail.id,
-      facility_name: detail.name,
-      contact_phone: detail.contactPhone,
-      open_hours: openingHours
-        .map((hours) => `${hours.openTime}–${hours.closeTime}`)
-        .join(', '),
-      courts_count: mappedCourts.length,
-      rating: detail.rating ?? null,
-      review_count: detail.reviewCount ?? 0,
-      price_table: detail.price_table || [],
-      reviews: detail.reviews || [],
-    };
-
-    return {
-      success: true,
-      data: {
-        facility: mappedFacility,
-        play_date: schedule.date || playDate,
-        time_headers: mappedCourts[0]?.slots.map((slot) => slot.time) || [],
-        courts: mappedCourts,
-      },
-    };
-  } catch (error) {
-    console.error("Error loading facility data:", error);
-    return {
-      success: false,
-      data: null,
-      error: error.response?.data?.message || error.message || 'Could not load facility details.',
-    };
+export async function getFacilityDetailAndSchedule(id, date, signal) {
+  const [venue, schedule] = await Promise.allSettled([getPublicVenue(id, signal), getVenueSchedule(id, date, signal)])
+  if (venue.status === 'rejected') return { success: false, error: venue.reason.response?.data?.message || 'Không tải được địa điểm.' }
+  const data = schedule.status === 'fulfilled' ? schedule.value : {
+    scheduleError: schedule.reason.response?.data?.message || 'Không tải được lịch sân.',
+    play_date: date, courts: [], time_headers: [],
   }
+  return { success: true, data: { ...data, facility: { ...venue.value, max_date: data.max_date } } }
 }
