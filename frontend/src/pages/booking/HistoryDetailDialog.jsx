@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import api, { apiErrorMessage } from '../../api'
 import { bookingStatusLabels, bookingTimestamp, canPayHistoryEntry, getHistoryDetail } from '../../api/bookingHistory'
+import { formatVnd } from '../../utils/formatters'
 import styles from './MyBookingsPage.module.css'
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' })
+const currency = { format: formatVnd }
 
 function DetailRow({ label, children }) {
   if (children == null || children === '') return null

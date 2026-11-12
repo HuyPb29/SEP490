@@ -6,87 +6,6 @@
 }
 
 /* Navbar */
-.navbar {
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-  height: 68px;
-  display: flex;
-  align-items: center;
-}
-
-.navContainer {
-  max-width: 1180px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 800;
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.brandIcon {
-  background: #0d8a52;
-  color: #ffffff;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-}
-
-.navLinks {
-  display: flex;
-  gap: 28px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.navLinks a {
-  text-decoration: none;
-  color: #334155;
-}
-
-.activeLink {
-  color: #0d8a52 !important;
-  font-weight: 600;
-}
-
-.userProfile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: #e6f4ed;
-  color: #0d8a52;
-  font-weight: 700;
-  font-size: 12.5px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.userName {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-/* Main Content */
 .mainContainer {
   max-width: 1140px;
   margin: 0 auto;
@@ -433,4 +352,20 @@
   .contentGrid {
     grid-template-columns: 1fr;
   }
+}
+.pageWrapper { background: var(--cw-bg); color: var(--cw-text); }
+.mainContainer { width: min(100% - 32px, 1160px); margin-inline: auto; }
+.pageTitle { font-size: clamp(1.65rem, 4vw, 2.8rem); letter-spacing: -.04em; }
+.card, .paymentCard { border-color: var(--cw-border); box-shadow: var(--cw-shadow); }
+.teamPill, .confirmBtn, .voucherBtn { min-height: 44px; }
+.confirmBtn, .voucherBtn { background: var(--cw-primary); }
+.confirmBtn:hover:not(:disabled), .voucherBtn:hover:not(:disabled) { background: var(--cw-primary-hover); }
+.totalValue, .discountValue { color: var(--cw-primary); }
+.infoValue { overflow-wrap: anywhere; }
+@media (min-width: 901px) { .paymentCard { position: sticky; top: 16px; } }
+@media (max-width: 560px) {
+  .mainContainer { padding-inline: 0; }
+  .infoGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .voucherRow, .pointsRow { flex-wrap: wrap; }
+  .voucherInput { min-width: 0; }
 }

@@ -1,10 +1,13 @@
 import { bookingTimestamp } from '../../api/bookingHistory';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, Navigate, useSearchParams } from 'react-router-dom';
-import { loadPayment, loadPaymentImage, submitPaymentProof } from '../../api/bookingPaymentApi';
-import { getSavedUser } from '../../api/session';
+import { useAuth } from '../../hooks/useAuth';
+import { usePaymentActions } from '../../hooks/useBooking';
 import { ReschedulePaymentDetail } from './RescheduleHistoryPage';
 import styles from './BookingPaymentPage.module.css';
+import { formatVnd } from '../../utils/formatters';
+import { CheckoutProgress, Feedback } from '../../components/common/WorkspacePrimitives';
+import { PublicHeader } from '../../components/layout/PublicLayout';
 
 // DR21: Dung lượng ảnh tối đa 5MB & chỉ nhận JPG, PNG
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -29,8 +32,17 @@ const STATUS_LABELS = {
 export default function BookingPaymentPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const [copyStatus, setCopyStatus] = useState('');
 
-  // --- VÁ LỖI BUTTERFINGERS ---
+  async function copyTransferField(value, label) {
+    try {
+      await navigator.clipboard.writeText(String(value));
+      setCopyStatus('Đã sao chép ' + label + '.');
+    } catch {
+      setCopyStatus('Không thể sao chép tự động. Bạn có thể chọn và sao chép trực tiếp.');
+    }
+  }
+
   // Chặn trình duyệt tự động mở file nếu người dùng lỡ tay thả file ra ngoài vùng dropzone
   useEffect(() => {
     const preventGlobalDrop = (e) => e.preventDefault();
@@ -46,7 +58,8 @@ export default function BookingPaymentPage() {
   const kind = params.has('rescheduleId') ? 'reschedule' : params.has('packageId') ? 'package' : 'booking';
   const id = params.get(kind + 'Id');
   const validId = /^[1-9]\d*$/.test(id || '');
-  const user = getSavedUser();
+  const { user } = useAuth();
+  const { isLatePaymentEligible, loadPayment, loadPaymentImage, submitPaymentProof } = usePaymentActions();
   const isPlayer = user?.role_code === 'player';
   const [bookingData, setBookingData] = useState(null);
   const [loadError, setLoadError] = useState('');
@@ -63,7 +76,7 @@ export default function BookingPaymentPage() {
       if (!controller.signal.aborted) setLoadError(error.response?.data?.message || 'Không tải được thông tin thanh toán.');
     });
     return () => controller.abort();
-  }, [id, isPlayer, kind, reload, validId]);
+  }, [id, isPlayer, kind, reload, validId, loadPayment]);
 
   const qrPath = bookingData?.instructions?.qrImageUrl;
   useEffect(() => {
@@ -79,7 +92,7 @@ export default function BookingPaymentPage() {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [qrPath]);
+  }, [qrPath, loadPaymentImage]);
   const qrUrl = qrImage?.path === qrPath ? qrImage?.url : '';
 
   // State chọn file ảnh chứng từ (DR21 / MSG106)
@@ -88,6 +101,29 @@ export default function BookingPaymentPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [toastSuccess, setToastSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const bookingId = bookingData?.bookingId;
+  const paymentId = bookingData?.paymentId;
+  const awaiting = bookingData?.awaiting;
+  const [eligiblePayment, setEligiblePayment] = useState(null);
+  useEffect(() => {
+    if (!awaiting || !bookingId || !paymentId) return undefined;
+    const controller = new AbortController();
+    const check = async () => {
+      try {
+        const eligible = await isLatePaymentEligible(bookingId, paymentId, controller.signal);
+        if (!controller.signal.aborted) setEligiblePayment(eligible ? paymentId : null);
+      } catch {
+        if (!controller.signal.aborted) setEligiblePayment(null);
+      }
+    };
+    check();
+    const timerId = setInterval(check, 30_000);
+    return () => {
+      controller.abort();
+      clearInterval(timerId);
+    };
+  }, [awaiting, bookingId, paymentId, isLatePaymentEligible]);
 
   const trackStatus = bookingData && ['HOLDING', 'PENDING_PAYMENT', 'AWAITING_CONFIRMATION', 'RESUBMIT_REQUESTED'].includes(bookingData.status);
   useEffect(() => {
@@ -108,7 +144,7 @@ export default function BookingPaymentPage() {
     };
     timer = setTimeout(checkStatus, 5_000);
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [trackStatus, submitting, kind, id]);
+  }, [trackStatus, submitting, kind, id, loadPayment]);
 
   const deadline = bookingTimestamp(bookingData?.deadline);
   useEffect(() => {
@@ -158,7 +194,7 @@ export default function BookingPaymentPage() {
   };
 
   const handleDragOver = (event) => {
-    event.preventDefault(); // Chặn default để cho phép thả vào dropzone
+    event.preventDefault();
     setIsDragging(true);
   };
 
@@ -168,7 +204,7 @@ export default function BookingPaymentPage() {
   };
 
   const handleDrop = (event) => {
-    event.preventDefault(); // Chặn hành vi mở ảnh mặc định của trình duyệt
+    event.preventDefault();
     setIsDragging(false);
     const file = event.dataTransfer.files?.[0];
     validateAndSetFile(file);
@@ -189,7 +225,7 @@ export default function BookingPaymentPage() {
         canPay: false,
         awaiting: result.status === 'AWAITING_CONFIRMATION',
         status: result.status,
-        paymentId: kind === 'reschedule' ? current.paymentId : result.id ?? current.paymentId,
+        paymentId: kind === 'reschedule' ? current.paymentId : (result.id ?? current.paymentId),
       }));
       setSelectedFile(null);
       if (result.status !== 'EXPIRED') {
@@ -214,47 +250,33 @@ export default function BookingPaymentPage() {
 
   if (!validId) return <Navigate to="/my-bookings" replace />;
   if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/payment?' + params.toString() }} replace />;
-  if (!isPlayer) return <p role="alert">Chỉ tài khoản Player được thanh toán booking.</p>;
-  if (!bookingData) return <main className={styles.mainContainer}>
-    <p role={loadError ? 'alert' : 'status'}>{loadError || 'Đang tải thông tin thanh toán…'}</p>
-    {loadError && <><button type="button" onClick={() => { setLoadError(''); setReload((value) => value + 1); }}>Thử lại</button> <Link to="/my-bookings">Quay lại lịch sử booking</Link></>}
-  </main>;
+  if (!isPlayer) return <p role="alert">Chỉ tài khoản Người chơi được thanh toán đặt sân.</p>;
+  if (!bookingData) return <div className="cw-workspace"><PublicHeader user={user} /><main className={styles.mainContainer}>
+    <Feedback tone={loadError ? 'error' : 'info'}>{loadError || 'Đang tải thông tin thanh toán…'}
+      {loadError && <>
+        <button className="cw-secondary" type="button" onClick={() => { setLoadError(''); setReload((value) => value + 1); }}>Thử lại</button>
+        <Link className="cw-secondary" to="/my-bookings">Về lịch đặt sân</Link>
+      </>}
+    </Feedback>
+  </main></div>;
 
   const isExpired = bookingData.status === 'EXPIRED' || (bookingData.canPay && remainingSeconds === 0);
   const isConfirmedWait = bookingData.awaiting;
   const isConfirmedDone = ['CONFIRMED', 'APPROVED', 'IN_USE', 'COMPLETED'].includes(bookingData.status);
   const isRejected = ['PAYMENT_REJECTED', 'REJECTED'].includes(bookingData.status);
-  const bookingId = bookingData.bookingId;
   const finalAmount = bookingData.amount;
   const bankInfo = bookingData.instructions ?? {};
 
   return (
-    <div className={styles.pageWrapper}>
-      {/* Top Navbar */}
-      <header className={styles.navbar}>
-        <div className={styles.navContainer}>
-          <div className={styles.brand} onClick={() => navigate('/')}>
-            <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>Courtly</span>
-          </div>
-
-          <nav className={styles.navLinks}>
-            <Link to="/">Find Courts</Link>
-            <Link to="/open-matches">Open Matches</Link>
-            <Link to="/my-bookings" className={styles.activeLink}>
-              My Bookings
-            </Link>
-          </nav>
-
-          <div className={styles.userProfile}>
-            <span className={styles.avatar}>{user.full_name?.charAt(0)}</span>
-            <span className={styles.userName}>{user.full_name}</span>
-          </div>
-        </div>
-      </header>
+    <div className={`${styles.pageWrapper} cw-workspace`}>
+      <PublicHeader user={user} />
 
       <main className={styles.mainContainer}>
-        {/* BR03 / P02 / MSG32 / MSG33: Thanh đếm ngược thời gian giữ chỗ 5 phút */}
+        <CheckoutProgress surcharge={kind === 'reschedule'} current={bookingData.canPay || isExpired ? 1 : 2} />
+        <h1 className={styles.pageTitle}>{kind === 'reschedule' ? 'Thanh toán phụ thu' : 'Thanh toán đặt sân'}</h1>
+        <p className={styles.paymentReference}>Mã giao dịch đặt sân <strong>{bookingData.code}</strong></p>
+
+        {/* BR03 / P02 / MSG32 / MSG33: Thanh đếm ngược hoặc trạng thái giao dịch */}
         {isConfirmedWait ? (
           <div className={styles.confirmedBanner}>
             <span>
@@ -265,7 +287,7 @@ export default function BookingPaymentPage() {
               className={styles.backHomeBtn}
               onClick={() => navigate('/my-bookings')}
             >
-              Go to My Bookings
+              Về lịch đặt sân
             </button>
           </div>
         ) : isConfirmedDone ? (
@@ -290,12 +312,12 @@ export default function BookingPaymentPage() {
               </div>
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Số tiền phải thu</span>
-                <strong className={styles.bankValue}>{Number(bookingData.amount || 0).toLocaleString('vi-VN')} VND</strong>
+                <strong className={styles.bankValue}>{formatVnd(Number(bookingData.amount || 0))}</strong>
               </div>
               {bookingData.receivedAmount != null && (
                 <div className={styles.bankRow}>
                   <span className={styles.bankLabel}>Số tiền đã ghi nhận</span>
-                  <strong className={styles.bankValue}>{Number(bookingData.receivedAmount).toLocaleString('vi-VN')} VND</strong>
+                  <strong className={styles.bankValue}>{formatVnd(Number(bookingData.receivedAmount))}</strong>
                 </div>
               )}
               {bookingData.confirmedAt && (
@@ -336,27 +358,6 @@ export default function BookingPaymentPage() {
               </button>
             </div>
           </div>
-        ) : isRejected ? (
-          <div className={styles.expiredBanner}>
-            <span>
-              <strong>Thanh toán đã bị từ chối. (MSG51)</strong>
-              {bookingData.rejectReason ? ` Lý do: ${bookingData.rejectReason}` : ''}
-            </span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {bookingId && (
-                <Link className="cw-secondary" to={`/my-complaints?bookingId=${bookingId}`}>
-                  Gửi khiếu nại
-                </Link>
-              )}
-              <button
-                type="button"
-                className={styles.backHomeBtn}
-                onClick={() => navigate('/my-bookings')}
-              >
-                Về lịch đặt sân
-              </button>
-            </div>
-          </div>
         ) : isExpired ? (
           <div className={styles.expiredBanner}>
             <span>{bookingData.resubmitting
@@ -369,26 +370,39 @@ export default function BookingPaymentPage() {
             <div className={styles.holdBannerLeft}>
               <span className={styles.clockIcon}>🕒</span>
               <span>
-                {bookingData.reason || 'Please transfer funds and upload the receipt before the deadline.'}
+                {bookingData.reason
+                  ? `Yêu cầu bổ sung chứng từ: ${bookingData.reason}`
+                  : 'Chuyển khoản và gửi chứng từ trước khi hết hạn.'}
                 {bookingData.resubmitting && bookingData.resubmitsLeft != null &&
                   (bookingData.resubmitsLeft > 0 ? ' · Còn ' + bookingData.resubmitsLeft + ' lượt bổ sung'
                     : ' · Yêu cầu bổ sung cuối đang mở')}
+                {bookingData.resubmitting && bookingData.deadline &&
+                  ` · Hạn gửi lại: ${bookingData.deadline.replace('T', ' ')}`}
               </span>
             </div>
             {remainingSeconds !== null && <strong className={styles.countdownText}>{formatCountdown(remainingSeconds)}</strong>}
           </div>
-        ) : <p role="status">Trạng thái: {bookingData.status}</p>}
+        ) : <p role="status">Trạng thái: {STATUS_LABELS[bookingData.status] || bookingData.status}</p>}
 
-        <h1 className={styles.pageTitle}>Payment · {bookingData.code}</h1>
+        {bookingData.resubmitting && bookingData.receivedAmount > 0 &&
+          <Feedback tone="warning">
+            Đã ghi nhận {formatVnd(Number(bookingData.receivedAmount))} trước đó. Vui lòng chuyển thêm phần còn thiếu{' '}
+            <strong>{formatVnd(Number(bookingData.amount))}</strong> và gửi lại chứng từ.
+          </Feedback>}
+        {awaiting && paymentId && eligiblePayment === paymentId &&
+          <p><Link to={`/my-complaints?bookingId=${bookingId}&paymentId=${paymentId}`}>
+            Gửi khiếu nại xác nhận thanh toán trễ
+          </Link></p>}
         {kind === 'reschedule' && bookingData.paymentId &&
           <ReschedulePaymentDetail paymentId={bookingData.paymentId} />}
 
         {bookingData.canPay && !isExpired && <div className={styles.contentGrid}>
           {/* CỘT TRÁI: Mã QR & Thông tin tài khoản nhận (DR28, FR17, FR55) */}
           <section className={styles.qrCard}>
-            <span className={styles.amountLabel}>Amount to transfer</span>
+            <h2 className={styles.cardTitle}>Thông tin chuyển khoản</h2>
+            <span className={styles.amountLabel}>{bookingData.resubmitting && bookingData.receivedAmount > 0 ? 'Số tiền còn thiếu' : 'Số tiền cần chuyển'}</span>
             <strong className={styles.amountValue}>
-              {finalAmount.toLocaleString('vi-VN')} VND
+              {formatVnd(finalAmount)}
             </strong>
 
             {qrUrl ? (
@@ -404,35 +418,40 @@ export default function BookingPaymentPage() {
 
             <div className={styles.bankInfoList}>
               <div className={styles.bankRow}>
-                <span className={styles.bankLabel}>Bank</span>
+                <span className={styles.bankLabel}>Ngân hàng</span>
                 <strong className={styles.bankValue}>
                   {bankInfo.bankName || '—'}
                 </strong>
               </div>
               <div className={styles.bankRow}>
-                <span className={styles.bankLabel}>Account number</span>
+                <span className={styles.bankLabel}>Số tài khoản</span>
                 <strong className={styles.bankValue}>
                   {bankInfo.bankAccountNo || '—'}
                 </strong>
+                {bankInfo.bankAccountNo && <button type="button" className="cw-secondary" aria-label="Sao chép số tài khoản"
+                  onClick={() => copyTransferField(bankInfo.bankAccountNo, 'số tài khoản')}>Sao chép</button>}
               </div>
               <div className={styles.bankRow}>
-                <span className={styles.bankLabel}>Account holder</span>
+                <span className={styles.bankLabel}>Chủ tài khoản</span>
                 <strong className={styles.bankValue}>
                   {bankInfo.bankAccountHolder || '—'}
                 </strong>
               </div>
               <div className={styles.bankRow}>
-                <span className={styles.bankLabel}>Transfer content</span>
+                <span className={styles.bankLabel}>Nội dung chuyển khoản</span>
                 <strong className={styles.bankValue}>
                   {bookingData.code}
                 </strong>
+                <button type="button" className="cw-secondary" aria-label="Sao chép nội dung chuyển khoản"
+                  onClick={() => copyTransferField(bookingData.code, 'nội dung chuyển khoản')}>Sao chép</button>
               </div>
+              {copyStatus && <Feedback>{copyStatus}</Feedback>}
             </div>
           </section>
 
           {/* CỘT PHẢI: Tải lên ảnh chứng từ chuyển khoản (DR21, MSG106, BR34, P06) */}
           <section className={styles.uploadCard}>
-            <h2 className={styles.cardTitle}>Upload transfer receipt</h2>
+            <h2 className={styles.cardTitle}>Gửi chứng từ chuyển khoản</h2>
 
             <input
               ref={fileInputRef}
@@ -445,26 +464,20 @@ export default function BookingPaymentPage() {
               onChange={handleFileChange}
             />
 
-            <div
-              role="button"
-              tabIndex={0}
+            <button type="button"
               className={`${styles.dropzone} ${isDragging ? styles.dropzoneDragging : ''}`}
               onClick={() => fileInputRef.current?.click()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
-              }}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
               <span className={styles.uploadIcon}>↑</span>
               <strong className={styles.dropzoneTitle}>
-                Drag and drop or click to select an image
+                Chọn ảnh hoặc kéo thả vào đây
               </strong>
-              <span className={styles.dropzoneSub}>Required · JPG, PNG, max 5MB</span>
-            </div>
+              <span className={styles.dropzoneSub}>JPG hoặc PNG, tối đa 5 MB</span>
+            </button>
 
-            {/* Hiển thị file đã chọn (hoặc trạng thái trống để người dùng chọn) */}
             {selectedFile && (
               <div className={styles.fileItemCard}>
                 <div className={styles.fileItemLeft}>
@@ -477,23 +490,20 @@ export default function BookingPaymentPage() {
                 <button
                   type="button"
                   className={styles.removeFileBtn}
-                  onClick={() => setSelectedFile(null)}
+                  onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
                   disabled={isConfirmedWait}
                 >
-                  Remove
+                  Bỏ ảnh
                 </button>
               </div>
             )}
 
             {errorMessage && <p id="proof-error" className={styles.errorText} role="alert">{errorMessage}</p>}
 
-            {/* BR34 / P06: Quy tắc tối đa 3 lần gửi lại chứng từ */}
             <div className={styles.afterSubmitBox}>
-              <strong className={styles.afterSubmitTitle}>After submitting</strong>
+              <strong className={styles.afterSubmitTitle}>Sau khi gửi chứng từ</strong>
               <p className={styles.afterSubmitDesc}>
-                Facility staff will verify the transfer and confirm your booking. If the receipt is
-                unclear, the facility may request a new receipt within the allowed number of
-                attempts.
+                Nhân viên sẽ đối chiếu khoản chuyển. Nếu cần bổ sung ảnh (tối đa 3 lần khi lỗi từ người chơi), yêu cầu sẽ hiện trong lịch đặt sân.
               </p>
             </div>
 
@@ -504,10 +514,8 @@ export default function BookingPaymentPage() {
               onClick={handleSubmitPayment}
             >
               {submitting
-                ? 'Submitting payment proof...'
-                : isConfirmedWait
-                  ? 'Payment Proof Submitted (Awaiting Confirmation)'
-                  : (bookingData.resubmitting ? 'Gửi lại chứng từ' : 'Báo đã thanh toán')}
+                ? 'Đang gửi chứng từ…'
+                : bookingData.resubmitting ? 'Gửi lại chứng từ' : 'Báo đã thanh toán'}
             </button>
           </section>
         </div>}

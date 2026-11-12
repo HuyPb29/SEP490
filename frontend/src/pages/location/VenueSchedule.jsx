@@ -4,12 +4,12 @@ import { F1Dialog } from '../../components/F1Feedback'
 import ScheduleGrid from '../../components/schedule/ScheduleGrid'
 import { isBookable } from '../../utils/venueSchedule'
 import { useVenueSchedule, useVenueSession } from '../../hooks/useVenueSchedule'
+import { formatVnd } from '../../utils/formatters'
 import styles from './FacilityDetailPage.module.css'
 
 const loginMessage = 'Vui lòng đăng nhập hoặc đăng ký để dùng chức năng này.'
 const dayFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
 const labelFormat = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'full', timeZone: 'UTC' })
-const money = new Intl.NumberFormat('vi-VN')
 const intentKey = 'venue_booking_intent'
 
 function readIntent(id, date) {
@@ -107,7 +107,7 @@ export default function VenueSchedule({ id, facility, scheduleRef, openPackage, 
       <button type="button" onClick={() => setInspected(null)}>Đóng</button>
     </div>}
     {allowBooking && <div className={styles.summaryBar}>
-      <div className={styles.summaryMainText} aria-live="polite">{selected.length} khung giờ đã chọn · {money.format(totalPrice)} đ</div>
+      <div className={styles.summaryMainText} aria-live="polite">{selected.length} khung giờ đã chọn · {formatVnd(totalPrice)}</div>
       <button type="button" className={styles.continueBookingBtn} disabled={!selected.length} onClick={continueBooking}>Tiếp tục đặt sân</button>
     </div>}
     {(guestPrompt || openPackage) && <F1Dialog title="Đăng nhập để đặt sân" message={loginMessage}

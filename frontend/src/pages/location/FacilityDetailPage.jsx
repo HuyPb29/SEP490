@@ -5,6 +5,7 @@ import { usePublicVenue } from '../../hooks/usePublicVenue';
 import { useVenueSession } from '../../hooks/useVenueSchedule';
 import VenueInformation from './VenueInformation';
 import styles from './FacilityDetailPage.module.css';
+import { PublicHeader } from '../../components/layout/PublicLayout';
 
 export default function FacilityDetailPage() {
   const { id } = useParams();
@@ -27,41 +28,19 @@ export default function FacilityDetailPage() {
   </div>;
 
   return (
-    <div className={styles.pageWrapper}>
-      <header className={styles.navbar}>
-        <div className={styles.navContainer}>
-          <div className={styles.brand} onClick={() => navigate('/')}>
-            <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>Courtly</span>
-          </div>
-          <nav className={styles.navLinks}>
-            <Link to="/" className={styles.activeLink}>Find Court</Link>
-            <Link to="/open-matches">Open Matches</Link>
-            <Link to="/my-bookings">My Bookings</Link>
-          </nav>
-          <div className={styles.userArea}>
-            <button type="button" className={styles.bellBtn} aria-label="Notifications">🔔</button>
-            <div className={styles.userProfile}>
-              <span className={styles.avatar}>MA</span>
-              <span className={styles.userName}>Minh Anh</span>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className={styles.pageWrapper + ' cw-workspace'}>
+      <PublicHeader user={currentUser} />
 
       <main className={styles.mainContainer}>
-        <button type="button" className={styles.backButton} onClick={() => navigate('/')}>
-          ← Back
-        </button>
         <div className={styles.breadcrumb}>
-          <Link to="/" className={styles.breadcrumbLink}>Find Court</Link>
+          <Link to="/" className={styles.breadcrumbLink}>Tìm sân</Link>
           <span className={styles.breadcrumbSep}>/</span>
           <span className={styles.breadcrumbCurrent}>{facility.facility_name}</span>
         </div>
 
         {/* UC12: Thông tin sân */}
         <section className={styles.heroGrid}>
-          <div className={styles.courtVisualCard}>
+          <div className={styles.courtVisualCard} aria-hidden="true">
             <svg viewBox="0 0 400 200" className={styles.courtSvg}>
               <rect x="20" y="15" width="360" height="170" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="2" />
               <line x1="200" y1="15" x2="200" y2="185" stroke="rgba(255,255,255,0.8)" strokeWidth="2" />
@@ -79,14 +58,14 @@ export default function FacilityDetailPage() {
               <div className={styles.ratingRow}>
                 <span className={styles.starIcon}>★</span>
                 <strong>{String(facility.rating).replace(',', '.')}</strong>
-                <span className={styles.reviewCount}>({facility.review_count} reviews)</span>
+                <span className={styles.reviewCount}>({facility.review_count} đánh giá)</span>
               </div>
             )}
-            <p className={styles.infoLine}>{facility.address}</p>
+            <p className={styles.infoLine}>Địa chỉ: {facility.address}</p>
             <p className={styles.infoLine}>
-              Open hours: {facility.open_hours} · {facility.courts_count} courts
+              Giờ mở cửa: {facility.open_hours} · {facility.courts_count} sân hoạt động
             </p>
-            <p className={styles.infoLine}>Contact: {facility.contact_phone}</p>
+            <p className={styles.infoLine}>Liên hệ: {facility.contact_phone}</p>
 
             <div className={styles.bookingActions}>
               <button
@@ -94,7 +73,7 @@ export default function FacilityDetailPage() {
                 className={styles.scrollScheduleBtn}
                 onClick={() => scheduleRef.current?.scrollIntoView({ behavior: 'smooth' })}
               >
-                View schedule &amp; book
+                Chọn giờ chơi
               </button>
               {canBook && <button type="button" className={styles.packageBookingBtn} onClick={handleGoPackageBooking}>
                 Đặt sân nhiều buổi

@@ -1,13 +1,13 @@
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import styles from './OpenMatchesPage.module.css'
+import { useMemo, useState } from 'react';
+import { PublicHeader } from '../../components/layout/PublicLayout';
+import styles from './OpenMatchesPage.module.css';
 
 const INITIAL_MATCHES = [
   {
     id: 'smash-arena-2',
     facility: 'Smash Arena',
-    court: 'Court 2',
-    level: 'Intermediate',
+    court: 'Sân 2',
+    level: 'Trung bình',
     date: '2026-10-25',
     time: '19:00 – 21:00',
     host: 'Quang Huy',
@@ -17,8 +17,8 @@ const INITIAL_MATCHES = [
   {
     id: 'green-shuttle-1',
     facility: 'Green Shuttle Club',
-    court: 'Court 1',
-    level: 'Advanced',
+    court: 'Sân 1',
+    level: 'Nâng cao',
     date: '2026-10-25',
     time: '18:00 – 20:00',
     host: 'Thu Trang',
@@ -28,8 +28,8 @@ const INITIAL_MATCHES = [
   {
     id: 'hanoi-hub-7',
     facility: 'Hanoi Badminton Hub',
-    court: 'Court 7',
-    level: 'Beginner',
+    court: 'Sân 7',
+    level: 'Mới chơi',
     date: '2026-10-25',
     time: '20:00 – 22:00',
     host: 'Duc Long',
@@ -39,147 +39,131 @@ const INITIAL_MATCHES = [
   {
     id: 'dich-vong-3',
     facility: 'Dich Vong',
-    court: 'Court 3',
-    level: 'Advanced',
+    court: 'Sân 3',
+    level: 'Nâng cao',
     date: '2026-10-25',
     time: '21:00 – 22:30',
     host: 'Bao Ngoc',
     players: 7,
     capacity: 8,
   },
-]
+];
 
 const INITIAL_JOIN_REQUESTS = [
-  { id: 'tran-lam', initials: 'TL', name: 'Tran Lam', skill: 'Advanced' },
-  { id: 'pham-ha', initials: 'PH', name: 'Pham Ha', skill: 'Intermediate' },
-]
+  { id: 'tran-lam', initials: 'TL', name: 'Tran Lam', skill: 'Nâng cao' },
+  { id: 'pham-ha', initials: 'PH', name: 'Pham Ha', skill: 'Trung bình' },
+];
 
 function formatMatchDate(date) {
-  const parsedDate = new Date(`${date}T00:00:00`)
-  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(parsedDate)
-  const day = String(parsedDate.getDate()).padStart(2, '0')
-  const month = String(parsedDate.getMonth() + 1).padStart(2, '0')
-  return `${weekday} ${day}/${month}`
+  const parsedDate = new Date(`${date}T00:00:00`);
+  const weekday = new Intl.DateTimeFormat('vi-VN', { weekday: 'short' }).format(parsedDate);
+  const day = String(parsedDate.getDate()).padStart(2, '0');
+  const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+  return `${weekday} ${day}/${month}`;
 }
 
 function getMissingPlayers(match) {
-  return Math.max(match.capacity - match.players, 0)
+  return Math.max(match.capacity - match.players, 0);
 }
 
 export default function OpenMatchesPage() {
-  const [selectedDate, setSelectedDate] = useState('2026-10-25')
-  const [timeSlot, setTimeSlot] = useState('evening')
+  const [selectedDate, setSelectedDate] = useState('2026-10-25');
+  const [timeSlot, setTimeSlot] = useState('evening');
   const [appliedFilters, setAppliedFilters] = useState({
     date: '2026-10-25',
     timeSlot: 'evening',
-  })
-  const matches = INITIAL_MATCHES
-  const [requestedMatchIds, setRequestedMatchIds] = useState(['green-shuttle-1'])
-  const [requestingMatchId, setRequestingMatchId] = useState(null)
-  const [sharePhone, setSharePhone] = useState(false)
-  const [requestError, setRequestError] = useState('')
-  const [joinRequests, setJoinRequests] = useState(INITIAL_JOIN_REQUESTS)
-  const [hostedPlayers, setHostedPlayers] = useState(5)
-  const [hostedStatus, setHostedStatus] = useState('Open')
-  const [notice, setNotice] = useState('')
+  });
+  const matches = INITIAL_MATCHES;
+  const [requestedMatchIds, setRequestedMatchIds] = useState(['green-shuttle-1']);
+  const [requestingMatchId, setRequestingMatchId] = useState(null);
+  const [sharePhone, setSharePhone] = useState(false);
+  const [requestError, setRequestError] = useState('');
+  const [joinRequests, setJoinRequests] = useState(INITIAL_JOIN_REQUESTS);
+  const [hostedPlayers, setHostedPlayers] = useState(5);
+  const [hostedStatus, setHostedStatus] = useState('Open');
+  const [notice, setNotice] = useState('');
 
   const filteredMatches = useMemo(
     () =>
       matches.filter((match) => {
-        if (match.date !== appliedFilters.date) return false
-        if (appliedFilters.timeSlot === 'evening') return true
-        const hour = Number(match.time.slice(0, 2))
-        if (appliedFilters.timeSlot === 'morning') return hour < 12
-        if (appliedFilters.timeSlot === 'afternoon') return hour >= 12 && hour < 17
-        return true
+        if (match.date !== appliedFilters.date) return false;
+        if (appliedFilters.timeSlot === 'evening') return true;
+        const hour = Number(match.time.slice(0, 2));
+        if (appliedFilters.timeSlot === 'morning') return hour < 12;
+        if (appliedFilters.timeSlot === 'afternoon') return hour >= 12 && hour < 17;
+        return true;
       }),
     [matches, appliedFilters]
-  )
+  );
 
   const submitFilters = (event) => {
-    event.preventDefault()
-    setAppliedFilters({ date: selectedDate, timeSlot })
-  }
+    event.preventDefault();
+    setAppliedFilters({ date: selectedDate, timeSlot });
+  };
 
   const openJoinDialog = (matchId) => {
-    setRequestingMatchId(matchId)
-    setSharePhone(false)
-    setRequestError('')
-  }
+    setRequestingMatchId(matchId);
+    setSharePhone(false);
+    setRequestError('');
+  };
 
   const submitJoinRequest = () => {
     if (!sharePhone) {
-      setRequestError('MSG24: Please agree to share your phone number to join the match')
-      return
+      setRequestError('Vui lòng đồng ý chia sẻ số điện thoại để tham gia kèo. (MSG24)');
+      return;
     }
 
     setRequestedMatchIds((current) =>
       current.includes(requestingMatchId) ? current : [...current, requestingMatchId]
-    )
-    setRequestingMatchId(null)
-    setRequestError('')
-  }
+    );
+    setRequestingMatchId(null);
+    setRequestError('');
+  };
 
   const withdrawRequest = (matchId) => {
-    setRequestedMatchIds((current) => current.filter((id) => id !== matchId))
-  }
+    setRequestedMatchIds((current) => current.filter((id) => id !== matchId));
+  };
 
   const finishHostedMatch = (status) => {
-    setHostedStatus(status)
-    setJoinRequests([])
-    setNotice(`MSG76: Match ${status.toLowerCase()}. All pending join requests have been cancelled.`)
-  }
+    setHostedStatus(status);
+    setJoinRequests([]);
+    setNotice(`Kèo ${status === 'Closed' ? 'đã đóng' : 'đã hủy'}. Mọi yêu cầu tham gia đang chờ đã được hủy. (MSG76)`);
+  };
 
   const approveRequest = (requestId) => {
-    if (hostedStatus !== 'Open') return
+    if (hostedStatus !== 'Open') return;
 
-    const nextPlayers = Math.min(hostedPlayers + 1, 8)
-    setHostedPlayers(nextPlayers)
-    setJoinRequests((current) => current.filter((request) => request.id !== requestId))
+    const nextPlayers = Math.min(hostedPlayers + 1, 8);
+    setHostedPlayers(nextPlayers);
+    setJoinRequests((current) => current.filter((request) => request.id !== requestId));
 
     if (nextPlayers >= 8) {
-      setHostedStatus('Closed')
-      setJoinRequests([])
-      setNotice('MSG76: Match closed because it has reached 8/8 players. All pending join requests have been cancelled.')
-      return
+      setHostedStatus('Closed');
+      setJoinRequests([]);
+      setNotice('Kèo đã đóng vì đủ 8/8 người. Mọi yêu cầu tham gia đang chờ đã được hủy. (MSG76)');
+      return;
     }
 
-    setNotice(`MSG75: Request approved. The match now has ${nextPlayers}/8 players.`)
-  }
+    setNotice(`Đã duyệt yêu cầu. Kèo hiện có ${nextPlayers}/8 người. (MSG75)`);
+  };
 
   const rejectRequest = (requestId) => {
-    setJoinRequests((current) => current.filter((request) => request.id !== requestId))
-  }
+    setJoinRequests((current) => current.filter((request) => request.id !== requestId));
+  };
 
   return (
     <div className={styles.page}>
-      <header className={styles.navbar}>
-        <div className={styles.navInner}>
-          <Link className={styles.brand} to="/" aria-label="Courtly home">
-            <span className={styles.brandIcon}>⚡</span>
-            <span>Courtly</span>
-          </Link>
-          <nav className={styles.navLinks} aria-label="Main navigation">
-            <Link to="/">Find Courts</Link>
-            <Link to="/open-matches" className={styles.activeLink}>Open Matches</Link>
-            <Link to="/my-bookings">My Bookings</Link>
-          </nav>
-          <div className={styles.profile}>
-            <span className={styles.avatar}>MA</span>
-            <span className={styles.profileName}>Minh Anh</span>
-          </div>
-        </div>
-      </header>
+      <PublicHeader />
 
       <main className={styles.main}>
         <div className={styles.pageHeading}>
-          <p>SOCIAL PLAY</p>
-          <h1>Open Matches Looking for Players</h1>
+          <p>GIAO LƯU</p>
+          <h1>Kèo đang tìm người chơi</h1>
         </div>
 
         <form className={styles.filterBar} onSubmit={submitFilters}>
           <label className={styles.filterField}>
-            <span>Date</span>
+            <span>Ngày chơi</span>
             <input
               type="date"
               value={selectedDate}
@@ -187,22 +171,22 @@ export default function OpenMatchesPage() {
             />
           </label>
           <label className={styles.filterField}>
-            <span>Time Slot</span>
+            <span>Khung giờ</span>
             <select value={timeSlot} onChange={(event) => setTimeSlot(event.target.value)}>
-              <option value="morning">Morning (06:00 – 12:00)</option>
-              <option value="afternoon">Afternoon (12:00 – 17:00)</option>
-              <option value="evening">Evening (17:00 – 23:00)</option>
-              <option value="all">Any time</option>
+              <option value="morning">Sáng (06:00 – 12:00)</option>
+              <option value="afternoon">Chiều (12:00 – 17:00)</option>
+              <option value="evening">Tối (17:00 – 23:00)</option>
+              <option value="all">Mọi khung giờ</option>
             </select>
           </label>
-          <button type="submit" className={styles.filterButton}>Filter Matches</button>
+          <button type="submit" className={styles.filterButton}>Lọc kèo</button>
         </form>
 
         <div className={styles.contentGrid}>
-          <section className={styles.matchGrid} aria-label="Open matches">
+          <section className={styles.matchGrid} aria-label="Danh sách kèo mở">
             {filteredMatches.map((match) => {
-              const isRequested = requestedMatchIds.includes(match.id)
-              const missingPlayers = getMissingPlayers(match)
+              const isRequested = requestedMatchIds.includes(match.id);
+              const missingPlayers = getMissingPlayers(match);
 
               return (
                 <article className={styles.matchCard} key={match.id}>
@@ -212,13 +196,13 @@ export default function OpenMatchesPage() {
                   </div>
                   <p className={styles.matchTime}>{formatMatchDate(match.date)} · {match.time}</p>
                   <div className={styles.hostRow}>
-                    <span>Host: <strong>{match.host}</strong></span>
-                    <strong>{match.players}/{match.capacity} players</strong>
+                    <span>Chủ kèo: <strong>{match.host}</strong></span>
+                    <strong>{match.players}/{match.capacity} người</strong>
                   </div>
                   <div
                     className={styles.progressTrack}
                     role="progressbar"
-                    aria-label={`${match.players} of ${match.capacity} players`}
+                    aria-label={`${match.players} trên ${match.capacity} người`}
                     aria-valuemin={0}
                     aria-valuemax={match.capacity}
                     aria-valuenow={match.players}
@@ -226,18 +210,18 @@ export default function OpenMatchesPage() {
                     <span style={{ width: `${(match.players / match.capacity) * 100}%` }} />
                   </div>
                   <p className={styles.needPlayers}>
-                    Need {missingPlayers} more {missingPlayers === 1 ? 'player' : 'players'}
+                    Cần thêm {missingPlayers} người
                   </p>
 
                   {isRequested ? (
                     <div className={styles.requestStatusRow}>
-                      <strong>Waiting for host approval</strong>
+                      <strong>Đang chờ chủ kèo duyệt</strong>
                       <button
                         type="button"
                         className={styles.withdrawButton}
                         onClick={() => withdrawRequest(match.id)}
                       >
-                        Withdraw Request
+                        Rút yêu cầu
                       </button>
                     </div>
                   ) : (
@@ -247,26 +231,26 @@ export default function OpenMatchesPage() {
                       disabled={missingPlayers === 0}
                       onClick={() => openJoinDialog(match.id)}
                     >
-                      Request to Join
+                      Xin tham gia
                     </button>
                   )}
                 </article>
-              )
+              );
             })}
             {filteredMatches.length === 0 && (
-              <div className={styles.emptyState}>No matches found for this date and time slot.</div>
+              <div className={styles.emptyState}>Không có kèo phù hợp với ngày và khung giờ đã chọn.</div>
             )}
           </section>
 
-          <aside className={styles.hostedCard} aria-label="My Hosted Match">
-            <h2 className={styles.hostedTitle}>My Hosted Match</h2>
+          <aside className={styles.hostedCard} aria-label="Kèo tôi tổ chức">
+            <h2 className={styles.hostedTitle}>Kèo tôi tổ chức</h2>
             <div className={styles.hostedSummary}>
-              <strong>Smash Arena · Court 5</strong>
-              <span>30/10 · 20:00 – 22:00 · {hostedPlayers}/8 players</span>
-              {hostedStatus !== 'Open' && <span className={styles.hostedStatus}>{hostedStatus}</span>}
+              <strong>Smash Arena · Sân 5</strong>
+              <span>30/10 · 20:00 – 22:00 · {hostedPlayers}/8 người</span>
+              {hostedStatus !== 'Open' && <span className={styles.hostedStatus}>{hostedStatus === 'Closed' ? 'Đã đóng' : 'Đã hủy'}</span>}
             </div>
 
-            <h3 className={styles.requestsTitle}>Join Requests ({joinRequests.length})</h3>
+            <h3 className={styles.requestsTitle}>Yêu cầu tham gia ({joinRequests.length})</h3>
             {joinRequests.length > 0 ? (
               <ul className={styles.requestList}>
                 {joinRequests.map((request) => (
@@ -275,7 +259,7 @@ export default function OpenMatchesPage() {
                       <span className={styles.requestAvatar}>{request.initials}</span>
                       <div>
                         <strong>{request.name}</strong>
-                        <span>Skill: {request.skill}</span>
+                        <span>Trình độ: {request.skill}</span>
                       </div>
                     </div>
                     <button
@@ -284,7 +268,7 @@ export default function OpenMatchesPage() {
                       disabled={hostedStatus !== 'Open'}
                       onClick={() => rejectRequest(request.id)}
                     >
-                      Reject
+                      Từ chối
                     </button>
                     <button
                       type="button"
@@ -292,13 +276,13 @@ export default function OpenMatchesPage() {
                       disabled={hostedStatus !== 'Open'}
                       onClick={() => approveRequest(request.id)}
                     >
-                      Approve
+                      Duyệt
                     </button>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className={styles.noRequests}>No pending join requests.</p>
+              <p className={styles.noRequests}>Không có yêu cầu tham gia đang chờ.</p>
             )}
 
             <div className={styles.hostedActions}>
@@ -308,7 +292,7 @@ export default function OpenMatchesPage() {
                 disabled={hostedStatus !== 'Open'}
                 onClick={() => finishHostedMatch('Closed')}
               >
-                Close Match
+                Đóng kèo
               </button>
               <button
                 type="button"
@@ -316,7 +300,7 @@ export default function OpenMatchesPage() {
                 disabled={hostedStatus !== 'Open'}
                 onClick={() => finishHostedMatch('Cancelled')}
               >
-                Cancel Match
+                Hủy kèo
               </button>
             </div>
           </aside>
@@ -337,25 +321,25 @@ export default function OpenMatchesPage() {
             <button
               type="button"
               className={styles.modalClose}
-              aria-label="Close"
+              aria-label="Đóng"
               onClick={() => {
-                setRequestingMatchId(null)
-                setRequestError('')
+                setRequestingMatchId(null);
+                setRequestError('');
               }}
             >
               ×
             </button>
-            <h2 id="join-modal-title">Request to Join</h2>
+            <h2 id="join-modal-title">Xin tham gia kèo</h2>
             <label className={styles.consentLabel}>
               <input
                 type="checkbox"
                 checked={sharePhone}
                 onChange={(event) => {
-                  setSharePhone(event.target.checked)
-                  setRequestError('')
+                  setSharePhone(event.target.checked);
+                  setRequestError('');
                 }}
               />
-              <span>I agree to share my phone number with the host</span>
+              <span>Tôi đồng ý chia sẻ số điện thoại với chủ kèo</span>
             </label>
             {requestError && <p className={styles.requestError} role="alert">{requestError}</p>}
             <div className={styles.modalActions}>
@@ -363,19 +347,19 @@ export default function OpenMatchesPage() {
                 type="button"
                 className={styles.modalCancel}
                 onClick={() => {
-                  setRequestingMatchId(null)
-                  setRequestError('')
+                  setRequestingMatchId(null);
+                  setRequestError('');
                 }}
               >
-                Cancel
+                Hủy
               </button>
               <button type="button" className={styles.modalSubmit} onClick={submitJoinRequest}>
-                Send Request
+                Gửi yêu cầu
               </button>
             </div>
           </section>
         </div>
       )}
     </div>
-  )
+  );
 }
