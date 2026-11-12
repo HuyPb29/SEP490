@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { loginApi, registerPlayerApi, verifyOtpApi, resendOtpApi, forgotPasswordApi, resetPasswordApi } from '../../api/authApi';
-import { roleHome } from '../../api/session';
+import { getSavedUser, roleHome } from '../../api/session';
 import { canResumePath } from '../../api/f1Navigation';
 import { fieldError, messages, normalizeName, otpSendError, otpSent, validEmail, validName, validPassword, validPhone, validUsername } from '../../api/f1Rules';
 import styles from './AuthPage.module.css';
@@ -9,8 +9,10 @@ import styles from './AuthPage.module.css';
 export default function AuthPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const currentUser = getSavedUser();
   // Tab: 'login' (UC02) | 'register' (UC01) | 'otp' (DR25)
-  const [activeTab, setActiveTab] = useState(location.state?.isSignUp ? 'register' : 'login');
+  const [requestedTab, setActiveTab] = useState(location.state?.isSignUp ? 'register' : 'login');
+  const activeTab = currentUser && requestedTab === 'register' ? 'login' : requestedTab;
 
   // State UC02: Đăng nhập
   const [loginIdentity, setLoginIdentity] = useState('');
@@ -113,6 +115,7 @@ export default function AuthPage() {
   // UC01: Xử lý đăng ký Player (POST /api/auth/register)
   const handleRegisterSubmit = async (event) => {
     event.preventDefault();
+    if (currentUser) return;
     setRegisterError('');
     const errors = validateRegisterForm();
     setRegisterFields(errors);
@@ -267,15 +270,15 @@ export default function AuthPage() {
             >
               Đăng nhập
             </button>
-            <button
+            {!currentUser && <button
               type="button"
               aria-pressed={activeTab === 'register'}
               className={`${styles.tabBtn} ${activeTab === 'register' ? styles.tabActive : ''}`}
               onClick={() => setActiveTab('register')}
             >
               Đăng ký
-            </button>
-            {(pendingRegistrationEmail || activeTab === 'otp' && !resettingPassword) && <button
+            </button>}
+            {!currentUser && (pendingRegistrationEmail || activeTab === 'otp' && !resettingPassword) && <button
               type="button"
               aria-pressed={activeTab === 'otp'}
               className={`${styles.tabBtn} ${activeTab === 'otp' ? styles.tabActive : ''}`}
@@ -452,7 +455,7 @@ export default function AuthPage() {
             </form>
           )}
 
-          {activeTab === 'otp' && (
+          {activeTab === 'otp' && (resettingPassword || !currentUser) && (
             <form className={styles.formContainer} onSubmit={handleVerifyOtpSubmit} noValidate>
               <h1 className={styles.cardTitle}>{resettingPassword ? 'Đặt lại mật khẩu' : 'Xác thực email'}</h1>
               <dialog ref={otpDialog} className={styles.sessionDialog} aria-label="Mã xác minh" onClose={() => setOtpMessage('')}>
