@@ -1,17 +1,17 @@
 import { useCallback, useState } from 'react'
 import api, { getAllPages } from '../../api'
 import { voucherGrantState } from '../../api/bookingApi'
-import WorkspaceLayout, { ActionForm, EmptyState, Field, Section, StatusPill } from '../WorkspaceLayout'
+import WorkspaceLayout, { ActionForm, EmptyState, Feedback, Field, Section, StatusPill } from '../WorkspaceLayout'
 import { money, today, useResource } from '../workspaceSupport'
 import { defaultPointPercent } from '../../utils/checkoutPoints'
 import PointGrantForm from './PointGrantForm'
+import { useLoyaltyMilestones } from '../../hooks/useLoyaltyMilestones'
 
 const loadPersonalVouchers = (signal) => getAllPages('/me/vouchers', { signal })
 const loadBalances = (signal) => getAllPages('/me/loyalty-balances', { signal })
 const loadCampaigns = (signal) => getAllPages('/owner/vouchers', { signal })
 const loadBatchOffers = (signal) => api.get('/owner/batch-offers', { signal }).then((response) => response.data.data)
 const loadAdminVouchers = (signal) => getAllPages('/admin/vouchers', { signal })
-const loadMilestones = (signal) => api.get('/owner/loyalty-milestones', { signal }).then((response) => response.data.data)
 const optionalNumber = (value) => value === '' || value == null ? null : Number(value)
 
 const voucherStatus = { PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', EXPIRED: 'Hết hạn', DISABLED: 'Đã vô hiệu hóa' }
@@ -202,33 +202,45 @@ function BatchOffers({ vouchers }) {
   </Section></div>
 }
 
-function MilestoneForm({ milestone, refresh }) {
-  return <ActionForm label={milestone ? 'Lưu mốc' : 'Thêm mốc'} after={refresh} action={(form) => {
-    const settings = {
-      name: form.name, milestoneAmount: Number(form.milestoneAmount),
-      rewardValue: Number(form.rewardValue), voucherValidDays: Number(form.voucherValidDays),
-    }
-    return milestone ? api.patch('/owner/loyalty-milestones/' + milestone.id, {
-      version: milestone.version, active: form.active === 'true', settings,
-    }) : api.post('/owner/loyalty-milestones', settings)
-  }}>
-    <Field label="Tên voucher thưởng" name="name" defaultValue={milestone?.voucher.name} maxLength={100} required />
-    <Field label="Mốc chi tiêu (VND)" name="milestoneAmount" type="number" min={1} defaultValue={milestone?.milestoneAmount} required />
-    <Field label="Giá trị voucher (VND)" name="rewardValue" type="number" min={1} defaultValue={milestone?.voucher.discountValue} required />
-    <Field label="Hạn dùng (ngày)" name="voucherValidDays" type="number" min={1} max={3650} defaultValue={milestone?.voucher.grantValidDays} required />
-    {milestone && <Field label="Trạng thái" name="active" defaultValue={String(milestone.active)}
-      options={[[ 'true', 'Đang áp dụng' ], [ 'false', 'Ngừng áp dụng' ]]} />}
+function MilestoneForm({ milestone, save, afterSave, beforeSave }) {
+  return <ActionForm label={milestone ? 'Lưu mốc' : 'Thêm mốc'} after={afterSave} successMessage={false}
+    mapFieldErrors={(error) => {
+      const message = error.response?.data?.message
+      return message === 'Mốc chi tiêu đã tồn tại' ? { milestoneAmount: message } : undefined
+    }}
+    action={(form) => {
+      beforeSave()
+      return save(milestone, {
+        name: form.name.trim(), milestoneAmount: Number(form.milestoneAmount),
+        rewardValue: Number(form.rewardValue), voucherValidDays: Number(form.voucherValidDays),
+      }, form.active === 'true')
+    }}>
+    {(errors) => <>
+      <Field label="Tên voucher thưởng" name="name" defaultValue={milestone?.voucher.name} maxLength={100} required error={errors.name} />
+      <Field label="Mốc chi tiêu (VND)" name="milestoneAmount" type="number" min={1} max={99999999999999}
+        defaultValue={milestone?.milestoneAmount} required error={errors.milestoneAmount} />
+      <Field label="Giá trị voucher (VND)" name="rewardValue" type="number" min={1} max={999999999999}
+        defaultValue={milestone?.voucher.discountValue} required error={errors.rewardValue} />
+      <Field label="Hạn dùng (ngày)" name="voucherValidDays" type="number" min={1} max={3650}
+        defaultValue={milestone?.voucher.grantValidDays} required error={errors.voucherValidDays} />
+      {milestone && <Field label="Trạng thái" name="active" defaultValue={String(milestone.active)}
+        options={[[ 'true', 'Đang áp dụng' ], [ 'false', 'Ngừng áp dụng' ]]} error={errors.active} />}
+    </>}
   </ActionForm>
 }
 
-function Milestones() {
-  const milestones = useResource(loadMilestones)
+function Milestones({ locationId }) {
+  const { milestones, save } = useLoyaltyMilestones(locationId)
+  const [saved, setSaved] = useState(false)
+  const afterSave = () => { setSaved(true); milestones.reload() }
+  const beforeSave = () => setSaved(false)
   return <Section title="Mốc chi tiêu nhận voucher" resource={milestones}>
-    <details><summary>Thêm mốc chi tiêu</summary><MilestoneForm refresh={milestones.reload} /></details>
+    {saved && <Feedback tone="success">Đã lưu thay đổi. (MSG03)</Feedback>}
+    <details><summary>Thêm mốc chi tiêu</summary><MilestoneForm save={save} beforeSave={beforeSave} afterSave={afterSave} /></details>
     {milestones.data?.length === 0 && <EmptyState>Chưa thiết lập mốc chi tiêu.</EmptyState>}
     {milestones.data?.map((item) => <details key={item.id} className="space-y-2 border-t py-3">
       <summary>{money(item.milestoneAmount)} · {item.voucher.name} · {item.active ? 'Đang áp dụng' : 'Ngừng áp dụng'}</summary>
-      <MilestoneForm key={item.version} milestone={item} refresh={milestones.reload} />
+      <MilestoneForm key={item.version} milestone={item} save={save} beforeSave={beforeSave} afterSave={afterSave} />
     </details>)}
   </Section>
 }
@@ -246,7 +258,7 @@ export function OwnerPromotions({ location, refreshLocation }) {
       </ActionForm>
     </Section>
     <PointGrantForm locationId={location.id} />
-    <Milestones />
+    <Milestones locationId={location.id} />
   </>
 }
 

@@ -147,6 +147,7 @@ export function ActionForm({
   tone = 'primary',
   preserve = false,
   successMessage,
+  mapFieldErrors,
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -161,10 +162,10 @@ export function ActionForm({
     try {
       const result = await action(Object.fromEntries(new FormData(form)));
       if (!preserve) form.reset();
-      setMessage({ text: successMessage || result?.data?.message || 'Đã lưu.' });
+      if (successMessage !== false) setMessage({ text: successMessage || result?.data?.message || 'Đã lưu.' });
       after?.(result);
     } catch (error) {
-      const errors = error.response?.data?.errors;
+      const errors = mapFieldErrors?.(error) ?? error.response?.data?.errors;
       if (usesFieldErrors && errors && Object.keys(errors).length) {
         setFieldErrors(Object.fromEntries(Object.entries(errors).map(([name, text]) => [name.split('.').at(-1), text])));
       }
