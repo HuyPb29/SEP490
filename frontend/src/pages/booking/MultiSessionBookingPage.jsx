@@ -54,7 +54,7 @@ export default function MultiSessionBookingPage() {
   const facilityId = Number(id || location.state?.facilityId) || null
   const facilityName = location.state?.facilityName || ''
 
-  const today = useMemo(() => toDateKey(new Date()), [])
+  const [today] = useState(() => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date()))
   const maxAllowedDate = toDateKey(new Date(parseDateKey(today).getFullYear(), parseDateKey(today).getMonth() + 3, parseDateKey(today).getDate() - 1));
   const [courts, setCourts] = useState([])
   const [teams, setTeams] = useState([])

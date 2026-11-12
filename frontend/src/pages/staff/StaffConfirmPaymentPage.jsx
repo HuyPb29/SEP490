@@ -115,7 +115,7 @@ function PaymentDesk({ staff, role, surcharge }) {
       if (!signal.aborted) setLoadingQueue(false);
     });
     return () => controller.abort();
-  }, [requestedId, revision, surcharge, listPendingReschedulePayments, listPendingStaffBookingPayments]);
+  }, [requestedId, revision, surcharge]);
 
   useEffect(() => {
     if (!selectedId || loadingQueue) return undefined;
@@ -132,7 +132,7 @@ function PaymentDesk({ staff, role, surcharge }) {
       if (!signal.aborted) setDetailError({ id: selectedId, message: apiErrorMessage(error, 'Không tải được chi tiết giao dịch.') });
     });
     return () => controller.abort();
-  }, [selectedId, loadingQueue, surcharge, getStaffReschedulePaymentDetails, getStaffBookingPaymentDetails]);
+  }, [selectedId, loadingQueue, surcharge]);
 
   const payment = detail?.payment || detail;
   const activeDetail = !loadingQueue && selectedId && payment?.id === selectedId ? detail : null;
@@ -160,7 +160,7 @@ function PaymentDesk({ staff, role, surcharge }) {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [selectedId, activeProofId, proofKey, getStaffBookingProofImage]);
+  }, [selectedId, activeProofId, proofKey]);
 
   const amountDue = Number(activePayment?.amountDue ?? 0);
   const validAmount = !actualAmount || /^[0-9]{1,12}$/.test(actualAmount);

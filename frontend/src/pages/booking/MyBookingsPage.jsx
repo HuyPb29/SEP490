@@ -604,12 +604,12 @@ export default function MyBookingsPage() {
                           {item.facility_name} · {item.court_name}
                         </h2>
                         <span className={`${styles.statusBadge} ${getBadgeClass(item.status)}`}>
-                          {item.status_name}
+                          {bookingStatusLabels[item.status] || item.status_name}
                         </span>
                       </div>
 
                       <p className={styles.timeMetaLine}>
-                        {item.time_range}
+                        {item.booking_code} · {item.time_range}
                         {item.booker_label ? ` · ${item.booker_label}` : ''}
                       </p>
 

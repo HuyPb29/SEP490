@@ -11,15 +11,8 @@ import styles from './FacilitySearchPage.module.css';
 export default function FacilitySearchPage() {
   const navigate = useNavigate();
   const [keyword, setKeyword] = useState('');
-  // Lấy đúng giờ Việt Nam (Local Time)
-  const getLocalToday = () => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-  const [playDate, setPlayDate] = useState(getLocalToday());
+  const getLocalToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+  const [playDate, setPlayDate] = useState(getLocalToday);
   const [sortBy, setSortBy] = useState('nearest'); // 'nearest' | 'rating'
   const [selectedId, setSelectedId] = useState(null);
   const [userInfo, setUserInfo] = useState(getSavedUser);

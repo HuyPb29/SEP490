@@ -62,7 +62,7 @@ export default function StaffDashboardPage() {
   const [transactions] = useState(initialTransactions)
   const [stats] = useState(initialStats)
   const [banners] = useState({ urgent: true, courtEnding: true })
-  const [showCounterBooking, setShowCounterBooking] = useState(false)
+  const [showCounterBooking, setShowCounterBooking] = useState(() => new URLSearchParams(search).get('modal') === 'counter')
 
   const openCounterBooking = () => setShowCounterBooking(true)
 

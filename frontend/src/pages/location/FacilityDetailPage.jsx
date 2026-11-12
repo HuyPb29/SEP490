@@ -103,10 +103,10 @@ export default function FacilityDetailPage() {
           </div>
         </section>
 
-        <VenueSchedule key={id} id={id} facility={facility} scheduleRef={scheduleRef}
+        <VenueSchedule key={'schedule:' + id} id={id} facility={facility} scheduleRef={scheduleRef}
           openPackage={packagePrompt} onClosePackage={() => setPackagePrompt(false)} />
 
-        <VenueInformation key={facility.facility_id} facility={facility} retryVenue={() => setReload((value) => value + 1)} />
+        <VenueInformation key={'info:' + facility.facility_id} facility={facility} retryVenue={() => setReload((value) => value + 1)} />
       </main>
     </div>
   );

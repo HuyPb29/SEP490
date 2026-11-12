@@ -63,7 +63,7 @@ export default function BookingPaymentPage() {
       if (!controller.signal.aborted) setLoadError(error.response?.data?.message || 'Không tải được thông tin thanh toán.');
     });
     return () => controller.abort();
-  }, [id, isPlayer, kind, reload, validId, loadPayment]);
+  }, [id, isPlayer, kind, reload, validId]);
 
   const qrPath = bookingData?.instructions?.qrImageUrl;
   useEffect(() => {
@@ -79,7 +79,7 @@ export default function BookingPaymentPage() {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [qrPath, loadPaymentImage]);
+  }, [qrPath]);
   const qrUrl = qrImage?.path === qrPath ? qrImage?.url : '';
 
   // State chọn file ảnh chứng từ (DR21 / MSG106)
@@ -108,7 +108,7 @@ export default function BookingPaymentPage() {
     };
     timer = setTimeout(checkStatus, 5_000);
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [trackStatus, submitting, kind, id, loadPayment]);
+  }, [trackStatus, submitting, kind, id]);
 
   const deadline = bookingTimestamp(bookingData?.deadline);
   useEffect(() => {
