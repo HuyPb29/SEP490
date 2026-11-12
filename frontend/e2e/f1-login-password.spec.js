@@ -26,10 +26,9 @@ test('UC02 đăng nhập theo 4 vai trò, giữ returnTo hợp lệ và xử lý
         user: { id: 1, username: email, fullName: 'Tài khoản kiểm thử', role: identities.get(email) },
       } } })
     }
-    if (path === '/api/locations' || path === '/api/v1/facilities/search') {
-      return route.fulfill({ json: { success: true, data: { content: [], totalPages: 0 } } })
+    if (path === '/api/locations' || path === '/api/owner/locations') {
+      return route.fulfill({ json: { success: true, data: [] } })
     }
-    if (path === '/api/owner/locations') return route.fulfill({ json: { success: true, data: [] } })
     if (path === '/api/admin/accounts') return route.fulfill({ json: { success: true, data: { content: [], totalPages: 0 } } })
     if (path === '/api/users/me') return route.fulfill({ json: { success: true, data: { role: 'PLAYER', fullName: 'Tài khoản kiểm thử' } } })
     if (path.endsWith('/unread-count')) return route.fulfill({ json: { success: true, data: { unread: 0 } } })
@@ -58,13 +57,22 @@ test('UC02 đăng nhập theo 4 vai trò, giữ returnTo hợp lệ và xử lý
   await expect(page).toHaveURL(/\/login$/)
   await signIn(roleCases[0].identity)
   await expect(page).toHaveURL((url) => url.pathname === '/')
+  await page.goto('/admin/workspace')
+  const denied = page.getByRole('dialog', { name: 'Thông báo' })
+  await expect(denied).toContainText('Bạn không có quyền thực hiện thao tác này.')
+  await denied.getByRole('button', { name: 'Đã hiểu' }).click()
+  await expect(page).toHaveURL((url) => url.pathname === '/')
   await page.goto('/account')
   await page.evaluate((token) => {
     localStorage.setItem('bms_access_token', token)
     window.dispatchEvent(new Event('bms-auth-change'))
   }, fixtureToken(-60))
   await expect(page).toHaveURL(/\/login$/)
-  await expect(page.getByRole('dialog', { name: 'Phiên đăng nhập' })).toContainText('Phiên đăng nhập đã hết hạn.')
+  const expiry = page.getByRole('dialog', { name: 'Phiên đăng nhập' })
+  await expect(expiry).toContainText('Phiên đăng nhập đã hết hạn.')
+  await expiry.getByRole('button', { name: 'Đã hiểu' }).click()
+  await signIn(roleCases[0].identity)
+  await expect(page).toHaveURL(/\/account$/)
 })
 
 test('UC02 quên mật khẩu theo thứ tự email, OTP và mật khẩu mới', async ({ page }) => {

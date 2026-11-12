@@ -54,8 +54,14 @@ public class StaffService {
             throw new AppException(ValidationRules.USERNAME_MESSAGE);
         if(request.getPhone()==null || request.getPhone().isBlank()) throw new AppException("Số điện thoại bắt buộc");
         otpLock.acquire("phone:"+request.getPhone());
-        if(accountRepository.existsByPhone(request.getPhone())) throw new AppException("Số điện thoại đã được sử dụng",HttpStatus.CONFLICT);
-        if (accountRepository.existsByUsername(request.getUsername())) throw new AppException("Tên đăng nhập đã tồn tại");
+        if (accountRepository.existsByPhone(request.getPhone())) {
+            String message = "Số điện thoại này đã được dùng. (MSG112)";
+            throw new AppException(message, HttpStatus.CONFLICT, java.util.Map.of("phone", message));
+        }
+        if (accountRepository.existsByUsername(request.getUsername())) {
+            String message = "Tên đăng nhập này đã được dùng. (MSG112)";
+            throw new AppException(message, HttpStatus.BAD_REQUEST, java.util.Map.of("username", message));
+        }
         Account staff = Account.builder().username(request.getUsername()).email(null)
             .phone(request.getPhone()).fullName(request.getFullName().trim())
             .passwordHash(passwordEncoder.encode(request.getPassword()))

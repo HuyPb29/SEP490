@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import api from './api'
 import { messages } from './api/f1Rules'
 import { F1Dialog } from './components/F1Feedback'
-import api from './api'
 import { clearSession, watchSessionExpiry, getSavedUser, getSelectedLocation, getToken, roleHome } from './api/session'
 import { AccountPage, AdminWorkspace } from './pages/account/AccountPages'
 import { AdminVouchers, PersonalRewardsPage } from './pages/promotion/PromotionPages'
@@ -36,8 +36,9 @@ const MultiSessionBookingPage = lazy(() => import('./pages/booking/MultiSessionB
 function RequireRole({ roles, selectedVenue, children }) {
   const location = useLocation()
   const user = getSavedUser()
+  const navigate = useNavigate()
   if (!user) return <Navigate to="/login" state={{ returnTo: location.pathname + location.search }} replace />
-  if (!roles.includes(user.role_code)) return <Navigate to={roleHome[user.role_code] ?? '/'} replace />
+  if (!roles.includes(user.role_code)) return <F1Dialog message={messages.permission} onClose={() => navigate(roleHome[user.role_code] ?? '/', { replace: true })} />
   if (selectedVenue && user.role_code === 'owner' && !getSelectedLocation()) {
     return <Navigate to="/owner/workspace" replace />
   }
@@ -146,9 +147,9 @@ function AppContent() {
 
           {/* UC01-02: Đăng ký Player, xác minh OTP và quản lý phiên đăng nhập */}
           <Route path="/login" element={<AuthPage />} />
-          <Route path="/account" element={<AccountPage />} />
-          <Route path="/owner/workspace" element={<OwnerWorkspace />} />
-          <Route path="/admin/workspace" element={<AdminWorkspace><AdminVouchers /></AdminWorkspace>} />
+          <Route path="/account" element={<RequireRole roles={['player', 'owner']}><AccountPage /></RequireRole>} />
+          <Route path="/owner/workspace" element={<RequireRole roles={['owner']}><OwnerWorkspace /></RequireRole>} />
+          <Route path="/admin/workspace" element={<RequireRole roles={['admin']}><AdminWorkspace><AdminVouchers /></AdminWorkspace></RequireRole>} />
           <Route path="/my-complaints" element={<PlayerComplaintsPage />} />
           <Route path="/my-rewards" element={<PersonalRewardsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
