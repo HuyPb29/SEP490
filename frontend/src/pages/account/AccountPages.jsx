@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import AccountForm from './AccountForm'
-import { validPassword } from '../../api/f1Rules'
+import { messages, normalizeName, validName, validPassword } from '../../api/f1Rules'
 import api, { getAllPages } from '../../api'
 import { clearSession, getSavedUser } from '../../api/session'
 import WorkspaceLayout, { ActionForm, Field, Section } from '../WorkspaceLayout'
@@ -29,11 +29,15 @@ function Profile() {
   return <>
     <Section title="Hồ sơ" resource={profile}>
       {profile.data && <AccountDetails account={profile.data} />}
-      {profile.data?.role === 'PLAYER' &&
-        <ActionForm action={(form) => api.patch('/users/me', form)} after={profile.reload}>
-          <Field label="Họ và tên" name="fullName" defaultValue={profile.data.fullName} required minLength={2} maxLength={50} />
-          <Field label="Trình độ chơi" name="skillLevel" defaultValue={profile.data.skillLevel || ''} maxLength={30} />
-        </ActionForm>}
+      {profile.data?.role === 'PLAYER' && <>
+        <AccountForm label="Lưu họ tên" fields={[
+          { name: 'fullName', label: 'Họ và tên', initial: profile.data.fullName, required: true, validate: validName, normalize: normalizeName },
+        ]} submit={(form) => api.patch('/users/me', form)} success={() => messages.saved} after={profile.reload} />
+        <AccountForm label="Lưu trình độ" fields={[
+          { name: 'skillLevel', label: 'Trình độ chơi', initial: profile.data.skillLevel || '',
+            options: [...new Set(['', 'Mới chơi', 'Trung bình', 'Khá', 'Nâng cao', profile.data.skillLevel || ''])] },
+        ]} submit={(form) => api.patch('/users/me', form)} success={() => messages.saved} after={profile.reload} />
+      </>}
     </Section>
     <Section title="Đổi mật khẩu">
       <AccountForm label="Đổi mật khẩu" fields={[

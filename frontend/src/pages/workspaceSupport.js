@@ -14,6 +14,8 @@ export function useResource(load, key) {
       .catch((error) => { if (!controller.signal.aborted) setState({ key, revision, error: errorMessage(error) }) })
     return () => controller.abort()
   }, [load, key, revision])
-  const current = state?.key === key && state?.revision === revision ? state : null
-  return { ...current, loading: !current, reload: () => setRevision((value) => value + 1) }
+  const current = state?.key === key ? state : null
+  const loading = !current || current.revision !== revision
+  return { data: current?.data, error: loading ? undefined : current?.error, loading,
+    reload: () => setRevision((value) => value + 1) }
 }
