@@ -3,6 +3,8 @@ package com.sep490.bms.dto.operation;
 import java.time.LocalDate;
 import java.util.List;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -34,6 +36,7 @@ public class OccupancyReportResponse {
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+    @Schema(name = "OccupancyReportDayItem")
     public static class DayItem {
         private LocalDate date;
         private long availableSlots;
@@ -46,6 +49,7 @@ public class OccupancyReportResponse {
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+    @Schema(name = "OccupancyReportCourtItem")
     public static class CourtItem {
         private Long courtId;
         private String courtName;
