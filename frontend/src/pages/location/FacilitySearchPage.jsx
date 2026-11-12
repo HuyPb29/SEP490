@@ -1,29 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { searchFacilities } from '../../api/facilityApi';
 import { logoutApi } from '../../api/authApi';
 import { getSavedUser } from '../../api/session';
+import LocationMap from '../../components/map/LocationMap';
+import { useFacilitySearch } from '../../hooks/useFacilitySearch';
+import { useGeolocation } from '../../hooks/useGeolocation';
+import { distanceKm } from '../../utils/distance';
 import styles from './FacilitySearchPage.module.css';
-
-// Bản đồ CSS tĩnh: quy đổi tọa độ về % trong khung, cách mép 25% để nhãn tên không bị cắt
-function scaleToMap(value, min, max) {
-  return max === min ? 50 : 25 + ((value - min) / (max - min)) * 50;
-}
-
-function buildMapProjection(points) {
-  const lats = points.map((p) => p.lat);
-  const lngs = points.map((p) => p.lng);
-  const [minLat, maxLat] = [Math.min(...lats), Math.max(...lats)];
-  const [minLng, maxLng] = [Math.min(...lngs), Math.max(...lngs)];
-  return ({ lat, lng }) => ({
-    top: `${100 - scaleToMap(lat, minLat, maxLat)}%`,
-    left: `${scaleToMap(lng, minLng, maxLng)}%`,
-  });
-}
 
 export default function FacilitySearchPage() {
   const navigate = useNavigate();
-  const [keyword, setKeyword] = useState('Cau Giay');
+  const [keyword, setKeyword] = useState('');
   // Lấy đúng giờ Việt Nam (Local Time)
   const getLocalToday = () => {
     const d = new Date();
@@ -33,11 +20,8 @@ export default function FacilitySearchPage() {
     return `${year}-${month}-${day}`;
   };
   const [playDate, setPlayDate] = useState(getLocalToday());
-  const [facilities, setFacilities] = useState([]);
   const [sortBy, setSortBy] = useState('nearest'); // 'nearest' | 'rating'
   const [selectedId, setSelectedId] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [usingGps, setUsingGps] = useState(false);
   const [userInfo, setUserInfo] = useState(getSavedUser);
   const [logoutPending, setLogoutPending] = useState(false);
   const [logoutError, setLogoutError] = useState('');
@@ -51,79 +35,22 @@ export default function FacilitySearchPage() {
       window.removeEventListener('storage', syncUserInfo);
     };
   }, []);
-  const [position, setPosition] = useState(null);
-  const [loadError, setLoadError] = useState(false);
 
-  const fetchList = async (kw = keyword, lat = null, lng = null) => {
-    setLoading(true);
-    setLoadError(false);
-    try {
-      const res = await searchFacilities({ keyword: kw, userLat: lat, userLng: lng });
-      if (res?.success) {
-        const locations = Array.isArray(res.data) ? res.data : res.data?.items;
-        if (!Array.isArray(locations)) {
-          throw new Error('Unexpected locations response: expected an array in data.');
-        }
+  const { facilities, loading, loadError, fetchFacilities } = useFacilitySearch();
+  const { position, locating, locationError, requestLocation } = useGeolocation();
 
-        setFacilities(locations.map((location) => ({
-          ...location,
-          facility_id: location.id ?? location.facility_id,
-          facility_name: location.name ?? location.facility_name,
-          distance_km: location.distanceKm ?? location.distance_km,
-        })));
-      }
-    } catch (err) {
-      console.error('Error loading facilities:', err);
-      setFacilities([]);
-      setLoadError(true);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => { void fetchFacilities(''); }, [fetchFacilities]);
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    void fetchFacilities(keyword);
   };
 
-  useEffect(() => {
-    fetchList('');
-  }, []);
-
-  const handleUseMyLocation = () => {
-    if (!navigator.geolocation) {
-      fetchList(keyword);
-      return;
-    }
-    setUsingGps(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        // Chỉ truyền tọa độ lúc truy vấn, không lưu vào CSDL
-        const { latitude: lat, longitude: lng } = pos.coords;
-        setPosition({ lat, lng });
-        fetchList(keyword, lat, lng);
-      },
-      () => {
-        setUsingGps(false);
-        setPosition(null);
-        fetchList(keyword);
-      }
-    );
-  };
-
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    fetchList(keyword, position?.lat, position?.lng);
-  };
-
-  const sortedFacilities = [...facilities].sort((a, b) => {
-    if (sortBy === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
-    return (a.distance_km ?? 0) - (b.distance_km ?? 0);
-  });
-
-  // Backend chưa trả điểm đánh giá nên chỉ hiện nút sắp xếp khi có dữ liệu
-  const hasRating = facilities.some((item) => item.rating != null);
-
-  const mappedFacilities = sortedFacilities.filter((item) => item.latitude != null && item.longitude != null);
-  const projectToMap = buildMapProjection([
-    ...mappedFacilities.map((item) => ({ lat: Number(item.latitude), lng: Number(item.longitude) })),
-    ...(position ? [position] : []),
-  ]);
+  const sortedFacilities = facilities.map((venue) => ({ ...venue, distance_km: distanceKm(position, venue) }))
+    .sort((a, b) => position
+      ? (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity)
+      : sortBy === 'rating' ? (b.rating ?? 0) - (a.rating ?? 0) : 0);
+  const hasRating = !position && facilities.some((item) => item.rating != null);
 
   const handleSelectFacility = (facility) => {
     sessionStorage.setItem('selected_facility_id', String(facility.facility_id));
@@ -263,8 +190,9 @@ export default function FacilitySearchPage() {
 
             <button
               type="button"
-              className={`${styles.gpsBtn} ${usingGps ? styles.gpsActive : ''}`}
-              onClick={handleUseMyLocation}
+              className={`${styles.gpsBtn} ${position ? styles.gpsActive : ''}`}
+              onClick={requestLocation}
+              disabled={locating}
             >
               <span className={styles.fieldIcon}>🎯</span>
               <span>Use my location</span>
@@ -278,6 +206,7 @@ export default function FacilitySearchPage() {
       </section>
 
       <main className={styles.mainContent}>
+        {locationError && <p role="status">{locationError}</p>}
         <div className={styles.resultsHeader}>
           <div>
             <span className={styles.sectionTag}>SEARCH RESULTS</span>
@@ -356,7 +285,7 @@ export default function FacilitySearchPage() {
                     {(item.distance_km != null || item.courts_count != null || item.open_hours) && (
                       <div className={styles.cardMeta}>
                         {item.distance_km != null && (
-                          <strong>{String(item.distance_km).replace('.', ',')} km</strong>
+                          <strong>{item.distance_km.toFixed(1).replace('.', ',')} km</strong>
                         )}
                         {(item.courts_count != null || item.open_hours) && (
                           <span>
@@ -373,34 +302,8 @@ export default function FacilitySearchPage() {
             )}
           </div>
 
-          {/* Mockup UI: Bản đồ CSS tĩnh (Không dùng API Key) */}
           <aside className={styles.mapCard}>
-            <div className={styles.mapCanvas}>
-              <div className={styles.roadH1} />
-              <div className={styles.roadH2} />
-              <div className={styles.roadV1} />
-              <div className={styles.roadV2} />
-
-              {position && (
-                <div className={styles.userDot} style={projectToMap(position)} title="Your location" />
-              )}
-
-              {mappedFacilities.map((item) => (
-                <button
-                  key={item.facility_id}
-                  type="button"
-                  style={item.pin_pos || projectToMap({ lat: Number(item.latitude), lng: Number(item.longitude) })}
-                  className={`${styles.mapPinWrapper} ${selectedId === item.facility_id ? styles.pinActive : ''}`}
-                  onClick={() => handleSelectFacility(item)}
-                >
-                  <span className={styles.pinLabel}>{item.pin_pos?.short_name || item.facility_name}</span>
-                  <span className={styles.pinIcon} />
-                </button>
-              ))}
-            </div>
-            <p className={styles.mapFooter}>
-              Click a pin to view the facility's name and address.
-            </p>
+            <LocationMap venues={sortedFacilities} onSelect={handleSelectFacility} />
           </aside>
         </div>
       </main>
