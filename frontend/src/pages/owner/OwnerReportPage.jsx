@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react'
-import { Link } from 'react-router-dom'
 import api from '../../api'
 import { downloadVenueData, loadOwnerLocations } from '../../api/ownerApi'
 import { getSelectedLocation, selectLocation } from '../../api/session'
 import { errorMessage, money, today, useResource } from '../workspaceSupport'
+import ManagementLayout from '../../components/layout/ManagementLayout'
 import styles from './OwnerReportPage.module.css'
 
 const percent = (value) => (Number(value) * 100).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + '%'
@@ -157,19 +157,12 @@ export default function OwnerReportPage() {
     }
   }
 
-  return <div className={styles.page}>
-    <aside className={styles.sidebar}>
-      <Link className={styles.brand} to="/owner/workspace"><span className={styles.brandBolt}>⚡</span> Courtly</Link>
-      <nav className={styles.navigation} aria-label="Quản lý địa điểm">
-        <Link className={styles.navItem} to="/owner/workspace">Quản lý địa điểm</Link>
-        <Link className={styles.navItem} to="/owner/courts-pricing">Sân và bảng giá</Link>
-        <Link className={`${styles.navItem} ${styles.navItemActive}`} to="/owner/reports" aria-current="page">Báo cáo</Link>
-        <Link className={styles.navItem} to="/owner/reconciliations">Đối soát doanh thu</Link>
-      </nav>
-    </aside>
-    <main className={styles.main}>
-      <header className={styles.header}>
-        <h1 className={styles.heading}>Báo cáo vận hành và doanh thu</h1>
+  return (
+    <ManagementLayout
+      role="owner"
+      title="Báo cáo vận hành và doanh thu"
+      subtitle="Thống kê doanh thu, tỷ lệ lấp đầy, hủy sân và xuất dữ liệu Excel (UC35)"
+      actions={
         <div className={styles.headerActions}>
           <label className={styles.facilityLabel}>Địa điểm
             <select className={styles.facilitySelect} value={locationId} onChange={(event) => {
@@ -186,7 +179,14 @@ export default function OwnerReportPage() {
             {exporting ? 'Đang tải…' : 'Tải Excel'}
           </button>
         </div>
-      </header>
+      }
+      locations={locations.data}
+      locationId={locationId}
+      onLocationChange={(nextId) => {
+        selectLocation(nextId)
+        setLocationId(nextId)
+      }}
+    >
       {locations.loading && <p role="status">Đang tải địa điểm…</p>}
       {locations.error && <p role="alert">{locations.error}</p>}
       {exportError && <p role="alert" className={styles.errorMessage}>{exportError}</p>}
@@ -199,6 +199,6 @@ export default function OwnerReportPage() {
         </nav>
         <ReportContent report={report} resource={data} />
       </>}
-    </main>
-  </div>
+    </ManagementLayout>
+  )
 }

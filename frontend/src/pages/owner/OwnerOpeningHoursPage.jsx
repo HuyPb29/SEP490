@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   apiErrorMessage,
   createOpeningException,
@@ -7,36 +6,14 @@ import {
   getOpeningExceptions,
   getOpeningHours,
   getOwnerLocations,
-  getSlotSetting,
+  getSlotSetting, getStoredLocationId,
   storeLocationId,
   updateOpeningException,
   updateOpeningHours,
   updateSlotSetting,
 } from '../../api/locationApi'
-// Dùng lại đúng khung sidebar của trang Courts & Pricing để 2 màn hình không lệch nhau.
-import shell from './OwnerCourtsPricingPage.module.css'
+import ManagementLayout from '../../components/layout/ManagementLayout'
 import styles from './OwnerOpeningHoursPage.module.css'
-
-const NAV_ITEMS = [
-  'Reports',
-  'Courts & Pricing',
-  'Opening Hours',
-  'Staff',
-  'Vouchers & Offers',
-  'Complaints',
-  'Refunds',
-  'Maintenance Approval',
-  'Reviews',
-  'Facility Settings',
-]
-
-const NAV_LINKS = {
-  Reports: '/owner/reports',
-  'Courts & Pricing': '/owner/courts-pricing',
-  'Opening Hours': '/owner/opening-hours',
-  'Maintenance Approval': '/maintenance',
-  'Facility Settings': '/owner/facility-settings',
-}
 
 /** Backend chỉ nhận bội số 30 phút: mở 00:00–23:30, đóng 00:30–24:00. */
 const SLOT_STEP = 30
@@ -100,7 +77,7 @@ function buildWeek(days) {
 export default function OwnerOpeningHoursPage() {
   const [locations, setLocations] = useState([])
   const [selectedLocationId, setSelectedLocationId] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [_loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
 
   const [week, setWeek] = useState(() => buildWeek([]))
@@ -147,7 +124,7 @@ export default function OwnerOpeningHoursPage() {
 
   const loadSlot = useCallback(async (courtId, locationId) => {
     if (!courtId) {
-      setSlotConfigured(false)
+      Promise.resolve().then(() => setSlotConfigured(false))
       return
     }
     const setting = await getSlotSetting(courtId, locationId)
@@ -169,7 +146,7 @@ export default function OwnerOpeningHoursPage() {
         const rows = await getOwnerLocations()
         if (cancelled) return
         setLocations(rows)
-        const stored = Number(localStorage.getItem('bms_selected_location_id'))
+        const stored = Number(getStoredLocationId())
         const fallback = rows.some((location) => location.id === stored) ? stored : rows[0]?.id
         setSelectedLocationId(fallback ?? null)
         if (fallback) storeLocationId(fallback)
@@ -216,12 +193,12 @@ export default function OwnerOpeningHoursPage() {
   useEffect(() => {
     if (!selectedLocationId) return
     const firstCourtId = courts[0]?.id ?? ''
-    setSlotCourtId(firstCourtId ? String(firstCourtId) : '')
+    Promise.resolve().then(() => setSlotCourtId(firstCourtId ? String(firstCourtId) : ''))
     if (!firstCourtId) {
-      setSlotConfigured(false)
+      Promise.resolve().then(() => setSlotConfigured(false))
       return
     }
-    loadSlot(firstCourtId, selectedLocationId).catch((err) => setSlotError(apiErrorMessage(err)))
+    Promise.resolve().then(() => loadSlot(firstCourtId, selectedLocationId)).catch((err) => setSlotError(apiErrorMessage(err)))
   }, [selectedLocationId, courts, loadSlot])
 
   const handleFacilityChange = (event) => {
@@ -442,59 +419,24 @@ export default function OwnerOpeningHoursPage() {
   const configuredDays = week.filter((day) => day.enabled).length
 
   return (
-    <div className={shell.page}>
-      <aside className={shell.sidebar}>
-        <div className={shell.brand}>
-          <span className={shell.brandBolt} aria-hidden="true">⚡</span>
-          <span>Courtly</span>
-        </div>
-
-        <label className={shell.facilityLabel} htmlFor="owner-hours-facility">Facility</label>
-        <select
-          className={shell.facilitySelect}
-          id="owner-hours-facility"
-          value={selectedLocationId ?? ''}
-          onChange={handleFacilityChange}
-          disabled={loading || locations.length === 0}
-        >
-          {locations.length === 0 && <option value="">{loading ? 'Loading…' : 'No facility'}</option>}
-          {locations.map((location) => (
-            <option key={location.id} value={location.id}>{location.name}</option>
-          ))}
-        </select>
-
-        <nav className={shell.navigation} aria-label="Owner navigation">
-          {NAV_ITEMS.map((item) =>
-            NAV_LINKS[item] ? (
-              <Link
-                className={`${shell.navItem} ${item === 'Opening Hours' ? shell.navItemActive : ''}`}
-                to={NAV_LINKS[item]}
-                key={item}
-                aria-current={item === 'Opening Hours' ? 'page' : undefined}
-              >
-                {item}
-              </Link>
-            ) : (
-              <a className={shell.navItem} href="#" key={item} onClick={(event) => event.preventDefault()}>
-                {item}
-              </a>
-            ),
-          )}
-        </nav>
-      </aside>
-
-      <main className={shell.main}>
-        <h1 className={shell.pageTitle}>Opening Hours</h1>
-        <p className={styles.subtitle}>
-          Weekly opening hours, slot configuration and exception days for the selected facility.
-          Every time is a multiple of 30 minutes.
-        </p>
-
+    <ManagementLayout
+      role="owner"
+      title="Giờ mở cửa & Slot"
+      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name} · Cấu hình giờ mở cửa, slot và ngày ngoại lệ (UC08)` : 'Cấu hình khung giờ hoạt động, thời lượng slot và ngày ngoại lệ (UC08)'}
+      locations={locations}
+      locationId={selectedLocationId}
+      onLocationChange={handleFacilityChange}
+    >
+      <div>
         {loadError && <p className={styles.alertError} role="alert">{loadError}</p>}
         {locationLocked && (
           <p className={styles.alertWarn}>
-            This facility is locked (expired service term), so the backend rejects every update.
-            Renew the service term first.
+            Cụm sân này đã bị khóa. Anh/chị chỉ có thể xem dữ liệu mà không thể chỉnh sửa.
+          </p>
+        )}
+        {serviceExpired && (
+          <p className={styles.alertWarn}>
+            Kỳ hạn dịch vụ đã hết hạn. Vui lòng liên hệ Quản trị viên để gia hạn trước khi thay đổi cấu hình.
           </p>
         )}
 
@@ -824,7 +766,7 @@ export default function OwnerOpeningHoursPage() {
             </table>
           )}
         </section>
-      </main>
-    </div>
+      </div>
+    </ManagementLayout>
   )
 }

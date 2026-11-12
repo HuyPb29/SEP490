@@ -9,12 +9,13 @@ import {
   rejectServiceRegistration,
   updateLocationStatus,
 } from '../../api/locationApi'
+import AdminLayout from '../../components/layout/AdminLayout'
 import styles from './AdminFacilitiesPage.module.css'
 
 const EXTENSION_OPTIONS = [
-  { months: 12, label: '12 months (1 year)' },
-  { months: 24, label: '24 months (2 years)' },
-  { months: 36, label: '36 months (3 years)' },
+  { months: 12, label: '12 tháng (1 năm)' },
+  { months: 24, label: '24 tháng (2 năm)' },
+  { months: 36, label: '36 tháng (3 năm)' },
 ]
 
 /** Số ngày còn lại được coi là "sắp hết hạn" để tô màu cảnh báo. */
@@ -94,7 +95,7 @@ export default function AdminFacilitiesPage() {
   }
 
   useEffect(() => {
-    loadAll()
+    Promise.resolve().then(() => loadAll())
   }, [])
 
   const filteredFacilities = useMemo(() => {
@@ -279,43 +280,30 @@ export default function AdminFacilitiesPage() {
   /** Trạng thái kỳ hạn: hết hạn / sắp hết hạn / còn hạn / chưa có kỳ hạn. */
   const periodInfo = (facility) => {
     const end = facility.serviceTermEndDate
-    if (!end) return { kind: 'none', text: 'No service term' }
-    if (facility.serviceActive === false) return { kind: 'expired', text: `Expired ${formatDate(end)}` }
+    if (!end) return { kind: 'none', text: 'Chưa có kỳ hạn' }
+    if (facility.serviceActive === false) return { kind: 'expired', text: `Hết hạn ${formatDate(end)}` }
     const remaining = daysBetween(todayIso(), String(end).slice(0, 10))
     if (remaining <= EXPIRING_SOON_DAYS) {
-      return { kind: 'expiring', text: `Expires ${formatDate(end)} (${remaining}d)` }
+      return { kind: 'expiring', text: `Sắp hết hạn ${formatDate(end)} (${remaining} ngày)` }
     }
-    return { kind: 'range', text: `Valid to ${formatDate(end)}` }
+    return { kind: 'range', text: `Hiệu lực đến ${formatDate(end)}` }
   }
 
   return (
-    <div className={styles.page}>
-      <aside className={styles.sidebar}>
-        <div className={styles.brand}>
-          <span className={styles.brandBolt} aria-hidden="true">⚡</span>
-          <span>Courtly</span>
-        </div>
-
-        <div className={styles.roleCard}>
-          <span>System Administration</span>
-          <strong>Admin</strong>
-        </div>
-
-        <nav className={styles.navigation} aria-label="Admin navigation">
-          <button className={`${styles.navItem} ${styles.navItemActive}`} type="button" aria-current="page">
-            <span>Facilities</span>
-            <span className={styles.pendingBadge} aria-label={`${pendingRequests.length} pending requests`}>
-              {pendingRequests.length}
-            </span>
-          </button>
-          <button className={styles.navItem} type="button">Accounts</button>
-          <button className={styles.navItem} type="button">Violating Vouchers</button>
-          <button className={styles.navItem} type="button">Violating Reviews</button>
-        </nav>
-      </aside>
-
-      <main className={styles.main}>
-        <h1 className={styles.pageTitle}>Manage Service Facilities</h1>
+    <AdminLayout
+      title="Quản lý địa điểm & Đăng ký dịch vụ"
+      subtitle="Kiểm duyệt đơn đăng ký của chủ sân và quản lý kỳ hạn hoạt động (UC05, UC06)"
+      actions={
+        <button
+          className={styles.secondaryButton || 'cw-secondary'}
+          type="button"
+          onClick={loadAll}
+          disabled={loading}
+        >
+          {loading ? 'Đang tải…' : 'Làm mới'}
+        </button>
+      }
+    >
 
         {(statusMessage || (actionError && !modal)) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
@@ -326,7 +314,7 @@ export default function AdminFacilitiesPage() {
 
         <section className={`${styles.panel} ${styles.requestsPanel}`} aria-labelledby="requests-title">
           <h2 className={styles.sectionTitle} id="requests-title">
-            Pending Registration Requests ({pendingRequests.length})
+            Đơn đăng ký dịch vụ chờ duyệt ({pendingRequests.length})
           </h2>
           <div className={styles.requestList}>
             {pendingRequests.map((request) => (
@@ -334,28 +322,28 @@ export default function AdminFacilitiesPage() {
                 <div className={styles.requestInfo}>
                   <div className={styles.requestHeading}>
                     <h3>{request.locationName}</h3>
-                    <span className={styles.requestType}>{request.courtCount} courts</span>
+                    <span className={styles.requestType}>{request.courtCount} sân</span>
                   </div>
-                  <p className={styles.requestAddress}>{request.address || 'No address'}</p>
+                  <p className={styles.requestAddress}>{request.address || 'Chưa có địa chỉ'}</p>
                   <p className={styles.requestMeta}>
-                    {request.requesterName || 'Unknown requester'}
+                    {request.requesterName || 'Chưa rõ người gửi'}
                     {request.contactPhone ? ` · ${request.contactPhone}` : ''}
                     {request.contactEmail ? ` · ${request.contactEmail}` : ''}
-                    {` · submitted ${formatDateTime(request.createdAt)}`}
+                    {` · gửi lúc ${formatDateTime(request.createdAt)}`}
                   </p>
                 </div>
                 <div className={styles.requestActions}>
                   <button className={styles.rejectButton} type="button" onClick={() => handleReject(request)} disabled={saving}>
-                    Reject
+                    Từ chối
                   </button>
                   <button className={styles.approveButton} type="button" onClick={() => handleApprove(request)} disabled={saving}>
-                    Approve
+                    Duyệt
                   </button>
                 </div>
               </article>
             ))}
             {!loading && pendingRequests.length === 0 && (
-              <p className={styles.emptyState}>There are no pending registration requests.</p>
+              <p className={styles.emptyState}>Không có đơn đăng ký dịch vụ nào đang chờ duyệt.</p>
             )}
           </div>
         </section>
@@ -363,25 +351,25 @@ export default function AdminFacilitiesPage() {
         <section className={`${styles.panel} ${styles.facilitiesPanel}`} aria-labelledby="facilities-title">
           <div className={styles.facilitiesHeader}>
             <h2 className={styles.sectionTitle} id="facilities-title">
-              Facilities ({facilities.length})
+              Danh sách cụm sân ({facilities.length})
               <span className={styles.countHint}>
-                {activeCount} active · {lockedCount} locked
+                {activeCount} hoạt động · {lockedCount} đã khóa
               </span>
             </h2>
             <div className={styles.filterGroup}>
               <label className={styles.filterField}>
-                <span className={styles.visuallyHidden}>Filter by status</span>
+                <span className={styles.visuallyHidden}>Lọc theo trạng thái</span>
                 <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                  <option value="ALL">All statuses</option>
-                  <option value="ACTIVE">Active</option>
-                  <option value="LOCKED">Locked</option>
+                  <option value="ALL">Tất cả trạng thái</option>
+                  <option value="ACTIVE">Hoạt động</option>
+                  <option value="LOCKED">Đã khóa</option>
                 </select>
               </label>
               <label className={styles.searchField}>
-                <span className={styles.visuallyHidden}>Search by facility or owner name</span>
+                <span className={styles.visuallyHidden}>Tìm theo tên sân hoặc chủ sân</span>
                 <input
                   type="search"
-                  placeholder="Search by facility or owner"
+                  placeholder="Tìm theo tên sân hoặc chủ sân"
                   value={searchKeyword}
                   onChange={(event) => setSearchKeyword(event.target.value)}
                 />
@@ -391,11 +379,11 @@ export default function AdminFacilitiesPage() {
 
           <div className={styles.tableScroller}>
             <div className={`${styles.facilityTable} ${styles.tableHeader}`} role="row">
-              <span role="columnheader">Facility</span>
-              <span role="columnheader">Status</span>
-              <span role="columnheader">Service Period</span>
-              <span role="columnheader">Courts</span>
-              <span role="columnheader">Actions</span>
+              <span role="columnheader">Địa điểm sân</span>
+              <span role="columnheader">Trạng thái</span>
+              <span role="columnheader">Kỳ hạn dịch vụ</span>
+              <span role="columnheader">Số sân</span>
+              <span role="columnheader">Hành động</span>
             </div>
             {filteredFacilities.map((facility) => {
               const period = periodInfo(facility)
@@ -403,11 +391,11 @@ export default function AdminFacilitiesPage() {
                 <div className={`${styles.facilityTable} ${styles.facilityRow}`} role="row" key={facility.id}>
                   <div className={styles.facilityName} role="cell">
                     <strong>{facility.name}</strong>
-                    <span>Owner: {facility.ownerName || '—'}</span>
+                    <span>Chủ sân: {facility.ownerName || '—'}</span>
                   </div>
                   <div className={styles.statusCell} role="cell">
                     <span className={`${styles.statusBadge} ${facility.status === 'ACTIVE' ? styles.statusActive : styles.statusLocked}`}>
-                      {facility.status === 'ACTIVE' ? 'Active' : 'Locked'}
+                      {facility.status === 'ACTIVE' ? 'Hoạt động' : 'Đã khóa'}
                     </span>
                   </div>
                   <div
@@ -416,30 +404,30 @@ export default function AdminFacilitiesPage() {
                   >
                     {period.text}
                     {facility.lockedAt && facility.status === 'LOCKED' && (
-                      <span className={styles.lockedHint}>Locked {formatDateTime(facility.lockedAt)}</span>
+                      <span className={styles.lockedHint}>Đã khóa {formatDateTime(facility.lockedAt)}</span>
                     )}
                   </div>
                   <span className={styles.numberCell} role="cell">{facility.courtCount ?? 0}</span>
                   <div className={styles.facilityActions} role="cell">
                     <button className={styles.extendButton} type="button" onClick={() => openExtendModal(facility)} disabled={saving}>
-                      Extend
+                      Gia hạn
                     </button>
                     {facility.status === 'ACTIVE' ? (
                       <button className={styles.lockButton} type="button" onClick={() => handleLock(facility)} disabled={saving}>
-                        Lock
+                        Khóa
                       </button>
                     ) : (
                       <button className={styles.reopenButton} type="button" onClick={() => handleReopen(facility)} disabled={saving}>
-                        Reopen
+                        Mở lại
                       </button>
                     )}
                   </div>
                 </div>
               )
             })}
-            {loading && <p className={styles.emptyState}>Loading facilities…</p>}
+            {loading && <p className={styles.emptyState}>Đang tải danh sách địa điểm…</p>}
             {!loading && filteredFacilities.length === 0 && (
-              <p className={styles.emptyState}>No facilities match your filter.</p>
+              <p className={styles.emptyState}>Không có địa điểm nào phù hợp bộ lọc.</p>
             )}
           </div>
         </section>
@@ -451,19 +439,19 @@ export default function AdminFacilitiesPage() {
             <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
               <h2 id="admin-modal-title">
                 {modal.type === 'reject'
-                  ? 'Reject Registration Request'
-                  : modal.reopening ? 'Extend and Reopen Facility' : 'Extend Service Period'}
+                  ? 'Từ chối đơn đăng ký dịch vụ'
+                  : modal.reopening ? 'Gia hạn và mở lại cụm sân' : 'Gia hạn kỳ hạn dịch vụ'}
               </h2>
               <p>
                 {modal.type === 'reject'
-                  ? `The owner of "${modal.locationName}" will see this reason.`
-                  : `New service period for "${modal.facilityName}". The backend requires at least 12 months and no overlap with existing periods.`}
+                  ? `Chủ sở hữu của "${modal.locationName}" sẽ thấy lý do này.`
+                  : `Kỳ hạn dịch vụ mới cho "${modal.facilityName}". Hệ thống yêu cầu tối thiểu 12 tháng và không trùng lặp với kỳ hạn đang có.`}
               </p>
               <form onSubmit={modal.type === 'reject' ? handleConfirmRejection : handleConfirmExtension}>
                 {actionError && <p className={styles.modalError} role="alert">{actionError}</p>}
                 {modal.type === 'reject' ? (
                   <label className={styles.modalField}>
-                    <span>Rejection reason</span>
+                    <span>Lý do từ chối</span>
                     <textarea
                       autoFocus
                       rows="4"
@@ -475,7 +463,7 @@ export default function AdminFacilitiesPage() {
                 ) : (
                   <>
                     <label className={styles.modalField}>
-                      <span>Extension period</span>
+                      <span>Thời hạn gia hạn</span>
                       <select value={modal.months} onChange={(event) => updateModalField('months', Number(event.target.value))}>
                         {EXTENSION_OPTIONS.map((option) => (
                           <option key={option.months} value={option.months}>{option.label}</option>
@@ -483,7 +471,7 @@ export default function AdminFacilitiesPage() {
                       </select>
                     </label>
                     <label className={styles.modalField}>
-                      <span>Start date</span>
+                      <span>Ngày bắt đầu</span>
                       <input
                         type="date"
                         value={modal.startDate}
@@ -491,29 +479,28 @@ export default function AdminFacilitiesPage() {
                       />
                     </label>
                     <p className={styles.computedDate}>
-                      New period: <strong>{formatDate(modal.startDate)}</strong> –{' '}
+                      Kỳ hạn mới: <strong>{formatDate(modal.startDate)}</strong> –{' '}
                       <strong>{formatDate(endDateForMonths(modal.startDate || todayIso(), Number(modal.months)))}</strong>
                       {modal.currentEndDate && (
-                        <span className={styles.computedHint}>Current period ends {formatDate(modal.currentEndDate)}</span>
+                        <span className={styles.computedHint}>Kỳ hạn hiện tại kết thúc ngày {formatDate(modal.currentEndDate)}</span>
                       )}
                     </p>
                   </>
                 )}
                 <div className={styles.modalActions}>
                   <button className={styles.cancelButton} type="button" onClick={closeModal} disabled={saving}>
-                    Cancel
+                    Hủy
                   </button>
                   <button className={styles.approveButton} type="submit" disabled={saving}>
                     {modal.type === 'reject'
-                      ? 'Send Rejection'
-                      : modal.reopening ? 'Extend & Reopen' : 'Confirm Extension'}
+                      ? 'Gửi từ chối'
+                      : modal.reopening ? 'Gia hạn & Mở lại' : 'Xác nhận gia hạn'}
                   </button>
                 </div>
               </form>
             </section>
           </div>
         )}
-      </main>
-    </div>
+    </AdminLayout>
   )
 }

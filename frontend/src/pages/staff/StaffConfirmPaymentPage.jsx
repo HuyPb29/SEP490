@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiErrorMessage } from '../../api';
-import { getSavedUser, getSelectedLocation, getToken } from '../../api/session';
-import {
-  listPendingStaffBookingPayments, getStaffBookingPaymentDetails, getStaffBookingProofImage,
-  decideStaffBookingPayment, listPendingReschedulePayments, getStaffReschedulePaymentDetails, decideReschedulePayment,
-} from '../../api/bookingPaymentApi';
+import { useAuth } from '../../hooks/useAuth';
+import { usePaymentActions } from '../../hooks/useBooking';
 import { F1Dialog } from '../../components/F1Feedback';
+import ManagementLayout from '../../components/layout/ManagementLayout';
 import styles from './StaffConfirmPaymentPage.module.css';
 
 const REASONS = [
@@ -47,19 +45,25 @@ function formatPaymentLabel(item) {
 }
 
 export default function StaffConfirmPaymentPage() {
-  const user = getSavedUser();
-  const role = user?.role_code;
-  const selectedLocationId = getSelectedLocation();
-  const token = getToken();
+  const { role, selectedLocationId, token } = useAuth();
   const [params] = useSearchParams();
   const surcharge = params.get('type') === 'reschedule';
-  return <PaymentDesk key={[token, selectedLocationId, surcharge].join(':')} staff={user} role={role} surcharge={surcharge} />;
+  return <PaymentDesk key={[token, selectedLocationId, surcharge].join(':')} role={role} surcharge={surcharge} />;
 }
 
-function PaymentDesk({ staff, role, surcharge }) {
+function PaymentDesk({ role, surcharge }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedId = searchParams.get('paymentId') || searchParams.get('booking');
+  const {
+    listPendingStaffBookingPayments,
+    getStaffBookingPaymentDetails,
+    getStaffBookingProofImage,
+    decideStaffBookingPayment,
+    listPendingReschedulePayments,
+    getStaffReschedulePaymentDetails,
+    decideReschedulePayment,
+  } = usePaymentActions();
 
   const [queue, setQueue] = useState([]);
   const [filter, setFilter] = useState('');
@@ -115,7 +119,7 @@ function PaymentDesk({ staff, role, surcharge }) {
       if (!signal.aborted) setLoadingQueue(false);
     });
     return () => controller.abort();
-  }, [requestedId, revision, surcharge]);
+  }, [requestedId, revision, surcharge, listPendingReschedulePayments, listPendingStaffBookingPayments]);
 
   useEffect(() => {
     if (!selectedId || loadingQueue) return undefined;
@@ -132,7 +136,7 @@ function PaymentDesk({ staff, role, surcharge }) {
       if (!signal.aborted) setDetailError({ id: selectedId, message: apiErrorMessage(error, 'Không tải được chi tiết giao dịch.') });
     });
     return () => controller.abort();
-  }, [selectedId, loadingQueue, surcharge]);
+  }, [selectedId, loadingQueue, surcharge, getStaffReschedulePaymentDetails, getStaffBookingPaymentDetails]);
 
   const payment = detail?.payment || detail;
   const activeDetail = !loadingQueue && selectedId && payment?.id === selectedId ? detail : null;
@@ -160,7 +164,7 @@ function PaymentDesk({ staff, role, surcharge }) {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [selectedId, activeProofId, proofKey]);
+  }, [selectedId, activeProofId, proofKey, getStaffBookingProofImage]);
 
   const amountDue = Number(activePayment?.amountDue ?? 0);
   const validAmount = !actualAmount || /^[0-9]{1,12}$/.test(actualAmount);
@@ -264,97 +268,42 @@ function PaymentDesk({ staff, role, surcharge }) {
     activePayment?.resubmitsLeft ?? Math.max(0, 3 - Number(activePayment?.resubmitCount ?? 0));
 
   return (
-    <div className={styles.page}>
-      <aside className={styles.sidebar}>
-        <div className={styles.brand}>
-          <span className={styles.brandIcon} aria-hidden="true">ϟ</span>
-          <span>Courtly</span>
-        </div>
-        <div className={styles.facility}>
-          <span>{role === 'owner' ? 'Chủ sân' : 'Nhân viên tại'}</span>
-          <strong>{staff?.full_name || 'Cụm sân'}</strong>
-        </div>
-        <nav className={styles.navigation} aria-label="Điều hướng nhân viên">
+    <ManagementLayout
+      role={role === 'owner' ? 'owner' : 'staff'}
+      title={surcharge ? 'Xác nhận phụ thu đổi lịch (UC21)' : 'Xác nhận thanh toán đặt sân (UC19)'}
+      subtitle="Xác nhận thanh toán chuyển khoản và đối chiếu biên nhận"
+      actions={
+        <div style={{ display: 'flex', gap: 8 }}>
           <button
-            className={styles.navItem}
             type="button"
-            onClick={() =>
-              navigate(role === 'owner' ? '/owner/workspace' : '/staff/dashboard')
-            }
-          >
-            {role === 'owner' ? 'Quản lý cụm sân' : 'Bảng điều hành'}
-          </button>
-          {role === 'staff' && <button
-            className={styles.navItem}
-            type="button"
-            onClick={() => navigate('/staff/dashboard?modal=counter')}
-          >
-            Đặt sân tại quầy
-          </button>}
-          <button
-            className={`${styles.navItem} ${styles.activeNav}`}
-            type="button"
+            className={!surcharge ? styles.confirmButton : styles.resubmitButton}
+            style={{ minHeight: 36, padding: '0 14px', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}
+            disabled={isProcessing}
             onClick={() => navigate('/staff/confirm-payments')}
           >
-            Xác nhận thanh toán (UC19)
+            Thanh toán đặt sân
           </button>
           <button
-            className={styles.navItem}
             type="button"
-            onClick={() => navigate(role === 'owner' ? '/owner/reconciliations' : '/staff/dashboard?modal=reconciliation')}
+            className={surcharge ? styles.confirmButton : styles.resubmitButton}
+            style={{ minHeight: 36, padding: '0 14px', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}
+            disabled={isProcessing}
+            onClick={() => navigate('/staff/confirm-payments?type=reschedule')}
           >
-            Đối soát cuối ngày (UC20)
+            Phụ thu đổi lịch
           </button>
-          <button className={styles.navItem} type="button" onClick={() => navigate('/maintenance')}>
-            Yêu cầu bảo trì
+          <button
+            type="button"
+            className={styles.resubmitButton}
+            style={{ minHeight: 36, padding: '0 12px', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}
+            disabled={loadingQueue || isProcessing}
+            onClick={reload}
+          >
+            Làm mới
           </button>
-          {role === 'staff' && (
-            <button
-              className={styles.navItem}
-              type="button"
-              onClick={() => navigate('/staff/complaints')}
-            >
-              Khiếu nại
-            </button>
-          )}
-        </nav>
-      </aside>
-
-      <main className={styles.main}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-          <h1 className={styles.pageTitle} style={{ margin: 0 }}>
-            {surcharge ? 'Xác nhận phụ thu đổi lịch (UC21)' : 'Xác nhận thanh toán đặt sân (UC19)'}
-          </h1>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              className={!surcharge ? styles.confirmButton : styles.resubmitButton}
-              style={{ minHeight: 36, padding: '0 14px', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}
-              disabled={isProcessing}
-              onClick={() => navigate('/staff/confirm-payments')}
-            >
-              Thanh toán đặt sân
-            </button>
-            <button
-              type="button"
-              className={surcharge ? styles.confirmButton : styles.resubmitButton}
-              style={{ minHeight: 36, padding: '0 14px', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}
-              disabled={isProcessing}
-              onClick={() => navigate('/staff/confirm-payments?type=reschedule')}
-            >
-              Phụ thu đổi lịch
-            </button>
-            <button
-              type="button"
-              className={styles.resubmitButton}
-              style={{ minHeight: 36, padding: '0 12px', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}
-              disabled={loadingQueue || isProcessing}
-              onClick={reload}
-            >
-              Làm mới
-            </button>
-          </div>
         </div>
+      }
+    >
 
         {message && (
           <p
@@ -666,7 +615,6 @@ function PaymentDesk({ staff, role, surcharge }) {
             </section>
           )}
         </div>
-      </main>
 
       {decision && <F1Dialog title="Xác nhận thao tác" message={dialogMessage}
         onClose={() => setDecision(null)} onConfirm={perform} />}
@@ -716,6 +664,6 @@ function PaymentDesk({ staff, role, surcharge }) {
           </section>
         </div>
       )}
-    </div>
+    </ManagementLayout>
   );
 }

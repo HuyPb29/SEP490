@@ -1,35 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   apiErrorMessage,
-  getOwnerLocations,
+  getOwnerLocations, getStoredLocationId,
   storeLocationId,
   updateOwnerLocation,
 } from '../../api/locationApi'
-// Dùng lại đúng khung sidebar của trang Courts & Pricing để các màn owner không lệch nhau.
-import shell from './OwnerCourtsPricingPage.module.css'
+import ManagementLayout from '../../components/layout/ManagementLayout'
 import styles from './OwnerFacilitySettingsPage.module.css'
-
-const NAV_ITEMS = [
-  'Reports',
-  'Courts & Pricing',
-  'Opening Hours',
-  'Staff',
-  'Vouchers & Offers',
-  'Complaints',
-  'Refunds',
-  'Maintenance Approval',
-  'Reviews',
-  'Facility Settings',
-]
-
-const NAV_LINKS = {
-  Reports: '/owner/reports',
-  'Courts & Pricing': '/owner/courts-pricing',
-  'Opening Hours': '/owner/opening-hours',
-  'Maintenance Approval': '/maintenance',
-  'Facility Settings': '/owner/facility-settings',
-}
 
 /** Khớp ràng buộc trong UpdateLocationRequest để báo lỗi ngay, khỏi gọi API. */
 const PHONE_PATTERN = /^0\d{9}$/
@@ -81,7 +58,7 @@ function formatDateTime(value) {
 export default function OwnerFacilitySettingsPage() {
   const [locations, setLocations] = useState([])
   const [selectedLocationId, setSelectedLocationId] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [_loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
 
   const [form, setForm] = useState(() => toForm(null))
@@ -103,7 +80,7 @@ export default function OwnerFacilitySettingsPage() {
   const loadLocations = useCallback(async (preferredId) => {
     const rows = await getOwnerLocations()
     setLocations(rows)
-    const stored = Number(localStorage.getItem('bms_selected_location_id'))
+    const stored = Number(getStoredLocationId())
     const wanted = preferredId ?? stored
     const next = rows.find((location) => location.id === wanted) ?? rows[0] ?? null
     setSelectedLocationId(next?.id ?? null)
@@ -255,59 +232,19 @@ export default function OwnerFacilitySettingsPage() {
   const qrPreview = form.qrImagePath.trim()
 
   return (
-    <div className={shell.page}>
-      <aside className={shell.sidebar}>
-        <div className={shell.brand}>
-          <span className={shell.brandBolt} aria-hidden="true">⚡</span>
-          <span>Courtly</span>
-        </div>
-
-        <label className={shell.facilityLabel} htmlFor="owner-settings-facility">Facility</label>
-        <select
-          className={shell.facilitySelect}
-          id="owner-settings-facility"
-          value={selectedLocationId ?? ''}
-          onChange={handleFacilityChange}
-          disabled={loading || locations.length === 0}
-        >
-          {locations.length === 0 && <option value="">{loading ? 'Loading…' : 'No facility'}</option>}
-          {locations.map((location) => (
-            <option key={location.id} value={location.id}>{location.name}</option>
-          ))}
-        </select>
-
-        <nav className={shell.navigation} aria-label="Owner navigation">
-          {NAV_ITEMS.map((item) =>
-            NAV_LINKS[item] ? (
-              <Link
-                className={`${shell.navItem} ${item === 'Facility Settings' ? shell.navItemActive : ''}`}
-                to={NAV_LINKS[item]}
-                key={item}
-                aria-current={item === 'Facility Settings' ? 'page' : undefined}
-              >
-                {item}
-              </Link>
-            ) : (
-              <a className={shell.navItem} href="#" key={item} onClick={(event) => event.preventDefault()}>
-                {item}
-              </a>
-            ),
-          )}
-        </nav>
-      </aside>
-
-      <main className={shell.main}>
-        <h1 className={shell.pageTitle}>Facility Settings</h1>
-        <p className={styles.subtitle}>
-          Profile, booking rules and payment details of the selected facility.
-          Empty optional fields are sent as blank so the stored value is cleared.
-        </p>
-
+    <ManagementLayout
+      role="owner"
+      title="Hồ sơ địa điểm"
+      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name} · Cấu hình thông tin địa điểm và tài khoản ngân hàng (UC07)` : 'Cấu hình thông tin địa điểm và tài khoản ngân hàng (UC07)'}
+      locations={locations}
+      locationId={selectedLocationId}
+      onLocationChange={handleFacilityChange}
+    >
+      <div>
         {loadError && <p className={styles.alertError} role="alert">{loadError}</p>}
         {locked && (
           <p className={styles.alertWarn}>
-            This facility is locked (expired service term) — every update is rejected until the
-            service term is renewed.
+            Cụm sân này đã bị khóa (hết hạn kỳ hạn dịch vụ). Vui lòng gia hạn để thực hiện chỉnh sửa.
           </p>
         )}
 
@@ -544,7 +481,7 @@ export default function OwnerFacilitySettingsPage() {
             </div>
           </dl>
         </section>
-      </main>
-    </div>
+      </div>
+    </ManagementLayout>
   )
 }

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   apiErrorMessage,
   createBatchOffer,
@@ -17,29 +16,8 @@ import {
   updateCourt,
   updatePriceRule,
 } from '../../api/locationApi'
+import ManagementLayout from '../../components/layout/ManagementLayout'
 import styles from './OwnerCourtsPricingPage.module.css'
-
-/** Mục sidebar đã có màn hình thật; mục không có trong map vẫn là link chết. */
-const NAV_LINKS = {
-  Reports: '/owner/reports',
-  'Courts & Pricing': '/owner/courts-pricing',
-  'Opening Hours': '/owner/opening-hours',
-  'Maintenance Approval': '/maintenance',
-  'Facility Settings': '/owner/facility-settings',
-}
-
-const NAV_ITEMS = [
-  'Reports',
-  'Courts & Pricing',
-  'Opening Hours',
-  'Staff',
-  'Vouchers & Offers',
-  'Complaints',
-  'Refunds',
-  'Maintenance Approval',
-  'Reviews',
-  'Facility Settings',
-]
 
 const WEEK_DAYS = [
   { value: 1, short: 'Mon', label: 'Monday' },
@@ -502,60 +480,26 @@ export default function OwnerCourtsPricingPage() {
   }
 
   return (
-    <div className={styles.page}>
-      <aside className={styles.sidebar}>
-        <div className={styles.brand}>
-          <span className={styles.brandBolt} aria-hidden="true">⚡</span>
-          <span>Courtly</span>
-        </div>
-
-        <label className={styles.facilityLabel} htmlFor="owner-pricing-facility">Facility</label>
-        <select
-          className={styles.facilitySelect}
-          id="owner-pricing-facility"
-          value={selectedLocationId ?? ''}
-          onChange={handleFacilityChange}
-          disabled={loading || locations.length === 0}
-        >
-          {locations.length === 0 && <option value="">{loading ? 'Loading…' : 'No facility'}</option>}
-          {locations.map((location) => (
-            <option key={location.id} value={location.id}>{location.name}</option>
-          ))}
-        </select>
-
-        <nav className={styles.navigation} aria-label="Owner navigation">
-          {NAV_ITEMS.map((item) =>
-            NAV_LINKS[item] ? (
-              <Link
-                className={`${styles.navItem} ${item === 'Courts & Pricing' ? styles.navItemActive : ''}`}
-                to={NAV_LINKS[item]}
-                key={item}
-                aria-current={item === 'Courts & Pricing' ? 'page' : undefined}
-              >
-                {item}
-              </Link>
-            ) : (
-              <a className={styles.navItem} href="#" key={item} onClick={(event) => event.preventDefault()}>
-                {item}
-              </a>
-            ),
-          )}
-        </nav>
-      </aside>
-
-      <main className={styles.main}>
-        <h1 className={styles.pageTitle}>Courts &amp; Pricing</h1>
+    <ManagementLayout
+      role="owner"
+      title="Sân & Bảng giá"
+      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name}` : 'Quản lý danh sách sân, bảng giá giờ chơi và ưu đãi theo lô'}
+      locations={locations}
+      locationId={selectedLocationId}
+      onLocationChange={handleFacilityChange}
+    >
+      <div>
         {actionError && <p className={styles.actionError} role="alert">{actionError}</p>}
         {statusMessage && <p className={styles.statusMessage} role="status">{statusMessage}</p>}
         {selectedLocation && selectedLocation.status !== 'ACTIVE' && (
           <p className={styles.warningText} role="alert">
-            This facility is locked. You can view its data but cannot make changes.
+            Cụm sân này đã bị khóa. Anh/chị chỉ có thể xem dữ liệu mà không thể chỉnh sửa.
           </p>
         )}
         {selectedLocation && selectedLocation.status === 'ACTIVE' && !selectedLocation.serviceActive && (
           <p className={styles.warningText} role="alert">
-            Service term ended{selectedLocation.serviceTermEndDate ? ` on ${selectedLocation.serviceTermEndDate}` : ''}.
-            Contact the administrator to renew before changing this facility.
+            Kỳ hạn dịch vụ đã kết thúc{selectedLocation.serviceTermEndDate ? ` vào ngày ${selectedLocation.serviceTermEndDate}` : ''}.
+            Vui lòng liên hệ Quản trị viên để gia hạn trước khi thay đổi cấu hình.
           </p>
         )}
 
@@ -842,7 +786,7 @@ export default function OwnerCourtsPricingPage() {
           </form>
         </section>
         <span className={styles.facilityContext} aria-live="polite">{selectedLocation?.name}</span>
-      </main>
-    </div>
+      </div>
+    </ManagementLayout>
   )
 }
