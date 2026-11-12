@@ -15,6 +15,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu tham chiếu đến ảnh chứng từ và thời điểm tải lên cho một giao dịch.
+ */
 @Entity
 @Table(name = "payment_proof")
 @Getter

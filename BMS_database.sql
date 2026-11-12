@@ -252,7 +252,7 @@ CREATE TABLE booking_package (
     location_id BIGINT NOT NULL,
     player_id BIGINT NOT NULL,
     batch_offer_id BIGINT NULL,
-    package_type VARCHAR(10) NOT NULL,
+    package_type VARCHAR(12) NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     list_amount DECIMAL(12,0) NOT NULL,
@@ -266,8 +266,9 @@ CREATE TABLE booking_package (
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_booking_package_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_booking_package PRIMARY KEY (id),
     CONSTRAINT uk_pkg_id_location UNIQUE (id, location_id),
-    CONSTRAINT ck_pkg_type CHECK (package_type IN ('RECURRING','CUSTOM','DAY')),  -- DAY: đơn đặt lẻ (BR64, D164)
-    CONSTRAINT ck_pkg_status CHECK (status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','PAYMENT_REJECTED','EXPIRED')),
+    CONSTRAINT ck_pkg_type CHECK (package_type IN ('RECURRING','CUSTOM','DAY')),
+    CONSTRAINT ck_pkg_status CHECK (status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','PAYMENT_REJECTED','EXPIRED')
+        OR (package_type = 'DAY' AND status = 'CANCELLED_BY_PLAYER')),
     CONSTRAINT ck_pkg_dates CHECK (end_date >= start_date),
     CONSTRAINT ck_pkg_amount CHECK (final_amount > 0 AND voucher_discount >= 0 AND point_discount >= 0 AND points_used >= 0),
     CONSTRAINT ck_pkg_point_min CHECK (points_used = 0 OR point_discount >= 1000)
@@ -465,6 +466,7 @@ CREATE TABLE refund_request (
     complaint_id BIGINT NULL,
     suggested_amount DECIMAL(12,0) NOT NULL,
     refunded_amount DECIMAL(12,0) NULL,
+    verified_unrecorded_amount DECIMAL(12,0) NULL,
     loyalty_settled_amount DECIMAL(12,0) NOT NULL CONSTRAINT df_refund_loyalty_amount DEFAULT 0,
     loyalty_revoked_points INT NOT NULL CONSTRAINT df_refund_loyalty_points DEFAULT 0,
     refund_date DATE NULL,

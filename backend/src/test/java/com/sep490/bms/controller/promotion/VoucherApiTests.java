@@ -36,6 +36,9 @@ import com.sep490.bms.service.promotion.VoucherService;
 import com.sep490.bms.exception.AppException;
 import jakarta.persistence.EntityManager;
 
+/**
+ * Kiểm thử tích hợp vòng đời voucher, phạm vi địa điểm, cấp voucher riêng và giới hạn lượt dùng đồng thời.
+ */
 @SpringBootTest
 class VoucherApiTests {
     @Autowired WebApplicationContext context;

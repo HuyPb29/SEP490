@@ -63,7 +63,7 @@ public class RescheduleService {
             String qrImageUrl, String transferContent) {}
     public record PaymentView(Payment payment, List<PaymentProof> proofs) {}
     public record PaymentProgress(Long id, PaymentStatus status, LocalDateTime resubmitDeadline,
-            String resubmitReason, int resubmitsLeft) {}
+            String resubmitReason, int resubmitsLeft, BigDecimal receivedAmount, BigDecimal remainingAmount) {}
 
     public List<Payment> staffPayments(UserPrincipal u,PaymentStatus status) {
         Long location=access.selectedLocation(u).getId();
@@ -218,7 +218,8 @@ public class RescheduleService {
                 .getResultList().stream()
                 .findFirst()
                 .map(payment -> new PaymentProgress(payment.getId(), payment.getStatus(), payment.getResubmitDeadline(),
-                        payment.getResubmitReason(), Math.max(0, Payment.MAX_RESUBMITS - payment.getResubmitCount())))
+                        payment.getResubmitReason(), Math.max(0, Payment.MAX_RESUBMITS - payment.getResubmitCount()),
+                        payment.receivedSoFar(), payment.remainingAmount()))
                 .orElse(null);
     }
 
@@ -227,7 +228,11 @@ public class RescheduleService {
         Booking booking = support.booking(request.getBookingId());
         Location location = em.find(Location.class, booking.getLocationId());
         String qrPath = location.getQrImagePath() == null ? null : "/api/reschedule-requests/" + id + "/payment-instructions/qr";
-        return new Instructions(id, request.getExtraAmount(), request.getHoldExpiresAt(), request.getApproveDeadline(),
+        PaymentProgress progress = request.getStatus() == RescheduleStatus.AWAITING_CONFIRMATION
+                ? paymentForRequest(u, id) : null;
+        BigDecimal due = progress != null && progress.status() == PaymentStatus.RESUBMIT_REQUESTED
+                ? progress.remainingAmount() : request.getExtraAmount();
+        return new Instructions(id, due, request.getHoldExpiresAt(), request.getApproveDeadline(),
                 location.getBankName(), location.getBankAccountNo(), location.getBankAccountHolder(), qrPath,
                 booking.getBookingCode() + " DL" + id);
     }
@@ -258,8 +263,16 @@ public class RescheduleService {
         if(r.getStatus()!=RescheduleStatus.AWAITING_CONFIRMATION || p.getStatus()!=PaymentStatus.AWAITING_CONFIRMATION)
             throw new AppException("Thanh toán không chờ xác nhận",HttpStatus.CONFLICT);
         if(input.playerAtFault() && p.noResubmitLeft()) { finish(r,b,RescheduleStatus.REJECTED); return r; }
+        if (input.receivedAmount() != null) {
+            if (!p.acceptsPartialAmount(input.receivedAmount())) {
+                throw new AppException("Số đã nhận phải từ số đã ghi nhận đến dưới tổng phụ thu");
+            }
+            p.setReceivedAmount(input.receivedAmount());
+        }
         p.requestResubmission(input.reason().trim(),r.getApproveDeadline(),input.playerAtFault());
-        support.notify(b.getPlayerId(),"PAYMENT_RESUBMIT","Cần bổ sung thanh toán phụ thu: "+input.reason(),b.getId());
+        BigDecimal remaining = p.remainingAmount();
+        support.notify(b.getPlayerId(),"PAYMENT_RESUBMIT","Cần bổ sung thanh toán phụ thu: "+input.reason()
+                + ". Số tiền còn thiếu: " + remaining.toPlainString() + " đ.",b.getId());
         return r;
     }
     public RescheduleRequest resubmit(UserPrincipal u,Long paymentId,MultipartFile proof) {

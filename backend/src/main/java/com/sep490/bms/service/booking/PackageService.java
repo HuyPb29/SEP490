@@ -44,6 +44,7 @@ import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.enums.VoucherStatus;
+import com.sep490.bms.entity.enums.VoucherTargetGroup;
 import com.sep490.bms.entity.location.BatchOffer;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.notification.NotificationType;
@@ -216,7 +217,7 @@ public class PackageService {
     }
 
     PackageDetailResponse create(UserPrincipal player, PackageRequest request, LocalDateTime now) {
-        return create(player, request, null, now);
+        return create(player, request, request.note(), now);
     }
 
     private PackageDetailResponse create(UserPrincipal player, PackageRequest request, String note,
@@ -648,9 +649,9 @@ public class PackageService {
                 }
             }
         } else if (isOrder(request)) {
-            // BR64: đơn đặt lẻ có ít nhất 2 dải (một dải thì là booking lẻ), mọi dải cùng một ngày (MSG30).
-            if (request.sessions() == null || request.sessions().size() < 2) {
-                throw new AppException("Đơn đặt lẻ cần ít nhất 2 khung giờ; một khung giờ thì đặt như booking lẻ.");
+            // BR64: mọi dải của đơn đặt lẻ thuộc cùng một ngày (MSG30).
+            if (request.sessions() == null || request.sessions().isEmpty()) {
+                throw new AppException("Chọn ít nhất một khung giờ cho đơn đặt lẻ.");
             }
             sessions = explicitSessions(request, court, today);
             if (distinctDays(sessions) != 1) {
@@ -991,6 +992,7 @@ public class PackageService {
     }
 
     private static boolean isPublished(Voucher voucher) {
-        return voucher != null && voucher.getStatus() == VoucherStatus.PUBLISHED;
+        return voucher != null && voucher.getStatus() == VoucherStatus.PUBLISHED
+                && voucher.getTargetGroup() == VoucherTargetGroup.SPECIFIED;
     }
 }

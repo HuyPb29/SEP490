@@ -53,6 +53,7 @@ import com.sep490.bms.entity.enums.BookingType;
 import com.sep490.bms.entity.enums.DiscountType;
 import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.enums.VoucherStatus;
+import com.sep490.bms.entity.enums.VoucherTargetGroup;
 import com.sep490.bms.entity.location.BatchOffer;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.promotion.Voucher;
@@ -168,7 +169,8 @@ class PackageServiceTests {
 
     private static Voucher voucher(long id, VoucherStatus status) {
         return Voucher.builder().id(id).locationId(LOCATION).name("Voucher " + id).code("SECRET" + id)
-                .discountType(DiscountType.AMOUNT).discountValue(new BigDecimal("50000")).status(status).build();
+                .discountType(DiscountType.AMOUNT).discountValue(new BigDecimal("50000"))
+                .targetGroup(VoucherTargetGroup.SPECIFIED).status(status).build();
     }
 
     private static PackageRequest recurring(LocalDate start, LocalDate end, WeeklySlot... slots) {
@@ -338,7 +340,7 @@ class PackageServiceTests {
     @Test
     void sessionTodayAlreadyStartedIsConflict() {
         PackagePreviewResponse result = service.preview(player, custom(
-                session(TODAY, null, 480, 540), session(TODAY, null, 600, 660), session(DEC_1, null, 600, 660)), NOW);
+                session(TODAY, null, 480, 540), session(TODAY, null, 600, 660), session(TODAY.plusDays(1), null, 600, 660)), NOW);
 
         assertThat(result.getSessions()).extracting(PackagePreviewResponse.Session::getConflict)
                 .containsExactly(Conflict.STARTED, null, null);
@@ -419,10 +421,9 @@ class PackageServiceTests {
         assertThatThrownBy(() -> service.preview(player, custom(
                 session(DEC_1, 99L, 1080, 1140), session(DEC_31, null, 1080, 1140)), NOW))
                 .hasMessageContaining("không thuộc địa điểm");
-        // Cùng giờ nhưng khác sân thì không chồng (thêm một ngày nữa cho đủ 2 ngày, D163).
-        assertThat(service.preview(player, custom(
-                session(DEC_1, null, 1080, 1200), session(DEC_1, 12L, 1080, 1200), session(DEC_31, null, 1080, 1200)), NOW)
-                .getTotalSessions()).isEqualTo(3);
+        assertThatThrownBy(() -> service.preview(player, custom(
+                session(DEC_1, null, 1080, 1200), session(DEC_1, 12L, 1080, 1200)), NOW))
+                .hasMessageContaining("2 ngày khác nhau").hasMessageContaining("(MSG91)");
     }
 
     @Test
@@ -831,9 +832,9 @@ class PackageServiceTests {
     }
 
     @Test
-    void orderNeedsTwoRangesOnOneDayWithinAdvanceLimit() {
-        assertThatThrownBy(() -> service.previewOrder(player, order(ORDER_DAY, null, range(COURT, 1080, 1140)), NOW))
-                .hasMessageContaining("đặt như booking lẻ");
+    void orderAcceptsOneRangeWithinAdvanceLimit() {
+        assertThat(service.previewOrder(player, order(ORDER_DAY, null, range(COURT, 1080, 1140)), NOW)
+                .getTotalSessions()).isEqualTo(1);
         // Mặc định đặt trước tối đa 30 ngày (BR02).
         assertThatThrownBy(() -> service.previewOrder(player, order(TODAY.plusDays(31), null,
                 range(COURT, 1080, 1140), range(12L, 1080, 1140)), NOW))

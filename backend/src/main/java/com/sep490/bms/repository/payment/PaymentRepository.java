@@ -19,6 +19,9 @@ import com.sep490.bms.entity.payment.Payment;
 
 import jakarta.persistence.LockModeType;
 
+/**
+ * Tra cứu và khóa giao dịch theo booking hoặc gói, gồm các truy vấn phục vụ xác nhận và đối soát.
+ */
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
@@ -45,6 +48,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
      */
     Page<Payment> findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
             Long locationId, PaymentStatus status, Pageable pageable);
+
+    List<Payment> findByLocationIdAndStatusOrderBySubmittedAtAscIdAsc(Long locationId, PaymentStatus status);
 
     @Query("""
             SELECT p.id FROM Payment p

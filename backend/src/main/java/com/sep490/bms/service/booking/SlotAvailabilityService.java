@@ -1,5 +1,6 @@
 package com.sep490.bms.service.booking;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -67,6 +68,22 @@ public class SlotAvailabilityService {
      * Không có dòng nào thì ngày đó đóng cửa: trả về rỗng.
      */
     @Transactional(readOnly = true)
+    public boolean exceededOpeningTime(Long locationId, LocalDateTime from, LocalDateTime to, Duration threshold) {
+        if (from == null || !from.plus(threshold).isBefore(to)) return false;
+        Duration elapsed = Duration.ZERO;
+        for (LocalDate date = to.toLocalDate(); !date.isBefore(from.toLocalDate()); date = date.minusDays(1)) {
+            var window = openingWindow(locationId, date);
+            if (window.isEmpty()) continue;
+            LocalDateTime start = date.atStartOfDay().plusMinutes(window.get().openMinute());
+            LocalDateTime end = date.atStartOfDay().plusMinutes(window.get().closeMinute());
+            if (start.isBefore(from)) start = from;
+            if (end.isAfter(to)) end = to;
+            if (end.isAfter(start)) elapsed = elapsed.plus(Duration.between(start, end));
+            if (elapsed.compareTo(threshold) > 0) return true;
+        }
+        return false;
+    }
+
     public Optional<OpeningWindow> openingWindow(Long locationId, LocalDate date) {
         var exception = openingExceptionRepository.findByLocationIdAndExceptionDate(locationId, date);
         if (exception.isPresent()) {

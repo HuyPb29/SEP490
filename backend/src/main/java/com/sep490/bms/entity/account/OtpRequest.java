@@ -17,6 +17,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu mã OTP đã băm, hạn sử dụng, số lần nhập sai và dữ liệu đăng ký đang chờ.
+ */
 @Entity
 @Table(name = "otp_request")
 @Getter

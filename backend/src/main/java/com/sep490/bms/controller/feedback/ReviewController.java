@@ -26,6 +26,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API đọc, gửi, phản hồi và kiểm duyệt đánh giá sân.
+ *
  * Feature: F8 – Đánh giá và khiếu nại
  * Owner: Hoàng
  * UC: UC12 – Xem thông tin sân công khai; UC31 – Đánh giá sân; UC32 – Quản lý đánh giá sân

@@ -30,6 +30,9 @@ import com.sep490.bms.repository.team.TeamRepository;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Quản lý đội, thành viên, quyền đội trưởng và yêu cầu tham gia.
+ */
 @Service
 @RequiredArgsConstructor
 public class TeamService {

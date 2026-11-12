@@ -16,6 +16,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu ngưỡng chi tiêu và voucher thưởng của một mốc tích lũy tại địa điểm.
+ */
 @Entity
 @Table(name = "loyalty_tier")
 @Getter

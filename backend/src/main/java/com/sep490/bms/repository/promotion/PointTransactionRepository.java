@@ -5,6 +5,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.promotion.PointTransaction;
 
+/**
+ * Tra cứu lịch sử biến động điểm theo ví, booking hoặc gói và loại giao dịch.
+ */
 @Repository
 public interface PointTransactionRepository extends JpaRepository<PointTransaction, Long>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<PointTransaction> {
     java.util.Optional<PointTransaction> findFirstByBookingIdAndTypeOrderByIdAsc(Long bookingId,com.sep490.bms.entity.enums.PointTransactionType type);

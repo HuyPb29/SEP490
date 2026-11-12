@@ -5,6 +5,9 @@ import jakarta.validation.constraints.Pattern;
 
 import lombok.*;
 
+/**
+ * Nhận mật khẩu hiện tại và mật khẩu mới của người dùng đã đăng nhập.
+ */
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ChangePasswordRequest {
     @NotBlank private String currentPassword;

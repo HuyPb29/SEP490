@@ -16,6 +16,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu lần Player đạt mốc tích lũy và lượt voucher đã được cấp.
+ */
 @Entity
 @Table(name = "loyalty_reward")
 @Getter

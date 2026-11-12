@@ -11,6 +11,9 @@ import com.sep490.bms.repository.account.AccountRepository;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Nạp tài khoản theo tên đăng nhập hoặc mã tài khoản cho Spring Security.
+ */
 @Service
 @RequiredArgsConstructor
 public class CustomUserDetailsService implements UserDetailsService {

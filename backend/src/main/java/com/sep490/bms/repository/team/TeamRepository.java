@@ -8,6 +8,9 @@ import org.springframework.data.repository.query.Param;
 
 import com.sep490.bms.entity.team.Team;
 
+/**
+ * Tìm đội theo tên và tra cứu các đội mà Player đang tham gia.
+ */
 public interface TeamRepository extends JpaRepository<Team, Long> {
 
     boolean existsByNameIgnoreCase(String name);

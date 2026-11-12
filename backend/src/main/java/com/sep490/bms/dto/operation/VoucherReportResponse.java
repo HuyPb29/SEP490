@@ -10,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Tổng hợp lượt dùng, lượt trả và số tiền giảm theo voucher trong kỳ báo cáo.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

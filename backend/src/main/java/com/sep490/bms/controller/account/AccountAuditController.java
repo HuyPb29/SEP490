@@ -10,6 +10,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Cung cấp cho Admin API tra cứu nhật ký thao tác tài khoản.
+ */
 @RestController
 @RequiredArgsConstructor
 public class AccountAuditController {

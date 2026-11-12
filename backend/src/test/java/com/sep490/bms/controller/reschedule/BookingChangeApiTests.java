@@ -51,7 +51,7 @@ class BookingChangeApiTests {
         Long payment=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);
         mvc.perform(post("/api/staff/reschedule-payments/"+payment+"/request-resubmission").header("Authorization",token(owner))
                 .header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"reason\":\"Transfer delayed\",\"playerAtFault\":false}")).andExpect(status().isOk());
+                .content("{\"reason\":\"Transfer delayed\",\"playerAtFault\":false,\"receivedAmount\":5000}")).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("select status from payment where id=?",String.class,payment)).isEqualTo("RESUBMIT_REQUESTED");
         assertThat(bookingStatus()).isEqualTo("CONFIRMED");
         String paymentPath = "/api/reschedule-requests/" + id + "/payment";
@@ -59,7 +59,12 @@ class BookingChangeApiTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(payment))
                 .andExpect(jsonPath("$.data.status").value("RESUBMIT_REQUESTED"))
-                .andExpect(jsonPath("$.data.resubmitReason").value("Transfer delayed"));
+                .andExpect(jsonPath("$.data.resubmitReason").value("Transfer delayed"))
+                .andExpect(jsonPath("$.data.receivedAmount").value(5000))
+                .andExpect(jsonPath("$.data.remainingAmount").value(15000));
+        mvc.perform(get("/api/reschedule-requests/" + id + "/payment-instructions")
+                .header("Authorization", token(player))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.amountDue").value(15000));
         mvc.perform(get(paymentPath).header("Authorization", token(other))).andExpect(status().isForbidden());
         var proof=new org.springframework.mock.web.MockMultipartFile("proof","receipt.png","image/png",new byte[]{1,2});
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/reschedule-payments/"+payment+"/resubmit")

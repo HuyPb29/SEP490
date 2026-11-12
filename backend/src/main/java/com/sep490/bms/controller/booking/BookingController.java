@@ -32,6 +32,8 @@ import com.sep490.bms.service.booking.WalkInBookingService;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API đặt sân lẻ, đặt sân tại quầy và xem lịch sử booking.
+ *
  * Feature: F3 – Tìm và đặt sân
  * Owner: Minh
  * UC: UC14 – Đặt sân lẻ; UC16 – Đặt sân tại quầy; UC17 – Xem lịch sử booking

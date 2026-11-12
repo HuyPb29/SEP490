@@ -11,6 +11,9 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.assertj.core.api.Assertions.*;
 
+/**
+ * Kiểm tra chuyển trạng thái theo giờ chơi và bảo vệ booking đang chờ xử lý hoặc đã hủy.
+ */
 class BookingStatusJobTests {
     final BookingRepository bookings=mock(BookingRepository.class);
     final AffectedBookingRepository affected=mock(AffectedBookingRepository.class);

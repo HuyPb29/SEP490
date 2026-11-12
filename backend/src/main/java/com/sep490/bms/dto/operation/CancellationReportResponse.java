@@ -10,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Tổng hợp lượt hủy theo bên hủy và số tiền hoàn trong kỳ báo cáo.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

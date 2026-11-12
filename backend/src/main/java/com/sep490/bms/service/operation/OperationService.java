@@ -13,7 +13,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,7 +24,12 @@ import com.sep490.bms.dto.operation.RescheduleReportResponse;
 import com.sep490.bms.dto.operation.RevenueReportResponse;
 import com.sep490.bms.dto.operation.StaffDashboardResponse;
 import com.sep490.bms.dto.operation.VoucherReportResponse;
+import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.entity.payment.Payment;
+import com.sep490.bms.repository.booking.BookingRepository;
+import com.sep490.bms.repository.payment.PaymentRepository;
+import com.sep490.bms.service.booking.SlotAvailabilityService;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.security.LocationAccessService;
@@ -58,10 +62,9 @@ public class OperationService {
     private final OperationQueryRepository queryRepository;
     private final LocationRepository locationRepository;
     private final LocationAccessService locationAccess;
-
-    /** UC34: giao dịch chờ xác nhận quá số phút này thì cảnh báo khẩn trên bảng điều hành. */
-    @Value("${bms.dashboard.payment-overdue-minutes:15}")
-    private int paymentOverdueMinutes;
+    private final PaymentRepository payments;
+    private final BookingRepository bookings;
+    private final SlotAvailabilityService availability;
 
     // ---------------------------------------------------------------- UC34 – Bảng điều hành Staff
 
@@ -79,6 +82,19 @@ public class OperationService {
         BigDecimal todayRevenue = queryRepository.sumConfirmedPayments(locationId, today, today).stream()
                 .map(AmountRow::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        var pending = payments.findByLocationIdAndStatusOrderBySubmittedAtAscIdAsc(locationId,
+                PaymentStatus.AWAITING_CONFIRMATION);
+        var bookingIds = pending.stream().map(Payment::getBookingId).filter(java.util.Objects::nonNull).toList();
+        Map<Long, String> codes = new HashMap<>();
+        bookings.findAllById(bookingIds).forEach(b -> codes.put(b.getId(), b.getBookingCode()));
+        var pendingItems = pending.stream().map(payment -> new StaffDashboardResponse.PendingPayment(payment.getId(),
+                payment.getRescheduleRequestId() != null ? "Phụ thu #" + payment.getRescheduleRequestId()
+                        : payment.getPackageId() != null ? "Đơn/Gói #" + payment.getPackageId()
+                                : codes.get(payment.getBookingId()),
+                payment.getAmountDue(), payment.getSubmittedAt(), payment.getRescheduleRequestId() != null,
+                availability.exceededOpeningTime(locationId, payment.getSubmittedAt(), now, Payment.LATE_CONFIRMATION_WAIT)))
+                .toList();
+
         return StaffDashboardResponse.builder()
                 .locationId(locationId)
                 .locationName(location.getName())
@@ -95,10 +111,10 @@ public class OperationService {
                         .status(r.getStatus())
                         .finalAmount(r.getFinalAmount())
                         .build()).toList())
-                .paymentsAwaitingConfirmation(queryRepository.countPaymentsAwaitingConfirmation(locationId))
-                .overduePayments(queryRepository.countPaymentsAwaitingSince(locationId,
-                        now.minusMinutes(paymentOverdueMinutes)))
-                .paymentOverdueMinutes(paymentOverdueMinutes)
+                .paymentsAwaitingConfirmation(pendingItems.size())
+                .pendingPayments(pendingItems)
+                .overduePayments(pendingItems.stream().filter(StaffDashboardResponse.PendingPayment::overdue).count())
+                .paymentOverdueMinutes((int) Payment.LATE_CONFIRMATION_WAIT.toMinutes())
                 .complaintsToForward(queryRepository.countComplaintsByStatus(locationId, "SUBMITTED"))
                 .todayRevenue(todayRevenue)
                 .reconciledToday(queryRepository.existsReconciliation(locationId, today))

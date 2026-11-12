@@ -40,6 +40,9 @@ import com.sep490.bms.service.promotion.*;
 import com.sep490.bms.exception.AppException;
 import jakarta.persistence.EntityManager;
 
+/**
+ * Kiểm thử tích hợp phân quyền ví điểm, tích và hoàn điểm theo thanh toán, cùng ưu đãi theo mốc chi tiêu.
+ */
 @SpringBootTest @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class LoyaltyApiTests {
     @Autowired WebApplicationContext context;

@@ -1,5 +1,8 @@
 package com.sep490.bms.entity.enums;
 
+/**
+ * Mô tả vòng đời voucher từ bản nháp đến công bố, hết hạn hoặc vô hiệu hóa.
+ */
 public enum VoucherStatus {
     DRAFT,
     PUBLISHED,

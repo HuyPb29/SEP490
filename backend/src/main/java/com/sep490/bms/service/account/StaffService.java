@@ -21,6 +21,9 @@ import com.sep490.bms.security.*;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Quản lý tài khoản Staff tại địa điểm của Owner, gồm tạo, vô hiệu hóa và cấp lại mật khẩu.
+ */
 @Service
 @RequiredArgsConstructor
 public class StaffService {

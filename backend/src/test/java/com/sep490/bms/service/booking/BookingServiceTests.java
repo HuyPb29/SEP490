@@ -56,6 +56,9 @@ import com.sep490.bms.service.promotion.LoyaltyPointService;
 import com.sep490.bms.service.promotion.VoucherService;
 import com.sep490.bms.service.team.TeamService;
 
+/**
+ * Kiểm tra tóm tắt, giữ chỗ, kiểm tra slot và áp ưu đãi khi tạo booking lẻ.
+ */
 class BookingServiceTests {
 
     private static final Long LOCATION = 1L;
@@ -284,7 +287,7 @@ class BookingServiceTests {
     // ---- UC14 #6–8: tạo booking giữ chỗ (5.1) ----
 
     @Test
-    void createSavesHoldingBookingWithFiveMinuteHold() {
+    void createSavesHoldingBookingWithTenMinuteHold() {
         stubSave();
 
         BookingResponse created = service.createSingleBooking(player, requestWithNote("  Mượn 2 vợt  "),

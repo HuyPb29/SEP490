@@ -19,6 +19,9 @@ import com.sep490.bms.entity.enums.BookingStatus;
 
 import jakarta.persistence.LockModeType;
 
+/**
+ * Truy vấn booking theo người đặt, địa điểm và trạng thái, đồng thời hỗ trợ khóa bản ghi.
+ */
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 

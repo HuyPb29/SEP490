@@ -9,6 +9,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import com.sep490.bms.entity.team.JoinRequestStatus;
 import com.sep490.bms.entity.team.MatchJoinRequest;
 
+/**
+ * Tra cứu yêu cầu tham gia kèo theo Player, trạng thái và thời gian gửi.
+ */
 public interface MatchJoinRequestRepository extends JpaRepository<MatchJoinRequest, Long> {
 
     boolean existsByMatchIdAndPlayerIdAndStatusIn(Long matchId, Long playerId, Collection<JoinRequestStatus> statuses);

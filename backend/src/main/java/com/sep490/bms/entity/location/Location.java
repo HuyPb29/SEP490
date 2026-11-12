@@ -16,6 +16,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu thông tin địa điểm, chủ sở hữu, vị trí, tài khoản nhận tiền và chính sách đặt sân.
+ */
 @Entity
 @Table(name = "location")
 @Getter

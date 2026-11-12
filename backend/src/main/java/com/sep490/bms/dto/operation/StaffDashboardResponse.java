@@ -12,6 +12,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Trả số liệu trong ngày cho Staff, gồm booking, thanh toán chờ xác nhận, khiếu nại và đối soát.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -31,6 +34,7 @@ public class StaffDashboardResponse {
     /** Giao dịch chờ xác nhận đã gửi quá paymentOverdueMinutes phút, cần xử lý gấp. */
     private long overduePayments;
     private int paymentOverdueMinutes;
+    private List<PendingPayment> pendingPayments;
     private long complaintsToForward;
     private BigDecimal todayRevenue;
     private boolean reconciledToday;
@@ -75,4 +79,7 @@ public class StaffDashboardResponse {
         private String status;
         private BigDecimal finalAmount;
     }
+
+    public record PendingPayment(Long id, String label, BigDecimal amountDue, LocalDateTime submittedAt,
+            boolean reschedule, boolean overdue) {}
 }

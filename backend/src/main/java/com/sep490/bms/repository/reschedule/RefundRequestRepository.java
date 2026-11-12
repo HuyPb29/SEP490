@@ -5,6 +5,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.reschedule.RefundRequest;
 
+/**
+ * Truy cập các bản ghi yêu cầu hoàn tiền.
+ */
 @Repository
 public interface RefundRequestRepository extends JpaRepository<RefundRequest, Long> {
 }

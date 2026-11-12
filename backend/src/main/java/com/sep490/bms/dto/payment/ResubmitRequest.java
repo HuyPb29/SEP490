@@ -1,5 +1,8 @@
 package com.sep490.bms.dto.payment;
 
+import java.math.BigDecimal;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -14,5 +17,9 @@ public record ResubmitRequest(
         @Size(max = 255, message = "Lý do tối đa 255 ký tự")
         String reason,
         @NotNull(message = "Vui lòng chọn lỗi có do Player hay không")
-        Boolean playerAtFault) {
+        Boolean playerAtFault,
+        @DecimalMin("0") @Digits(integer = 12, fraction = 0) BigDecimal receivedAmount) {
+    public ResubmitRequest(String reason, Boolean playerAtFault) {
+        this(reason, playerAtFault, null);
+    }
 }

@@ -6,6 +6,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Trả token xác thực và thông tin người dùng sau khi đăng nhập hoặc xác minh đăng ký.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

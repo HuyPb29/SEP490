@@ -16,6 +16,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu kỳ hạn sử dụng dịch vụ của địa điểm và người ghi nhận.
+ */
 @Entity
 @Table(name = "service_term")
 @Getter

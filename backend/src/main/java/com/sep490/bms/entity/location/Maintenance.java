@@ -19,6 +19,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu thời gian bảo trì sân, người gửi yêu cầu và quyết định xử lý.
+ */
 @Entity
 @Table(name = "maintenance")
 @Getter

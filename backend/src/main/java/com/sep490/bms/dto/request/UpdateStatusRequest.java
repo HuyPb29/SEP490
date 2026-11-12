@@ -8,6 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận trạng thái tài khoản đích và lý do thay đổi.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

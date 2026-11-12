@@ -16,6 +16,9 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 
+/**
+ * Phát và xác minh JWT, đọc định danh tài khoản và kiểm tra phiên bản token.
+ */
 @Component
 public class JwtTokenProvider {
 

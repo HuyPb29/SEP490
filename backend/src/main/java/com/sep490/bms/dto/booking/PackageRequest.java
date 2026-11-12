@@ -37,7 +37,14 @@ public record PackageRequest(
         @Size(max = 20) String voucherCode,
         @Positive Long voucherGrantId,
         /** Số điểm dùng cho cả gói, tối đa 50% số tiền còn lại sau voucher (BR41). */
-        @Min(0) Integer pointsToUse) {
+        @Min(0) Integer pointsToUse,
+        @Size(max = 200) String note) {
+
+    public PackageRequest(PackageType packageType, Long courtId, LocalDate startDate, LocalDate endDate,
+            List<WeeklySlot> weeklySlots, List<Session> sessions, Long teamId, String voucherCode,
+            Long voucherGrantId, Integer pointsToUse) {
+        this(packageType, courtId, startDate, endDate, weeklySlots, sessions, teamId, voucherCode, voucherGrantId, pointsToUse, null);
+    }
 
     @AssertTrue(message = "Chỉ chọn voucherCode hoặc voucherGrantId")
     public boolean isVoucherSelectionValid() {

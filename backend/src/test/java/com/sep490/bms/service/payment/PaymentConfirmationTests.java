@@ -320,16 +320,17 @@ class PaymentConfirmationTests {
 
     @Test
     void resubmissionByPlayerFaultUsesOneTryAndSetsDeadlineToEndOfPlay() {
-        PaymentResponse result = service.requestResubmission(staff, PAYMENT, new ResubmitRequest(" Ảnh mờ ", true), NOW);
+        PaymentResponse result = service.requestResubmission(staff, PAYMENT, new ResubmitRequest(" Ảnh mờ ", true, new BigDecimal("60000")), NOW);
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.RESUBMIT_REQUESTED);
         assertThat(payment.getResubmitReason()).isEqualTo("Ảnh mờ");
         assertThat(payment.getResubmitDeadline()).isEqualTo(PLAY_END);
         assertThat(payment.getResubmitCount()).isEqualTo(1);
         assertThat(result.getResubmitsLeft()).isEqualTo(2);
+        assertThat(result.getReceivedAmount()).isEqualByComparingTo("60000");
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.RESUBMIT_REQUESTED);
         assertThat(notificationsSent()).singleElement().satisfies(n -> assertThat(n.getContent())
-                .isEqualTo("Vui lòng bổ sung cho booking BK000030: Ảnh mờ. Hạn: 19:00 05/11/2026. Còn 2 lượt gửi lại."));
+                .isEqualTo("Vui lòng bổ sung cho booking BK000030: Ảnh mờ. Số tiền còn thiếu: 50.000 đồng. Hạn: 19:00 05/11/2026. Còn 2 lượt gửi lại."));
         verify(bookings, never()).releaseSlots(any());
     }
 

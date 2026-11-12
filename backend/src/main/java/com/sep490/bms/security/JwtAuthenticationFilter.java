@@ -17,6 +17,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Đọc Bearer token, xác minh JWT và thiết lập người dùng đã xác thực cho request.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j

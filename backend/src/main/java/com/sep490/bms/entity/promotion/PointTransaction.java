@@ -19,6 +19,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu mỗi lần biến động điểm, số dư sau giao dịch và nguồn phát sinh.
+ */
 @Entity
 @Table(name = "point_transaction")
 @Getter

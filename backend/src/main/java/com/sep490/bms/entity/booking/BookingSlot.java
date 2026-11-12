@@ -15,6 +15,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu từng slot 30 phút thuộc booking hoặc được giữ cho yêu cầu đổi lịch.
+ */
 @Entity
 @Table(name = "booking_slot")
 @Getter

@@ -18,6 +18,8 @@ import com.sep490.bms.service.location.LocationQueryService;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API công khai để tìm địa điểm, xem chi tiết và tra cứu ưu đãi đặt theo lô.
+ *
  * Feature: F3 – Tìm và đặt sân
  * Owner: Minh
  * UC: UC11 – Tìm địa điểm; UC12 – Xem thông tin sân công khai; UC15 – Đặt nhiều buổi

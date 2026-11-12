@@ -19,6 +19,9 @@ import jakarta.persistence.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Quản lý mốc chi tiêu theo địa điểm và cấp voucher khi Player đạt mốc.
+ */
 @Service @Validated @RequiredArgsConstructor @Transactional(readOnly=true)
 public class LoyaltyMilestoneService {
     private final LoyaltyTierRepository tiers;

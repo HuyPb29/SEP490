@@ -25,6 +25,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu cấu hình voucher, đối tượng áp dụng, hạn mức và số lượt đã dùng.
+ */
 @Entity
 @Table(name = "voucher")
 @Getter

@@ -15,6 +15,9 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
+/**
+ * Biểu diễn tài khoản đã xác thực cùng vai trò, phạm vi địa điểm và phiên bản token.
+ */
 @Getter
 @AllArgsConstructor
 @Builder

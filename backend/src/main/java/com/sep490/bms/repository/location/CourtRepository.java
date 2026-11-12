@@ -9,6 +9,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.location.Court;
 
+/**
+ * Tra cứu sân theo địa điểm, tên và trạng thái hoạt động.
+ */
 @Repository
 public interface CourtRepository extends JpaRepository<Court, Long> {
 

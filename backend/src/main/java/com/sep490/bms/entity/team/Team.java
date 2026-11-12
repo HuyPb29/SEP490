@@ -15,6 +15,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu đội chơi và tài khoản đội trưởng.
+ */
 @Entity
 @Table(name = "team")
 @Getter

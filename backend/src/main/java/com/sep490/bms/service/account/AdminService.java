@@ -28,6 +28,9 @@ import jakarta.persistence.criteria.Predicate;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Tra cứu tài khoản, kiểm tra quyền quản trị và xử lý khóa hoặc mở khóa tài khoản.
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminService {

@@ -22,6 +22,9 @@ import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Cung cấp cho Admin API tìm kiếm, xem chi tiết và khóa hoặc mở khóa tài khoản.
+ */
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor

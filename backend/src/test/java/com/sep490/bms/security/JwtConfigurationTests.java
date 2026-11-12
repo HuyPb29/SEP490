@@ -5,6 +5,9 @@ import com.sep490.bms.security.JwtTokenProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+/**
+ * Kiểm tra cấu hình JWT từ chối khóa yếu và thời hạn không hợp lệ.
+ */
 class JwtConfigurationTests {
     @Test
     void rejectsWeakKeysAndNonPositiveLifetime() {

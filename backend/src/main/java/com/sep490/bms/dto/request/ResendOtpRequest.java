@@ -11,6 +11,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận email và mục đích xác thực để gửi mã OTP mới.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

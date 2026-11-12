@@ -27,6 +27,9 @@ import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Cho Owner xem, tạo, vô hiệu hóa và cấp lại mật khẩu Staff tại địa điểm đang chọn.
+ */
 @RestController
 @RequestMapping("/api/owner/staff-members")
 @RequiredArgsConstructor

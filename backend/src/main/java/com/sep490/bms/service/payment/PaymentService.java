@@ -105,7 +105,8 @@ public class PaymentService {
                 .bookingId(booking.getId())
                 .bookingCode(booking.getBookingCode())
                 .status(booking.getStatus())
-                .amountDue(booking.getFinalAmount())
+                .amountDue(holding ? booking.getFinalAmount() : findForBooking(bookingId)
+                        .map(Payment::remainingAmount).orElse(booking.getFinalAmount()))
                 .bankName(location.getBankName())
                 .bankAccountNo(location.getBankAccountNo())
                 .bankAccountHolder(location.getBankAccountHolder())
@@ -186,7 +187,8 @@ public class PaymentService {
         return PaymentInstructionResponse.builder()
                 .packageId(pkg.getId())
                 .status(pkg.getStatus())
-                .amountDue(pkg.getFinalAmount())
+                .amountDue(holding ? pkg.getFinalAmount() : findForPackage(packageId)
+                        .map(Payment::remainingAmount).orElse(pkg.getFinalAmount()))
                 .bankName(location.getBankName())
                 .bankAccountNo(location.getBankAccountNo())
                 .bankAccountHolder(location.getBankAccountHolder())
@@ -429,6 +431,7 @@ public class PaymentService {
                 .payment(PaymentResponse.from(payment, pkg))
                 .customerName(customer.name())
                 .customerPhone(customer.phone())
+                .note(sessions.isEmpty() ? null : sessions.get(0).getNote())
                 .sessions(sessions.stream()
                         .map(session -> PaymentDetailResponse.Session.builder()
                                 .bookingCode(session.getBookingCode())
@@ -535,11 +538,13 @@ public class PaymentService {
             rejectLocked(payment, booking, "Hết lượt gửi lại chứng từ. " + reason);
             return PaymentResponse.from(payment, booking);
         }
+        recordPartialAmount(payment, request.receivedAmount());
         payment.requestResubmission(reason, playEnd(booking), playerAtFault);
         paymentRepository.saveAndFlush(payment);
         bookingService.changeStatus(booking, BookingStatus.RESUBMIT_REQUESTED);
         notify(booking.getPlayerId(), "PAYMENT_RESUBMIT_REQUESTED", "Cần bổ sung thanh toán",
                 "Vui lòng bổ sung cho booking " + booking.getBookingCode() + ": " + reason
+                        + ". Số tiền còn thiếu: " + money(payment.remainingAmount())
                         + ". Hạn: " + payment.getResubmitDeadline().format(DEADLINE_FORMAT)
                         + ". Còn " + (Payment.MAX_RESUBMITS - payment.getResubmitCount()) + " lượt gửi lại.",
                 payment);
@@ -656,11 +661,13 @@ public class PaymentService {
             rejectLockedPackage(payment, pkg, "Hết lượt gửi lại chứng từ. " + reason);
             return PaymentResponse.from(payment, pkg);
         }
+        recordPartialAmount(payment, request.receivedAmount());
         payment.requestResubmission(reason, deadline, playerAtFault);
         paymentRepository.saveAndFlush(payment);
         packageService.changeStatus(pkg, BookingStatus.RESUBMIT_REQUESTED);
         notify(pkg.getPlayerId(), "PAYMENT_RESUBMIT_REQUESTED", "Cần bổ sung thanh toán",
                 "Vui lòng bổ sung cho " + packageLabel(pkg) + ": " + reason
+                        + ". Số tiền còn thiếu: " + money(payment.remainingAmount())
                         + ". Hạn: " + payment.getResubmitDeadline().format(DEADLINE_FORMAT)
                         + ". Còn " + (Payment.MAX_RESUBMITS - payment.getResubmitCount()) + " lượt gửi lại.",
                 payment);
@@ -689,7 +696,15 @@ public class PaymentService {
         return pkg;
     }
 
-    /** "gói đặt nhiều buổi từ … đến …" hoặc "đơn đặt sân ngày …" (BR64). */
+    private static void recordPartialAmount(Payment payment, BigDecimal receivedAmount) {
+        if (receivedAmount != null) {
+            if (!payment.acceptsPartialAmount(receivedAmount)) {
+                throw new AppException("Số đã nhận phải từ số đã ghi nhận đến dưới tổng phải trả");
+            }
+            payment.setReceivedAmount(receivedAmount);
+        }
+    }
+
     private static String packageLabel(BookingPackage pkg) {
         return PackageService.label(pkg);
     }

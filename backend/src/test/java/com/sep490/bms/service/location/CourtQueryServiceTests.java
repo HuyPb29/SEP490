@@ -23,6 +23,9 @@ import com.sep490.bms.repository.location.PriceRuleRepository;
 import com.sep490.bms.service.location.CourtQueryService;
 import com.sep490.bms.service.location.LocationQueryService;
 
+/**
+ * Kiểm tra dữ liệu sân công khai, bảng giá và việc loại sân hoặc địa điểm ngừng hoạt động.
+ */
 class CourtQueryServiceTests {
 
     private final CourtRepository courts = mock(CourtRepository.class);

@@ -13,6 +13,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Cho Owner xem yêu cầu hoàn tiền và ghi nhận khoản đã hoàn tại địa điểm đang chọn.
+ */
 @RestController
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('OWNER')")

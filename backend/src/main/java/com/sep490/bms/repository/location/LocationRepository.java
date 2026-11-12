@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.location.Location;
 
+/**
+ * Tra cứu địa điểm theo chủ sở hữu, trạng thái và bộ lọc tìm kiếm công khai.
+ */
 @Repository
 public interface LocationRepository extends JpaRepository<Location, Long> {
 

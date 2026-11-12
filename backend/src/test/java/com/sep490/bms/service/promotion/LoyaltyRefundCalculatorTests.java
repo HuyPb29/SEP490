@@ -4,6 +4,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
+/**
+ * Kiểm tra cách phân bổ và thu hồi điểm khi hoàn tiền toàn phần hoặc một phần.
+ */
 class LoyaltyRefundCalculatorTests {
     private BigDecimal n(long value) { return BigDecimal.valueOf(value); }
     @Test void refundDoesNotRevokeAnotherBookingsPointsThroughCombinedRounding() {

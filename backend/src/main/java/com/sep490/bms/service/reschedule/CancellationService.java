@@ -37,8 +37,14 @@ public class CancellationService {
     private final SlotAvailabilityService availability;
 
     public Booking cancel(UserPrincipal u,Long id) {
+        Booking observed = em.find(Booking.class, id);
+        if (observed != null && isOrder(observed)) {
+            support.player(u, observed);
+            support.confirmed(observed);
+            cancelOrder(u, observed.getPackageId());
+            return observed;
+        }
         Booking b=support.booking(id); support.player(u,b);
-        if(isOrder(b)) { cancelOrder(u,b.getPackageId()); return b; }
         support.confirmed(b); support.paid(b);
         if(!pending(b).isEmpty()) throw new AppException("Hãy chọn xử lý booking bị ảnh hưởng",HttpStatus.CONFLICT);
         cancelBooking(b,u.getId(),BookingStatus.CANCELLED_BY_PLAYER); return b;
@@ -64,6 +70,7 @@ public class CancellationService {
         if(toCancel.isEmpty()) throw new AppException("Đơn không còn booking nào chưa chơi để hủy",HttpStatus.CONFLICT);
         support.paid(toCancel.get(0));
         toCancel.forEach(b->cancelBooking(b,u.getId(),BookingStatus.CANCELLED_BY_PLAYER));
+        pkg.setStatus(BookingStatus.CANCELLED_BY_PLAYER);
         return toCancel;
     }
     private boolean isOrder(Booking b) {

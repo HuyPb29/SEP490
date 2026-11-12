@@ -12,6 +12,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.notification.Notification;
 
+/**
+ * Tra cứu thông báo theo người nhận và cập nhật trạng thái đã đọc.
+ */
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 

@@ -19,6 +19,9 @@ import com.sep490.bms.repository.account.AccountRepository;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Xử lý hồ sơ và đổi mật khẩu cho người dùng đang đăng nhập.
+ */
 @Service
 @RequiredArgsConstructor
 public class UserService {

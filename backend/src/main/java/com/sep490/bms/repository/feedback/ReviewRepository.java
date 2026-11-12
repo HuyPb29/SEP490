@@ -12,6 +12,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.feedback.Review;
 
+/**
+ * Kiểm tra booking đã được đánh giá và tra cứu đánh giá theo sân hoặc bộ lọc quản lý.
+ */
 @Repository
 public interface ReviewRepository extends JpaRepository<Review, Long> {
 

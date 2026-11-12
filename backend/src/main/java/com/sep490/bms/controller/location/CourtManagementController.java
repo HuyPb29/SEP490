@@ -24,6 +24,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Owner xem, thêm và chỉnh sửa sân tại địa điểm quản lý.
+ *
  * Feature: F2 – Quản lý địa điểm
  * Owner: Minh Anh
  * UC: UC07 – Quản lý địa điểm và sân

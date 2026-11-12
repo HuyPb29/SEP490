@@ -19,6 +19,8 @@ import com.sep490.bms.service.operation.VenueExportService;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Owner tải dữ liệu của địa điểm dưới dạng tệp Excel.
+ *
  * Feature: F9 – Vận hành và báo cáo
  * Owner: Hoàng
  * UC: UC36 – Tải dữ liệu địa điểm (một file Excel ba sheet, FR122)

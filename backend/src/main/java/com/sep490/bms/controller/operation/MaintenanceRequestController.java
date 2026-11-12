@@ -25,6 +25,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Staff gửi hoặc rút yêu cầu bảo trì và cho Owner xét duyệt.
+ *
  * Feature: F2 – Quản lý địa điểm
  * Owner: Minh Anh
  * UC: UC10 – Quản lý bảo trì sân

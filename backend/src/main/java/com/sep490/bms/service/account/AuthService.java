@@ -184,7 +184,8 @@ public class AuthService {
         }
 
         if (accountRepository.existsByPhone(pendingData.get("phone"))) {
-            throw new AppException("Số điện thoại đã được sử dụng bởi tài khoản khác");
+            throw new AppException("Số điện thoại đã được sử dụng bởi tài khoản khác", HttpStatus.BAD_REQUEST,
+                    Map.of("phone", "Số điện thoại đã được sử dụng"));
         }
         otpRequest.setPendingData(null);
         otpRequestRepository.discardRegistration(email, LocalDateTime.now());
@@ -288,7 +289,7 @@ public class AuthService {
     public LoginResponse login(LoginRequest request) {
         String identifier = request.getEmail().trim();
         Account account = accountRepository.findByEmailOrUsernameForUpdate(identifier)
-                .orElseThrow(() -> new AppException("Tài khoản hoặc mật khẩu không chính xác (MSG10)", HttpStatus.UNAUTHORIZED));
+                .orElseThrow(() -> missingLoginAccount(identifier));
 
         if (!passwordEncoder.matches(request.getPassword(), account.getPasswordHash())) {
             if(account.getStatus()==AccountStatus.ACTIVE) {
@@ -322,6 +323,16 @@ public class AuthService {
                 .tokenType("Bearer")
                 .user(UserDto.fromEntity(account))
                 .build();
+    }
+
+    private AppException missingLoginAccount(String identifier) {
+        if (identifier.contains("@") && otpRequestRepository
+                .findTopByEmailAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(identifier.toLowerCase(java.util.Locale.ROOT), OtpPurpose.REGISTER)
+                .filter(pending -> pending.getPendingData() != null && pending.getExpiresAt().isAfter(LocalDateTime.now()))
+                .isPresent()) {
+            return new AppException("Email chưa được xác thực (MSG95)", HttpStatus.FORBIDDEN);
+        }
+        return new AppException("Tài khoản hoặc mật khẩu không chính xác (MSG10)", HttpStatus.UNAUTHORIZED);
     }
 
     @Transactional

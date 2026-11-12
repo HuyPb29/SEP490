@@ -20,7 +20,7 @@ import lombok.RequiredArgsConstructor;
 public class OperationQueryRepository {
 
     private static final String CONFIRMED_REFUND_PAYMENT = """
-            EXISTS (
+            r.verified_unrecorded_amount IS NULL AND EXISTS (
                 SELECT 1
                 FROM booking paid_booking
                 JOIN payment p ON (p.booking_id = paid_booking.id OR p.package_id = paid_booking.package_id)

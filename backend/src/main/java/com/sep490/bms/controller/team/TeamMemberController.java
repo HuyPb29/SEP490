@@ -19,6 +19,8 @@ import com.sep490.bms.service.team.TeamService;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API xem thành viên, rời đội và xóa thành viên theo quyền.
+ *
  * Feature: F7 – Đội và kèo
  * Owner: Hoàng
  * UC: UC27 – Quản lý đội

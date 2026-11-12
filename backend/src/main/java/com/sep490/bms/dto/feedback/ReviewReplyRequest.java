@@ -8,6 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận nội dung phản hồi của Owner đối với đánh giá.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

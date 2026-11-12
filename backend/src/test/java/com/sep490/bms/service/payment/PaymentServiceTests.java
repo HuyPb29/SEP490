@@ -54,6 +54,9 @@ import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
 import com.sep490.bms.service.promotion.VoucherService;
 
+/**
+ * Kiểm tra hướng dẫn chuyển khoản, thời hạn giữ chỗ và thao tác gửi hoặc bổ sung chứng từ.
+ */
 class PaymentServiceTests {
 
     private static final Long LOCATION = 1L;
@@ -131,6 +134,15 @@ class PaymentServiceTests {
 
         assertThat(result.getHoldExpiresAt()).isNull();
         assertThat(result.getAmountDue()).isEqualByComparingTo("110000");
+    }
+
+    @Test
+    void resubmitInstructionsShowOnlyTheOutstandingAmount() {
+        Payment payment = resubmitRequested(NOW.plusHours(1));
+        payment.setReceivedAmount(new BigDecimal("60000"));
+        when(payments.findByBookingId(BOOKING)).thenReturn(Optional.of(payment));
+
+        assertThat(service.getInstructions(player, BOOKING, NOW).getAmountDue()).isEqualByComparingTo("50000");
     }
 
     @Test

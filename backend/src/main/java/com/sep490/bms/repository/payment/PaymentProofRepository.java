@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.payment.PaymentProof;
 
+/**
+ * Tra cứu các ảnh chứng từ của giao dịch theo thứ tự tải lên mới nhất.
+ */
 @Repository
 public interface PaymentProofRepository extends JpaRepository<PaymentProof, Long> {
 

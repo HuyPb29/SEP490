@@ -13,6 +13,9 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.util.ReflectionTestUtils;
 
+/**
+ * Kiểm tra lỗi trả về khi gửi mail bị tắt hoặc SMTP gặp sự cố.
+ */
 class EmailServiceTests {
     @Test
     void disabledMailAndSmtpFailureAreReportedAsUnavailable() {

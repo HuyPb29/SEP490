@@ -35,6 +35,9 @@ import com.sep490.bms.service.booking.SlotAvailabilityService.OpeningWindow;
 import com.sep490.bms.service.location.CourtQueryService;
 import com.sep490.bms.service.location.LocationQueryService;
 
+/**
+ * Kiểm tra cách hiển thị lịch sân, giá và trạng thái slot theo giờ mở cửa và bảo trì.
+ */
 class ScheduleServiceTests {
 
     private static final Long LOCATION = 1L;

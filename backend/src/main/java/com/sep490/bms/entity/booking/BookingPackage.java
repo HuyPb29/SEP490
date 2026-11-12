@@ -23,6 +23,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu gói nhiều buổi và tổng giá trị thanh toán, voucher và điểm đã áp dụng cho gói.
+ */
 @Entity
 @Table(name = "booking_package")
 @Getter
@@ -46,7 +49,7 @@ public class BookingPackage {
     private Long batchOfferId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "package_type", nullable = false, length = 10)
+    @Column(name = "package_type", nullable = false, length = 12)
     private PackageType packageType;
 
     @Column(name = "start_date", nullable = false)

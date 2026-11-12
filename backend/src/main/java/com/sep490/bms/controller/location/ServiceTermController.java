@@ -22,6 +22,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Admin tra cứu và ghi nhận kỳ hạn dịch vụ của địa điểm.
+ *
  * Feature: F2 – Quản lý địa điểm
  * Owner: Minh Anh
  * UC: UC06 – Quản lý địa điểm sử dụng dịch vụ

@@ -10,6 +10,10 @@ import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.*;
 import com.sep490.bms.entity.enums.*;
+import com.sep490.bms.entity.feedback.Complaint;
+import com.sep490.bms.entity.payment.Payment;
+import com.sep490.bms.entity.reschedule.RefundRequest;
+import com.sep490.bms.repository.operation.OperationQueryRepository;
 import com.sep490.bms.entity.location.*;
 import com.sep490.bms.entity.promotion.*;
 import com.sep490.bms.repository.account.AccountRepository;
@@ -46,6 +50,7 @@ class SrsV18IntegrationTests {
     @Autowired JwtTokenProvider jwt;
     @Autowired PackageService packages;
     @Autowired PaymentService payments;
+    @Autowired OperationQueryRepository reports;
     @Autowired CancellationService cancellations;
     @Autowired AccountMaintenanceService maintenance;
     @Autowired com.sep490.bms.service.promotion.LoyaltyPointService points;
@@ -96,6 +101,103 @@ class SrsV18IntegrationTests {
                 .containsOnly(BookingStatus.CONFIRMED).hasSize(2);
         assertThat(em.createQuery("select sum(b.finalAmount) from Booking b where b.packageId=:p",BigDecimal.class).setParameter("p",id).getSingleResult()).isEqualByComparingTo("18000");
     }
+    @Test void singleOrderPaysAndCancelsAllFutureBookingsTogether() throws Exception {
+        LocalDate date = LocalDate.now().plusDays(2);
+        String body = json.writeValueAsString(Map.of("date", date,
+                "ranges", List.of(Map.of("courtId", court.getId(), "startMinute", 600, "endMinute", 630),
+                        Map.of("courtId", court.getId(), "startMinute", 630, "endMinute", 660),
+                        Map.of("courtId", court.getId(), "startMinute", 720, "endMinute", 780)),
+                "voucherCode", "SRS", "pointsToUse", 2));
+        var created = mvc.perform(post("/api/booking-orders").header("Authorization", token(player))
+                .contentType("application/json").content(body)).andExpect(status().isCreated()).andReturn();
+        var order = json.readTree(created.getResponse().getContentAsString()).path("data");
+        long orderId = order.path("id").asLong();
+        long bookingId = order.path("sessions").get(0).path("id").asLong();
+        assertThat(order.path("sessions").size()).isEqualTo(2);
+        assertThat(order.path("finalAmount").asInt()).isEqualTo(18000);
+
+        var proof = new MockMultipartFile("proof", "proof.png", "image/png", new byte[]{1, 2});
+        var submitted = mvc.perform(multipart("/api/booking-packages/" + orderId + "/payments")
+                .file(proof).header("Authorization", token(player))).andExpect(status().isCreated()).andReturn();
+        long paymentId = json.readTree(submitted.getResponse().getContentAsString()).at("/data/id").asLong();
+        mvc.perform(post("/api/staff/payments/" + paymentId + "/confirm").header("Authorization", token(owner))
+                .header("X-Location-Id", location.getId())).andExpect(status().isOk());
+        mvc.perform(post("/api/bookings/" + bookingId + "/cancel").header("Authorization", token(player)))
+                .andExpect(status().isOk());
+
+        em.flush();
+        assertThat(packages.sessionsOf(orderId)).extracting(Booking::getStatus)
+                .containsExactly(BookingStatus.CANCELLED_BY_PLAYER, BookingStatus.CANCELLED_BY_PLAYER);
+        assertThat(em.find(BookingPackage.class, orderId).getStatus()).isEqualTo(BookingStatus.CANCELLED_BY_PLAYER);
+        assertThat(voucher.getUsedCount()).isEqualTo(1);
+        assertThat(wallet().getTotalPaid()).isEqualByComparingTo("18000");
+    }
+
+    @Test void latePaymentGoesToOwnerAndGrantsVoucherExactlyOnce() throws Exception {
+        long orderId = createPackage();
+        long bookingId = packages.sessionsOf(orderId).get(0).getId();
+        var proof = new MockMultipartFile("proof", "proof.png", "image/png", new byte[]{1, 2});
+        var submitted = mvc.perform(multipart("/api/booking-packages/" + orderId + "/payments")
+                .file(proof).header("Authorization", token(player))).andExpect(status().isCreated()).andReturn();
+        long paymentId = json.readTree(submitted.getResponse().getContentAsString()).at("/data/id").asLong();
+        var payment = em.find(Payment.class, paymentId);
+        payment.setSubmittedAt(LocalDateTime.now().minusMinutes(10));
+        String eligibility = "/api/complaints/late-payment-eligibility?bookingId=" + bookingId + "&paymentId=" + paymentId;
+        mvc.perform(get(eligibility).header("Authorization", token(player))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(false));
+        payment.setSubmittedAt(LocalDateTime.now().minusMinutes(16));
+        mvc.perform(get("/api/staff/dashboards/me").header("Authorization", token(staff)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentsAwaitingConfirmation").value(1))
+                .andExpect(jsonPath("$.data.pendingPayments[0].id").value(paymentId))
+                .andExpect(jsonPath("$.data.pendingPayments[0].overdue").value(true));
+        mvc.perform(get(eligibility).header("Authorization", token(player))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(true));
+
+        String body = json.writeValueAsString(Map.of("bookingId", bookingId, "paymentId", paymentId,
+                "complaintType", "LATE_PAYMENT_CONFIRMATION", "content", "Đã chờ xác nhận thanh toán"));
+        var result = mvc.perform(post("/api/complaints").header("Authorization", token(player))
+                .contentType("application/json").content(body)).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("PENDING_OWNER")).andReturn();
+        long complaintId = json.readTree(result.getResponse().getContentAsString()).at("/data/id").asLong();
+        mvc.perform(post("/api/complaints").header("Authorization", token(player))
+                .contentType("application/json").content(body)).andExpect(status().isConflict());
+        assertThat(em.createQuery("""
+                select v.discountValue from VoucherGrant g, Voucher v
+                where g.voucherId = v.id and g.playerId = :player and v.source = :source and v.targetGroup = :target
+                """, BigDecimal.class).setParameter("player", player.getId()).setParameter("source", VoucherSource.COMPENSATION)
+                .setParameter("target", VoucherTargetGroup.SPECIFIED).getResultList()).singleElement()
+                .satisfies(value -> assertThat(value).isEqualByComparingTo("10000"));
+        mvc.perform(post("/api/owner/complaints/" + complaintId + "/resolve").header("Authorization", token(owner))
+                .header("X-Location-Id", location.getId()).contentType("application/json")
+                .content("{\"result\":\"LATE_PAYMENT_CONFIRMED\"}")).andExpect(status().isOk());
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+    }
+
+    @Test void unrecordedTransferCanBeRefundedWithoutRevenueOrPointChanges() throws Exception {
+        long bookingId = packages.sessionsOf(createPackage()).get(0).getId();
+        Complaint complaint = Complaint.builder().locationId(location.getId()).bookingId(bookingId).playerId(player.getId())
+                .createdBy(player.getId()).complaintType("PAYMENT_ISSUE").content("Đã chuyển khoản")
+                .status(ComplaintStatus.PENDING_OWNER).build();
+        em.persist(complaint);
+        LocalDate date = LocalDate.now();
+        String resolveBody = json.writeValueAsString(Map.of("result", "REFUND", "refundAmount", 12000,
+                "verifiedUnrecordedAmount", 15000, "originalTransferDate", date.minusDays(1)));
+        mvc.perform(post("/api/owner/complaints/" + complaint.getId() + "/resolve").header("Authorization", token(owner))
+                .header("X-Location-Id", location.getId()).contentType("application/json").content(resolveBody))
+                .andExpect(status().isOk());
+        var refund = em.createQuery("select r from RefundRequest r where r.complaintId = :id", RefundRequest.class)
+                .setParameter("id", complaint.getId()).getSingleResult();
+        assertThat(refund.getVerifiedUnrecordedAmount()).isEqualByComparingTo("15000");
+        String recordBody = json.writeValueAsString(Map.of("amount", 12000, "refundDate", date));
+        mvc.perform(post("/api/owner/refunds/" + refund.getId() + "/record").header("Authorization", token(owner))
+                .header("X-Location-Id", location.getId()).contentType("application/json").content(recordBody))
+                .andExpect(status().isOk());
+        em.flush();
+        assertThat(refund.getRefundedAmount()).isEqualByComparingTo("12000");
+        assertThat(reports.sumRefunds(location.getId(), date, date)).isEmpty();
+        assertThat(wallet().getPointBalance()).isEqualTo(8);
+    }
+
     @Test void expiredPackageRestoresSingleVoucherUsageAndPointsExactlyOnce() throws Exception {
         Long id=createPackage();em.find(BookingPackage.class,id).setHoldExpiresAt(LocalDateTime.now().minusMinutes(1));em.flush();
         assertThat(packages.expireHold(id, LocalDateTime.now())).isTrue();

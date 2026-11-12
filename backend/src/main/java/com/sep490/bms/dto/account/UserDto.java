@@ -12,6 +12,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Biểu diễn hồ sơ, vai trò và trạng thái tài khoản trong phản hồi API.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

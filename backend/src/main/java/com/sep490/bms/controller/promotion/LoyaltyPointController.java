@@ -10,6 +10,9 @@ import lombok.RequiredArgsConstructor;
 import com.sep490.bms.entity.enums.PointTransactionType;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
 import org.springframework.http.*;
+/**
+ * Cung cấp API xem số dư, lịch sử điểm và cho Owner cộng điểm thủ công.
+ */
 @RestController @RequiredArgsConstructor
 @io.swagger.v3.oas.annotations.tags.Tag(name="F6 - UC25 Points (SRS UC20)")
 public class LoyaltyPointController {

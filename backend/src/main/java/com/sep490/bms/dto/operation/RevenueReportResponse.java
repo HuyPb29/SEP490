@@ -10,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Tổng hợp doanh thu, khoản hoàn và doanh thu ròng theo kỳ báo cáo.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

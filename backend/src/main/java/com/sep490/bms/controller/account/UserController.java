@@ -21,6 +21,9 @@ import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Cung cấp API xem hồ sơ, cập nhật thông tin cá nhân và đổi mật khẩu.
+ */
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor

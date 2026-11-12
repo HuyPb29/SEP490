@@ -246,7 +246,7 @@ public class LoyaltyPointService {
         if(observed==null) throw new AppException("Không tìm thấy yêu cầu hoàn tiền",HttpStatus.NOT_FOUND);
         Booking booking=lock(Booking.class,observed.getBookingId());
         RefundRequest refund=lock(RefundRequest.class,refundId);
-        if(booking.getPlayerId()==null) return; // Walk-in has no wallet.
+        if (booking.getPlayerId() == null || refund.getVerifiedUnrecordedAmount() != null) return;
         BigDecimal old=refund.getLoyaltySettledAmount();
         if(amount.compareTo(old)==0) return;
         List<LoyaltyRefundCalculator.Receipt> receipts=refundReceipts(booking);

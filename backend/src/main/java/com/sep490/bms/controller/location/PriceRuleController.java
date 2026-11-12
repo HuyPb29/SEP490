@@ -25,6 +25,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Owner quản lý các quy tắc giá theo sân, ngày và khung giờ.
+ *
  * Feature: F2 – Quản lý địa điểm
  * Owner: Minh Anh
  * UC: UC09 – Quản lý bảng giá và ưu đãi đặt theo lô

@@ -157,6 +157,10 @@ class OperationReportAndReviewHideTests {
 
     @Test
     void staffDashboardCountsOverduePaymentsAndListsActiveCourts() {
+        for (int day = 1; day <= 7; day++) {
+            jdbc.update("INSERT INTO opening_hour (location_id, day_of_week, open_minute, close_minute) VALUES (?, ?, 0, 1440)",
+                    location.getId(), day);
+        }
         awaiting(booking("AWAITING_CONFIRMATION", 100000), 20);
         awaiting(booking("AWAITING_CONFIRMATION", 80000), 5);
         jdbc.update("INSERT INTO court (location_id, name, is_active) VALUES (?, 'S2 off', 0)", location.getId());

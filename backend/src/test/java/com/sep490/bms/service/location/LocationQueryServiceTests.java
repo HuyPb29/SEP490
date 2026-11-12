@@ -19,6 +19,9 @@ import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.repository.location.OpeningHourRepository;
 import com.sep490.bms.service.location.LocationQueryService;
 
+/**
+ * Kiểm tra tìm kiếm địa điểm, sắp xếp theo khoảng cách và dữ liệu giờ mở cửa.
+ */
 class LocationQueryServiceTests {
 
     private final LocationRepository locations = mock(LocationRepository.class);

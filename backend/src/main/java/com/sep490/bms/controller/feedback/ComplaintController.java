@@ -25,6 +25,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API gửi khiếu nại, chuyển cho Owner và ghi nhận kết quả xử lý theo vai trò.
+ *
  * Feature: F8 – Đánh giá và khiếu nại
  * Owner: Hoàng
  * UC: UC33 – Gửi và xử lý khiếu nại
@@ -50,6 +52,13 @@ public class ComplaintController {
             @Valid @RequestBody CreateComplaintRequest request) {
         ComplaintResponse complaint = complaintService.createComplaint(currentUser, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Đã gửi khiếu nại", complaint));
+    }
+
+    @GetMapping("/api/complaints/late-payment-eligibility")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ApiResponse<Boolean> latePaymentEligibility(@AuthenticationPrincipal UserPrincipal player,
+            @RequestParam Long bookingId, @RequestParam Long paymentId) {
+        return ApiResponse.success(complaintService.latePaymentEligible(player, bookingId, paymentId));
     }
 
     @GetMapping("/api/me/complaints")

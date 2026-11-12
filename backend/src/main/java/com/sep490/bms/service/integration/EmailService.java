@@ -11,6 +11,9 @@ import lombok.extern.slf4j.Slf4j;
 import com.sep490.bms.exception.AppException;
 import org.springframework.http.HttpStatus;
 
+/**
+ * Gửi mã OTP xác minh đăng ký và khôi phục mật khẩu qua SMTP.
+ */
 @Service
 @Slf4j
 public class EmailService {

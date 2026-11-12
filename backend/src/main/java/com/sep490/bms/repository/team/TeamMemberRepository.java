@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import com.sep490.bms.entity.team.TeamMember;
 import com.sep490.bms.entity.team.TeamMemberStatus;
 
+/**
+ * Tra cứu và đếm thành viên của đội theo trạng thái.
+ */
 public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
 
     List<TeamMember> findByTeamIdAndStatusOrderByJoinedAtAsc(Long teamId, TeamMemberStatus status);

@@ -20,6 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Ghi sự kiện tài khoản và phục vụ Admin tra cứu nhật ký.
+ */
 @Service
 @RequiredArgsConstructor
 public class AccountAuditService {

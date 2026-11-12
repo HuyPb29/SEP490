@@ -26,6 +26,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API xem trước, tạo và tra cứu gói đặt sân nhiều buổi.
+ *
  * Feature: F3 – Tìm và đặt sân
  * Owner: Minh
  * UC: UC15 – Đặt nhiều buổi; UC17 – Xem lịch sử booking

@@ -12,6 +12,9 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Xác định địa điểm mà Owner hoặc Staff được phép thao tác.
+ */
 @Service
 @RequiredArgsConstructor
 public class LocationAccessService {

@@ -15,6 +15,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu thông báo trong ứng dụng, người nhận, nội dung, dữ liệu liên quan và trạng thái đã đọc.
+ */
 @Entity
 @Table(name = "notification")
 @Getter
