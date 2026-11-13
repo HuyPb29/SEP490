@@ -1,8 +1,61 @@
 import { useEffect, useRef, useState } from 'react'
 import api, { apiErrorMessage } from '../../api'
 import { bookingStatusLabels, bookingTimestamp, canPayHistoryEntry, getHistoryDetail } from '../../api/bookingHistory'
+import { createMatch } from '../../api/matchApi'
 import { formatVnd } from '../../utils/formatters'
 import styles from './MyBookingsPage.module.css'
+
+/** D60: tối đa 8 người tính cả chủ kèo — chủ kèo khai số đang có và số cần thêm. */
+const MATCH_MAX_PLAYERS = 8
+
+function CreateMatchForm({ bookingId, onCreated }) {
+  const [currentPlayers, setCurrentPlayers] = useState(4)
+  const [neededPlayers, setNeededPlayers] = useState(2)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const submit = async () => {
+    if (currentPlayers + neededPlayers > MATCH_MAX_PLAYERS) {
+      setError(`Tổng số người tối đa là ${MATCH_MAX_PLAYERS} (kể cả chủ kèo).`)
+      return
+    }
+    setSaving(true)
+    try {
+      await createMatch({ bookingId, currentPlayers, neededPlayers })
+      onCreated()
+    } catch (cause) {
+      setError(apiErrorMessage(cause, 'Không mở được kèo.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const numberField = (label, value, setValue) => (
+    <label className="flex flex-col gap-1 text-sm">
+      <span>{label}</span>
+      <input
+        type="number" min={1} max={MATCH_MAX_PLAYERS - 1} value={value}
+        className="rounded border border-gray-300 px-2 py-1"
+        onChange={(event) => { setValue(Math.max(1, Math.min(MATCH_MAX_PLAYERS - 1, Number(event.target.value) || 1))); setError('') }}
+      />
+    </label>
+  )
+
+  return (
+    <div className="mt-4 rounded-lg border border-gray-200 p-4">
+      <h4 className="mb-2 font-semibold">Mở kèo tìm người chơi</h4>
+      <div className="flex gap-4">
+        {numberField('Số người đã có (kể cả bạn)', currentPlayers, setCurrentPlayers)}
+        {numberField('Số người cần thêm', neededPlayers, setNeededPlayers)}
+      </div>
+      {error && <p className="mt-2 text-sm text-red-600" role="alert">{error}</p>}
+      <button type="button" disabled={saving} onClick={submit}
+        className="mt-3 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+        {saving ? 'Đang mở kèo…' : 'Mở kèo'}
+      </button>
+    </div>
+  )
+}
 
 const currency = { format: formatVnd }
 
@@ -18,6 +71,8 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment }) {
   const [error, setError] = useState('')
   const [paymentError, setPaymentError] = useState('')
   const [revision, setRevision] = useState(0)
+  const [matchFormOpen, setMatchFormOpen] = useState(false)
+  const [matchCreated, setMatchCreated] = useState(false)
 
   useEffect(() => {
     const dialog = ref.current
@@ -72,6 +127,10 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment }) {
   const showPayment = !error && canPayHistoryEntry(target, now)
   const viewPayment = !error && item.booking_type !== 'session' && detail?.paymentId
     && ['awaiting_confirmation', 'confirmed', 'in_use', 'completed', 'payment_rejected'].includes(currentStatus)
+  // BR55, D112: chỉ booking đã xác nhận, đặt dưới tên đội và chưa tới giờ chơi mới mở được kèo.
+  const canCreateMatch = !error && !matchCreated && currentStatus === 'confirmed' && detail?.teamId
+    && detail?.playDate && detail?.startTime
+    && Date.parse(`${detail.playDate}T${detail.startTime}:00+07:00`) > now
 
   return (
     <dialog ref={ref} aria-labelledby="booking-detail-title"
@@ -118,8 +177,25 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment }) {
           </ul>}
         </div>
       )}
+      {canCreateMatch && matchFormOpen && (
+        <CreateMatchForm
+          bookingId={detail.id}
+          onCreated={() => { setMatchFormOpen(false); setMatchCreated(true) }}
+        />
+      )}
+      {matchCreated && (
+        <p className="mt-3 text-sm text-emerald-700" role="status">
+          Đã mở kèo thành công. Theo dõi và duyệt yêu cầu tham gia ở trang{' '}
+          <a href="/open-matches" className="underline">Kèo đang tìm người chơi</a>.
+        </p>
+      )}
       <div className={styles.modalActions}>
         <button type="button" className={styles.outlineActionBtn} onClick={onClose}>Đóng</button>
+        {canCreateMatch && !matchFormOpen && (
+          <button type="button" className={styles.primaryActionBtn} onClick={() => setMatchFormOpen(true)}>
+            Tạo kèo
+          </button>
+        )}
         {showPayment && <button type="button" className={styles.primaryActionBtn} onClick={() => onPayment(target)}>
           {currentStatus === 'holding' ? 'Tiếp tục thanh toán' : 'Gửi lại chứng từ'}
         </button>}
