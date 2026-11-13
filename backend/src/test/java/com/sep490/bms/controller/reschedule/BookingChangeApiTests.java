@@ -272,15 +272,27 @@ class BookingChangeApiTests {
         assertThat(bookingStatus()).isEqualTo("CANCELLED_BY_FACILITY");
         Long refund=jdbc.queryForObject("select id from refund_request where affected_booking_id=?",Long.class,id);
         String url="/api/owner/refunds/"+refund+"/record";
+        mvc.perform(get("/api/owner/refunds/" + refund).header("Authorization", token(owner)).header("X-Location-Id", location.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.bookingCode").value(booking.getBookingCode()))
+                .andExpect(jsonPath("$.data.remainingRefundableAmount").value(90000));
         mvc.perform(post(url).header("Authorization",token(owner)).header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"amount\":90001,\"refundDate\":\""+LocalDate.now()+"\",\"reason\":\"Too much\"}")).andExpect(status().isBadRequest());
+                .content("{\"amount\":90001,\"refundDate\":\""+LocalDate.now()+"\",\"reason\":\"Too much\"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.code").value("MSG70"))
+                .andExpect(jsonPath("$.errors.amount").isString());
         mvc.perform(post(url).header("Authorization",token(owner)).header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"amount\":80000,\"refundDate\":\""+LocalDate.now()+"\"}")).andExpect(status().isBadRequest());
+                .content("{\"amount\":80000,\"refundDate\":\""+LocalDate.now()+"\"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.code").value("MSG71"))
+                .andExpect(jsonPath("$.errors.reason").isString());
         String body="{\"amount\":90000,\"refundDate\":\""+LocalDate.now()+"\"}";
         mvc.perform(post(url).header("Authorization",token(owner)).header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("REFUNDED"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("REFUNDED"))
+                .andExpect(jsonPath("$.message").value("Đã ghi nhận hoàn tiền cho đặt sân " + booking.getBookingCode() + ". (MSG72)"));
         mvc.perform(post(url).header("Authorization",token(owner)).header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
-        mvc.perform(get("/api/owner/refunds?status=REFUNDED").header("Authorization",token(owner)).header("X-Location-Id",location.getId())).andExpect(jsonPath("$.data.length()").value(1));
+        mvc.perform(get("/api/owner/refunds?status=REFUNDED").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].bookingCode").value(booking.getBookingCode()))
+                .andExpect(jsonPath("$.data[0].originalPaymentDate").isString());
     }
     @Test void compensationIsIdempotentAndIncludesExtraPayments() throws Exception {
         Long request=create(660);

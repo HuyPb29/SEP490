@@ -3,43 +3,64 @@ import { Link, useSearchParams } from 'react-router-dom'
 import api from '../../api'
 import { downloadVenueData, loadOwnerLocations } from '../../api/ownerApi'
 import { getSelectedLocation, selectLocation } from '../../api/session'
+import { useOwnerRefund, useOwnerRefunds } from '../../hooks/useOwnerRefunds'
 import WorkspaceLayout, { ActionForm, EmptyState, Feedback, Field, Section, StatusPill } from '../WorkspaceLayout'
 import { money, today, useResource } from '../workspaceSupport'
 import { OwnerCourtComplaints } from '../feedback/CourtComplaintsPage'
 import { StaffAccounts } from '../account/AccountPages'
 import { OwnerPromotions } from '../promotion/PromotionPages'
 
-const loadRefunds = (signal) => api.get('/owner/refunds', { signal }).then((response) => response.data.data)
 const ownerTabs = [['staff', 'Nhân viên'], ['cancel', 'Hủy đặt sân'], ['refund', 'Hoàn tiền'], ['complaints', 'Khiếu nại'], ['rewards', 'Ưu đãi và điểm']]
 const clock = (minute) => String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0')
 
-function RefundDetail({ id, refresh }) {
-  const load = useCallback((signal) => api.get('/owner/refunds/' + id, { signal }).then((response) => response.data.data), [id])
-  const refund = useResource(load, id)
-  const item = refund.data
+function refundSource(item) {
+  if (item.complaintId) return 'Khiếu nại #' + item.complaintId
+  if (item.affectedBookingId) return 'Đặt sân bị ảnh hưởng'
+  return 'Yêu cầu hoàn tiền'
+}
+
+function RefundDetail({ id, saved, onRecorded }) {
+  const refund = useOwnerRefund(id)
+  const item = saved ?? refund.data
+  const canRecord = item?.status === 'PENDING_REFUND' && item.remainingRefundableAmount > 0
   return <div className="space-y-3">
-    {refund.loading && <p role="status">Đang tải chi tiết…</p>}
-    {refund.error && <p role="alert">{refund.error}</p>}
+    {!saved && refund.loading && <p role="status">Đang tải chi tiết…</p>}
+    {!saved && refund.error && <Feedback tone="error">{refund.error}
+      <button type="button" className="cw-secondary" onClick={refund.reload}>Thử tải lại chi tiết</button>
+    </Feedback>}
     {item && <>
       <dl className="cw-facts">
-        <div><dt>Đặt sân</dt><dd>#{item.bookingId}</dd></div>
+        <div><dt>Mã đặt sân</dt><dd>{item.bookingCode}</dd></div>
+        <div><dt>Nguồn yêu cầu</dt><dd>{refundSource(item)}</dd></div>
         <div><dt>Ngày thanh toán gốc</dt><dd>{item.originalPaymentDate}</dd></div>
+        <div><dt>Số tiền gợi ý</dt><dd>{money(item.suggestedAmount)}</dd></div>
         <div><dt>Trạng thái</dt><dd><StatusPill tone={item.status === 'REFUNDED' ? 'positive' : 'pending'}>
           {item.status === 'REFUNDED' ? 'Đã hoàn' : 'Chờ hoàn'}
         </StatusPill></dd></div>
+        {item.status === 'PENDING_REFUND' && <div><dt>Số tiền còn có thể hoàn</dt><dd>{money(item.remainingRefundableAmount)}</dd></div>}
       </dl>
       {item.verifiedUnrecordedAmount != null &&
-        <p>Khoản thu đã xác minh ngoài doanh thu: {money(item.verifiedUnrecordedAmount)}</p>}
-      <p>Gợi ý hoàn {money(item.suggestedAmount)} {item.complaintId && '· Khiếu nại #' + item.complaintId}</p>
-      {item.status === 'PENDING_REFUND' && <ActionForm label="Ghi nhận đã hoàn" confirmation="Xác nhận đã chuyển khoản hoàn tiền cho khách?" action={(form) =>
-        api.post('/owner/refunds/' + id + '/record', { ...form, amount: Number(form.amount) })
-      } after={() => { refund.reload(); refresh() }}>
-        <Field label="Số tiền thực hoàn" name="amount" type="number" min={1} defaultValue={item.suggestedAmount} required />
-        <Field label="Ngày hoàn" name="refundDate" type="date" min={item.originalPaymentDate} max={today()} defaultValue={today()} required />
-        <Field label="Lý do (bắt buộc nếu khác số tiền gợi ý)" name="reason" maxLength={500} />
-        <Field label="Ghi chú" name="note" maxLength={500} />
-      </ActionForm>}
-      {item.status === 'REFUNDED' && <p>Đã hoàn {money(item.refundedAmount)} ngày {item.refundDate}. {item.reason} {item.note}</p>}
+        <p>Khoản thu đã xác minh ngoài doanh thu {money(item.verifiedUnrecordedAmount)}.</p>}
+      {canRecord && <>
+        <p>Chuyển tiền cho khách bên ngoài hệ thống trước khi ghi nhận.</p>
+        <ActionForm label="Ghi nhận đã hoàn" confirmation={`Xác nhận đã hoàn tiền cho đặt sân ${item.bookingCode}?`}
+          action={refund.record} successMessage={false} after={({ data }) => onRecorded(data)}>
+          {(errors) => <>
+            <Field label="Số tiền thực hoàn" name="amount" type="number" min={1}
+              defaultValue={Math.min(item.suggestedAmount, item.remainingRefundableAmount)} required error={errors.amount} />
+            <Field label="Ngày hoàn" name="refundDate" type="date" min={item.originalPaymentDate} max={today()}
+              defaultValue={today()} required error={errors.refundDate} />
+            <Field label="Lý do (bắt buộc nếu khác số tiền gợi ý)" name="reason" maxLength={500} error={errors.reason} />
+            <Field label="Ghi chú" name="note" maxLength={500} error={errors.note} />
+          </>}
+        </ActionForm>
+      </>}
+      {item.status === 'REFUNDED' && <dl className="cw-facts">
+        <div><dt>Số tiền thực hoàn</dt><dd>{money(item.refundedAmount)}</dd></div>
+        <div><dt>Ngày hoàn</dt><dd>{item.refundDate}</dd></div>
+        <div><dt>Lý do</dt><dd>{item.reason || '—'}</dd></div>
+        <div><dt>Ghi chú</dt><dd>{item.note || '—'}</dd></div>
+      </dl>}
     </>}
   </div>
 }
@@ -47,15 +68,28 @@ function RefundDetail({ id, refresh }) {
 function Refunds() {
   const [params, setParams] = useSearchParams()
   const complaintId = params.get('complaintId')
-  const refunds = useResource(loadRefunds)
+  const refunds = useOwnerRefunds()
   const [id, setId] = useState(null)
   const [status, setStatus] = useState(complaintId ? '' : 'PENDING_REFUND')
-  const visible = refunds.data?.filter((item) => !status || item.status === status)
-  const selectedId = id ?? visible?.find((item) => complaintId && String(item.complaintId) === complaintId)?.id ?? ''
+  const [recorded, setRecorded] = useState(null)
+  const items = refunds.data ?? []
+  const currentItems = recorded
+    ? items.some((item) => item.id === recorded.data.id)
+      ? items.map((item) => item.id === recorded.data.id ? recorded.data : item)
+      : [recorded.data, ...items]
+    : items
+  const visible = currentItems.filter((item) => !status || item.status === status)
+  const selectedId = id ?? visible.find((item) => complaintId && String(item.complaintId) === complaintId)?.id
+  function handleRecorded(result) {
+    setRecorded(result)
+    setId(result.data.id)
+    setStatus('REFUNDED')
+    refunds.reload()
+  }
   return <Section title="Hoàn tiền" resource={refunds}>
     <div className="cw-tabs" role="group" aria-label="Trạng thái hoàn tiền">
       {[['PENDING_REFUND', 'Chờ hoàn'], ['REFUNDED', 'Đã hoàn'], ['', 'Tất cả']].map(([value, label]) =>
-        <button key={value} type="button" aria-pressed={status === value} onClick={() => { setStatus(value); setId('') }}>{label}</button>)}
+        <button key={value} type="button" aria-pressed={status === value} onClick={() => { setStatus(value); setId(''); setRecorded(null) }}>{label}</button>)}
     </div>
     {complaintId && <Feedback>Đang xem yêu cầu hoàn tiền từ khiếu nại #{complaintId}.
       <button type="button" className="cw-secondary" onClick={() => {
@@ -64,11 +98,20 @@ function Refunds() {
         setParams(next, { replace: true })
       }}>Bỏ liên kết</button>
     </Feedback>}
-    <Field label="Yêu cầu hoặc khoản đã hoàn" value={selectedId} onChange={(event) => setId(event.target.value)}
-      options={[[ '', 'Chọn yêu cầu' ], ...(visible ?? []).map((item) => [item.id,
-        '#' + item.id + ' · Booking #' + item.bookingId + ' · ' + (item.status === 'REFUNDED' ? 'Đã hoàn' : 'Chờ hoàn')])]} />
-    {visible?.length === 0 && <EmptyState>Không có yêu cầu trong mục này.</EmptyState>}
-    {selectedId && <RefundDetail key={selectedId} id={selectedId} refresh={refunds.reload} />}
+    {recorded && <Feedback tone="success">{recorded.message}</Feedback>}
+    {!refunds.loading && !refunds.error && !visible.length && <EmptyState>Không có yêu cầu trong mục này.</EmptyState>}
+    {!!visible.length && <ul className="divide-y">
+      {visible.map((item) => <li key={item.id} className="py-3">
+        <button type="button" className="cw-secondary" aria-pressed={selectedId === item.id}
+          onClick={() => setId(item.id)}>{item.bookingCode} · {refundSource(item)}</button>
+        <p>{item.status === 'REFUNDED'
+          ? `Đã hoàn ${money(item.refundedAmount)} ngày ${item.refundDate}`
+          : `Chờ hoàn · Gợi ý ${money(item.suggestedAmount)}`}</p>
+        {item.status === 'REFUNDED' && <p>Ngày thanh toán gốc {item.originalPaymentDate}</p>}
+      </li>)}
+    </ul>}
+    {visible.some((item) => item.id === selectedId) && <RefundDetail key={selectedId} id={selectedId}
+      saved={recorded?.data.id === selectedId ? recorded.data : null} onRecorded={handleRecorded} />}
   </Section>
 }
 

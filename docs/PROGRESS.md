@@ -15,12 +15,16 @@
 - Build/lint frontend qua. Backend F6 qua 22/22 trên `BMS_Test`. Hai ca Playwright với API mô phỏng qua, gồm chọn Player/booking, lỗi và lưu Point Grant, tạo/sửa mốc và lỗi mốc trùng.
 - UC21 thêm điều kiện đổi lịch và mã lỗi vào API hiện có. FE phân biệt tiếp tục phụ thu với mở yêu cầu mới, bỏ báo giá cũ khi đổi slot, và chỉ báo đổi lịch thành công sau APPROVED. PaymentProgress trả biên nhận phụ thu.
 - UC22 cập nhật danh sách booking bị ảnh hưởng, có báo lỗi/thử lại riêng và lựa chọn trong chi tiết booking. Owner thấy cảnh báo theo lý do hủy; Player thấy MSG66 trước khi tự hủy và MSG69 khi gửi yêu cầu hoàn.
-- UC21/22 qua build/lint, 58 test backend trên `BMS_Test` và 4 ca Playwright Edge với API mô phỏng. Chưa có bộ E2E liên luồng của Giai đoạn 3.
-- UC23 còn lại. Giai đoạn 3 sẽ viết E2E liên luồng sau khi hoàn tất UC23.
+- UC21/22 qua build/lint, 58 test backend trên `BMS_Test` và 4 ca Playwright Edge với API mô phỏng.
+- UC23 hiển thị mã đặt sân, nguồn yêu cầu, số tiền gợi ý và trần hoàn còn lại. Owner ghi nhận sau khi chuyển khoản ngoài hệ thống. MSG70/71 hiện dưới ô tương ứng. Sau khi lưu, MSG72 kèm mã đặt sân và lịch sử hiển thị ngày thanh toán gốc để đối chiếu.
+- UC23 qua build/lint và 58 test backend trên `BMS_Test`, gồm phân quyền, giới hạn cộng dồn và phản hồi của form.
 
-## Cần chốt hợp đồng UC23
+## Tự kiểm UC23
 
-Refund List và Form gọi API hiện có. API trả bookingId và originalPaymentDate, chưa trả mã booking, trần hoàn còn lại hay mã MSG70/71/72. Cần chốt bổ sung các trường và mã lỗi vào hợp đồng hiện có, cùng cách trình bày kỳ thanh toán gốc trong lịch sử.
+1. Owner chọn địa điểm và mở Hoàn tiền. Kiểm yêu cầu tạo từ booking bị ảnh hưởng và yêu cầu từ khiếu nại đã duyệt, nếu môi trường có dữ liệu F8. Đối chiếu mã đặt sân, nguồn, số tiền gợi ý và số tiền còn có thể hoàn.
+2. Nhập số tiền vượt trần để kiểm MSG70. Nhập số tiền khác gợi ý và để trống lý do để kiểm MSG71. Thử ngày trước ngày thanh toán hoặc sau hôm nay để kiểm MSG02 dưới ô ngày.
+3. Sau khi đã chuyển tiền ngoài hệ thống, nhập dữ liệu và xác nhận. Kiểm MSG72, tab Đã hoàn, ngày thanh toán gốc, ngày hoàn thực tế, số tiền, lý do và ghi chú. Đổi sang địa điểm khác để kiểm phạm vi danh sách.
+4. Mở ví Player và đối chiếu lượt voucher, giao dịch hoàn điểm đã dùng và thu hồi điểm tích. Đối chiếu doanh thu theo ngày hoàn đối với khoản đã tính doanh thu.
 
 ## Tự kiểm UC21 và UC22
 
