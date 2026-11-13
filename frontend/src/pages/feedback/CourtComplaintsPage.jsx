@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import api, { getAllPages } from '../../api'
 import { isLatePaymentEligible } from '../../api/bookingPaymentApi'
@@ -75,11 +75,14 @@ function CaseDetails({ id, role, refreshList }) {
   const load = useCallback((signal) => api.get(path + '/' + id, { signal }).then((response) => response.data.data), [id, path])
   const detail = useResource(load, id)
   const item = detail.data
+  const container = useRef(null)
+  // Chi tiết mở ngay dưới dòng vừa bấm; cuộn tới để không bị khuất dưới danh sách.
+  useEffect(() => { container.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }, [])
   function refresh() {
     detail.reload()
     refreshList()
   }
-  return <Section title={'Chi tiết khiếu nại #' + id} resource={detail}>
+  return <div ref={container}><Section title={'Chi tiết khiếu nại #' + id} resource={detail}>
     {item && <>
       <div className="cw-record"><strong>{item.bookingCode ?? 'Lịch đặt #' + item.bookingId}</strong>
         <StatusPill tone={statusTone(item.status)}>
@@ -107,7 +110,7 @@ function CaseDetails({ id, role, refreshList }) {
         </Link></p>}
       {owner && item.status === 'PENDING_OWNER' && <OwnerDecision complaint={item} refresh={refresh} />}
     </>}
-  </Section>
+  </Section></div>
 }
 
 const typeLabels = {
@@ -144,26 +147,34 @@ function CaseList({ role = 'staff' }) {
       <Field label="Trạng thái" value={status} options={[[ '', 'Tất cả' ], ...statusOptions]}
         onChange={(event) => { setStatus(event.target.value); setId('') }} />
       {visible?.length > 0 && <ul className="cw-records">
-        {visible.map((item) => <li key={item.id} className="cw-record"
-          style={String(item.id) === String(id) ? { borderColor: 'var(--cw-accent, #059669)', borderWidth: 2 } : undefined}>
-          <div>
-            <div className="cw-record-title">#{item.id} · {item.bookingCode || 'Booking #' + item.bookingId}</div>
-            <small>
-              {typeLabels[item.complaintType] ?? item.complaintType}
-              {role !== 'player' && item.playerName && ' · ' + item.playerName}
-              {' · ' + formatCreatedAt(item.createdAt)}
-            </small>
-          </div>
-          <StatusPill tone={statusTone(item.status)}>{labels[item.status] ?? item.status}</StatusPill>
-          <button type="button" className="cw-secondary"
-            onClick={() => setId(String(item.id) === String(id) ? '' : String(item.id))}>
-            {String(item.id) === String(id) ? 'Đóng chi tiết' : 'Xem chi tiết'}
-          </button>
-        </li>)}
+        {visible.map((item) => {
+          const selected = String(item.id) === String(id)
+          return <li key={item.id} className="cw-record"
+            style={selected ? { borderColor: 'var(--cw-accent, #059669)', borderWidth: 2, display: 'block' } : undefined}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px 14px' }}>
+              <div>
+                <div className="cw-record-title">#{item.id} · {item.bookingCode || 'Booking #' + item.bookingId}</div>
+                <small>
+                  {typeLabels[item.complaintType] ?? item.complaintType}
+                  {role !== 'player' && item.playerName && ' · ' + item.playerName}
+                  {' · ' + formatCreatedAt(item.createdAt)}
+                </small>
+              </div>
+              <StatusPill tone={statusTone(item.status)}>{labels[item.status] ?? item.status}</StatusPill>
+              <button type="button" className="cw-secondary" onClick={() => setId(selected ? '' : String(item.id))}>
+                {selected ? 'Đóng chi tiết' : 'Xem chi tiết'}
+              </button>
+            </div>
+            {selected && <div style={{ marginTop: 12 }}>
+              <CaseDetails key={item.id} id={String(item.id)} role={role} refreshList={cases.reload} />
+            </div>}
+          </li>
+        })}
       </ul>}
       {visible?.length === 0 && <EmptyState>Không có khiếu nại trong mục này.</EmptyState>}
     </Section>
-    {id && <CaseDetails key={id} id={id} role={role} refreshList={cases.reload} />}
+    {id && visible && !visible.some((item) => String(item.id) === String(id)) &&
+      <CaseDetails key={id} id={id} role={role} refreshList={cases.reload} />}
   </>
 }
 
