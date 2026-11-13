@@ -5,6 +5,11 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import jakarta.persistence.LockModeType;
 
 import com.sep490.bms.entity.team.JoinRequestStatus;
 import com.sep490.bms.entity.team.MatchJoinRequest;
@@ -13,6 +18,11 @@ import com.sep490.bms.entity.team.MatchJoinRequest;
  * Tra cứu yêu cầu tham gia kèo theo Player, trạng thái và thời gian gửi.
  */
 public interface MatchJoinRequestRepository extends JpaRepository<MatchJoinRequest, Long> {
+
+    /** Khóa dòng yêu cầu khi duyệt để hai lần duyệt cùng lúc phải xếp hàng. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM MatchJoinRequest r WHERE r.id = :id")
+    Optional<MatchJoinRequest> findByIdForUpdate(@Param("id") Long id);
 
     boolean existsByMatchIdAndPlayerIdAndStatusIn(Long matchId, Long playerId, Collection<JoinRequestStatus> statuses);
 

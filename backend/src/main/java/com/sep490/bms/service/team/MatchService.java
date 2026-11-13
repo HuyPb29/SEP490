@@ -175,9 +175,12 @@ public class MatchService {
 
     @Transactional
     public JoinRequestResponse approveJoinRequest(Long userId, Long requestId) {
-        MatchJoinRequest request = findPendingRequest(requestId);
-        Match match = findMatch(request.getMatchId());
-        requireHost(userId, match.getId());
+        // Khóa yêu cầu rồi khóa kèo trước khi đọc số chỗ: hai lần duyệt cùng lúc phải xếp hàng,
+        // tránh mất cập nhật current/needed_players (Match không có cột version).
+        MatchJoinRequest request = findPendingRequestForUpdate(requestId);
+        requireHost(userId, request.getMatchId());
+        Match match = matchRepository.findByIdForUpdate(request.getMatchId())
+                .orElseThrow(() -> new AppException("Không tìm thấy kèo", HttpStatus.NOT_FOUND));
         if (match.getStatus() != MatchStatus.OPEN) {
             throw new AppException("Kèo không còn mở, không thể duyệt thêm người");
         }
@@ -432,7 +435,16 @@ public class MatchService {
     }
 
     private MatchJoinRequest findPendingRequest(Long requestId) {
-        MatchJoinRequest request = matchJoinRequestRepository.findById(requestId)
+        return requirePending(matchJoinRequestRepository.findById(requestId));
+    }
+
+    /** Khóa dòng yêu cầu để hai lần duyệt cùng một yêu cầu không chạy song song. */
+    private MatchJoinRequest findPendingRequestForUpdate(Long requestId) {
+        return requirePending(matchJoinRequestRepository.findByIdForUpdate(requestId));
+    }
+
+    private MatchJoinRequest requirePending(java.util.Optional<MatchJoinRequest> found) {
+        MatchJoinRequest request = found
                 .orElseThrow(() -> new AppException("Không tìm thấy yêu cầu tham gia kèo", HttpStatus.NOT_FOUND));
         if (request.getStatus() != JoinRequestStatus.PENDING) {
             throw new AppException("Yêu cầu này đã được xử lý");
