@@ -32,6 +32,8 @@ import com.sep490.bms.repository.booking.BookingPackageRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.booking.BookingRepository.PackageSessionCount;
 import com.sep490.bms.repository.location.CourtRepository;
+import com.sep490.bms.repository.team.TeamRepository;
+import com.sep490.bms.entity.team.Team;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.feedback.ReviewService;
 import com.sep490.bms.service.location.LocationQueryService;
@@ -51,6 +53,7 @@ public class BookingQueryService {
     private final BookingRepository bookingRepository;
     private final BookingPackageRepository bookingPackageRepository;
     private final CourtRepository courtRepository;
+    private final TeamRepository teamRepository;
     private final LocationQueryService locationQueryService;
     private final BookingService bookingService;
     private final PaymentService paymentService;
@@ -100,6 +103,8 @@ public class BookingQueryService {
                 .bookingType(booking.getBookingType())
                 .packageId(booking.getPackageId())
                 .teamId(booking.getTeamId())
+                .teamName(booking.getTeamId() == null ? null
+                        : teamRepository.findById(booking.getTeamId()).map(Team::getName).orElse(null))
                 .locationId(booking.getLocationId())
                 .locationName(location == null ? null : location.getName())
                 .locationAddress(location == null ? null : location.getAddress())
