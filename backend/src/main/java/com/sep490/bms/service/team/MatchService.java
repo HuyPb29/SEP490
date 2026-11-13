@@ -32,6 +32,7 @@ import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.team.MatchJoinRequestRepository;
 import com.sep490.bms.repository.team.MatchQueryRepository;
 import com.sep490.bms.repository.team.MatchQueryRepository.BookingInfo;
+import com.sep490.bms.repository.team.MatchQueryRepository.JoinConflicts;
 import com.sep490.bms.repository.team.MatchQueryRepository.MatchFilter;
 import com.sep490.bms.repository.team.MatchRepository;
 import com.sep490.bms.repository.team.TeamRepository;
@@ -175,15 +176,27 @@ public class MatchService {
 
     @Transactional
     public JoinRequestResponse approveJoinRequest(Long userId, Long requestId) {
-        MatchJoinRequest request = findPendingRequest(requestId);
-        Match match = findMatch(request.getMatchId());
-        requireHost(userId, match.getId());
+        // Khóa yêu cầu rồi khóa kèo trước khi đọc số chỗ: hai lần duyệt cùng lúc phải xếp hàng,
+        // tránh mất cập nhật current/needed_players (Match không có cột version).
+        MatchJoinRequest request = findPendingRequestForUpdate(requestId);
+        requireHost(userId, request.getMatchId());
+        Match match = matchRepository.findByIdForUpdate(request.getMatchId())
+                .orElseThrow(() -> new AppException("Không tìm thấy kèo", HttpStatus.NOT_FOUND));
         if (match.getStatus() != MatchStatus.OPEN) {
             throw new AppException("Kèo không còn mở, không thể duyệt thêm người");
         }
 
         if (match.getNeededPlayers() < 1) {
             throw new AppException("Kèo đã đủ người, không thể duyệt thêm");
+        }
+        // D61: sau khi gửi yêu cầu, Player có thể đã vào kèo khác hoặc đặt booking trùng giờ — kiểm lại lúc duyệt.
+        MatchResponse view = view(match.getId());
+        JoinConflicts conflicts = matchQueryRepository.findJoinConflicts(request.getPlayerId(), match.getId(),
+                view.getPlayDate(), view.getStartMinute(), view.getEndMinute());
+        if (conflicts.approvedMatches() > 0 || conflicts.ownBookings() > 0) {
+            throw new AppException(
+                    "Người chơi này đã có kèo hoặc booking trùng giờ, không thể duyệt. Hãy từ chối yêu cầu",
+                    HttpStatus.CONFLICT);
         }
         match.setCurrentPlayers(match.getCurrentPlayers() + 1);
         match.setNeededPlayers(match.getNeededPlayers() - 1);
@@ -296,6 +309,21 @@ public class MatchService {
         if (matchJoinRequestRepository.existsByMatchIdAndPlayerIdAndStatusIn(matchId, userId,
                 Set.of(JoinRequestStatus.PENDING, JoinRequestStatus.APPROVED, JoinRequestStatus.REJECTED))) {
             throw new AppException("Bạn đã gửi yêu cầu tham gia kèo này rồi", HttpStatus.CONFLICT);
+        }
+        // D61: không tham gia hai kèo trùng giờ, không xin kèo trùng giờ với booking của mình.
+        // D62: mỗi khung giờ chỉ một yêu cầu đang chờ; muốn xin kèo khác phải rút yêu cầu cũ.
+        JoinConflicts conflicts = matchQueryRepository.findJoinConflicts(userId, matchId,
+                view.getPlayDate(), view.getStartMinute(), view.getEndMinute());
+        if (conflicts.approvedMatches() > 0) {
+            throw new AppException("Bạn đã tham gia một kèo khác trùng giờ với kèo này", HttpStatus.CONFLICT);
+        }
+        if (conflicts.ownBookings() > 0) {
+            throw new AppException("Bạn đã có booking trùng giờ với kèo này", HttpStatus.CONFLICT);
+        }
+        if (conflicts.pendingRequests() > 0) {
+            throw new AppException(
+                    "Bạn đang chờ duyệt một kèo khác trùng giờ. Hãy rút yêu cầu đó trước khi xin vào kèo này",
+                    HttpStatus.CONFLICT);
         }
 
         MatchJoinRequest saved = matchJoinRequestRepository.save(MatchJoinRequest.builder()
@@ -432,7 +460,16 @@ public class MatchService {
     }
 
     private MatchJoinRequest findPendingRequest(Long requestId) {
-        MatchJoinRequest request = matchJoinRequestRepository.findById(requestId)
+        return requirePending(matchJoinRequestRepository.findById(requestId));
+    }
+
+    /** Khóa dòng yêu cầu để hai lần duyệt cùng một yêu cầu không chạy song song. */
+    private MatchJoinRequest findPendingRequestForUpdate(Long requestId) {
+        return requirePending(matchJoinRequestRepository.findByIdForUpdate(requestId));
+    }
+
+    private MatchJoinRequest requirePending(java.util.Optional<MatchJoinRequest> found) {
+        MatchJoinRequest request = found
                 .orElseThrow(() -> new AppException("Không tìm thấy yêu cầu tham gia kèo", HttpStatus.NOT_FOUND));
         if (request.getStatus() != JoinRequestStatus.PENDING) {
             throw new AppException("Yêu cầu này đã được xử lý");

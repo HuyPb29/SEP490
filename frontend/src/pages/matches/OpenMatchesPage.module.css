@@ -12,6 +12,25 @@
   padding: 22px 20px 36px;
 }
 
+.headingRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 17px;
+}
+
+.headingAction {
+  color: #0d7044;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.headingRow .pageHeading {
+  margin: 0;
+}
+
 .pageHeading {
   margin: 0 0 17px;
 }

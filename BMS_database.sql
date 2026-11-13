@@ -764,6 +764,7 @@ CREATE TABLE complaint (
     compensation_points INT NULL,
     decided_by BIGINT NULL,
     decided_at DATETIME2(0) NULL,
+    forwarded_at DATETIME2 NULL,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_complaint_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_complaint PRIMARY KEY (id),
     CONSTRAINT ck_complaint_target CHECK (booking_id IS NOT NULL OR payment_id IS NOT NULL),

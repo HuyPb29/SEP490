@@ -43,6 +43,8 @@ import com.sep490.bms.repository.booking.BookingPackageRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.booking.BookingRepository.PackageSessionCount;
 import com.sep490.bms.repository.location.CourtRepository;
+import com.sep490.bms.repository.team.TeamRepository;
+import com.sep490.bms.entity.team.Team;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.feedback.ReviewService;
 import com.sep490.bms.service.location.LocationQueryService;
@@ -59,12 +61,13 @@ class BookingQueryServiceTests {
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final BookingPackageRepository packages = mock(BookingPackageRepository.class);
     private final CourtRepository courts = mock(CourtRepository.class);
+    private final TeamRepository teams = mock(TeamRepository.class);
     private final LocationQueryService locations = mock(LocationQueryService.class);
     private final BookingService bookingService = mock(BookingService.class);
     private final PaymentService payments = mock(PaymentService.class);
     private final ReviewService reviews = mock(ReviewService.class);
     private final BookingQueryService service =
-            new BookingQueryService(bookings, packages, courts, locations, bookingService, payments, reviews,
+            new BookingQueryService(bookings, packages, courts, teams, locations, bookingService, payments, reviews,
                     mock(com.sep490.bms.service.reschedule.RescheduleService.class));
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
@@ -227,6 +230,28 @@ class BookingQueryServiceTests {
         assertThat(detail.getPointsUsed()).isEqualTo(20);
         assertThat(detail.getPointDiscount()).isEqualByComparingTo("10000");
         assertThat(detail.getFinalAmount()).isEqualByComparingTo("150000");
+    }
+
+    /** D112: booking đặt dưới tên đội hiện tên đội ở "Đặt cho"; booking cá nhân không có tên đội. */
+    @Test
+    void getMyBooking_teamBooking_returnsTeamName() {
+        Booking teamBooking = booking(1L, BookingStatus.CONFIRMED, null);
+        teamBooking.setTeamId(3L);
+        when(bookingService.getForPlayer(1L, PLAYER)).thenReturn(teamBooking);
+        when(teams.findById(3L)).thenReturn(Optional.of(Team.builder().id(3L).name("Cầu Giấy").captainId(PLAYER).build()));
+
+        BookingDetailResponse detail = service.getMyBooking(player, 1L, NOW);
+
+        assertThat(detail.getTeamId()).isEqualTo(3L);
+        assertThat(detail.getTeamName()).isEqualTo("Cầu Giấy");
+    }
+
+    @Test
+    void getMyBooking_personalBooking_hasNoTeamName() {
+        when(bookingService.getForPlayer(1L, PLAYER)).thenReturn(booking(1L, BookingStatus.CONFIRMED, null));
+
+        assertThat(service.getMyBooking(player, 1L, NOW).getTeamName()).isNull();
+        verifyNoInteractions(teams);
     }
 
     @Test

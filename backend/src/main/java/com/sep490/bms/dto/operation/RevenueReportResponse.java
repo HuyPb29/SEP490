@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -45,6 +47,7 @@ public class RevenueReportResponse {
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+    @Schema(name = "RevenueReportDayItem")
     public static class DayItem {
         private LocalDate date;
         private BigDecimal revenue;

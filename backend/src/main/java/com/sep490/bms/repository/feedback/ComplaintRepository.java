@@ -27,6 +27,9 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
 
     Page<Complaint> findByCreatedBy(Long createdBy, Pageable pageable);
 
+    /** Job P33: khiếu nại đang chờ Owner để xét quá hạn xử lý. */
+    java.util.List<Complaint> findByStatus(ComplaintStatus status);
+
     boolean existsByPaymentIdAndComplaintType(Long paymentId, String complaintType);
 
     @Query("SELECT c FROM Complaint c WHERE c.locationId = :locationId"

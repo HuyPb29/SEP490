@@ -25,7 +25,7 @@ export default function WorkspaceLayout({
   const { user, roleHome } = useAuth();
 
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" state={{ returnTo: location.pathname + location.search }} replace />;
   }
 
   const userRole = String(user.role_code || user.role || '').toLowerCase();

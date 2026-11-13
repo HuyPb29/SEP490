@@ -172,6 +172,8 @@ public class ComplaintService {
                 .createdBy(user.getId())
                 .complaintType(type)
                 .status(latePayment ? ComplaintStatus.PENDING_OWNER : ComplaintStatus.SUBMITTED)
+                // Khiếu nại chậm xác nhận đến thẳng Owner (D86) nên mốc P33 tính từ lúc tạo.
+                .forwardedAt(latePayment ? LocalDateTime.now() : null)
                 .content(request.getContent().trim())
                 .build();
     }
@@ -266,6 +268,7 @@ public class ComplaintService {
         complaint.setStaffNote(request.getStaffNote().trim());
         complaint.setHandledBy(staff.getId());
         complaint.setStatus(ComplaintStatus.PENDING_OWNER);
+        complaint.setForwardedAt(LocalDateTime.now());
         complaintRepository.save(complaint);
 
         notifyOwner(complaint, "Có khiếu nại cần chủ sân xử lý");

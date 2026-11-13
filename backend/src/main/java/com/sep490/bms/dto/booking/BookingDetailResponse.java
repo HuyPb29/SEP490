@@ -32,6 +32,7 @@ public class BookingDetailResponse {
     /** Có giá trị khi là một buổi trong gói; thanh toán và đếm ngược xem ở chi tiết gói. */
     private Long packageId;
     private Long teamId;
+    private String teamName;
 
     private Long locationId;
     private String locationName;

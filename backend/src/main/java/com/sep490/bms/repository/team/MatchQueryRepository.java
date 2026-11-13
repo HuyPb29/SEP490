@@ -171,6 +171,41 @@ public class MatchQueryRepository {
         return where.toString();
     }
 
+    /**
+     * Số xung đột trùng giờ của một Player so với một kèo (D61, D62):
+     * kèo khác đã được duyệt, yêu cầu khác còn chờ, booking còn hiệu lực của chính Player.
+     */
+    public record JoinConflicts(long approvedMatches, long pendingRequests, long ownBookings) {
+    }
+
+    /** Hai khoảng giờ giao nhau: start < toMinute và end > fromMinute, cùng ngày chơi. */
+    private static final String REQUEST_OVERLAP = """
+            SELECT COUNT(*) FROM match_join_request r
+            JOIN [match] m ON m.id = r.match_id
+            JOIN booking b ON b.id = m.booking_id
+            WHERE r.player_id = ? AND r.match_id <> ? AND r.status = ?
+              AND m.status IN (%s)
+              AND b.play_date = ? AND b.start_minute < ? AND b.end_minute > ?""";
+
+    public JoinConflicts findJoinConflicts(Long playerId, Long matchId, LocalDate playDate,
+            int startMinute, int endMinute) {
+        String sql = "SELECT (" + REQUEST_OVERLAP.formatted("'OPEN', 'CLOSED'") + ") AS approved_matches, ("
+                + REQUEST_OVERLAP.formatted("'OPEN'") + ") AS pending_requests, ("
+                + """
+                  SELECT COUNT(*) FROM booking b
+                  WHERE b.player_id = ?
+                    AND b.status IN ('HOLDING', 'AWAITING_CONFIRMATION', 'RESUBMIT_REQUESTED', 'CONFIRMED', 'IN_USE')
+                    AND b.play_date = ? AND b.start_minute < ? AND b.end_minute > ?"""
+                + ") AS own_bookings";
+        Date day = Date.valueOf(playDate);
+        return jdbcTemplate.queryForObject(sql,
+                (rs, i) -> new JoinConflicts(rs.getLong("approved_matches"), rs.getLong("pending_requests"),
+                        rs.getLong("own_bookings")),
+                playerId, matchId, "APPROVED", day, endMinute, startMinute,
+                playerId, matchId, "PENDING", day, endMinute, startMinute,
+                playerId, day, endMinute, startMinute);
+    }
+
     /** JOB10, UC28 A5: kèo vẫn đang tuyển mà giờ chơi đã bắt đầu. */
     public List<Long> findStartedOpenMatchIds() {
         return jdbcTemplate.queryForList("""
