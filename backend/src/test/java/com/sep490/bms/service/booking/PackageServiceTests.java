@@ -832,9 +832,9 @@ class PackageServiceTests {
     }
 
     @Test
-    void orderAcceptsOneRangeWithinAdvanceLimit() {
-        assertThat(service.previewOrder(player, order(ORDER_DAY, null, range(COURT, 1080, 1140)), NOW)
-                .getTotalSessions()).isEqualTo(1);
+    void orderNeedsTwoRangesOnOneDayWithinAdvanceLimit() {
+        assertThatThrownBy(() -> service.previewOrder(player, order(ORDER_DAY, null, range(COURT, 1080, 1140)), NOW))
+                .hasMessageContaining("đặt như booking lẻ");
         // Mặc định đặt trước tối đa 30 ngày (BR02).
         assertThatThrownBy(() -> service.previewOrder(player, order(TODAY.plusDays(31), null,
                 range(COURT, 1080, 1140), range(12L, 1080, 1140)), NOW))

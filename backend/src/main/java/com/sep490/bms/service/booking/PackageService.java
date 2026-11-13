@@ -649,9 +649,9 @@ public class PackageService {
                 }
             }
         } else if (isOrder(request)) {
-            // BR64: mọi dải của đơn đặt lẻ thuộc cùng một ngày (MSG30).
-            if (request.sessions() == null || request.sessions().isEmpty()) {
-                throw new AppException("Chọn ít nhất một khung giờ cho đơn đặt lẻ.");
+            // BR64: đơn đặt lẻ có ít nhất 2 dải (một dải thì là booking lẻ), mọi dải cùng một ngày (MSG30).
+            if (request.sessions() == null || request.sessions().size() < 2) {
+                throw new AppException("Đơn đặt lẻ cần ít nhất 2 khung giờ; một khung giờ thì đặt như booking lẻ.");
             }
             sessions = explicitSessions(request, court, today);
             if (distinctDays(sessions) != 1) {

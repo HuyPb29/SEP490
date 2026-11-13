@@ -26,6 +26,7 @@ import {
   previewRescheduleApi,
   submitAffectedChoiceApi,
 } from '../api/bookingApi';
+import { getVenueSchedule } from '../api/facilityApi';
 import {
   decideReschedulePayment,
   decideStaffBookingPayment,
@@ -90,6 +91,7 @@ const BOOKING_ACTIONS = Object.freeze({
   createRescheduleApi,
   getLocationCourts: getLocationCourtsApi,
   getLocationCourtsApi,
+  getVenueSchedule,
 });
 
 const PAYMENT_ACTIONS = Object.freeze({

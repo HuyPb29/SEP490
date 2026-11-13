@@ -425,3 +425,13 @@
 }
 
 .bookingChild { margin-inline-start: clamp(10px, 3vw, 32px); border-inline-start: 3px solid #78a98d; }
+
+/* UC21/UC22: Modal đổi lịch dùng bảng lịch sân nên cần rộng hơn modal thường */
+dialog.rescheduleModal { max-width: min(1080px, calc(100% - 28px)); }
+.rsDateBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 12px; }
+.rsDateLabel { font-weight: 650; text-transform: capitalize; }
+.rsNavBtn {
+  width: 34px; height: 34px; border-radius: 9px; border: 1px solid #cbd5e1;
+  background: #ffffff; font-size: 18px; line-height: 1; cursor: pointer;
+}
+.rsNavBtn:disabled { opacity: .45; cursor: not-allowed; }
