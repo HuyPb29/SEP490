@@ -12,6 +12,9 @@ const routesByRole = {
 export function canResumePath(value, role) {
   if (typeof value !== 'string' || !/^\/(?![/\\])/.test(value)) return false
   const pathname = value.split(/[?#]/, 1)[0]
-  return ['/notifications', '/', '/facilities/:id', '/open-matches', '/locations', '/matches', ...(routesByRole[role] || [])]
+  // Staff và Owner đăng nhập từ trang công khai (trang chủ, trang địa điểm, kèo) thì vào thẳng trang làm việc của mình,
+  // không quay lại trang của người chơi.
+  const publicPages = role === 'staff' || role === 'owner' ? [] : ['/', '/facilities/:id', '/open-matches', '/locations', '/matches']
+  return ['/notifications', ...publicPages, ...(routesByRole[role] || [])]
     .some((pattern) => matchPath(pattern, pathname))
 }
