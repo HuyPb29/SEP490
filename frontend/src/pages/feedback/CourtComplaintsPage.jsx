@@ -8,6 +8,12 @@ import { today, useResource } from '../workspaceSupport'
 const staffPath = '/staff/complaints'
 const ownerPath = '/owner/complaints'
 const labels = { SUBMITTED: 'Chờ Staff chuyển', PENDING_OWNER: 'Chờ Owner xử lý', RESOLVED: 'Đã xử lý', REJECTED: 'Đã từ chối' }
+const resultLabels = {
+  REFUND: 'Đã tạo yêu cầu hoàn tiền',
+  POINTS: 'Cộng điểm bồi hoàn',
+  NO_COMPENSATION: 'Ghi nhận, không bồi thường',
+  LATE_PAYMENT_CONFIRMED: 'Đã xác nhận thanh toán trễ',
+}
 const loadStaffCases = (signal) => getAllPages(staffPath, { signal })
 const loadOwnerCases = (signal) => getAllPages(ownerPath, { signal })
 const loadPlayerCases = (signal) => getAllPages('/me/complaints', { signal })
@@ -76,14 +82,20 @@ function CaseDetails({ id, role, refreshList }) {
   return <Section title={'Chi tiết khiếu nại #' + id} resource={detail}>
     {item && <>
       <div className="cw-record"><strong>{item.bookingCode ?? 'Lịch đặt #' + item.bookingId}</strong>
-        <StatusPill tone={item.status === 'RESOLVED' ? 'positive' : item.status === 'REJECTED' ? 'negative' : 'pending'}>
+        <StatusPill tone={statusTone(item.status)}>
           {labels[item.status] ?? item.status}
         </StatusPill>
       </div>
+      <p className="cw-muted">
+        {typeLabels[item.complaintType] ?? item.complaintType}
+        {item.playerName && ' · ' + item.playerName}
+        {' · Gửi lúc ' + formatCreatedAt(item.createdAt)}
+      </p>
       <p>{item.content}</p>
       {item.staffNote && <p>Ghi chú của Staff: {item.staffNote}</p>}
       {item.rejectReason && <p>Lý do từ chối: {item.rejectReason}</p>}
-      {item.result && <p>Kết quả: {item.result === 'REFUND' ? 'Đã tạo yêu cầu hoàn tiền' : item.result}</p>}
+      {item.result && <p>Kết quả: {resultLabels[item.result] ?? item.result}
+        {item.result === 'POINTS' && item.compensationPoints ? ' (' + item.compensationPoints + ' điểm)' : ''}</p>}
       {owner && item.result === 'REFUND' && <Link className="underline" to={'/owner/workspace?tab=refund&complaintId=' + item.id}>Mở yêu cầu hoàn tiền</Link>}
       {role === 'staff' && item.status === 'SUBMITTED' && <ActionForm label="Chuyển Owner" after={refresh}
         action={(form) => api.post(staffPath + '/' + id + '/forward', form)}>
@@ -98,21 +110,57 @@ function CaseDetails({ id, role, refreshList }) {
   </Section>
 }
 
+const typeLabels = {
+  COURT_SERVICE: 'Dịch vụ sân',
+  PAYMENT_ISSUE: 'Vấn đề thanh toán',
+  OTHER: 'Khác',
+  LATE_PAYMENT_CONFIRMATION: 'Xác nhận thanh toán trễ',
+}
+
+function statusTone(status) {
+  return status === 'RESOLVED' ? 'positive' : status === 'REJECTED' ? 'negative' : 'pending'
+}
+
+function formatCreatedAt(value) {
+  return value ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : ''
+}
+
 function CaseList({ role = 'staff' }) {
   const cases = useResource(role === 'owner' ? loadOwnerCases : role === 'player' ? loadPlayerCases : loadStaffCases)
   const [params] = useSearchParams()
   const requestedId = params.get('complaintId')
   const [id, setId] = useState(() => /^[1-9]\d*$/.test(requestedId || '') ? requestedId : '')
   const [status, setStatus] = useState('')
-  const visible = cases.data?.filter((item) => !status || item.status === status)
+  // D65: Owner chỉ nhận khiếu nại Staff đã chuyển lên, nên không có mục "Chờ Staff chuyển".
+  const statusOptions = Object.entries(labels).filter(([value]) => role !== 'owner' || value !== 'SUBMITTED')
+  const visible = cases.data
+    ?.filter((item) => !status || item.status === status)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
   return <>
     <Section title={role === 'player' ? 'Khiếu nại của tôi' : 'Khiếu nại tại địa điểm'} resource={cases}>
-      <Field label="Trạng thái" value={status} options={[[ '', 'Tất cả' ], ...Object.entries(labels)]}
+      {role === 'owner' && <p className="cw-muted">
+        Khiếu nại của người chơi hiện ở đây sau khi Staff kiểm tra và chuyển lên; khiếu nại xác nhận thanh toán trễ đến thẳng chủ sân.
+      </p>}
+      <Field label="Trạng thái" value={status} options={[[ '', 'Tất cả' ], ...statusOptions]}
         onChange={(event) => { setStatus(event.target.value); setId('') }} />
-      <Field label="Chọn khiếu nại" value={id} onChange={(event) => setId(event.target.value)}
-        options={[[ '', 'Chọn khiếu nại' ], ...(visible ?? []).map((item) => [
-          item.id, '#' + item.id + ' · ' + (item.bookingCode || 'Booking #' + item.bookingId) + ' · ' + (labels[item.status] ?? item.status),
-        ])]} />
+      {visible?.length > 0 && <ul className="cw-records">
+        {visible.map((item) => <li key={item.id} className="cw-record"
+          style={String(item.id) === String(id) ? { borderColor: 'var(--cw-accent, #059669)', borderWidth: 2 } : undefined}>
+          <div>
+            <div className="cw-record-title">#{item.id} · {item.bookingCode || 'Booking #' + item.bookingId}</div>
+            <small>
+              {typeLabels[item.complaintType] ?? item.complaintType}
+              {role !== 'player' && item.playerName && ' · ' + item.playerName}
+              {' · ' + formatCreatedAt(item.createdAt)}
+            </small>
+          </div>
+          <StatusPill tone={statusTone(item.status)}>{labels[item.status] ?? item.status}</StatusPill>
+          <button type="button" className="cw-secondary"
+            onClick={() => setId(String(item.id) === String(id) ? '' : String(item.id))}>
+            {String(item.id) === String(id) ? 'Đóng chi tiết' : 'Xem chi tiết'}
+          </button>
+        </li>)}
+      </ul>}
       {visible?.length === 0 && <EmptyState>Không có khiếu nại trong mục này.</EmptyState>}
     </Section>
     {id && <CaseDetails key={id} id={id} role={role} refreshList={cases.reload} />}
