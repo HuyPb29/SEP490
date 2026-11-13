@@ -1,5 +1,5 @@
 import { useNavigationDrawer } from '../../hooks/useNavigationDrawer';
-import { Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useLocationContext } from '../../hooks/useLocation';
 import { PageHeader } from '../common/PageHeader';
@@ -17,13 +17,10 @@ export default function ManagementLayout({
   locationId: propLocationId,
   locationName: propLocationName,
   onLocationChange,
-  onOpenCounterBooking,
-  onOpenReconciliation,
   badges = {},
   children,
 }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const { user, roleHome } = useAuth();
   const {
     locations: ctxLocations,
@@ -58,6 +55,7 @@ export default function ManagementLayout({
     onLocationChange?.(nextId);
   };
 
+  // Đặt sân tại quầy (UC16) và đối soát cuối ngày (UC20) mở từ nút trên bảng điều hành.
   const staffMenu = [
     { to: '/staff/dashboard', label: 'Bảng điều hành', end: true },
     {
@@ -65,23 +63,9 @@ export default function ManagementLayout({
       label: 'Lịch sân (UC13)',
     },
     {
-      label: 'Đặt sân tại quầy (UC16)',
-      onClick: () => {
-        if (onOpenCounterBooking) onOpenCounterBooking();
-        else navigate('/staff/dashboard?modal=counter');
-      },
-    },
-    {
       to: '/staff/confirm-payments',
       label: 'Xác nhận thanh toán (UC19)',
       badge: badges.payments,
-    },
-    {
-      label: 'Đối soát cuối ngày (UC20)',
-      onClick: () => {
-        if (onOpenReconciliation) onOpenReconciliation();
-        else navigate('/staff/dashboard?modal=reconciliation');
-      },
     },
     { to: '/maintenance', label: 'Yêu cầu bảo trì (UC10)' },
     {

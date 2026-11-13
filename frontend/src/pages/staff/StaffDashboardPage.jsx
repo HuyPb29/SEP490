@@ -312,11 +312,6 @@ export default function StaffDashboardPage() {
         payments: dashboard?.paymentsAwaitingConfirmation ?? pendingPayments.length,
         complaints: Number(dashboard?.complaintsToForward) || 0,
       }}
-      onOpenCounterBooking={() => openCounterBooking()}
-      onOpenReconciliation={() => {
-        setReconSuccess('');
-        setShowReconciliation(true);
-      }}
     >
 
         {error && (
