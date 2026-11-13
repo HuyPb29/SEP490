@@ -26,7 +26,7 @@ const STATUS_LABELS = {
   PAYMENT_REJECTED: 'Thanh toán bị từ chối',
   REJECTED: 'Đã từ chối',
   CANCELLED_BY_PLAYER: 'Người chơi đã hủy',
-  CANCELLED_BY_FACILITY: 'Địa điểm đã hủy',
+  CANCELLED_BY_FACILITY: 'Sân hủy',
 };
 
 export default function BookingPaymentPage() {

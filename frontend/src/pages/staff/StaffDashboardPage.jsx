@@ -17,7 +17,7 @@ const STATES = {
   IN_USE: 'Đang chơi',
   COMPLETED: 'Đã hoàn tất',
   EXPIRED: 'Hết hạn',
-  CANCELLED_BY_FACILITY: 'Địa điểm đã hủy',
+  CANCELLED_BY_FACILITY: 'Sân hủy',
   CANCELLED_BY_PLAYER: 'Khách đã hủy',
   PAYMENT_REJECTED: 'Thanh toán bị từ chối',
   AWAITING_CONFIRMATION: 'Chờ xác nhận',

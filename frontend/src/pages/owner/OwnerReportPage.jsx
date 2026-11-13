@@ -30,9 +30,9 @@ const reports = [
   {
     id: 'cancellation', name: 'Hủy và hoàn tiền',
     summary: [column('totalCancelled', 'Tổng booking hủy'), column('cancelledByPlayer', 'Player hủy'),
-      column('cancelledByFacility', 'Địa điểm hủy'), column('cancelledAmount', 'Giá trị booking hủy', money),
+      column('cancelledByFacility', 'Sân hủy'), column('cancelledAmount', 'Giá trị booking hủy', money),
       column('refundRequests', 'Yêu cầu hoàn tiền'), column('refundedAmount', 'Đã hoàn', money)],
-    tables: [['daily', 'Theo ngày', [day, column('cancelledByPlayer', 'Player hủy'), column('cancelledByFacility', 'Địa điểm hủy')]]],
+    tables: [['daily', 'Theo ngày', [day, column('cancelledByPlayer', 'Player hủy'), column('cancelledByFacility', 'Sân hủy')]]],
   },
   {
     id: 'reschedule', name: 'Đổi lịch',

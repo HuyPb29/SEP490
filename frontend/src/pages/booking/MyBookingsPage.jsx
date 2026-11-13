@@ -559,7 +559,7 @@ export default function MyBookingsPage() {
             ? {
                 ...item,
                 status: 'cancelled_by_facility',
-                status_name: 'Địa điểm đã hủy',
+                status_name: 'Sân hủy',
               }
             : item
         )
@@ -1060,7 +1060,7 @@ export default function MyBookingsPage() {
             </h3>
             <p className={styles.modalBody}>
               Booking {choiceTarget.booking.booking_code} ({choiceTarget.booking.facility_name} · {choiceTarget.booking.court_name},{' '}
-              {choiceTarget.booking.time_range}) sẽ chuyển sang <strong>Địa điểm đã hủy</strong> và slot được giải phóng. Điểm và voucher
+              {choiceTarget.booking.time_range}) sẽ chuyển sang <strong>Sân hủy</strong> và slot được giải phóng. Điểm và voucher
               đã dùng được trả lại.{' '}
               {choiceTarget.choice === 'REFUND'
                 ? 'Chủ sân sẽ chuyển khoản thủ công số tiền đã thanh toán; điểm đã tích từ booking này bị thu hồi tương ứng.'

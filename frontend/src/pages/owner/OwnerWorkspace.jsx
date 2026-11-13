@@ -139,7 +139,7 @@ function Cancellations() {
       })} after={bookings.reload}>
         {(errors) => <>
           {item.bookingType === 'WALK_IN' && <Field label="Nguyên nhân" name="cause" options={[
-            ['OWNER_CANCELLED', 'Địa điểm hủy'], ['WALK_IN_CUSTOMER_REQUEST', 'Khách tại quầy yêu cầu'],
+            ['OWNER_CANCELLED', 'Sân hủy'], ['WALK_IN_CUSTOMER_REQUEST', 'Khách tại quầy yêu cầu'],
           ]} error={errors.cause} />}
           <Field label="Lý do hủy" name="reason" maxLength={500} required error={errors.reason} />
         </>}

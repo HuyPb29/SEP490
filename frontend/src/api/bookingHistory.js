@@ -10,7 +10,7 @@ export const bookingStatusLabels = {
   expired: 'Hết hạn',
   payment_rejected: 'Thanh toán bị từ chối',
   cancelled_by_player: 'Người chơi đã hủy',
-  cancelled_by_facility: 'Địa điểm đã hủy',
+  cancelled_by_facility: 'Sân hủy',
 }
 
 export function bookingTimestamp(value) {
