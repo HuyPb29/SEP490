@@ -239,7 +239,7 @@ class LoyaltyApiTests {
         Payment last=payment(booking(10000)); tx.executeWithoutResult(s -> points.accrueForConfirmedPayment(last.getId()));
         assertThat(grants.findByPlayerId(player.getId(),org.springframework.data.domain.Pageable.unpaged()).getTotalElements()).isEqualTo(1);
     }
-    @Test void voucherPointsPolicyAndMinimumAreEnforced() {
+    @Test void fixedPointsCapUsesAmountAfterVoucherAndIgnoresLegacyCap() {
         seed(20); Booking b=booking(10000);
         Voucher v=vouchers.saveAndFlush(Voucher.builder().locationId(location.getId()).name("Policy test").source(VoucherSource.CAMPAIGN)
                 .targetGroup(VoucherTargetGroup.ALL_PLAYERS).code("STACK").status(VoucherStatus.PUBLISHED).discountType(DiscountType.AMOUNT)
@@ -248,12 +248,12 @@ class LoyaltyApiTests {
             Booking target=em.find(Booking.class,b.getId()); target.setVoucherDiscount(BigDecimal.valueOf(2000)); target.setFinalAmount(BigDecimal.valueOf(8000));
             em.persist(VoucherUsage.builder().voucherId(v.getId()).playerId(player.getId()).bookingId(b.getId()).discountAmount(BigDecimal.valueOf(2000)).build());
         });
-        // Sau voucher còn 8.000 đồng, chiến dịch chỉ cho giảm thêm 25% = 4 điểm.
-        assertThatThrownBy(() -> tx.execute(s -> points.redeemForBooking(b.getId(),5))).hasMessageContaining("MSG38");
+        // Sau voucher còn 8.000 đồng, trần 50% tương đương 8 điểm.
+        assertThatThrownBy(() -> tx.execute(s -> points.redeemForBooking(b.getId(),9))).hasMessageContaining("MSG38");
         assertThatThrownBy(() -> tx.execute(s -> points.redeemForBooking(b.getId(),1))).hasMessageContaining("MSG37");
-        tx.executeWithoutResult(s -> points.redeemForBooking(b.getId(),4));
-        assertThat(balance().getPointBalance()).isEqualTo(16);
-        assertThat(tx.<BigDecimal>execute(s -> em.find(Booking.class,b.getId()).getFinalAmount())).isEqualByComparingTo("6000");
+        tx.executeWithoutResult(s -> points.redeemForBooking(b.getId(),8));
+        assertThat(balance().getPointBalance()).isEqualTo(12);
+        assertThat(tx.<BigDecimal>execute(s -> em.find(Booking.class,b.getId()).getFinalAmount())).isEqualByComparingTo("4000");
     }
 
     @Test void pointGrantLookupOnlyExposesEligibleBookingsInTheSelectedVenue() throws Exception {
@@ -301,7 +301,7 @@ class LoyaltyApiTests {
         }
     }
 
-    @Test void nonStackingVoucherRollsBackQuotaAndBudgetWhenCheckoutIncludesPoints() {
+    @Test void legacyNonStackingVoucherAllowsPointsAndExcessRollsBackQuotaAndBudget() {
         seed(20);
         Booking b=booking(10000);
         Voucher v=vouchers.saveAndFlush(Voucher.builder().locationId(location.getId()).name("Voucher only")
@@ -312,15 +312,19 @@ class LoyaltyApiTests {
 
         assertThatThrownBy(() -> tx.executeWithoutResult(s -> {
             voucherService.consumeForBooking(b.getId(),selection);
-            points.redeemForBooking(b.getId(),2);
-        })).hasMessageContaining("MSG40");
+            points.redeemForBooking(b.getId(),9);
+        })).hasMessageContaining("MSG38");
 
         var unchanged=vouchers.findById(v.getId()).orElseThrow();
         assertThat(unchanged.getUsedCount()).isZero();
         assertThat(unchanged.getBudgetUsed()).isEqualByComparingTo("0");
         assertThat(balance().getPointBalance()).isEqualTo(20);
-        tx.executeWithoutResult(s -> voucherService.consumeForBooking(b.getId(),selection));
+        tx.executeWithoutResult(s -> {
+            voucherService.consumeForBooking(b.getId(),selection);
+            points.redeemForBooking(b.getId(),8);
+        });
         assertThat(vouchers.findById(v.getId()).orElseThrow().getUsedCount()).isEqualTo(1);
+        assertThat(balance().getPointBalance()).isEqualTo(12);
     }
     @Test void packageRedeemAndFailedReturnAreIdempotent() {
         seed(10); Booking one=booking(10000),two=booking(10000);

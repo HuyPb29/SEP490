@@ -15,7 +15,7 @@ public class F6OpenApiConfig {
                         "/api/owner/loyalty-adjustments/**")
                 .addOpenApiCustomizer(locationHeader)
                 .addOpenApiCustomizer(api -> api.getInfo().setDescription("UC25–UC26. Điểm và mốc tổng tiền theo địa điểm. "
-                        + "Điểm dùng theo cấu hình voucher UC24, hoặc tối đa 50% khi không dùng voucher."))
+                        + "Điểm giảm tối đa 50% số tiền còn lại sau voucher, hoặc 50% giá niêm yết nếu không áp voucher (BR41, D161)."))
                 .addOpenApiCustomizer(api -> api.getPaths().forEach((path,item) -> item.readOperationsMap().forEach((method,op) -> {
                     for(String code:java.util.List.of("400","401","403","404","409"))
                         op.getResponses().addApiResponse(code,new ApiResponse().description("ApiResponse: validation/auth/scope/resource/conflict"));

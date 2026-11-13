@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../../components/common/WorkspacePrimitives';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import { formatVnd, today as getTodayStr } from '../../utils/formatters';
-import { checkoutPointLimit, checkoutRewardErrorField, defaultPointPercent, pointInputError } from '../../utils/checkoutPoints';
+import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, pointInputError } from '../../utils/checkoutPoints';
 import { usePackagePreview } from '../../hooks/usePackagePreview';
 import styles from './MultiSessionBookingPage.module.css';
 
@@ -211,10 +211,9 @@ export default function MultiSessionBookingPage() {
   const preview = result?.data;
   const sessions = useMemo(() => preview?.sessions ?? [], [preview]);
   const conflictedSessions = sessions.filter((session) => session.conflict);
-  const pointPercent = preview?.maxPointPercent ?? defaultPointPercent;
-  const pointsLimit = preview ? checkoutPointLimit(preview.listAmount - preview.voucherDiscount, availablePoints, pointPercent) : availablePoints;
+  const pointsLimit = preview ? checkoutPointLimit(preview.listAmount - preview.voucherDiscount, availablePoints) : availablePoints;
   const selectedPoints = Number(pointsToUse);
-  const pointValidation = pointInputError(selectedPoints, availablePoints, pointsLimit, pointPercent);
+  const pointValidation = pointInputError(selectedPoints, availablePoints, pointsLimit);
   const invalidPoints = Boolean(pointValidation);
   const rewardError = rewardSubmitError || result?.error;
   const rewardErrorField = checkoutRewardErrorField(rewardError);
@@ -622,13 +621,12 @@ export default function MultiSessionBookingPage() {
                 max={pointsLimit}
                 className={styles.dateInput}
                 value={pointsToUse}
-                disabled={submitting || pointPercent === 0}
+                disabled={submitting}
                 aria-invalid={Boolean(pointError)}
                 aria-describedby={pointError ? 'package-point-error' : undefined}
                 onChange={(event) => { setPointsToUse(event.target.value); setRewardSubmitError(''); }}
               />
-              {preview && <small>{pointPercent === 0 ? 'Voucher này không dùng cùng điểm.'
-                : `Tối đa ${pointPercent}% số tiền còn lại sau voucher.`}</small>}
+              {preview && <small>Tối đa {checkoutPointPercent}% số tiền {preview.voucherDiscount > 0 ? 'còn lại sau voucher' : 'niêm yết'}.</small>}
               {pointError && <small id="package-point-error" className="cw-field-error" role="alert">{pointError}</small>}
             </div>
 

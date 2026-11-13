@@ -3,7 +3,6 @@ import api, { getAllPages } from '../../api'
 import { voucherGrantState } from '../../api/bookingApi'
 import WorkspaceLayout, { ActionForm, EmptyState, Feedback, Field, Section, StatusPill } from '../WorkspaceLayout'
 import { money, today, useResource } from '../workspaceSupport'
-import { defaultPointPercent } from '../../utils/checkoutPoints'
 import PointGrantForm from './PointGrantForm'
 import { useLoyaltyMilestones } from '../../hooks/useLoyaltyMilestones'
 
@@ -97,7 +96,6 @@ function VoucherForm({ voucher, refresh }) {
   const [target, setTarget] = useState(voucher?.targetGroup || 'ALL_PLAYERS')
   const [discountType, setDiscountType] = useState(voucher?.discountType || 'AMOUNT')
   const [startDate, setStartDate] = useState(voucher?.validFrom ?? today())
-  const [allowPoints, setAllowPoints] = useState(voucher?.allowPoints ?? true)
   const campaignPath = '/owner/vouchers'
   return <ActionForm label={voucher ? 'Lưu voucher' : 'Tạo bản nháp'} after={refresh}
     successMessage="Đã lưu thay đổi. (MSG03)" action={(form) => {
@@ -106,8 +104,6 @@ function VoucherForm({ voucher, refresh }) {
       minOrderAmount: Number(form.minOrderAmount), grantValidDays: optionalNumber(form.grantValidDays),
       maxUsesPerPlayer: optionalNumber(form.maxUsesPerPlayer), maxTotalUses: optionalNumber(form.maxTotalUses),
       budget: optionalNumber(form.budget),
-      allowPoints: form.allowPoints === 'true',
-      maxPointPercent: optionalNumber(form.maxPointPercent),
     }
     return voucher
       ? api.patch(campaignPath + '/' + voucher.id, { version: voucher.version, voucher: payload })
@@ -135,12 +131,6 @@ function VoucherForm({ voucher, refresh }) {
     <Field label="Lượt mỗi người" name="maxUsesPerPlayer" type="number" min={1} required defaultValue={voucher?.maxUsesPerPlayer} error={errors.maxUsesPerPlayer} />
     <Field label="Tổng lượt" name="maxTotalUses" type="number" min={1} required defaultValue={voucher?.maxTotalUses} error={errors.maxTotalUses} />
     <Field label="Ngân sách (VND)" name="budget" type="number" min={1} max={999999999999} required defaultValue={voucher?.budget} error={errors.budget} />
-    <Field label="Kết hợp với điểm" name="allowPoints" value={String(allowPoints)}
-      onChange={(event) => setAllowPoints(event.target.value === 'true')}
-      options={[[ 'true', 'Cho phép' ], [ 'false', 'Không cho phép' ]]} error={errors.allowPoints || errors.pointPolicyValid} />
-    {allowPoints && <Field label="Tỷ lệ tối đa trả bằng điểm (%)" name="maxPointPercent" type="number" min={1} max={100}
-      defaultValue={voucher?.maxPointPercent ?? defaultPointPercent} required hint="Tính trên số tiền còn lại sau voucher."
-      error={errors.maxPointPercent} />}
     </>}
   </ActionForm>
 }
@@ -153,7 +143,6 @@ function Campaigns({ campaigns }) {
       <summary>{item.name} · {voucherStatus[item.status] ?? item.status}</summary>
       <VoucherDescription voucher={item} />
       <p>{item.targetGroup} · {item.validFrom} đến {item.validTo} · Đã dùng {item.usedCount} lượt</p>
-      <p>{item.allowPoints ? `Dùng điểm tối đa ${item.maxPointPercent}% số tiền sau voucher` : 'Voucher không dùng cùng điểm'}</p>
       {item.source === 'CAMPAIGN' && ['DRAFT', 'EXPIRED'].includes(item.status) &&
         <VoucherForm key={item.version} voucher={item} refresh={campaigns.reload} />}
       {item.source === 'CAMPAIGN' && item.status === 'DRAFT' && <ActionForm label="Phát hành"

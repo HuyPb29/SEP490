@@ -188,7 +188,7 @@ class BookingServiceTests {
     @Test
     void voucherCodeReducesFinalAmountAfterCheckingListAmount() {
         when(vouchers.check(any(), any())).thenReturn(
-                new VoucherCheckResponse(9L, null, LIST_AMOUNT, new BigDecimal("30000"), new BigDecimal("100000"), true, 50));
+                new VoucherCheckResponse(9L, null, LIST_AMOUNT, new BigDecimal("30000"), new BigDecimal("100000")));
 
         BookingSummaryResponse summary = service.previewSummary(player, requestWithVoucher("SUMMER", null), NOW);
 
@@ -204,7 +204,7 @@ class BookingServiceTests {
     @Test
     void grantedVoucherIsSelectedByGrantId() {
         when(vouchers.check(any(), any())).thenReturn(
-                new VoucherCheckResponse(9L, 3L, LIST_AMOUNT, new BigDecimal("10000"), new BigDecimal("120000"), true, 50));
+                new VoucherCheckResponse(9L, 3L, LIST_AMOUNT, new BigDecimal("10000"), new BigDecimal("120000")));
 
         service.previewSummary(player, requestWithVoucher(null, 3L), NOW);
 
@@ -263,8 +263,8 @@ class BookingServiceTests {
     @Test
     void pointsAreCheckedOnAmountAfterVoucher() {
         when(vouchers.check(any(), any())).thenReturn(
-                new VoucherCheckResponse(9L, null, LIST_AMOUNT, new BigDecimal("30000"), new BigDecimal("100000"), true, 25));
-        when(points.preview(PLAYER, LOCATION, new BigDecimal("100000"), 40, 25)).thenReturn(new BigDecimal("20000"));
+                new VoucherCheckResponse(9L, null, LIST_AMOUNT, new BigDecimal("30000"), new BigDecimal("100000")));
+        when(points.preview(PLAYER, LOCATION, new BigDecimal("100000"), 40)).thenReturn(new BigDecimal("20000"));
 
         BookingSummaryResponse summary = service.previewSummary(player, requestWithPoints("SUMMER", 40), NOW);
 

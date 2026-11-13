@@ -150,7 +150,7 @@ class PackageServiceTests {
         when(voucherService.check(eq(player), any(VoucherCheckRequest.class))).thenAnswer(inv -> {
             VoucherCheckRequest req = inv.getArgument(1);
             BigDecimal d = new BigDecimal(discount);
-            return new VoucherCheckResponse(5L, null, req.orderAmount(), d, req.orderAmount().subtract(d), true, 25);
+            return new VoucherCheckResponse(5L, null, req.orderAmount(), d, req.orderAmount().subtract(d));
         });
     }
 
@@ -476,10 +476,9 @@ class PackageServiceTests {
                 session(LocalDate.of(2026, 12, 2), 12L, 1080, 1140),
                 session(LocalDate.of(2026, 12, 3), null, 1080, 1110)), "SALE", 101);
         voucherGives("100000");
-        when(points.preview(PLAYER, LOCATION, new BigDecimal("240000"), 101, 25)).thenReturn(new BigDecimal("50500"));
+        when(points.preview(PLAYER, LOCATION, new BigDecimal("240000"), 101)).thenReturn(new BigDecimal("50500"));
 
         PackagePreviewResponse result = service.preview(player, request, NOW);
-        assertThat(result.getMaxPointPercent()).isEqualTo(25);
 
         assertThat(result.getListAmount()).isEqualByComparingTo("340000");
         assertThat(result.getVoucherDiscount()).isEqualByComparingTo("100000");

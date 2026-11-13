@@ -36,7 +36,7 @@ import lombok.RequiredArgsConstructor;
 public class LoyaltyPointService {
     public static final int POINT_VALUE=500;
     public static final int EARNING_RATE=10000;
-    /** Trần khi không dùng voucher. Voucher áp dụng tỷ lệ của chiến dịch theo UC24. */
+    /** BR41, D161: trần chung cho mọi đơn, tính sau voucher nếu có. */
     public static final int MAX_POINT_PERCENT=50;
     private final PlayerLocationBalanceRepository balances;
     private final PointTransactionRepository transactions;
@@ -130,15 +130,11 @@ public class LoyaltyPointService {
     }
     /** Preview is pure: no balance creation or reservation. F3 calls redeem only after confirmation. */
     public BigDecimal preview(Long player,Long location,BigDecimal afterVoucher,int points) {
-        return preview(player,location,afterVoucher,points,MAX_POINT_PERCENT);
-    }
-    public BigDecimal preview(Long player,Long location,BigDecimal afterVoucher,int points,int maxPointPercent) {
-        if (maxPointPercent == 0) throw new AppException("Voucher này không dùng cùng điểm. (MSG40)");
         int available=balances.findByPlayerIdAndLocationId(player,location).map(PlayerLocationBalance::getPointBalance).orElse(0);
         if(points<2 || points>available) throw new AppException("Mỗi lần dùng điểm phải giảm ít nhất 1.000 đồng và không vượt số dư. (MSG37)");
         BigDecimal discount=BigDecimal.valueOf(points).multiply(BigDecimal.valueOf(POINT_VALUE));
-        BigDecimal max=afterVoucher.multiply(BigDecimal.valueOf(maxPointPercent))
-                .divide(BigDecimal.valueOf(100),0,RoundingMode.DOWN).min(afterVoucher.subtract(BigDecimal.ONE)).max(BigDecimal.ZERO);
+        BigDecimal max=afterVoucher.multiply(BigDecimal.valueOf(MAX_POINT_PERCENT))
+                .divide(BigDecimal.valueOf(100),0,RoundingMode.DOWN);
         if(discount.compareTo(max)>0) throw new AppException("Bạn được dùng tối đa "+max.divideToIntegralValue(BigDecimal.valueOf(POINT_VALUE)).toBigInteger()+" điểm cho khoản thanh toán này. (MSG38)");
         return discount;
     }
@@ -171,14 +167,8 @@ public class LoyaltyPointService {
         }
         var usage=booking!=null ? usages.findByBookingId(booking):usages.findByPackageId(pkg);
         if(voucherDiscount.signum()>0 && usage.isEmpty()) throw new AppException("Thiếu lịch sử voucher",HttpStatus.CONFLICT);
-        int cap=MAX_POINT_PERCENT;
-        if (usage.isPresent()) {
-            Voucher voucher=em.find(Voucher.class,usage.get().getVoucherId(),LockModeType.PESSIMISTIC_READ);
-            if (voucher==null) throw new AppException("Thiếu voucher đã áp dụng",HttpStatus.CONFLICT);
-            cap=voucher.isAllowPoints() ? voucher.getMaxPointPercent() : 0;
-        }
         PlayerLocationBalance b=balance(player,location,true);
-        BigDecimal discount=preview(player,location,amount,points,cap);
+        BigDecimal discount=preview(player,location,amount,points);
         change(b,booking,pkg,PointTransactionType.REDEEM,-points,null,"Dùng điểm khi xác nhận đặt sân",player);
         return discount;
     }

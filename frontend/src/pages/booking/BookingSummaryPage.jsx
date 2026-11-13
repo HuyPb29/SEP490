@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import styles from './BookingSummaryPage.module.css';
 import { formatVnd } from '../../utils/formatters';
-import { checkoutPointLimit, checkoutRewardErrorField, defaultPointPercent, pointInputError } from '../../utils/checkoutPoints';
+import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, pointInputError } from '../../utils/checkoutPoints';
 import { CheckoutProgress, ConfirmDialog, Feedback } from '../../components/common/WorkspacePrimitives';
 import { PublicHeader } from '../../components/layout/PublicLayout';
 
@@ -148,10 +148,9 @@ export default function BookingSummaryPage() {
   const listPrice = Number(quote?.listAmount ?? 0);
   const voucherDiscount = Number(appliedVoucher?.discountAmount ?? 0);
   const remainingAfterVoucher = listPrice - voucherDiscount;
-  const pointPercent = appliedVoucher?.allowPoints === false ? 0 : appliedVoucher?.maxPointPercent ?? defaultPointPercent;
-  const pointsAllowed = checkoutPointLimit(remainingAfterVoucher, availablePoints, pointPercent);
+  const pointsAllowed = checkoutPointLimit(remainingAfterVoucher, availablePoints);
   const requestedPoints = Number(pointsInput);
-  const pointValidation = pointInputError(requestedPoints, availablePoints, pointsAllowed, pointPercent);
+  const pointValidation = pointInputError(requestedPoints, availablePoints, pointsAllowed);
   const validPoints = !pointValidation;
   const pointsUsed = validPoints ? requestedPoints : 0;
   const pointsDiscount = pointsUsed * 500;
@@ -207,7 +206,6 @@ export default function BookingSummaryPage() {
       const code = voucherInput.trim().toUpperCase();
       const selection = selectedGrant ? { grantId: selectedGrant } : { code };
       const checked = await applyVoucherApi({ locationId: quote.locationId, orderAmount: quote.listAmount, selection });
-      if (checked.allowPoints === false) setPointsInput('');
       setAppliedVoucher({ ...checked, selection, label: selectedGrant
         ? checkoutVouchers.grants.find((grant) => grant.grantId === selectedGrant)?.voucher.name : code });
     } catch (err) {
@@ -462,13 +460,12 @@ export default function BookingSummaryPage() {
                   <strong className={styles.pointsTitle}>Dùng điểm thưởng</strong>
                   <span className={styles.pointsSub}>
                     Bạn đang có {availablePoints} điểm tại địa điểm này (1 điểm = 500 VND).{' '}
-                    {pointPercent === 0 ? 'Voucher này không dùng cùng điểm.'
-                      : `Tối đa ${pointPercent}% ${appliedVoucher ? 'số tiền còn lại sau voucher' : 'giá niêm yết'}.`}
+                    Tối đa {checkoutPointPercent}% {appliedVoucher ? 'số tiền còn lại sau voucher' : 'giá niêm yết'}.
                   </span>
                 </div>
 
                 <input type="number" aria-label="Số điểm muốn dùng" min="0" max={pointsAllowed}
-                  placeholder="0" value={pointsInput} disabled={submitting || voucherLoading || pointPercent === 0}
+                  placeholder="0" value={pointsInput} disabled={submitting || voucherLoading}
                   aria-invalid={Boolean(pointValidation || pointSubmitError)}
                   aria-describedby={pointValidation || pointSubmitError ? 'checkout-point-error' : undefined}
                   onChange={(event) => { setPointsInput(event.target.value); setPointSubmitError(''); }} />

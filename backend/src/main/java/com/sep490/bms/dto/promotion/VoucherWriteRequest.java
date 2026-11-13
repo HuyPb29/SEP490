@@ -26,8 +26,8 @@ public record VoucherWriteRequest(
         this(code,name,targetGroup,discountType,discountValue,minOrderAmount,validFrom,validTo,grantValidDays,
                 maxUsesPerPlayer,maxTotalUses,budget,true,50);
     }
-    @AssertTrue(message="Bỏ trống tỷ lệ điểm khi voucher không cho kết hợp điểm")
-    public boolean isPointPolicyValid() { return !Boolean.FALSE.equals(allowPoints) || maxPointPercent==null; }
+    @AssertTrue(message="P12/P13: luôn kết hợp điểm, tỷ lệ cố định 50%")
+    public boolean isPointPolicyValid() { return (allowPoints==null || allowPoints) && (maxPointPercent==null || maxPointPercent==50); }
     @AssertTrue(message="Ngày hết hạn phải từ ngày bắt đầu trở đi")
     public boolean isDateRangeValid() { return validFrom == null || validTo == null || !validTo.isBefore(validFrom); }
     @AssertTrue(message="SPECIFIED không có code; voucher công khai bắt buộc có code")

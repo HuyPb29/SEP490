@@ -1,13 +1,12 @@
-export const defaultPointPercent = 50;
+export const checkoutPointPercent = 50;
 
-export function checkoutPointLimit(afterVoucher, balance, percent) {
-  const discountLimit = Math.min(afterVoucher * percent / 100, afterVoucher - 1);
+export function checkoutPointLimit(afterVoucher, balance) {
+  const discountLimit = afterVoucher * checkoutPointPercent / 100;
   return Math.max(0, Math.min(balance, Math.floor(discountLimit / 500)));
 }
 
-export function pointInputError(points, balance, limit, percent) {
+export function pointInputError(points, balance, limit) {
   if (points === 0) return '';
-  if (percent === 0) return 'Voucher này không dùng cùng điểm. (MSG40)';
   if (!Number.isInteger(points) || points < 2 || points > balance) {
     return 'Mỗi lần dùng điểm phải giảm ít nhất 1.000 đồng và không vượt số dư. (MSG37)';
   }
