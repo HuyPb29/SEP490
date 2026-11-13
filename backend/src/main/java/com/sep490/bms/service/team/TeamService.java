@@ -152,6 +152,11 @@ public class TeamService {
         if (isActiveMember(teamId, userId)) {
             throw new AppException("Bạn đã là thành viên của đội này");
         }
+        // D78: đội đủ người thì không xin vào được.
+        if (teamMemberRepository.countByTeamIdAndStatus(teamId, TeamMemberStatus.ACTIVE) >= MAX_TEAM_MEMBERS) {
+            throw new AppException("Đội đã đủ " + MAX_TEAM_MEMBERS + " thành viên, không nhận thêm yêu cầu",
+                    HttpStatus.CONFLICT);
+        }
         if (teamJoinRequestRepository.existsByTeamIdAndPlayerIdAndStatus(teamId, userId, JoinRequestStatus.PENDING)) {
             throw new AppException("Bạn đã gửi yêu cầu vào đội này và đang chờ duyệt", HttpStatus.CONFLICT);
         }

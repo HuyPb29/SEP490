@@ -27,6 +27,7 @@ import com.sep490.bms.repository.team.TeamRepository;
 
 /**
  * D79: chỉ chủ đội xem số điện thoại của thành viên.
+ * D78: đội đủ người thì không xin vào được.
  */
 class TeamRulesTests {
 
@@ -77,4 +78,16 @@ class TeamRulesTests {
         assertThat(result.get(1).getPhone()).isEqualTo("0902222222");
     }
 
+    @Test
+    void fullTeamRejectsNewJoinRequest() {
+        when(teams.findById(1L)).thenReturn(Optional.of(Team.builder().id(1L).name("Cầu Giấy").captainId(1L).build()));
+        when(members.existsByTeamIdAndPlayerIdAndStatus(1L, 7L, TeamMemberStatus.ACTIVE)).thenReturn(false);
+        when(members.countByTeamIdAndStatus(1L, TeamMemberStatus.ACTIVE)).thenReturn(20L);
+
+        assertThatThrownBy(() -> service.createJoinRequest(7L, 1L,
+                JoinRequestCreateRequest.builder().phoneConsent(true).build()))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("đủ 20 thành viên");
+        verify(joins, never()).save(any());
+    }
 }
