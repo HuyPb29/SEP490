@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import api from '../../api'
 import { downloadVenueData, loadOwnerLocations } from '../../api/ownerApi'
 import { getSelectedLocation, selectLocation } from '../../api/session'
@@ -140,8 +140,6 @@ function OwnerLocation() {
       <div className="cw-tabs" role="group" aria-label="Quản lý địa điểm">
         {ownerTabs.map(([value, title]) => <button key={value} type="button" onClick={() => setParams({ tab: value })}
           aria-pressed={tab === value}>{title}</button>)}
-        <Link className="underline" to="/owner/reports">Báo cáo</Link>
-        <Link className="underline" to="/staff/confirm-payments?type=reschedule">Xử lý phụ thu đổi lịch</Link>
       </div>
       <div key={selected + ':' + tab} className="cw-stack">
         {tab === 'staff' && <StaffAccounts />}
