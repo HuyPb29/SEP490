@@ -5,8 +5,7 @@
 - F1 dùng tên đăng nhập 6–32 ký tự cho tài khoản mới theo SRS. Thay đổi dùng chung cho đăng ký Player và tạo Staff. Tài khoản hiện có giữ tên đăng nhập. OTP vẫn cho tối đa 5 lần nhập mỗi mã theo xác nhận của người dùng.
 - Schema tạo mới đã đồng bộ. DB đã tồn tại cần áp `backend/src/main/resources/db/20261112_srs_username_length.sql` trước khi triển khai phiên bản mới. Seed mới dùng tên Admin `admin1`.
 - Build và lint frontend qua. Playwright F1 trên Edge với API mô phỏng qua 3/3. Backend qua 45/45 trên `BMS_Test`, gồm áp migration hai lần, kiểm biên username và vòng đời OTP. Migration đã áp riêng trên `BMS_Test`.
-- UC24 dùng cấu hình từng voucher theo lựa chọn của người dùng. Owner có thể tắt kết hợp điểm hoặc nhập trần 1–100% trên số tiền sau voucher. Voucher cũ và voucher hệ thống giữ mặc định 50%. Trần 100% vẫn giữ số tiền phải trả dương. Checkout đơn lẻ, đơn trong ngày và gói kiểm lại chính sách khi tạo booking. Lượt voucher, ngân sách và điểm chỉ thay đổi khi tạo thành công.
-- DB đã tồn tại cần áp `backend/src/main/resources/db/20261112_uc24_voucher_point_policy.sql` trước khi chạy phiên bản UC24. Migration đã được kiểm hai lần trên `BMS_Test`. Backend voucher, điểm và checkout đạt 130/130. Build/lint frontend và hai ca Playwright UC24 với API mô phỏng đã qua.
+- Bản UC24 ngày 12/11 từng dùng cấu hình theo voucher. Quyết định D161 áp dụng ở lần cập nhật 13/11 bên dưới đã thay quy tắc đó.
 
 ## Giai đoạn 2 · 13/11/2026
 
@@ -40,8 +39,8 @@
 
 ## Tự kiểm UC24
 
-1. Đăng nhập Owner, chọn địa điểm, mở Ưu đãi và điểm. Tạo và công bố một voucher cho kết hợp điểm với trần 25% và một voucher tắt kết hợp. Thử lưu với tỷ lệ ngoài 1–100% và kiểm tra lỗi dưới trường.
-2. Đăng nhập Player có số dư, áp voucher trần 25% vào booking còn 100.000đ sau voucher. Nếu số dư đủ, nhập 50 điểm để giảm 25.000đ, còn 75.000đ. Nhập 51 điểm để thấy MSG38 và xác nhận bị chặn. Áp voucher tắt kết hợp để kiểm tra ô điểm bị khóa.
+1. Đăng nhập Owner, chọn địa điểm, mở Ưu đãi và điểm. Tạo và công bố một voucher giảm 20.000đ. Kiểm form lưu được mà không cần cấu hình kết hợp điểm.
+2. Đăng nhập Player có ít nhất 101 điểm, áp voucher vào booking 120.000đ. Nhập 100 điểm để giảm 50.000đ trên 100.000đ sau voucher, còn 50.000đ. Nhập 101 điểm để thấy MSG38 và xác nhận bị chặn. Bỏ voucher để kiểm trần 50% trên giá niêm yết.
 3. Kiểm tra lượt và ngân sách sau thao tác Áp rồi sau Xác nhận tạo booking. Thử một đơn trong ngày và một gói nhiều buổi để kiểm tra trần áp dụng trên toàn đơn. Đăng nhập Admin, vô hiệu voucher đã công bố và thử áp lại.
 
 ## Tự kiểm F1
@@ -49,4 +48,35 @@
 1. Mở đăng ký. Tên dài 5 hoặc 33 ký tự phải báo lỗi dưới ô và chưa gửi OTP. Tên dài 6 hoặc 32 ký tự hợp lệ có thể sang bước OTP nếu thông tin còn lại hợp lệ.
 2. Nhập sai OTP 4 lần và kiểm tra số lượt còn lại. Lần thứ 5 làm mã hết hiệu lực. Gửi lại trong hạn hồ sơ chờ rồi xác minh bằng mã mới.
 3. Đăng nhập bằng tên hợp lệ vừa tạo và thử tài khoản cũ có tên ngắn hơn 6 ký tự, nếu môi trường có dữ liệu này.
-4. Đăng nhập Owner, chọn địa điểm đang hoạt động và tạo Staff có tên 32 ký tự. Đăng nhập bằng tài khoản Staff đó và kiểm tra trang Bảng điều hành.
+4. Đăng nhập Owner, chọn địa điểm đang hoạt động và tạo Staff có tên 32 ký tự với họ tên và mật khẩu ban đầu. Đăng nhập bằng tài khoản Staff đó và kiểm tra trang Bảng điều hành.
+
+## Checklist liên luồng trên môi trường tích hợp
+
+Chuẩn bị Player có điểm và voucher dùng được, Owner của địa điểm hoạt động, Staff cùng địa điểm, Admin và ít nhất ba booking đã thanh toán còn trước giờ chơi. Dùng chứng từ thử và cơ sở dữ liệu kiểm thử.
+
+- [ ] Đăng nhập bằng Player, Owner và Admin. Kiểm tra trang chủ, menu và quyền truy cập URL của vai trò khác.
+- [ ] Owner tạo và công bố voucher giảm 20.000đ. Player áp vào đơn 120.000đ và nhập 100 điểm. Tổng là 50.000đ. Thử 101 điểm để thấy MSG38. Kiểm tra lượt và ngân sách trước khi tạo đơn, sau khi tạo thành công và khi tạo thất bại.
+- [ ] Player đổi lịch sang slot đắt hơn, gửi ảnh chứng từ phụ thu. Kiểm lịch cũ vẫn hiển thị và hai slot còn giữ trong khi chờ. Staff xác nhận. Kiểm slot mới, biên nhận và slot cũ được nhả.
+- [ ] Player tự hủy sau MSG66. Kiểm tiền, điểm và voucher của booking này không được trả. Owner hủy một booking khác sau MSG15. Player chọn hoàn sau khi thấy ba phương án, kiểm MSG69. Owner ghi nhận và đối chiếu ngày thanh toán gốc. Player kiểm hoàn điểm, thu hồi điểm tích và voucher dùng lại được.
+- [ ] Owner cấu hình mốc chi tiêu. Xác nhận một thanh toán thử làm Player vượt mốc rồi kiểm giá trị, hạn dùng trong ví. Admin vô hiệu hóa một voucher đã công bố và Player thử áp lại mã.
+- [ ] Nếu có dữ liệu F8, mở khiếu nại đã duyệt có yêu cầu hoàn, kiểm liên kết đến đúng yêu cầu và phạm vi địa điểm.
+
+## Giai đoạn 3 · 13/11/2026
+
+- Playwright Edge qua 5/5 luồng nêu trong checklist với API mô phỏng. File `frontend/e2e/f1-f6-f5.spec.js` được giữ local theo quy ước của repo. Chạy từ `frontend/` với PowerShell:
+
+  ```powershell
+  $env:PLAYWRIGHT_CHANNEL = 'msedge'
+  npx --no-install playwright test f1-f6-f5.spec.js --workers=1
+  ```
+
+- Kiểm thử trình duyệt trên backend thật, SMTP và đối chiếu khoản chuyển thực tế vẫn cần môi trường tích hợp có dữ liệu thử. Backend UC23 đã được kiểm riêng trên SQL Server `BMS_Test`. Kỳ thanh toán gốc trong UC23 hiển thị bằng ngày thanh toán gốc theo quyết định đã chốt.
+
+## Đối chiếu quyết định nghiệp vụ · 13/11/2026
+
+- D154/D161 và BR41 áp trần điểm 50% cho booking lẻ, đơn trong ngày và gói. Checkout tính trên tiền sau voucher khi có voucher. Hai cột policy cũ được giữ trong schema để tương thích với dữ liệu hiện có. Giá trị của chúng không tham gia tính điểm. Voucher Write/Response giữ hai trường cũ ở giá trị cố định để tương thích với client trước UC24; Voucher Check trả số tiền giảm.
+- FR07 theo ghi chú Leader ngày 24/10 trong `CLAUDE.md` bỏ số điện thoại khỏi form và hợp đồng tạo Staff. Tài khoản Staff mới lưu phone NULL. Dữ liệu Staff đã tạo được giữ.
+- D159 thống nhất nhãn Sân hủy. Mã `CANCELLED_BY_FACILITY` dùng trong API và DB.
+- D136 giữ năm lần nhập sai OTP theo xác nhận trực tiếp. D142 khớp với kiểm quyền OWNER của API hủy sân. D162–D164 đã có trong code hiện tại, gồm giới hạn gói ba tháng, ít nhất hai ngày và giữ chỗ 10 phút với đặt lẻ online, 5 phút tại quầy.
+- Sau đối chiếu, Maven qua 439/439 trên `BMS_Test`, frontend build/lint qua và Playwright Edge qua 5/5 với API mô phỏng. D161, D159 và thay đổi tạo Staff không thêm migration.
+- Đặc tả Report-3 cần người phụ trách cập nhật nếu bản đang dùng còn cấu hình điểm theo từng voucher hoặc yêu cầu SĐT Staff.
