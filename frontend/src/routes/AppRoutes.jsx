@@ -29,6 +29,7 @@ const PlayerComplaintsPage = lazy(() =>
   }))
 );
 const CourtComplaintsPage = lazy(() => import('../pages/feedback/CourtComplaintsPage'));
+const TeamsPage = lazy(() => import('../pages/team/TeamsPage'));
 const OwnerReconciliationPage = lazy(() => import('../pages/owner/OwnerReconciliationPage'));
 const OwnerReportPage = lazy(() => import('../pages/owner/OwnerReportPage'));
 const OwnerWorkspace = lazy(() => import('../pages/owner/OwnerWorkspace'));
@@ -176,7 +177,7 @@ export default function AppRoutes() {
         <Route path="/change-password" element={<Navigate to="/account#change-password" replace />} />
         <Route path="/owner/courts" element={<Navigate to="/owner/courts-pricing" replace />} />
         <Route path="/admin/accounts" element={<Navigate to="/admin/workspace" replace />} />
-        <Route path="/teams" element={<RequireRole roles={['player']}><NavigationPage kind="teams" /></RequireRole>} />
+        <Route path="/teams" element={<RequireRole roles={['player']}><TeamsPage /></RequireRole>} />
         <Route path="/my-reschedules" element={<RequireRole roles={['player']}><NavigationPage kind="reschedules" /></RequireRole>} />
         <Route path="/admin/vouchers" element={<RequireRole roles={['admin']}>
           <WorkspaceLayout title="Kiểm duyệt voucher" role="admin"><AdminVouchers /></WorkspaceLayout>
