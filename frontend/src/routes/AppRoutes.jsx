@@ -21,6 +21,7 @@ import OwnerOpeningHoursPage from '../pages/owner/OwnerOpeningHoursPage';
 import { AdminVouchers, PersonalRewardsPage } from '../pages/promotion/PromotionPages';
 import StaffConfirmPaymentPage from '../pages/staff/StaffConfirmPaymentPage';
 import StaffDashboardPage from '../pages/staff/StaffDashboardPage';
+import StaffSchedulePage from '../pages/staff/StaffSchedulePage';
 import { RequireAuth, RequireRole } from './RequireRole';
 
 const PlayerComplaintsPage = lazy(() =>
@@ -88,6 +89,15 @@ export default function AppRoutes() {
           element={
             <RequireRole roles={['staff']}>
               <StaffDashboardPage />
+            </RequireRole>
+          }
+        />
+        {/* UC13: Lịch sân của Staff */}
+        <Route
+          path="/staff/schedule"
+          element={
+            <RequireRole roles={['staff']}>
+              <StaffSchedulePage />
             </RequireRole>
           }
         />

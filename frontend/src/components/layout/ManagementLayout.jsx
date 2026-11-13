@@ -58,10 +58,7 @@ export default function ManagementLayout({
   // Đặt sân tại quầy (UC16) và đối soát cuối ngày (UC20) mở từ nút trên bảng điều hành.
   const staffMenu = [
     { to: '/staff/dashboard', label: 'Bảng điều hành', end: true },
-    {
-      to: activeLocationId ? `/facilities/${activeLocationId}` : '/',
-      label: 'Lịch sân (UC13)',
-    },
+    { to: '/staff/schedule', label: 'Lịch sân (UC13)' },
     {
       to: '/staff/confirm-payments',
       label: 'Xác nhận thanh toán (UC19)',
