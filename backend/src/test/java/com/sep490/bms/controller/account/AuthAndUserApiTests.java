@@ -247,7 +247,6 @@ class AuthAndUserApiTests {
                 .username("staff_" + uniqueSuffix)
                 .fullName("Nhân Viên")
                 .password("Staff123@")
-                .phone("093" + (int)(1000000 + Math.random() * 9000000))
                 .build();
 
         MvcResult createStaffResult = mockMvc.perform(post("/api/owner/staff-members")

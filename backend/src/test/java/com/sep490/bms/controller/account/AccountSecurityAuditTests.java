@@ -368,10 +368,11 @@ class AccountSecurityAuditTests {
     @Test void staffCreationIsAuditedAndLongReasonIsRejectedBeforeMutation() throws Exception {
         String username = "a" + UUID.randomUUID().toString().replace("-", "").substring(0, 31);
         var result = call("POST", "/api/owner/staff-members", token(owner), json.writeValueAsString(
-                Map.of("username", username, "fullName", "Test Staff", "password", "StaffCreate123", "phone", "0"+String.format("%09d",Math.floorMod(UUID.randomUUID().getMostSignificantBits(),1000000000L)))), location.getId());
+                Map.of("username", username, "fullName", "Test Staff", "password", "StaffCreate123")), location.getId());
         assertThat(result.statusCode()).isEqualTo(201);
         Account created = accounts.findByUsername(username).orElseThrow();
         accountIds.add(created.getId());
+        assertThat(created.getPhone()).isNull();
         AccountAudit audit = event(created, AccountAuditAction.STAFF_CREATED);
         assertThat(audit.getActorId()).isEqualTo(owner.getId());
         assertThat(audit.getLocationId()).isEqualTo(location.getId());

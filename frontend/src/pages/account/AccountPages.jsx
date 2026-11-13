@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import api, { getAllPages } from '../../api';
-import { messages, normalizeName, validName, validPassword, validPhone, validUsername } from '../../api/f1Rules';
+import { messages, normalizeName, validName, validPassword, validUsername } from '../../api/f1Rules';
 import { clearSession, getSavedUser } from '../../api/session';
 import { StatusBadge, Table } from '../../components/common';
 import WorkspaceLayout, { EmptyState, Field, Section } from '../WorkspaceLayout';
@@ -165,14 +165,6 @@ export function StaffAccounts() {
               normalize: (value) => value.trim(),
             },
             { name: 'fullName', label: 'Họ và tên', required: true, validate: validName, normalize: normalizeName },
-            {
-              name: 'phone',
-              label: 'Số điện thoại',
-              type: 'tel',
-              required: true,
-              validate: validPhone,
-              normalize: (value) => value.trim(),
-            },
             {
               name: 'password',
               label: 'Mật khẩu ban đầu',

@@ -31,7 +31,6 @@ public class StaffService {
     private final LocationAccessService locationAccess;
     private final PasswordEncoder passwordEncoder;
     private final AccountAuditService audit;
-    private final OtpLockService otpLock;
 
     @Transactional(readOnly = true)
     public List<UserDto> getStaffList(UserPrincipal user, String status, String search) {
@@ -55,18 +54,12 @@ public class StaffService {
         Long locationId = ownerLocation(user);
         if(request.getUsername()==null || !request.getUsername().matches(ValidationRules.USERNAME))
             throw new AppException(ValidationRules.USERNAME_MESSAGE);
-        if(request.getPhone()==null || request.getPhone().isBlank()) throw new AppException("Số điện thoại bắt buộc");
-        otpLock.acquire("phone:"+request.getPhone());
-        if (accountRepository.existsByPhone(request.getPhone())) {
-            String message = "Số điện thoại này đã được dùng. (MSG112)";
-            throw new AppException(message, HttpStatus.CONFLICT, java.util.Map.of("phone", message));
-        }
         if (accountRepository.existsByUsername(request.getUsername())) {
             String message = "Tên đăng nhập này đã được dùng. (MSG112)";
             throw new AppException(message, HttpStatus.BAD_REQUEST, java.util.Map.of("username", message));
         }
         Account staff = Account.builder().username(request.getUsername()).email(null)
-            .phone(request.getPhone()).fullName(request.getFullName().trim())
+            .fullName(request.getFullName().trim())
             .passwordHash(passwordEncoder.encode(request.getPassword()))
             .role(Role.STAFF).locationId(locationId).status(AccountStatus.ACTIVE).build();
         Account saved = accountRepository.save(staff);
