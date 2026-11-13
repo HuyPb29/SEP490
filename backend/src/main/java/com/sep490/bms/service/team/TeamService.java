@@ -93,13 +93,15 @@ public class TeamService {
 
         List<TeamMember> members = teamMemberRepository.findByTeamIdAndStatusOrderByJoinedAtAsc(teamId, TeamMemberStatus.ACTIVE);
         Map<Long, Account> accounts = loadAccounts(members.stream().map(TeamMember::getPlayerId).toList());
+        // D79: chỉ chủ đội xem số điện thoại của thành viên; thành viên khác chỉ thấy số của chính mình.
+        boolean captainView = team.getCaptainId().equals(userId);
         return members.stream().map(m -> {
             Account a = accounts.get(m.getPlayerId());
             return TeamMemberResponse.builder()
                     .id(m.getId())
                     .playerId(m.getPlayerId())
                     .fullName(a.getFullName())
-                    .phone(a.getPhone())
+                    .phone(captainView || m.getPlayerId().equals(userId) ? a.getPhone() : null)
                     .skillLevel(a.getSkillLevel())
                     .captain(m.getPlayerId().equals(team.getCaptainId()))
                     .joinedAt(m.getJoinedAt())
