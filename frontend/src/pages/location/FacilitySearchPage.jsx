@@ -46,7 +46,7 @@ export default function FacilitySearchPage() {
         <div className={styles.heroContainer}>
           <div className={styles.activeBadge}>
             <span className={styles.badgeCheck}>✓</span>
-            <span>Chỉ hiển thị địa điểm đang hoạt động (BR62)</span>
+            <span>Chỉ hiển thị địa điểm đang hoạt động</span>
           </div>
 
           <h1 className={styles.heroTitle}>Tìm sân cầu lông gần bạn</h1>

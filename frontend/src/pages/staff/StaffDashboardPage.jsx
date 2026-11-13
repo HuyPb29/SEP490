@@ -404,7 +404,7 @@ export default function StaffDashboardPage() {
 
           <article className={styles.panel}>
             <div className={styles.panelHeader}>
-              <h2 className={styles.panelTitle}>Thanh toán chờ xác nhận (UC19)</h2>
+              <h2 className={styles.panelTitle}>Thanh toán chờ xác nhận</h2>
               <button
                 className={styles.viewAllButton}
                 type="button"
@@ -446,7 +446,7 @@ export default function StaffDashboardPage() {
         <section className={styles.contentGrid} style={{ marginTop: 16 }}>
           <article className={styles.panel}>
             <div className={styles.panelHeader} style={{ marginBottom: 10 }}>
-              <h2 className={styles.panelTitle}>Đơn đặt sân tại quầy (UC16)</h2>
+              <h2 className={styles.panelTitle}>Đơn đặt sân tại quầy</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
                   type="date"

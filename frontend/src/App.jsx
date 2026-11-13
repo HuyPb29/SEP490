@@ -45,20 +45,14 @@ function AppContent() {
     };
   }, [navigate, returnTo]);
 
-  const isFrontendMockPage = location.pathname === '/open-matches';
-  const [status, setStatus] = useState(() =>
-    isFrontendMockPage ? 'mock preview' : 'checking...'
-  );
+  const [status, setStatus] = useState('checking...');
 
   useEffect(() => {
-    if (isFrontendMockPage) return;
     api
       .get('/health')
       .then((res) => setStatus(res.data.status))
       .catch(() => setStatus('backend offline'));
-  }, [isFrontendMockPage]);
-
-  const displayedStatus = isFrontendMockPage ? 'mock preview' : status;
+  }, []);
 
   return (
     <>
@@ -69,11 +63,9 @@ function AppContent() {
           onClose={() => setShowExpiry(false)}
         />
       )}
-      {!isFrontendMockPage && (
-        <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
-          BE: {displayedStatus}
-        </div>
-      )}
+      <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
+        BE: {status}
+      </div>
 
       <AppRoutes />
     </>

@@ -62,10 +62,21 @@ export function UserMenu({ user: userProp }) {
   }
 
   const roleCode = String(user.role_code || user.role || '').toLowerCase();
+  const roleUpper = String(user.role || user.role_code || '').toUpperCase();
   const displayName = user.full_name || user.fullName || user.username || 'Tài khoản';
   const roleLabel = ROLE_LABELS[roleCode] || 'Thành viên';
   const initial = displayName.trim().slice(0, 1).toLocaleUpperCase('vi-VN') || 'U';
   const canAccessAccountPage = roleCode === 'player' || roleCode === 'owner';
+
+  const isManager = ['OWNER', 'STAFF', 'ADMIN'].includes(roleUpper);
+  let managementRoute = null;
+  if (roleUpper === 'OWNER') {
+    managementRoute = '/owner/workspace';
+  } else if (roleUpper === 'STAFF') {
+    managementRoute = '/staff/dashboard';
+  } else if (roleUpper === 'ADMIN') {
+    managementRoute = '/admin/workspace';
+  }
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -129,6 +140,16 @@ export function UserMenu({ user: userProp }) {
                 onClick={() => setOpen(false)}
               >
                 Hồ sơ cá nhân
+              </Link>
+            )}
+            {isManager && managementRoute && (
+              <Link
+                to={managementRoute}
+                role="menuitem"
+                className={styles.dropdownItem}
+                onClick={() => setOpen(false)}
+              >
+                Không gian Quản lý
               </Link>
             )}
             {canAccessAccountPage && (

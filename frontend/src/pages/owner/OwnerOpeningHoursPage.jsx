@@ -422,7 +422,7 @@ export default function OwnerOpeningHoursPage() {
     <ManagementLayout
       role="owner"
       title="Giờ mở cửa & Slot"
-      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name} · Cấu hình giờ mở cửa, slot và ngày ngoại lệ (UC08)` : 'Cấu hình khung giờ hoạt động, thời lượng slot và ngày ngoại lệ (UC08)'}
+      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name} · Cấu hình giờ mở cửa, slot và ngày ngoại lệ` : 'Cấu hình khung giờ hoạt động, thời lượng slot và ngày ngoại lệ'}
       locations={locations}
       locationId={selectedLocationId}
       onLocationChange={handleFacilityChange}

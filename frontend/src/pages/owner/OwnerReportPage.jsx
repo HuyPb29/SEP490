@@ -161,7 +161,7 @@ export default function OwnerReportPage() {
     <ManagementLayout
       role="owner"
       title="Báo cáo vận hành và doanh thu"
-      subtitle="Thống kê doanh thu, tỷ lệ lấp đầy, hủy sân và xuất dữ liệu Excel (UC35)"
+      subtitle="Thống kê doanh thu, tỷ lệ lấp đầy, hủy sân và xuất dữ liệu Excel"
       actions={
         <div className={styles.headerActions}>
           <label className={styles.facilityLabel}>Địa điểm

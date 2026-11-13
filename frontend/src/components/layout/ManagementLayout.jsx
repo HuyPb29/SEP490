@@ -62,10 +62,10 @@ export default function ManagementLayout({
     { to: '/staff/dashboard', label: 'Bảng điều hành', end: true },
     {
       to: activeLocationId ? `/facilities/${activeLocationId}` : '/',
-      label: 'Lịch sân (UC13)',
+      label: 'Lịch sân',
     },
     {
-      label: 'Đặt sân tại quầy (UC16)',
+      label: 'Đặt sân tại quầy',
       onClick: () => {
         if (onOpenCounterBooking) onOpenCounterBooking();
         else navigate('/staff/dashboard?modal=counter');
@@ -73,33 +73,34 @@ export default function ManagementLayout({
     },
     {
       to: '/staff/confirm-payments',
-      label: 'Xác nhận thanh toán (UC19)',
+      label: 'Xác nhận thanh toán',
       badge: badges.payments,
     },
     {
-      label: 'Đối soát cuối ngày (UC20)',
+      label: 'Đối soát cuối ngày',
       onClick: () => {
         if (onOpenReconciliation) onOpenReconciliation();
         else navigate('/staff/dashboard?modal=reconciliation');
       },
     },
-    { to: '/maintenance', label: 'Yêu cầu bảo trì (UC10)' },
+    { to: '/maintenance', label: 'Yêu cầu bảo trì' },
     {
       to: '/staff/complaints',
-      label: 'Khiếu nại của khách (UC33)',
+      label: 'Khiếu nại của khách',
       badge: badges.complaints,
     },
   ];
 
   const ownerMenu = [
     { to: '/owner/workspace', label: 'Tổng quan & Vận hành', end: true },
-    { to: '/owner/courts-pricing', label: 'Sân & Bảng giá (UC07–09)' },
-    { to: '/owner/opening-hours', label: 'Giờ mở cửa & Slot (UC08)' },
-    { to: '/owner/facility-settings', label: 'Hồ sơ địa điểm (UC07)' },
-    { to: '/staff/confirm-payments', label: 'Xác nhận thanh toán (UC19)' },
-    { to: '/owner/reconciliations', label: 'Đối soát doanh thu (UC20)' },
-    { to: '/owner/reports', label: 'Báo cáo & Xuất dữ liệu (UC35)' },
-    { to: '/maintenance', label: 'Quản lý bảo trì (UC10)' },
+    { to: '/owner/courts-pricing', label: 'Sân & Bảng giá' },
+    { to: '/owner/opening-hours', label: 'Giờ mở cửa & Slot' },
+    { to: '/owner/facility-settings', label: 'Hồ sơ địa điểm' },
+    { to: '/owner/workspace?tab=reviews', label: 'Đánh giá' },
+    { to: '/staff/confirm-payments', label: 'Xác nhận thanh toán' },
+    { to: '/owner/reconciliations', label: 'Đối soát doanh thu' },
+    { to: '/owner/reports', label: 'Báo cáo & Xuất dữ liệu' },
+    { to: '/maintenance', label: 'Quản lý bảo trì' },
   ];
 
   const menuItems = userRole === 'owner' ? ownerMenu : staffMenu;
@@ -131,9 +132,13 @@ export default function ManagementLayout({
           onClick={() => {
             if (closeDrawer) setDrawerOpen(false);
           }}
-          className={({ isActive }) =>
-            `${styles.sidebarLink} ${isActive ? styles.sidebarLinkActive : ''}`
-          }
+          className={({ isActive }) => {
+            const hasQuery = item.to.includes('?');
+            const itemActive = hasQuery
+              ? (location.pathname + location.search) === item.to
+              : isActive && (!location.search.includes('tab=reviews') || item.to.includes('tab=reviews'));
+            return `${styles.sidebarLink} ${itemActive ? styles.sidebarLinkActive : ''}`;
+          }}
         >
           <span>{item.label}</span>
           {Number(item.badge) > 0 && (

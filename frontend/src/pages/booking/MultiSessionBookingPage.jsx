@@ -646,7 +646,7 @@ export default function MultiSessionBookingPage() {
             </div>
 
             <p className={styles.ruleHintText}>
-              Định kỳ: tối thiểu 1 buổi/tuần, kéo dài từ 1 đến 3 tháng (BR47). Tất cả các buổi phải nằm trong vòng 3 tháng kể từ hôm nay (BR49).
+              Định kỳ: tối thiểu 1 buổi/tuần, kéo dài từ 1 đến 3 tháng. Tất cả các buổi phải nằm trong vòng 3 tháng kể từ hôm nay.
             </p>
           </aside>
 
@@ -785,7 +785,7 @@ export default function MultiSessionBookingPage() {
                 </span>
                 <strong className={styles.totalPriceText}>{formatCurrency(preview?.finalAmount)}</strong>
                 <span className={styles.holdNoteText}>
-                  Thanh toán 1 lần cho toàn bộ gói (BR52). Sau khi xác nhận, gói được giữ chỗ 15 phút (P27).
+                  Thanh toán 1 lần cho toàn bộ gói. Sau khi xác nhận, gói được giữ chỗ 15 phút.
                 </span>
               </div>
               <button type="button" className={styles.confirmScheduleBtn} disabled={submitting || !preview || invalidPoints || distinctDays < 2 || conflictedSessions.length > 0}

@@ -120,6 +120,7 @@
 }
 
 .authCard {
+  box-sizing: border-box;
   width: 100%;
   max-width: 500px;
   background: var(--color-surface);
@@ -142,6 +143,7 @@
 }
 
 .tabBtn {
+  box-sizing: border-box;
   border: none;
   background: transparent;
   padding: 10px 12px;
@@ -368,6 +370,7 @@
 }
 
 .inlineSwitchBtn {
+  box-sizing: border-box;
   background: none;
   border: none;
   color: var(--color-primary);

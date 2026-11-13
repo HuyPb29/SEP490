@@ -292,7 +292,7 @@ export default function AdminFacilitiesPage() {
   return (
     <AdminLayout
       title="Quản lý địa điểm & Đăng ký dịch vụ"
-      subtitle="Kiểm duyệt đơn đăng ký của chủ sân và quản lý kỳ hạn hoạt động (UC05, UC06)"
+      subtitle="Kiểm duyệt đơn đăng ký của chủ sân và quản lý kỳ hạn hoạt động"
       actions={
         <button
           className={styles.secondaryButton || 'cw-secondary'}

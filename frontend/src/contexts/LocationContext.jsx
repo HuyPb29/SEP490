@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import api, { getAllPages } from '../api';
+import api from '../api';
+import { loadOwnerLocations } from '../api/ownerApi';
 import { useAuth } from '../hooks/useAuth';
 import { LocationContext } from './locationContextStore';
 
@@ -15,7 +16,7 @@ export function LocationProvider({ children }) {
     const { signal } = controller;
 
     if (role === 'owner') {
-      getAllPages('/owner/locations', { signal })
+      loadOwnerLocations(signal)
         .then((items) => {
           if (signal.aborted) return;
           const list = Array.isArray(items) ? items : [];
