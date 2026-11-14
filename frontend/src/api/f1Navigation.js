@@ -12,6 +12,6 @@ const routesByRole = {
 export function canResumePath(value, role) {
   if (typeof value !== 'string' || !/^\/(?![/\\])/.test(value)) return false
   const pathname = value.split(/[?#]/, 1)[0]
-  return ['/notifications', '/', '/facilities/:id', '/open-matches', '/locations', '/matches', ...(routesByRole[role] || [])]
+  return ['/notifications', '/facilities/:id', '/open-matches', '/matches', ...(routesByRole[role] || [])]
     .some((pattern) => matchPath(pattern, pathname))
 }
