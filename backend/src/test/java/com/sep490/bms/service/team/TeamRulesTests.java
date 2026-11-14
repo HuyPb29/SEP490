@@ -78,6 +78,38 @@ class TeamRulesTests {
         assertThat(result.get(1).getPhone()).isEqualTo("0902222222");
     }
 
+    /** D78: danh sách đội cho người ngoài đội biết mình đang chờ duyệt ở đội nào, kèm số tối đa (DR12). */
+    @Test
+    void teamListShowsPendingRequestOfViewer() {
+        Team team = Team.builder().id(1L).name("Cầu Giấy").captainId(1L).build();
+        when(teams.search(null)).thenReturn(List.of(team));
+        when(members.countByTeamIdAndStatus(1L, TeamMemberStatus.ACTIVE)).thenReturn(5L);
+        when(joins.findFirstByTeamIdAndPlayerIdAndStatus(1L, 7L, com.sep490.bms.entity.team.JoinRequestStatus.PENDING))
+                .thenReturn(Optional.of(com.sep490.bms.entity.team.TeamJoinRequest.builder()
+                        .id(42L).teamId(1L).playerId(7L)
+                        .status(com.sep490.bms.entity.team.JoinRequestStatus.PENDING).build()));
+
+        var result = service.getTeams(7L, null).get(0);
+
+        assertThat(result.getMaxMembers()).isEqualTo(20);
+        assertThat(result.isMember()).isFalse();
+        assertThat(result.getMyJoinStatus()).isEqualTo("PENDING");
+        assertThat(result.getMyJoinRequestId()).isEqualTo(42L);
+    }
+
+    @Test
+    void teamListHasNoPendingStatusForMember() {
+        Team team = Team.builder().id(1L).name("Cầu Giấy").captainId(1L).build();
+        when(teams.search(null)).thenReturn(List.of(team));
+        stubActiveMember(2L);
+
+        var result = service.getTeams(2L, null).get(0);
+
+        assertThat(result.isMember()).isTrue();
+        assertThat(result.getMyJoinStatus()).isNull();
+        verify(joins, never()).findFirstByTeamIdAndPlayerIdAndStatus(any(), any(), any());
+    }
+
     @Test
     void fullTeamRejectsNewJoinRequest() {
         when(teams.findById(1L)).thenReturn(Optional.of(Team.builder().id(1L).name("Cầu Giấy").captainId(1L).build()));
