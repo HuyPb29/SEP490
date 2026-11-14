@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import api, { apiErrorMessage } from '../../api';
 import { useAuth } from '../../hooks/useAuth';
+import LocationMap from '../../components/map/LocationMap';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { LoadingState } from '../../components/common';
 import styles from './ServiceRegistrationPage.module.css';
@@ -13,10 +14,10 @@ const DEFAULT_COORDS = {
 
 export default function ServiceRegistrationPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
 
   const roleCode = String(user?.role_code || user?.role || '').toLowerCase();
   const isOwner = roleCode === 'owner';
+  const canSubmit = !user || isOwner;
 
   const [formData, setFormData] = useState({
     locationName: '',
@@ -24,9 +25,9 @@ export default function ServiceRegistrationPage() {
     latitude: DEFAULT_COORDS.latitude,
     longitude: DEFAULT_COORDS.longitude,
     courtCount: 4,
-    contactName: user?.fullName || user?.full_name || '',
-    contactPhone: user?.phone || '',
-    contactEmail: user?.email || '',
+    contactName: '',
+    contactPhone: '',
+    contactEmail: '',
   });
 
   const [fieldErrors, setFieldErrors] = useState({});
@@ -125,30 +126,23 @@ export default function ServiceRegistrationPage() {
     }
 
     const courts = Number(formData.courtCount);
-    if (!courts || isNaN(courts) || courts < 1) {
+    if (!Number.isInteger(courts) || courts < 1) {
       errors.courtCount = 'Số sân phải lớn hơn 0.';
     } else if (courts > 50) {
       errors.courtCount = 'Số sân tối đa là 50 sân trên một cơ sở.';
     }
 
-    if (formData.contactName && formData.contactName.length > 50) {
-      errors.contactName = 'Tên người liên hệ tối đa 50 ký tự.';
-    }
-
-    if (!formData.contactPhone) {
-      errors.contactPhone = 'Số điện thoại liên hệ không được để trống.';
-    } else if (!/^[0-9]{10}$/.test(formData.contactPhone.trim())) {
-      errors.contactPhone = 'Số điện thoại phải gồm đúng 10 chữ số.';
-    }
-
-    if (formData.contactEmail) {
+    if (!isOwner) {
+      if (!formData.contactName.trim()) {
+        errors.contactName = 'Tên người liên hệ không được để trống.';
+      }
+      if (!/^[0-9]{10}$/.test(formData.contactPhone.trim())) {
+        errors.contactPhone = 'Số điện thoại liên hệ phải gồm đúng 10 chữ số.';
+      }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contactEmail.trim())) {
-        errors.contactEmail = 'Email liên hệ không đúng định dạng.';
-      } else if (formData.contactEmail.length > 100) {
-        errors.contactEmail = 'Email liên hệ tối đa 100 ký tự.';
+        errors.contactEmail = 'Nhập email hợp lệ để nhận quyền truy cập tài khoản sau khi được duyệt.';
       }
     }
-
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -158,15 +152,7 @@ export default function ServiceRegistrationPage() {
     setSubmitSuccess('');
     setSubmitError('');
 
-    if (!user) {
-      navigate('/login', { state: { returnTo: '/register-service' } });
-      return;
-    }
-
-    if (!isOwner) {
-      setSubmitError('Chỉ tài khoản Chủ sân (Owner) mới có quyền nộp đơn đăng ký cơ sở dịch vụ.');
-      return;
-    }
+    if (!canSubmit) return;
 
     if (!validate()) return;
 
@@ -178,9 +164,11 @@ export default function ServiceRegistrationPage() {
         latitude: Number(formData.latitude),
         longitude: Number(formData.longitude),
         courtCount: Number(formData.courtCount),
-        contactName: formData.contactName.trim() || null,
-        contactPhone: formData.contactPhone.trim(),
-        contactEmail: formData.contactEmail.trim() || null,
+        ...(!isOwner && {
+          contactName: formData.contactName.trim(),
+          contactPhone: formData.contactPhone.trim(),
+          contactEmail: formData.contactEmail.trim(),
+        }),
       };
 
       const res = await api.post('/service-registrations', payload);
@@ -218,36 +206,23 @@ export default function ServiceRegistrationPage() {
         </div>
 
         {/* Kiểm tra điều kiện vai trò */}
-        {!user ? (
-          <div className={`${styles.alertBox} ${styles.alertWarning}`}>
-            <div>
-              <strong>Bạn chưa đăng nhập:</strong> Vui lòng đăng nhập bằng tài khoản Chủ sân (Owner) để gửi đơn đăng ký.
-              <div style={{ marginTop: 10 }}>
-                <Link
-                  to="/login"
-                  state={{ returnTo: '/register-service' }}
-                  className={styles.primaryBtn}
-                  style={{ textDecoration: 'none', height: 40, minHeight: 40, fontSize: 14 }}
-                >
-                  Đăng nhập ngay
-                </Link>
-              </div>
-            </div>
-          </div>
-        ) : !isOwner ? (
+        {!canSubmit && (
           <div className={`${styles.alertBox} ${styles.alertWarning}`}>
             <div>
               <strong>Thông báo vai trò:</strong> Bạn đang đăng nhập với tài khoản người chơi/nhân viên. Chỉ tài khoản{' '}
-              <strong>Chủ sân (Owner)</strong> mới có quyền gửi đơn đăng ký mở cụm sân mới. Bạn có thể đăng ký tài khoản Chủ sân mới để tiếp tục.
+              <strong>Chủ sân (Owner)</strong> mới có quyền gửi đơn đăng ký mở cụm sân mới. Hãy đăng xuất để gửi đơn bằng email chưa có tài khoản.
             </div>
           </div>
-        ) : null}
+        )}
 
         {/* Thông báo kết quả gửi form */}
         {submitSuccess && (
           <div className={`${styles.alertBox} ${styles.alertSuccess}`}>
             ✓ {submitSuccess}
           </div>
+        )}
+        {submitSuccess && !isOwner && (
+          <p>Sau khi Admin duyệt, vào <Link to="/login">Đăng nhập</Link>, chọn Quên mật khẩu và dùng email đã gửi để đặt mật khẩu lần đầu.</p>
         )}
         {submitError && (
           <div className={`${styles.alertBox} ${styles.alertDanger}`}>
@@ -277,7 +252,7 @@ export default function ServiceRegistrationPage() {
                 className={`${styles.input} ${fieldErrors.locationName ? styles.inputError : ''}`}
                 value={formData.locationName}
                 onChange={(e) => handleChange('locationName', e.target.value)}
-                disabled={!isOwner || isSubmitting}
+                disabled={!canSubmit || isSubmitting}
               />
               {fieldErrors.locationName && (
                 <p className={styles.errorText} role="alert">{fieldErrors.locationName}</p>
@@ -296,7 +271,7 @@ export default function ServiceRegistrationPage() {
                 className={`${styles.input} ${fieldErrors.address ? styles.inputError : ''}`}
                 value={formData.address}
                 onChange={(e) => handleChange('address', e.target.value)}
-                disabled={!isOwner || isSubmitting}
+                disabled={!canSubmit || isSubmitting}
               />
               {fieldErrors.address && (
                 <p className={styles.errorText} role="alert">{fieldErrors.address}</p>
@@ -316,7 +291,7 @@ export default function ServiceRegistrationPage() {
                   className={`${styles.input} ${fieldErrors.courtCount ? styles.inputError : ''}`}
                   value={formData.courtCount}
                   onChange={(e) => handleChange('courtCount', e.target.value)}
-                  disabled={!isOwner || isSubmitting}
+                  disabled={!canSubmit || isSubmitting}
                 />
                 {fieldErrors.courtCount && (
                   <p className={styles.errorText} role="alert">{fieldErrors.courtCount}</p>
@@ -335,7 +310,7 @@ export default function ServiceRegistrationPage() {
                   className={`${styles.input} ${fieldErrors.latitude ? styles.inputError : ''}`}
                   value={formData.latitude}
                   onChange={(e) => handleChange('latitude', e.target.value)}
-                  disabled={!isOwner || isSubmitting}
+                  disabled={!canSubmit || isSubmitting}
                 />
                 {fieldErrors.latitude && (
                   <p className={styles.errorText} role="alert">{fieldErrors.latitude}</p>
@@ -353,7 +328,7 @@ export default function ServiceRegistrationPage() {
                   className={`${styles.input} ${fieldErrors.longitude ? styles.inputError : ''}`}
                   value={formData.longitude}
                   onChange={(e) => handleChange('longitude', e.target.value)}
-                  disabled={!isOwner || isSubmitting}
+                  disabled={!canSubmit || isSubmitting}
                 />
                 {fieldErrors.longitude && (
                   <p className={styles.errorText} role="alert">{fieldErrors.longitude}</p>
@@ -366,7 +341,7 @@ export default function ServiceRegistrationPage() {
                 type="button"
                 className={styles.secondaryBtn}
                 onClick={handleGetCurrentLocation}
-                disabled={!isOwner || isSubmitting}
+                disabled={!canSubmit || isSubmitting}
               >
                 📍 Lấy tọa độ GPS hiện tại
               </button>
@@ -380,13 +355,28 @@ export default function ServiceRegistrationPage() {
                     longitude: DEFAULT_COORDS.longitude,
                   }));
                 }}
-                disabled={!isOwner || isSubmitting}
+                disabled={!canSubmit || isSubmitting}
               >
                 Tọa độ mẫu (Hà Nội)
               </button>
             </div>
 
-            <hr style={{ margin: '24px 0', border: 'none', borderTop: '1px solid var(--color-border)' }} />
+            {import.meta.env.VITE_LOCATION_MAP_TILE_URL && canSubmit &&
+              Number.isFinite(Number(formData.latitude)) && Math.abs(Number(formData.latitude)) <= 90 &&
+              Number.isFinite(Number(formData.longitude)) && Math.abs(Number(formData.longitude)) <= 180 && (
+              <div className="mt-4 max-w-md">
+                <p>Chọn điểm ghim trên bản đồ hoặc nhập tọa độ bên trên.</p>
+                <LocationMap
+                  venues={[{ facility_id: 'registration', latitude: formData.latitude, longitude: formData.longitude }]}
+                  onPick={isSubmitting ? undefined : (latitude, longitude) => {
+                    handleChange('latitude', latitude);
+                    handleChange('longitude', longitude);
+                  }}
+                />
+              </div>
+            )}
+
+            {!isOwner && <><hr style={{ margin: '24px 0', border: 'none', borderTop: '1px solid var(--color-border)' }} />
 
             <h4 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 16px', color: 'var(--color-text)' }}>
               Thông tin người đại diện liên hệ
@@ -395,7 +385,7 @@ export default function ServiceRegistrationPage() {
             <div className={styles.threeColRow}>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="contactName">
-                  <span>Họ và tên người liên hệ</span>
+                  <span>Họ và tên người liên hệ <span className={styles.requiredMark}>*</span></span>
                 </label>
                 <input
                   id="contactName"
@@ -405,7 +395,7 @@ export default function ServiceRegistrationPage() {
                   className={`${styles.input} ${fieldErrors.contactName ? styles.inputError : ''}`}
                   value={formData.contactName}
                   onChange={(e) => handleChange('contactName', e.target.value)}
-                  disabled={!isOwner || isSubmitting}
+                  disabled={!canSubmit || isSubmitting}
                 />
                 {fieldErrors.contactName && (
                   <p className={styles.errorText} role="alert">{fieldErrors.contactName}</p>
@@ -424,7 +414,7 @@ export default function ServiceRegistrationPage() {
                   className={`${styles.input} ${fieldErrors.contactPhone ? styles.inputError : ''}`}
                   value={formData.contactPhone}
                   onChange={(e) => handleChange('contactPhone', e.target.value)}
-                  disabled={!isOwner || isSubmitting}
+                  disabled={!canSubmit || isSubmitting}
                 />
                 {fieldErrors.contactPhone && (
                   <p className={styles.errorText} role="alert">{fieldErrors.contactPhone}</p>
@@ -433,7 +423,7 @@ export default function ServiceRegistrationPage() {
 
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="contactEmail">
-                  <span>Email liên hệ</span>
+                  <span>Email liên hệ <span className={styles.requiredMark}>*</span></span>
                 </label>
                 <input
                   id="contactEmail"
@@ -443,7 +433,7 @@ export default function ServiceRegistrationPage() {
                   className={`${styles.input} ${fieldErrors.contactEmail ? styles.inputError : ''}`}
                   value={formData.contactEmail}
                   onChange={(e) => handleChange('contactEmail', e.target.value)}
-                  disabled={!isOwner || isSubmitting}
+                  disabled={!canSubmit || isSubmitting}
                 />
                 {fieldErrors.contactEmail && (
                   <p className={styles.errorText} role="alert">{fieldErrors.contactEmail}</p>
@@ -451,10 +441,12 @@ export default function ServiceRegistrationPage() {
               </div>
             </div>
 
+            </>}
+
             <button
               type="submit"
               className={styles.primaryBtn}
-              disabled={!isOwner || isSubmitting}
+              disabled={!canSubmit || isSubmitting}
             >
               {isSubmitting ? 'Đang gửi đơn đăng ký…' : 'Gửi đơn đăng ký dịch vụ'}
             </button>

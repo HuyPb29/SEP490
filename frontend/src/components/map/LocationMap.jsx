@@ -20,7 +20,7 @@ function mapView(venues) {
   return { zoom, tiles, left: centerX - 1, top: centerY - 1 }
 }
 
-export default function LocationMap({ venues, onSelect }) {
+export default function LocationMap({ venues, onSelect, onPick }) {
   const [pin, setPin] = useState(null)
   const points = venues.filter((venue) => venue.latitude != null && venue.longitude != null &&
     Number.isFinite(Number(venue.latitude)) && Math.abs(Number(venue.latitude)) <= 90 &&
@@ -30,6 +30,14 @@ export default function LocationMap({ venues, onSelect }) {
 
   const { zoom, tiles, left, top } = mapView(points)
   const template = import.meta.env.VITE_LOCATION_MAP_TILE_URL
+  function pickPoint(event) {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const x = left + (event.clientX - bounds.left) / bounds.width * 2
+    const y = top + (event.clientY - bounds.top) / bounds.height * 2
+    const longitude = ((x / tiles * 360 % 360) + 360) % 360 - 180
+    const latitude = Math.atan(Math.sinh(Math.PI * (1 - 2 * y / tiles))) * 180 / Math.PI
+    onPick(Number(latitude.toFixed(6)), Number(longitude.toFixed(6)))
+  }
   const mapTiles = Array.from({ length: 9 }, (_, index) => {
     const x = Math.floor(left) + index % 3
     const y = Math.floor(top) + Math.floor(index / 3)
@@ -40,8 +48,12 @@ export default function LocationMap({ venues, onSelect }) {
       {template && mapTiles.filter(({ y }) => y >= 0 && y < tiles).map(({ x, y, url }) =>
         <img key={x + ':' + y} src={url} alt="" referrerPolicy="no-referrer" draggable="false"
           className="pointer-events-none absolute !max-w-none" style={{ width: '50%', height: '50%', left: (x - left) * 50 + '%', top: (y - top) * 50 + '%' }} />)}
+      {onPick && <div className="absolute inset-0 cursor-crosshair" onClick={pickPoint} />}
       {points.map((venue) => {
         const point = mercator(Number(venue.latitude), Number(venue.longitude))
+        if (onPick) return <span key={venue.facility_id} aria-hidden="true"
+          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-800 px-2 py-1 text-white shadow"
+          style={{ left: (point.x * tiles - left) * 50 + '%', top: (point.y * tiles - top) * 50 + '%' }}>●</span>
         return <button key={venue.facility_id} type="button" aria-label={'Ghim ' + venue.facility_name}
           aria-pressed={selected?.facility_id === venue.facility_id}
           className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-800 px-2 py-1 text-white shadow"
