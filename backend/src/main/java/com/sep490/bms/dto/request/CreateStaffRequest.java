@@ -10,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận tên đăng nhập, họ tên và mật khẩu ban đầu của Staff.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -21,10 +24,6 @@ public class CreateStaffRequest {
     @Size(min = 2, max = 50)
     @Pattern(regexp = ValidationRules.NAME, message = "Họ tên chỉ được chứa chữ và khoảng trắng")
     private String fullName;
-
-    @NotBlank(message = "Số điện thoại không được để trống")
-    @Pattern(regexp = "^0[0-9]{9}$", message = "Số điện thoại phải gồm đúng 10 chữ số")
-    private String phone;
 
     @NotBlank(message = "Mật khẩu không được để trống")
     @Pattern(regexp = ValidationRules.PASSWORD, message = ValidationRules.PASSWORD_MESSAGE)

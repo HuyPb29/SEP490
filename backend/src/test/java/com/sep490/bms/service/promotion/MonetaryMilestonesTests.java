@@ -3,6 +3,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
+/**
+ * Kiểm tra cách xác định mốc chi tiêu đã đạt và ngăn cấp thưởng trùng sau hoàn tiền.
+ */
 class MonetaryMilestonesTests {
     private BigDecimal n(long value) { return BigDecimal.valueOf(value); }
     @Test void highestMilestoneRepeatsAtItsExactMultiples() {

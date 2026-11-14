@@ -20,6 +20,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu hồ sơ đăng ký sử dụng dịch vụ và kết quả xét duyệt.
+ */
 @Entity
 @Table(name = "service_registration")
 @Getter

@@ -8,7 +8,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import com.sep490.bms.dto.promotion.*;
-import com.sep490.bms.entity.*;
+import com.sep490.bms.entity.account.Role;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.promotion.*;
 import com.sep490.bms.exception.AppException;
@@ -18,6 +19,9 @@ import jakarta.persistence.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Quản lý mốc chi tiêu theo địa điểm và cấp voucher khi Player đạt mốc.
+ */
 @Service @Validated @RequiredArgsConstructor @Transactional(readOnly=true)
 public class LoyaltyMilestoneService {
     private final LoyaltyTierRepository tiers;

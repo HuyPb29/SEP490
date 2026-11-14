@@ -13,7 +13,7 @@ import com.sep490.bms.dto.location.CreatePriceRuleRequest;
 import com.sep490.bms.dto.location.OpeningTime;
 import com.sep490.bms.dto.location.PriceRuleDto;
 import com.sep490.bms.dto.location.UpdatePriceRuleRequest;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.location.PriceRule;
 import com.sep490.bms.exception.AppException;

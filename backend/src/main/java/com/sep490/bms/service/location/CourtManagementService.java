@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.sep490.bms.dto.location.CourtDto;
 import com.sep490.bms.dto.location.CreateCourtRequest;
 import com.sep490.bms.dto.location.UpdateCourtRequest;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.location.CourtRepository;
@@ -41,6 +41,22 @@ public class CourtManagementService {
     public List<CourtDto> listOwned(UserPrincipal user, Long locationId) {
         Location location = locationManagementService.ownedLocation(user, locationId);
         return courtsOf(location.getId()).stream()
+                .map(CourtDto::fromEntity)
+                .toList();
+    }
+
+    /**
+     * UC10 - Staff xem danh sách sân của địa điểm mình làm việc.
+     * Cần cho form tạo yêu cầu bảo trì: staff không gọi được API /api/owner/** nên
+     * không có cách nào khác lấy courtId.
+     */
+    @Transactional(readOnly = true)
+    public List<CourtDto> listForStaff(UserPrincipal user) {
+        Long locationId = user == null ? null : user.getLocationId();
+        if (locationId == null) {
+            throw new AppException("Tài khoản nhân viên chưa được gán địa điểm", HttpStatus.FORBIDDEN);
+        }
+        return courtsOf(locationId).stream()
                 .map(CourtDto::fromEntity)
                 .toList();
     }

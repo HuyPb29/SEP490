@@ -30,7 +30,7 @@ class LoyaltyPointPreviewTests {
     private final PlayerLocationBalanceRepository balances = mock(PlayerLocationBalanceRepository.class);
     private final LoyaltyPointService service = new LoyaltyPointService(balances, mock(PointTransactionRepository.class),
             mock(LoyaltyAccrualRepository.class), mock(VoucherUsageRepository.class), mock(LoyaltyMilestoneService.class),
-            mock(LocationAccessService.class), mock(EntityManager.class));
+            mock(LocationAccessService.class), mock(EntityManager.class), null, null);
 
     @BeforeEach
     void playerHasManyPoints() {

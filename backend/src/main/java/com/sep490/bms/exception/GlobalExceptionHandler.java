@@ -18,6 +18,9 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import com.sep490.bms.common.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Chuyển lỗi nghiệp vụ, validation và lỗi hệ thống thành phản hồi API thống nhất.
+ */
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -38,7 +41,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleAppException(AppException ex) {
         return ResponseEntity
                 .status(ex.getStatus())
-                .body(ApiResponse.error(ex.getMessage()));
+                .body(ex.getFieldErrors().isEmpty() ? ApiResponse.error(ex.getMessage())
+                        : ApiResponse.error(ex.getMessage(), ex.getFieldErrors()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

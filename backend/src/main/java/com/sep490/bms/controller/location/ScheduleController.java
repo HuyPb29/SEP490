@@ -18,6 +18,8 @@ import com.sep490.bms.service.booking.ScheduleService;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp lịch sân theo ngày, gồm trạng thái và giá của từng slot.
+ *
  * Feature: F3 – Tìm và đặt sân
  * Owner: Minh
  * UC: UC13 – Xem lịch sân
@@ -31,12 +33,14 @@ public class ScheduleController {
     /**
      * UC13 – Xem lịch sân (lịch theo ngày của cả địa điểm: mỗi hàng một sân, mỗi cột một slot).
      * Công khai cho Guest. date dạng yyyy-MM-dd, không gửi thì lấy hôm nay.
+     * bookingId (tùy chọn): booking Player đang đổi lịch (UC21, UC22); buổi trong gói được xem tới hết thời hạn gói (BR31).
      */
     @GetMapping("/api/locations/{id}/schedules")
     public ResponseEntity<ApiResponse<ScheduleResponse>> getLocationsByIdSchedules(
             @PathVariable("id") Long id,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) Long bookingId,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.ok(ApiResponse.success(scheduleService.schedule(id, date, currentUser)));
+        return ResponseEntity.ok(ApiResponse.success(scheduleService.schedule(id, date, currentUser, bookingId)));
     }
 }

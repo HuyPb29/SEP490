@@ -25,6 +25,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu cấu hình voucher, đối tượng áp dụng, hạn mức và số lượt đã dùng.
+ */
 @Entity
 @Table(name = "voucher")
 @Getter
@@ -99,11 +102,13 @@ public class Voucher {
     @Column(name = "disabled_by")
     private Long disabledBy;
 
+    @Builder.Default
     @Column(name="allow_points",nullable=false)
-    private boolean allowPoints;
+    private boolean allowPoints = true;
 
+    @Builder.Default
     @Column(name="max_point_percent")
-    private Integer maxPointPercent;
+    private Integer maxPointPercent = 50;
 
     @Version
     @Column(nullable = false)

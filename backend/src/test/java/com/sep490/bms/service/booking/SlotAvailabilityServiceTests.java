@@ -23,6 +23,9 @@ import com.sep490.bms.repository.location.OpeningExceptionRepository;
 import com.sep490.bms.repository.location.OpeningHourRepository;
 import com.sep490.bms.service.booking.SlotAvailabilityService.SlotProblem;
 
+/**
+ * Kiểm tra slot trống, slot đã giữ, lịch bảo trì và khung giờ ngoài giờ mở cửa.
+ */
 class SlotAvailabilityServiceTests {
 
     private static final Long LOCATION = 1L;

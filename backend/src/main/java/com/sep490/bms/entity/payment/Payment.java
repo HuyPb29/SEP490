@@ -1,6 +1,7 @@
 package com.sep490.bms.entity.payment;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 import com.sep490.bms.entity.enums.PaymentStatus;
@@ -21,6 +22,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu giao dịch của booking, gói hoặc yêu cầu đổi lịch cùng số tiền và kết quả xác nhận.
+ */
 @Entity
 @Table(name = "payment")
 @Getter
@@ -32,6 +36,7 @@ public class Payment {
 
     /** Số lần gửi lại chứng từ tối đa (BR34, P06): cố định (D154), database chặn bằng ck_payment_resubmit. */
     public static final int MAX_RESUBMITS = 3;
+    public static final Duration LATE_CONFIRMATION_WAIT = Duration.ofMinutes(15);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -98,6 +103,18 @@ public class Payment {
     public void resubmitted(LocalDateTime now) {
         this.status = PaymentStatus.AWAITING_CONFIRMATION;
         this.submittedAt = now;
+    }
+
+    public BigDecimal receivedSoFar() {
+        return receivedAmount == null ? BigDecimal.ZERO : receivedAmount;
+    }
+
+    public BigDecimal remainingAmount() {
+        return amountDue.subtract(receivedSoFar()).max(BigDecimal.ZERO);
+    }
+
+    public boolean acceptsPartialAmount(BigDecimal amount) {
+        return amount.compareTo(receivedSoFar()) >= 0 && amount.compareTo(amountDue) < 0;
     }
 
     /**

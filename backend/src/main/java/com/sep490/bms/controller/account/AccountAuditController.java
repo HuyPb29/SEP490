@@ -1,15 +1,18 @@
 package com.sep490.bms.controller.account;
 
 import com.sep490.bms.common.*;
-import com.sep490.bms.dto.AccountAuditResponse;
-import com.sep490.bms.entity.AccountAuditAction;
+import com.sep490.bms.dto.account.AccountAuditResponse;
+import com.sep490.bms.entity.account.AccountAuditAction;
 import com.sep490.bms.security.UserPrincipal;
-import com.sep490.bms.service.AccountAuditService;
+import com.sep490.bms.service.account.AccountAuditService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Cung cấp cho Admin API tra cứu nhật ký thao tác tài khoản.
+ */
 @RestController
 @RequiredArgsConstructor
 public class AccountAuditController {

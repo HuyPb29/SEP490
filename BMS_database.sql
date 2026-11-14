@@ -246,13 +246,13 @@ CREATE TABLE maintenance (
 );
 CREATE INDEX ix_maint_court ON maintenance (court_id, start_at);
 
--- booking_package: Gói đặt nhiều buổi (booking tổng); các buổi con là booking loại SESSION (BR10, DR06).
+-- booking_package: Gói đặt nhiều buổi (booking tổng) hoặc đơn đặt lẻ (DAY); các booking con là loại SESSION (BR10, BR64, DR06, DR32).
 CREATE TABLE booking_package (
     id BIGINT IDENTITY(1,1) NOT NULL,
     location_id BIGINT NOT NULL,
     player_id BIGINT NOT NULL,
     batch_offer_id BIGINT NULL,
-    package_type VARCHAR(10) NOT NULL,
+    package_type VARCHAR(12) NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     list_amount DECIMAL(12,0) NOT NULL,
@@ -266,8 +266,9 @@ CREATE TABLE booking_package (
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_booking_package_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_booking_package PRIMARY KEY (id),
     CONSTRAINT uk_pkg_id_location UNIQUE (id, location_id),
-    CONSTRAINT ck_pkg_type CHECK (package_type IN ('RECURRING','CUSTOM')),
-    CONSTRAINT ck_pkg_status CHECK (status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','PAYMENT_REJECTED','EXPIRED')),
+    CONSTRAINT ck_pkg_type CHECK (package_type IN ('RECURRING','CUSTOM','DAY')),
+    CONSTRAINT ck_pkg_status CHECK (status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','PAYMENT_REJECTED','EXPIRED')
+        OR (package_type = 'DAY' AND status = 'CANCELLED_BY_PLAYER')),
     CONSTRAINT ck_pkg_dates CHECK (end_date >= start_date),
     CONSTRAINT ck_pkg_amount CHECK (final_amount > 0 AND voucher_discount >= 0 AND point_discount >= 0 AND points_used >= 0),
     CONSTRAINT ck_pkg_point_min CHECK (points_used = 0 OR point_discount >= 1000)
@@ -465,6 +466,7 @@ CREATE TABLE refund_request (
     complaint_id BIGINT NULL,
     suggested_amount DECIMAL(12,0) NOT NULL,
     refunded_amount DECIMAL(12,0) NULL,
+    verified_unrecorded_amount DECIMAL(12,0) NULL,
     loyalty_settled_amount DECIMAL(12,0) NOT NULL CONSTRAINT df_refund_loyalty_amount DEFAULT 0,
     loyalty_revoked_points INT NOT NULL CONSTRAINT df_refund_loyalty_points DEFAULT 0,
     refund_date DATE NULL,
@@ -508,8 +510,8 @@ CREATE TABLE voucher (
     disabled_by BIGINT NULL,
     version INT NOT NULL CONSTRAINT df_voucher_version DEFAULT 0,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_voucher_created_at DEFAULT SYSDATETIME(),
-    allow_points BIT NOT NULL CONSTRAINT df_voucher_allow_points DEFAULT 0,
-    max_point_percent INT NULL,
+    allow_points BIT NOT NULL CONSTRAINT df_voucher_allow_points_uc24 DEFAULT 1,
+    max_point_percent INT NULL CONSTRAINT df_voucher_max_point_percent DEFAULT 50,
     CONSTRAINT ck_voucher_point_policy CHECK ((allow_points=0 AND max_point_percent IS NULL) OR (allow_points=1 AND max_point_percent IS NOT NULL AND max_point_percent BETWEEN 1 AND 100)),
     CONSTRAINT pk_voucher PRIMARY KEY (id),
     CONSTRAINT ck_voucher_source CHECK (source IN ('CAMPAIGN','LOYALTY','BATCH_OFFER','COMPENSATION')),
@@ -704,6 +706,7 @@ CREATE TABLE match (
     status VARCHAR(10) NOT NULL CONSTRAINT df_match_status DEFAULT 'OPEN',
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_match_created_at DEFAULT SYSDATETIME(),
     closed_at DATETIME2(0) NULL,
+    reschedule_pending BIT NOT NULL CONSTRAINT df_match_reschedule_pending DEFAULT 0,
     CONSTRAINT pk_match PRIMARY KEY (id),
     CONSTRAINT ck_match_players CHECK (current_players >= 1 AND needed_players >= 0 AND current_players + needed_players <= 8),
     CONSTRAINT ck_match_status CHECK (status IN ('OPEN','CLOSED','CANCELLED','EXPIRED'))
@@ -761,6 +764,7 @@ CREATE TABLE complaint (
     compensation_points INT NULL,
     decided_by BIGINT NULL,
     decided_at DATETIME2(0) NULL,
+    forwarded_at DATETIME2 NULL,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_complaint_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_complaint PRIMARY KEY (id),
     CONSTRAINT ck_complaint_target CHECK (booking_id IS NOT NULL OR payment_id IS NOT NULL),

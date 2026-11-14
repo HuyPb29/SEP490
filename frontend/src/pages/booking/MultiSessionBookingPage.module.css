@@ -5,96 +5,6 @@
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.navbar {
-  height: 68px;
-  display: flex;
-  align-items: center;
-  background: #fff;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.navContainer {
-  width: 100%;
-  max-width: 1220px;
-  margin: 0 auto;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #173b2c;
-  font-size: 20px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.brandIcon {
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: #0d8a52;
-  color: #fff;
-  font-size: 16px;
-}
-
-.navLinks {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.navLinks a {
-  color: #334155;
-  text-decoration: none;
-}
-
-.navLinks a:hover,
-.activeLink {
-  color: #0d8a52 !important;
-}
-
-.activeLink {
-  font-weight: 600;
-}
-
-.userProfile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.avatar {
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: #e6f4ed;
-  color: #0d8a52;
-  font-size: 12.5px;
-  font-weight: 700;
-}
-
-.userName {
-  color: #334155;
-  font-size: 14px;
-  font-weight: 600;
-}
-
 .mainContainer {
   max-width: 1220px;
   margin: 0 auto;
@@ -610,23 +520,6 @@
 }
 
 @media (max-width: 720px) {
-  .navContainer {
-    padding: 0 16px;
-  }
-
-  .navLinks {
-    gap: 14px;
-    font-size: 12px;
-  }
-
-  .navLinks a:nth-child(2) {
-    display: none;
-  }
-
-  .userName {
-    display: none;
-  }
-
   .mainContainer {
     padding: 22px 16px 36px;
   }
@@ -650,10 +543,6 @@
 }
 
 @media (max-width: 480px) {
-  .navLinks a:nth-child(3) {
-    display: none;
-  }
-
   .mainContainer {
     padding-right: 12px;
     padding-left: 12px;

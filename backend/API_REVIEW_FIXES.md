@@ -1,5 +1,16 @@
 # Backend: thay đổi theo API.md (27/10/2026)
 
+## Tích hợp F7/F8/F9 với FE ngày 10/11/2026
+
+- F7 kèo: `MatchResponse` có thêm `myJoinRequestId` (dùng cho `POST /api/match-join-requests/{id}/cancel` khi rút yêu cầu) và `hostSkillLevel` (nhãn trình độ). `GET /api/matches` nhận thêm `fromMinute`, `toMinute`: lọc theo giờ bắt đầu, khoảng nửa mở `[from, to)` tính bằng phút trong ngày, ví dụ buổi tối là `1020–1380`.
+- F7 kèo của tôi: `GET /api/me/matches?role=HOSTED|JOINED&status=&page=&size=` (PLAYER). Bỏ trống `role` thì lấy cả kèo mình làm chủ lẫn kèo mình đã xin vào (còn chờ hoặc đã được duyệt).
+- F7 đội để đặt sân: dùng `GET /api/me/teams` rồi lọc `captain === true`. Không có route `/api/v1/teams/my-owned`.
+- F7 với F5: hủy booking làm kèo chuyển `EXPIRED`; đổi lịch thì báo MSG76 giờ mới. Cả hai do `MatchService` xử lý (`BookingChangeSupport.matches`), thông báo loại `MATCH_*`, không còn `MATCH_BOOKING_CHANGED`.
+- F8 đánh giá theo địa điểm (công khai): `GET /api/locations/{id}/reviews` và `GET /api/locations/{id}/review-summary`. Summary gồm `averageRating` (null nếu chưa có đánh giá), `reviewCount`, `ratingCounts` đủ khóa 1–5. Chi tiết địa điểm `GET /api/locations/{id}` không trả rating/reviews.
+- F8 nút Đánh giá: `BookingListItem` (`/api/me/bookings`, các buổi của gói) và `BookingDetailResponse` có `canReview` (booking đã hoàn thành, chưa đánh giá).
+- F9 bảng điều hành Staff: `courts[]` gồm `status` (`AVAILABLE`, `IN_USE`, `HOLDING`, `MAINTENANCE`), `bookingCode`, `untilMinute`, `maintenanceUntil`, `nextBookingCode`, `nextStartMinute`. Có thêm `overduePayments` và `paymentOverdueMinutes` (mặc định 15, cấu hình `bms.dashboard.payment-overdue-minutes`). Danh sách giao dịch chờ lấy ở `GET /api/staff/payments` (F4).
+- F9 báo cáo doanh thu: thêm `grossRevenue`, `voucherDiscount`, `pointDiscount`. `totalRevenue` đã trừ giảm giá; `grossRevenue − voucherDiscount − pointDiscount − totalRefunds = netRevenue`. Xuất file dùng `GET /api/owner/exports` (xlsx), không tự tạo CSV ở FE.
+
 ## Tích hợp F3/F4 ngày 07/11/2026
 
 - UC15 dùng `weeklySlots` cho mẫu định kỳ và `sessions` cho lịch cuối cùng sau khi xử lý buổi trùng. Chi tiết gói có `data.id`. Danh sách gói của Player hỗ trợ `status/page/size`.

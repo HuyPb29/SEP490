@@ -29,103 +29,6 @@
   margin-top: 12px;
 }
 
-/* Navbar */
-.navbar {
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-  height: 68px;
-  display: flex;
-  align-items: center;
-}
-
-.navContainer {
-  max-width: 1240px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 800;
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.brandIcon {
-  background: #0d8a52;
-  color: #fff;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-}
-
-.navLinks {
-  display: flex;
-  gap: 28px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.navLinks a {
-  text-decoration: none;
-  color: #334155;
-}
-
-.activeLink {
-  color: #0d8a52 !important;
-  font-weight: 600;
-}
-
-.userArea {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.bellBtn {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
-  cursor: pointer;
-  font-size: 15px;
-}
-
-.userProfile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: #e6f4ed;
-  color: #0d8a52;
-  font-weight: 700;
-  font-size: 12.5px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.userName {
-  font-size: 14px;
-  font-weight: 600;
-}
-
 /* Main Container */
 .mainContainer {
   max-width: 1240px;
@@ -341,8 +244,17 @@
   background: #cbd5e1;
 }
 
+.boxInUse {
+  background: #38bdf8;
+}
+
 .boxMaintenance {
   background: #475569;
+}
+
+.boxClosed {
+  background: #e2e8f0;
+  border: 1px dashed #94a3b8;
 }
 
 /* Schedule Grid Table */
@@ -432,6 +344,33 @@
   border: 1px solid #475569;
   color: #ffffff;
   cursor: not-allowed;
+}
+
+.slotInUse {
+  background: #e0f2fe;
+  border: 1px solid #38bdf8;
+  color: #0369a1;
+  cursor: not-allowed;
+}
+
+.slotClosed,
+.slotPast {
+  background: #f1f5f9;
+  border: 1px dashed #cbd5e1;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.slotBookerSub {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
 }
 
 /* Summary Bar */
@@ -546,4 +485,21 @@
   font-weight: 600;
   padding: 8px 12px;
   border-radius: 8px;
+}
+
+.pageWrapper { background: var(--cw-bg); color: var(--cw-text); }
+.mainContainer { width: min(100% - 32px, 1160px); margin-inline: auto; }
+.venueHeader { margin-bottom: 18px; }
+.facilityTitle { font-size: clamp(1.8rem, 4.3vw, 3rem); letter-spacing: -.045em; }
+.facilityInfoCard, .scheduleCard { border-color: var(--cw-border); box-shadow: var(--cw-shadow); min-width: 0; }
+.scheduleHeader, .dateControls, .summaryBar { flex-wrap: wrap; }
+.scrollScheduleBtn, .continueBookingBtn { background: var(--cw-primary); }
+.scrollScheduleBtn:hover:not(:disabled), .continueBookingBtn:hover:not(:disabled) { background: var(--cw-primary-hover); }
+.slotBtn, .navArrowBtn, .continueBookingBtn, .packageBookingBtn, .scrollScheduleBtn { min-height: 44px; }
+.tableWrapper { overflow: auto; }
+.slotBtn[aria-pressed=true] { background: var(--cw-primary); color: white; }
+@media (max-width: 640px) {
+  .mainContainer { padding-inline: 0; }
+  .facilityInfoCard, .scheduleCard { padding: 14px; }
+  .dateControls { width: 100%; }
 }

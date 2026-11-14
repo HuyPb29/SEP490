@@ -1,5 +1,8 @@
 package com.sep490.bms.entity.enums;
 
+/**
+ * Mô tả vòng đời booking từ giữ chỗ và thanh toán đến sử dụng, hoàn thành hoặc hủy.
+ */
 public enum BookingStatus {
     HOLDING,
     AWAITING_CONFIRMATION,

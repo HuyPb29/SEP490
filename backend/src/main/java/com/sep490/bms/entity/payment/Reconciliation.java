@@ -17,6 +17,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu số tiền hệ thống, số tiền thực nhận và chênh lệch đối soát theo địa điểm và ngày.
+ */
 @Entity
 @Table(name = "reconciliation")
 @Getter

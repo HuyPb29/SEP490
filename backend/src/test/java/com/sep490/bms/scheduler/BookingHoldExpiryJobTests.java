@@ -22,6 +22,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+/**
+ * Kiểm tra hết hạn giữ chỗ, trả ưu đãi và đọc lại trạng thái trước khi giải phóng slot.
+ */
 @ExtendWith(MockitoExtension.class)
 class BookingHoldExpiryJobTests {
     @Mock BookingRepository repository;

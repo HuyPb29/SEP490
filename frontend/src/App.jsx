@@ -1,97 +1,73 @@
-import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
-import api from './api'
-
-import FacilitySearchPage from './pages/location/FacilitySearchPage'
-import FacilityDetailPage from './pages/location/FacilityDetailPage'
-import AuthPage from './pages/auth/AuthPage'
-import BookingSummaryPage from './pages/booking/BookingSummaryPage'
-import BookingPaymentPage from './pages/booking/BookingPaymentPage'
-import MyBookingsPage from './pages/booking/MyBookingsPage'
-import MultiSessionBookingPage from './pages/booking/MultiSessionBookingPage'
-import OpenMatchesPage from './pages/matches/OpenMatchesPage'
-import StaffDashboardPage from './pages/staff/StaffDashboardPage'
-import StaffConfirmPaymentPage from './pages/staff/StaffConfirmPaymentPage'
-import OwnerReportPage from './pages/owner/OwnerReportPage'
-import OwnerCourtsPricingPage from './pages/owner/OwnerCourtsPricingPage'
-import AdminFacilitiesPage from './pages/admin/AdminFacilitiesPage'
+import { useEffect, useState } from 'react';
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
+import api from './api';
+import { messages } from './api/f1Rules';
+import { clearSession, watchSessionExpiry } from './api/session';
+import { F1Dialog } from './components/F1Feedback';
+import { AuthProvider } from './contexts/AuthContext';
+import { LocationProvider } from './contexts/LocationContext';
+import AppRoutes from './routes/AppRoutes';
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
-  )
+    <AuthProvider>
+      <LocationProvider>
+        <BrowserRouter>
+          <AppContent />
+        </BrowserRouter>
+      </LocationProvider>
+    </AuthProvider>
+  );
 }
 
 function AppContent() {
-  const location = useLocation()
-  const isMultiSessionBooking =
-    location.pathname === '/booking/multi' || location.pathname.endsWith('/package-booking')
-  const isFrontendMockPage =
-    isMultiSessionBooking ||
-    location.pathname === '/open-matches' ||
-    location.pathname === '/staff/dashboard' ||
-    location.pathname === '/staff/confirm-payments' ||
-    location.pathname === '/owner/reports' ||
-    location.pathname === '/owner/courts-pricing' ||
-    location.pathname === '/admin/facilities'
-  const [status, setStatus] = useState(() => (isFrontendMockPage ? 'mock preview' : 'checking...'))
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [showExpiry, setShowExpiry] = useState(false);
+  const returnTo =
+    location.pathname === '/login'
+      ? location.state?.returnTo
+      : location.pathname + location.search;
 
   useEffect(() => {
-    if (isFrontendMockPage) return
+    function expired() {
+      setShowExpiry(true);
+      navigate('/login', { replace: true, state: { returnTo } });
+    }
+    window.addEventListener('bms-session-expired', expired);
+    const stop = watchSessionExpiry(() => {
+      clearSession();
+      expired();
+    });
+    return () => {
+      stop();
+      window.removeEventListener('bms-session-expired', expired);
+    };
+  }, [navigate, returnTo]);
+
+  const [status, setStatus] = useState('checking...');
+
+  useEffect(() => {
     api
       .get('/health')
       .then((res) => setStatus(res.data.status))
-      .catch(() => setStatus('backend offline'))
-  }, [isFrontendMockPage])
-  const displayedStatus = isFrontendMockPage ? 'mock preview' : status
+      .catch(() => setStatus('backend offline'));
+  }, []);
 
   return (
     <>
-      {!isFrontendMockPage && (
-        <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
-          BE: {displayedStatus}
-        </div>
+      {showExpiry && location.pathname === '/login' && (
+        <F1Dialog
+          title="Phiên đăng nhập"
+          message={messages.expiredSession}
+          onClose={() => setShowExpiry(false)}
+        />
       )}
+      <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
+        BE: {status}
+      </div>
 
-      <Routes>
-        {/* UC11: Tìm kiếm địa điểm (GET /api/v1/facilities/search) */}
-        <Route path="/" element={<FacilitySearchPage />} />
-
-        {/* UC12-13: Thông tin & Lịch sân (GET /api/v1/facilities/:id & /court-schedule) */}
-        <Route path="/facilities/:id" element={<FacilityDetailPage />} />
-        {/* UC15: Đặt nhiều buổi */}
-        <Route path="/facilities/:id/package-booking" element={<MultiSessionBookingPage />} />
-        {/* UC29-30: Open matches */}
-        <Route path="/open-matches" element={<OpenMatchesPage />} />
-
-        {/* UC34: Staff dashboard mock preview */}
-        <Route path="/staff/dashboard" element={<StaffDashboardPage />} />
-        {/* UC19: Staff payment confirmation mock preview */}
-        <Route path="/staff/confirm-payments" element={<StaffConfirmPaymentPage />} />
-        {/* UC35: Owner operational and revenue reports mock preview */}
-        <Route path="/owner/reports" element={<OwnerReportPage />} />
-        {/* UC07-09: Owner courts and pricing mock preview */}
-        <Route path="/owner/courts-pricing" element={<OwnerCourtsPricingPage />} />
-        {/* UC06: Admin facilities mock preview */}
-        <Route path="/admin/facilities" element={<AdminFacilitiesPage />} />
-
-        {/* UC01-02: Đăng ký & Đăng nhập Player (POST /api/v1/auth/login & /register/player) */}
-        <Route path="/login" element={<AuthPage />} />
-
-        {/* UC14: Tóm tắt & Xác nhận đặt sân lẻ (POST /api/v1/vouchers/apply & POST /api/bookings) */}
-        <Route path="/booking/summary" element={<BookingSummaryPage />} />
-
-        {/* UC15: Đặt nhiều buổi định kỳ hoặc tự chọn (POST /api/booking-packages/preview & /api/booking-packages) */}
-        <Route path="/booking/multi" element={<MultiSessionBookingPage />} />
-
-        {/* UC18: Thanh toán chuyển khoản & Gửi chứng từ (POST /api/v1/bookings/:id/payment-proof) */}
-        <Route path="/booking/payment" element={<BookingPaymentPage />} />
-
-        {/* UC17: Lịch sử booking của Player (GET /api/v1/players/me/bookings & POST /api/v1/bookings/:id/cancel) */}
-        <Route path="/my-bookings" element={<MyBookingsPage />} />
-      </Routes>
+      <AppRoutes />
     </>
-  )
+  );
 }

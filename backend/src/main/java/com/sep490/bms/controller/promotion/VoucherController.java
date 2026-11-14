@@ -17,6 +17,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
+/**
+ * Cung cấp API tra cứu, kiểm tra điều kiện, quản lý và cấp voucher theo quyền.
+ */
 @RestController @RequiredArgsConstructor
 @Tag(name="F6 - UC24 Vouchers", description="Voucher campaign và cấp cá nhân; tiêu/hoàn lượt chỉ ở transaction booking nội bộ")
 public class VoucherController {

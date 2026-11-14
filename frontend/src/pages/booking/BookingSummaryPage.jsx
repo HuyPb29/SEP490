@@ -1,77 +1,106 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import {
-  getMyPointsAtFacility,
-  getMyOwnedTeams,
-  applyVoucherApi,
-  createBookingApi,
-} from '../../api/bookingApi';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+import { useBookingActions } from '../../hooks/useBooking';
 import styles from './BookingSummaryPage.module.css';
+import { formatVnd } from '../../utils/formatters';
+import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, pointInputError } from '../../utils/checkoutPoints';
+import { CheckoutProgress, ConfirmDialog, Feedback } from '../../components/common/WorkspacePrimitives';
+import { PublicHeader } from '../../components/layout/PublicLayout';
 
-// FIX: Cinderella Bug (Chặn lỗi 24:00:00 của SQL Server)
-function addThirtyMinutes(timeStr) {
-  const [hh, mm] = timeStr.split(':').map(Number);
-  const totalMins = hh * 60 + mm + 30;
+function toMinutes(time) {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
 
-  // Nếu chạm mốc 24:00 (1440 phút), ép về 23:59 để DB không bị crash
-  if (totalMins >= 1440) return '23:59';
+function formatMinute(minute) {
+  const h = String(Math.floor(minute / 60)).padStart(2, '0');
+  const m = String(minute % 60).padStart(2, '0');
+  return `${h}:${m}`;
+}
 
-  const nextH = String(Math.floor(totalMins / 60)).padStart(2, '0');
-  const nextM = String(totalMins % 60).padStart(2, '0');
-  return `${nextH}:${nextM}`;
+// BR01, BR64: Gộp các slot 30 phút liền nhau trên cùng 1 sân thành từng dải (range)
+function groupSlotsIntoRanges(selectedSlots) {
+  const sorted = [...selectedSlots].sort(
+    (a, b) => a.courtId - b.courtId || toMinutes(a.time) - toMinutes(b.time)
+  );
+  const ranges = [];
+  for (const slot of sorted) {
+    const startMinute = toMinutes(slot.time);
+    const endMinute = startMinute + 30;
+    const prev = ranges[ranges.length - 1];
+    if (prev && prev.courtId === slot.courtId && prev.endMinute === startMinute) {
+      prev.endMinute = endMinute;
+      prev.endTime = formatMinute(endMinute);
+      prev.listAmount += Number(slot.price || 0);
+    } else {
+      ranges.push({
+        courtId: slot.courtId,
+        courtName: slot.courtName,
+        startMinute,
+        endMinute,
+        startTime: formatMinute(startMinute),
+        endTime: formatMinute(endMinute),
+        listAmount: Number(slot.price || 0),
+      });
+    }
+  }
+  return ranges;
 }
 
 export default function BookingSummaryPage() {
   const navigate = useNavigate();
-
-  // 1. Load dữ liệu các slot đã chọn từ UC13 (hoặc khởi tạo chuẩn theo Mockup để dễ test)
+  const { user } = useAuth();
+  const {
+    getMyPointsAtFacility,
+    getMyOwnedTeams,
+    getCheckoutVouchers,
+    applyVoucherApi,
+    previewBookingApi,
+    createBookingApi,
+    createDayOrderApi,
+    previewDayOrderApi,
+  } = useBookingActions();
   const [bookingContext] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('pending_booking_selection');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed?.selectedSlots?.length > 0) return parsed;
-      }
+      const saved = JSON.parse(sessionStorage.getItem('pending_booking_selection'));
+      return saved?.source === 'backend' && saved.selectedSlots?.length ? saved : null;
     } catch {
-      // Fallback nếu JSON lỗi
+      return null;
+    }
+  });
+  const ranges = useMemo(
+    () => (bookingContext ? groupSlotsIntoRanges(bookingContext.selectedSlots) : []),
+    [bookingContext]
+  );
+  const isOrder = ranges.length > 1;
+  const selection = useMemo(() => {
+    if (!bookingContext || !ranges.length) return null;
+    if (!isOrder) {
+      return {
+        courtId: ranges[0].courtId,
+        date: bookingContext.playDate,
+        startMinute: ranges[0].startMinute,
+        endMinute: ranges[0].endMinute,
+      };
     }
     return {
-      facility: {
-        facility_id: 1,
-        facility_name: 'Smash Arena',
-        address: '12 Tran Thai Tong, Cau Giay, Hanoi',
-      },
-      playDate: '2026-10-24',
-      selectedSlots: [
-        { courtId: 2, courtName: 'Court 2', timeIdx: 4, time: '19:00', price: 80000 },
-        { courtId: 2, courtName: 'Court 2', timeIdx: 5, time: '19:30', price: 80000 },
-      ],
+      date: bookingContext.playDate,
+      ranges: ranges.map((r) => ({
+        courtId: r.courtId,
+        startMinute: r.startMinute,
+        endMinute: r.endMinute,
+      })),
     };
-  });
-
-  // 2. Load thông tin Player đăng nhập (DR24, DR01)
-  const [playerInfo] = useState(() => {
-    try {
-      const savedUser = localStorage.getItem('bms_user_info');
-      if (savedUser) {
-        const parsed = JSON.parse(savedUser);
-        return {
-          full_name: parsed.full_name || 'Nguyen Minh Anh',
-          phone_number: parsed.phone_number || '0987 654 321',
-          email: parsed.email || 'minhanh@gmail.com',
-        };
-      }
-    } catch {
-      // Fallback
-    }
-    return {
-      full_name: 'Nguyen Minh Anh',
-      phone_number: '0987 654 321',
-      email: 'minhanh@gmail.com',
-    };
-  });
+  }, [bookingContext, isOrder, ranges]);
+  const isPlayer = user?.role_code === 'player';
+  const [quote, setQuote] = useState(null);
+  const [quoteError, setQuoteError] = useState('');
+  const [pointsError, setPointsError] = useState('');
+  const [pointSubmitError, setPointSubmitError] = useState('');
 
   // State Đội bóng (DR03 / BR09)
+  const [teamError, setTeamError] = useState('');
   const [ownedTeams, setOwnedTeams] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null); // null = Cá nhân
 
@@ -80,100 +109,73 @@ export default function BookingSummaryPage() {
 
   // Sửa lại thành chuỗi rỗng và null
   const [voucherInput, setVoucherInput] = useState('');
+  const [checkoutVouchers, setCheckoutVouchers] = useState({ publicVouchers: [], grants: [] });
+  const [selectedGrant, setSelectedGrant] = useState(null);
   const [appliedVoucher, setAppliedVoucher] = useState(null);
   const [voucherError, setVoucherError] = useState('');
   const [voucherLoading, setVoucherLoading] = useState(false);
 
   // State Điểm thưởng tại cơ sở (FR89, P10, P11, P13, BR15, BR41)
-  const [availablePoints, setAvailablePoints] = useState(120);
-  const [usePoints, setUsePoints] = useState(true);
+  const [availablePoints, setAvailablePoints] = useState(0);
+  const [pointsInput, setPointsInput] = useState('');
 
   // State thông báo khi chốt đơn
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [createdBooking, setCreatedBooking] = useState(null);
-
   useEffect(() => {
-    const fetchInitialData = async () => {
-      const facilityId = bookingContext.facility?.facility_id || 1;
-      const [pointsRes, teamsRes] = await Promise.all([
-        getMyPointsAtFacility(facilityId),
-        getMyOwnedTeams(),
-      ]);
-      if (pointsRes?.success) {
-        setAvailablePoints(pointsRes.data.available_points);
-      }
-      if (teamsRes?.success) {
-        setOwnedTeams(teamsRes.data);
-      }
-    };
-    fetchInitialData();
-  }, [bookingContext.facility?.facility_id]);
+    if (!isPlayer || !selection) return undefined;
+    const controller = new AbortController();
+    const active = () => !controller.signal.aborted;
+    const previewFn = isOrder ? previewDayOrderApi : previewBookingApi;
+    previewFn(selection, controller.signal)
+      .then((data) => { if (active()) setQuote(data); })
+      .catch((error) => {
+        if (active()) setQuoteError(error.response?.data?.message || 'Không tải được giá đặt sân.');
+      });
+    getMyOwnedTeams().then((teams) => { if (active()) setOwnedTeams(teams); })
+      .catch(() => { if (active()) setTeamError('Không tải được danh sách đội. Bạn vẫn có thể đặt cho cá nhân.'); });
+    getMyPointsAtFacility(bookingContext.facility.facility_id)
+      .then((points) => { if (active()) setAvailablePoints(points); })
+      .catch((error) => {
+        if (active()) setPointsError(error.response?.data?.message || 'Không tải được số dư điểm.');
+      });
+    getCheckoutVouchers(bookingContext.facility.facility_id)
+      .then((vouchers) => { if (active()) setCheckoutVouchers(vouchers); })
+      .catch(() => { if (active()) setVoucherError('Không tải được danh sách voucher. Bạn vẫn có thể nhập mã.'); });
+    return () => controller.abort();
+  }, [bookingContext, isOrder, isPlayer, selection, previewDayOrderApi, previewBookingApi, getMyOwnedTeams, getMyPointsAtFacility, getCheckoutVouchers]);
 
-  // Tính toán thông tin hiển thị khung giờ & tiền sân niêm yết (DR05)
-  const slotSummary = useMemo(() => {
-    const slots = bookingContext.selectedSlots || [];
-    const totalSlots = slots.length;
-    const unitPrice = slots[0]?.price || 80000;
-    const totalListPrice = slots.reduce((sum, s) => sum + s.price, 0);
-    const courtId = slots[0]?.courtId || 2;
-    const courtName = slots[0]?.courtName || 'Court 2';
-    const startTime = slots[0]?.time || '19:00';
-    const endTime = slots.length > 0 ? addThirtyMinutes(slots[slots.length - 1].time) : '20:00';
-
-    return {
-      totalSlots,
-      unitPrice,
-      totalListPrice,
-      courtId,
-      courtName,
-      timeRangeText: `${startTime} – ${endTime} (${totalSlots} slot)`,
-    };
-  }, [bookingContext.selectedSlots]);
-
-  // Thuật toán tính thứ tự trừ tiền (Discount Calculation Order - BR15, BR41, P10, P11, P13):
-  // Giá niêm yết -> Trừ Voucher -> Trừ Điểm thưởng (tối đa 50% phần còn lại) -> Thực trả (> 0đ)
-  const pricingSummary = useMemo(() => {
-    const listPrice = slotSummary.totalListPrice;
-    const voucherDiscount = appliedVoucher ? appliedVoucher.discount_amount : 0;
-    const remainingAfterVoucher = Math.max(0, listPrice - voucherDiscount);
-
-    let pointsUsed = 0;
-    let pointsDiscount = 0;
-
-    if (usePoints && availablePoints >= 2 && remainingAfterVoucher > 1000) {
-      // P13 / BR41: Tối đa 50% số tiền còn lại sau khi trừ Voucher
-      const maxAllowedDiscountByRatio = Math.floor(remainingAfterVoucher * 0.5);
-      // BR15: Không có booking 0 đồng (giữ lại ít nhất 1.000đ thực trả)
-      const maxAllowedDiscountByNonZero = Math.max(0, remainingAfterVoucher - 1000);
-      const maxDiscountVnd = Math.min(maxAllowedDiscountByRatio, maxAllowedDiscountByNonZero);
-
-      // Quy đổi sang số điểm tối đa được phép dùng (P10: 1 điểm = 500đ)
-      const maxPointsByRule = Math.floor(maxDiscountVnd / 500);
-      const candidatePoints = Math.min(availablePoints, maxPointsByRule);
-
-      // P11 / BR15: Mỗi lần dùng điểm phải giảm tối thiểu 1.000đ (tức >= 2 điểm)
-      if (candidatePoints >= 2) {
-        pointsUsed = candidatePoints;
-        pointsDiscount = pointsUsed * 500;
-      }
-    }
-
-    const finalAmount = Math.max(0, remainingAfterVoucher - pointsDiscount);
-
-    return {
-      listPrice,
-      voucherDiscount,
-      remainingAfterVoucher,
-      pointsUsed,
-      pointsDiscount,
-      finalAmount,
-    };
-  }, [slotSummary.totalListPrice, appliedVoucher, usePoints, availablePoints]);
+  const listPrice = Number(quote?.listAmount ?? 0);
+  const voucherDiscount = Number(appliedVoucher?.discountAmount ?? 0);
+  const remainingAfterVoucher = listPrice - voucherDiscount;
+  const pointsAllowed = checkoutPointLimit(remainingAfterVoucher, availablePoints);
+  const requestedPoints = Number(pointsInput);
+  const pointValidation = pointInputError(requestedPoints, availablePoints, pointsAllowed);
+  const validPoints = !pointValidation;
+  const pointsUsed = validPoints ? requestedPoints : 0;
+  const pointsDiscount = pointsUsed * 500;
+  const pricingSummary = { listPrice, voucherDiscount, remainingAfterVoucher, pointsUsed, pointsDiscount,
+    finalAmount: remainingAfterVoucher - pointsDiscount };
+  const slotSummary = {
+    totalSlots: bookingContext?.selectedSlots.length ?? 0,
+    sessions: isOrder
+      ? (quote?.sessions ?? [])
+      : quote
+        ? [{
+            courtId: quote.courtId ?? ranges[0]?.courtId,
+            courtName: quote.courtName ?? ranges[0]?.courtName,
+            startMinute: ranges[0]?.startMinute ?? 0,
+            startTime: quote.startTime ?? ranges[0]?.startTime,
+            endTime: quote.endTime ?? ranges[0]?.endTime,
+            listAmount: quote.listAmount,
+            conflict: null,
+          }]
+        : [],
+  };
 
   const formatDate = (dateStr) => {
     const d = new Date(dateStr);
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const days = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
     const dayName = days[d.getDay()];
     const dd = String(d.getDate()).padStart(2, '0');
     const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -181,9 +183,12 @@ export default function BookingSummaryPage() {
     return `${dayName}, ${dd}/${mm}/${yyyy}`;
   };
 
+  const validNote = guestNote.length <= 200;
+
   // Xử lý Áp dụng hoặc Bỏ mã Voucher
   const handleVoucherAction = async () => {
     setVoucherError('');
+    setPointSubmitError('');
 
     // Nếu đang có mã được áp dụng -> bấm nút sẽ Bỏ mã
     if (appliedVoucher) {
@@ -191,120 +196,100 @@ export default function BookingSummaryPage() {
       return;
     }
 
-    if (!voucherInput.trim()) {
-      setVoucherError('Please enter a voucher code before applying.');
+    if (!voucherInput.trim() && !selectedGrant) {
+      setVoucherError('Vui lòng nhập mã giảm giá hoặc chọn voucher cá nhân. (MSG01)');
       return;
     }
 
     setVoucherLoading(true);
     try {
-      const res = await applyVoucherApi({
-        facility_id: bookingContext.facility?.facility_id || 1,
-        total_list_price: slotSummary.totalListPrice,
-        voucher_code: voucherInput.trim(),
-      });
-      if (res?.success) {
-        setAppliedVoucher(res.data);
-      }
+      const code = voucherInput.trim().toUpperCase();
+      const selection = selectedGrant ? { grantId: selectedGrant } : { code };
+      const checked = await applyVoucherApi({ locationId: quote.locationId, orderAmount: quote.listAmount, selection });
+      setAppliedVoucher({ ...checked, selection, label: selectedGrant
+        ? checkoutVouchers.grants.find((grant) => grant.grantId === selectedGrant)?.voucher.name : code });
     } catch (err) {
       const message = err.response?.data?.message;
-      setVoucherError(
-        message && message !== 'No message available'
-          ? message
-          : 'Mã giảm giá không đủ điều kiện hoặc có lỗi xảy ra. Vui lòng kiểm tra lại.'
-      );
+      const reason = message && message !== 'No message available' ? message : 'Vui lòng kiểm tra lại.';
+      setVoucherError(checkoutRewardErrorField(reason) === 'voucher' ? reason : `Mã giảm giá không dùng được: ${reason} (MSG34)`);
     } finally {
       setVoucherLoading(false);
     }
   };
 
-  // Xử lý bấm "Xác nhận đặt sân" (POST /api/v1/bookings)
+  const [confirmPoints, setConfirmPoints] = useState(false);
   const handleConfirmBooking = async () => {
+    if (!quote || quote.conflictSessions || submitting || voucherLoading || !validPoints || !validNote) return;
     setSubmitError('');
-
-    if (guestNote.length > 200) {
-      setSubmitError('Note to facility owner cannot exceed 200 characters (MSG109).');
-      return;
-    }
-
-    if (pricingSummary.finalAmount <= 0) {
-      setSubmitError('Total payment after discount must be greater than 0 VND (BR15).');
-      return;
-    }
-
-    // Format danh sách slot chuẩn "HH:mm:00" cho Backend
-    const formattedSlots = (bookingContext.selectedSlots || []).map((s) => ({
-      start_time: `${s.time}:00`,
-      end_time: `${addThirtyMinutes(s.time)}:00`,
-    }));
-
-    const payload = {
-      facility_id: bookingContext.facility?.facility_id || 1,
-      court_id: slotSummary.courtId,
-      booking_date: bookingContext.playDate,
-      booking_type: 'single',
-      slots: formattedSlots,
-      team_id: selectedTeamId,
-      voucher_code: appliedVoucher ? appliedVoucher.voucher_code : null,
-      points_used: pricingSummary.pointsUsed,
-      guest_note: guestNote.trim() || null,
-      // Các trường hỗ trợ hiển thị Mock Response
-      total_list_price: pricingSummary.listPrice,
-      voucher_discount_amount: pricingSummary.voucherDiscount,
-      final_amount: pricingSummary.finalAmount,
-    };
-
+    setVoucherError('');
+    setPointSubmitError('');
     setSubmitting(true);
     try {
-      const res = await createBookingApi(payload);
-      if (res?.success) {
-        // Lưu thông tin giữ chỗ 5 phút (BR03) và VietQR vào sessionStorage cho màn UC18 (Thanh toán)
-        sessionStorage.setItem('active_holding_booking', JSON.stringify(res.data));
-        setCreatedBooking(res.data);
-        navigate('/booking/payment');
+      const payload = {
+        ...selection,
+        teamId: selectedTeamId,
+        note: guestNote.trim() || null,
+        voucherCode: appliedVoucher?.selection.code ?? null,
+        voucherGrantId: appliedVoucher?.selection.grantId ?? null,
+        pointsToUse: pointsUsed,
+      };
+      const previewFn = isOrder ? previewDayOrderApi : previewBookingApi;
+      const checked = await previewFn(payload);
+      if (checked.conflictSessions) {
+        setQuote(checked);
+        setSubmitError('Có khung giờ vừa bị giữ hoặc đặt. Vui lòng chọn lại các khung giờ được đánh dấu. (MSG28)');
+        return;
       }
-    } catch (err) {
-      const message = err.response?.data?.message;
-      if (message?.includes('MSG37')) {
-        setSubmitError(
-          'Điểm thưởng của bạn không đủ để thực hiện giao dịch này. Vui lòng tải lại trang để cập nhật số điểm.'
-        );
+      if (Number(checked.listAmount) !== listPrice || Number(checked.voucherDiscount) !== voucherDiscount ||
+          Number(checked.pointDiscount) !== pointsDiscount || Number(checked.finalAmount) !== pricingSummary.finalAmount) {
+        setAppliedVoucher(null);
+        setQuote(checked);
+        setPointsInput('');
+        setSubmitError('Giá hoặc ưu đãi đã thay đổi. Vui lòng kiểm tra lại trước khi xác nhận.');
+        return;
+      }
+      if (isOrder) {
+        const bookingOrder = await createDayOrderApi(payload);
+        sessionStorage.removeItem('pending_booking_selection');
+        navigate('/booking/payment?packageId=' + bookingOrder.id, { replace: true });
       } else {
-        setSubmitError(
-          message && message !== 'No message available'
-            ? message
-            : 'Không thể xác nhận đặt sân. Vui lòng kiểm tra lại thông tin và thử lại.'
-        );
+        const booking = await createBookingApi(payload);
+        sessionStorage.removeItem('pending_booking_selection');
+        navigate('/booking/payment?bookingId=' + booking.id, { replace: true });
       }
+    } catch (error) {
+      const message = error.response?.data?.message;
+      if (message?.includes('MSG28') || error.response?.status === 409) {
+        const refreshed = await (isOrder ? previewDayOrderApi : previewBookingApi)(selection).catch(() => null);
+        if (refreshed) setQuote(refreshed);
+      }
+      const field = checkoutRewardErrorField(message);
+      if (field === 'voucher') {
+        setAppliedVoucher(null);
+        setVoucherError(message);
+      } else if (field === 'points') setPointSubmitError(message);
+      else setSubmitError(message || 'Không thể xác nhận đặt sân. Vui lòng thử lại.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  if (!bookingContext) return <Navigate to="/" replace />;
+  if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/summary' }} replace />;
+  if (!isPlayer) return <p role="alert">Vui lòng đăng nhập bằng tài khoản Player để đặt sân.</p>;
+  if (!quote) return <div className="cw-workspace"><PublicHeader user={user} /><main className={styles.mainContainer}>
+    <Feedback tone={quoteError ? 'error' : 'info'}>{quoteError || 'Đang tải giá đặt sân…'}
+      {quoteError && <Link className="cw-secondary" to={'/facilities/' + bookingContext.facility.facility_id}>Quay lại lịch sân</Link>}
+    </Feedback>
+  </main></div>;
+
   return (
-    <div className={styles.pageWrapper}>
-      {/* Top Navbar */}
-      <header className={styles.navbar}>
-        <div className={styles.navContainer}>
-          <div className={styles.brand} onClick={() => navigate('/')}>
-            <span className={styles.brandIcon}>⚡</span>
-            <span className={styles.brandText}>Courtly</span>
-          </div>
-
-          <nav className={styles.navLinks}>
-            <Link to="/" className={styles.activeLink}>
-              Find Courts
-            </Link>
-            <Link to="/open-matches">Open Matches</Link>
-            <Link to="/my-bookings">My Bookings</Link>
-          </nav>
-
-          <div className={styles.userProfile}>
-            <span className={styles.avatar}>MA</span>
-            <span className={styles.userName}>Minh Anh</span>
-          </div>
-        </div>
-      </header>
+    <div className={`${styles.pageWrapper} cw-workspace`}>
+      <PublicHeader user={user} />
+      {confirmPoints && <ConfirmDialog title="Xác nhận dùng điểm" onCancel={() => setConfirmPoints(false)} onConfirm={() => {
+        setConfirmPoints(false);
+        handleConfirmBooking();
+      }}>Dùng {pointsUsed} điểm để giảm {formatVnd(pointsDiscount)}? Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy booking. (MSG39)</ConfirmDialog>}
 
       <main className={styles.mainContainer}>
         {/* Nút quay lại lịch sân */}
@@ -312,148 +297,181 @@ export default function BookingSummaryPage() {
           to={`/facilities/${bookingContext.facility?.facility_id || 1}`}
           className={styles.backLink}
         >
-          ‹ Back to schedule
+          ‹ Quay lại lịch sân
         </Link>
 
-        <h1 className={styles.pageTitle}>Booking Summary</h1>
+        <CheckoutProgress current={0} />
+        <h1 className={styles.pageTitle}>Xác nhận lịch đặt sân</h1>
 
         <div className={styles.contentGrid}>
           {/* CỘT TRÁI: Đặt cho + Thông tin booking + Ưu đãi */}
           <div className={styles.leftColumn}>
             {/* Card 1: Đặt cho (DR03 / BR09) */}
             <section className={styles.card}>
-              <h2 className={styles.cardTitle}>Book for</h2>
+              <h2 className={styles.cardTitle}>Đặt cho</h2>
               <div className={styles.teamPillGroup}>
                 <button
                   type="button"
                   className={`${styles.teamPill} ${selectedTeamId === null ? styles.teamPillActive : ''
                     }`}
+                  aria-pressed={selectedTeamId === null}
                   onClick={() => setSelectedTeamId(null)}
                 >
-                  Personal
+                  Cá nhân
                 </button>
                 {ownedTeams.map((team) => (
                   <button
-                    key={team.team_id}
+                    key={team.id}
                     type="button"
-                    className={`${styles.teamPill} ${selectedTeamId === team.team_id ? styles.teamPillActive : ''
+                    className={`${styles.teamPill} ${selectedTeamId === team.id ? styles.teamPillActive : ''
                       }`}
-                    onClick={() => setSelectedTeamId(team.team_id)}
+                    aria-pressed={selectedTeamId === team.id}
+                    onClick={() => setSelectedTeamId(team.id)}
                   >
-                    {team.team_name}
+                    {team.name}
                   </button>
                 ))}
               </div>
               <p className={styles.helperText}>
-                Team selection is optional. Only teams you manage are shown.
+                Chọn đội nếu bạn đặt sân thay cho đội mình quản lý.
               </p>
             </section>
 
             {/* Card 2: Thông tin booking (UC14) */}
             <section className={styles.card}>
-              <h2 className={styles.cardTitle}>Booking Information</h2>
+              <h2 className={styles.cardTitle}>Thông tin đặt sân</h2>
 
               <div className={styles.infoGrid}>
                 <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Facility</span>
+                  <span className={styles.infoLabel}>Địa điểm</span>
                   <strong className={styles.infoValue}>
-                    {bookingContext.facility?.facility_name || 'Smash Arena'}
+                    {bookingContext.facility?.facility_name || quote.locationName || '—'}
                   </strong>
                 </div>
 
                 <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Court</span>
-                  <strong className={styles.infoValue}>{slotSummary.courtName}</strong>
+                  <span className={styles.infoLabel}>Sân</span>
+                  <strong className={styles.infoValue}>{[...new Set(slotSummary.sessions.map((item) => item.courtName))].join(', ')}</strong>
                 </div>
 
                 <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Date</span>
+                  <span className={styles.infoLabel}>Ngày chơi</span>
                   <strong className={styles.infoValue}>
                     {formatDate(bookingContext.playDate)}
                   </strong>
                 </div>
 
                 <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Play Time</span>
-                  <strong className={styles.infoValue}>{slotSummary.timeRangeText}</strong>
+                  <span className={styles.infoLabel}>Giờ chơi</span>
+                  <ul>{slotSummary.sessions.map((item) => <li key={item.courtId + ':' + item.startMinute}>
+                    {item.courtName} · {item.startTime}–{item.endTime} · {item.conflict
+                      ? 'Không còn trống' : formatVnd(Number(item.listAmount))}
+                  </li>)}</ul>
                 </div>
 
                 <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Booker</span>
-                  <strong className={styles.infoValue}>{playerInfo.full_name}</strong>
+                  <span className={styles.infoLabel}>Người đặt</span>
+                  <strong className={styles.infoValue}>{user.full_name}</strong>
                 </div>
 
                 <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Phone Number</span>
-                  <strong className={styles.infoValue}>{playerInfo.phone_number}</strong>
+                  <span className={styles.infoLabel}>Số điện thoại</span>
+                  <strong className={styles.infoValue}>{user.phone_number}</strong>
                 </div>
               </div>
 
               <div className={styles.noteGroup}>
-                <label className={styles.noteLabel}>Note to facility owner (optional)</label>
+                <label className={styles.noteLabel} htmlFor="booking-note">Ghi chú cho chủ sân (không bắt buộc, tối đa 200 ký tự)</label>
                 <textarea
                   rows={3}
                   maxLength={200}
-                  className={styles.noteTextarea}
-                  placeholder="Can I borrow 2 extra rackets?"
+                  id="booking-note" className={styles.noteTextarea}
+                  placeholder="Ví dụ: Cho mình mượn thêm 2 vợt cầu lông..."
                   value={guestNote}
                   onChange={(e) => setGuestNote(e.target.value)}
                 />
+                {!validNote && <p role="alert" className={styles.errorText}>Ghi chú không được vượt quá 200 ký tự (MSG109).</p>}
               </div>
             </section>
 
+            {teamError && <p role="alert" className={styles.errorText}>{teamError}</p>}
             {/* Card 3: Ưu đãi (Voucher & Điểm thưởng - DR08, BR41, P10, P13) */}
             <section className={styles.card}>
-              <h2 className={styles.cardTitle}>Promotions</h2>
+              <h2 className={styles.cardTitle}>Voucher và điểm thưởng</h2>
 
-              <label className={styles.noteLabel}>Voucher Code</label>
+              <label className={styles.noteLabel} htmlFor="voucher-code">Mã voucher</label>
               <div className={styles.voucherRow}>
                 <input
+                  id="voucher-code"
                   type="text"
                   className={styles.voucherInput}
                   value={voucherInput}
-                  disabled={Boolean(appliedVoucher)}
+                  list="public-vouchers"
+                  maxLength={20}
+                  disabled={Boolean(appliedVoucher) || voucherLoading || submitting}
                   onChange={(e) => {
                     setVoucherInput(e.target.value.toUpperCase());
+                    setSelectedGrant(null);
                     setVoucherError('');
                   }}
-                  placeholder="Enter discount code (e.g., DISC20K)"
+                  placeholder="Nhập mã giảm giá"
                 />
+                <datalist id="public-vouchers">
+                  {checkoutVouchers.publicVouchers.map((voucher) =>
+                    <option key={voucher.id} value={voucher.code}>{voucher.name}</option>)}
+                </datalist>
                 <button
                   type="button"
                   className={styles.voucherBtn}
                   onClick={handleVoucherAction}
-                  disabled={voucherLoading}
+                  disabled={voucherLoading || submitting}
                 >
-                  {appliedVoucher ? 'Remove' : voucherLoading ? 'Checking...' : 'Apply'}
+                  {appliedVoucher ? 'Bỏ mã' : voucherLoading ? 'Đang kiểm tra...' : 'Áp dụng'}
                 </button>
               </div>
 
-              {voucherError && <p className={styles.errorText}>{voucherError}</p>}
+              {checkoutVouchers.grants.length > 0 && <div className={styles.noteGroup}>
+                <label className={styles.noteLabel} htmlFor="voucher-grant">Voucher cá nhân</label>
+                <select id="voucher-grant" className={styles.voucherInput} value={selectedGrant ?? ''}
+                  disabled={Boolean(appliedVoucher) || voucherLoading || submitting}
+                  onChange={(event) => {
+                    setSelectedGrant(Number(event.target.value) || null);
+                    setVoucherInput('');
+                    setVoucherError('');
+                  }}>
+                  <option value="">Chọn voucher cá nhân</option>
+                  {checkoutVouchers.grants.map(({ grantId, voucher }) =>
+                    <option key={grantId} value={grantId}>{voucher.name} · {voucher.code}</option>)}
+                </select>
+              </div>}
+
+              {voucherError && <p className={styles.errorText} role="alert">{voucherError}</p>}
+
+              {pointsError && <p role="alert" className={styles.errorText}>{pointsError}</p>}
 
               {appliedVoucher && (
                 <div className={styles.voucherSuccessBanner}>
-                  Applied {appliedVoucher.voucher_code}: {appliedVoucher.description}
+                  Đã áp dụng {appliedVoucher.label}: giảm {formatVnd(appliedVoucher.discountAmount)} (MSG36)
                 </div>
               )}
 
               <div className={styles.pointsRow}>
                 <div className={styles.pointsInfo}>
-                  <strong className={styles.pointsTitle}>Use Points</strong>
+                  <strong className={styles.pointsTitle}>Dùng điểm thưởng</strong>
                   <span className={styles.pointsSub}>
-                    You have {availablePoints} points (1 point = 500 VND). Max 50% of the remaining amount after voucher.
+                    Bạn đang có {availablePoints} điểm tại địa điểm này (1 điểm = 500 VND).{' '}
+                    Tối đa {checkoutPointPercent}% {appliedVoucher ? 'số tiền còn lại sau voucher' : 'giá niêm yết'}.
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={usePoints}
-                  className={`${styles.switchToggle} ${usePoints ? styles.switchOn : ''}`}
-                  onClick={() => setUsePoints((prev) => !prev)}
-                >
-                  <span className={styles.switchThumb} />
-                </button>
+                <input type="number" aria-label="Số điểm muốn dùng" min="0" max={pointsAllowed}
+                  placeholder="0" value={pointsInput} disabled={submitting || voucherLoading}
+                  aria-invalid={Boolean(pointValidation || pointSubmitError)}
+                  aria-describedby={pointValidation || pointSubmitError ? 'checkout-point-error' : undefined}
+                  onChange={(event) => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
+                {(pointValidation || pointSubmitError) && <p id="checkout-point-error" role="alert" className={styles.errorText}>
+                  {pointValidation || pointSubmitError}
+                </p>}
               </div>
             </section>
           </div>
@@ -461,39 +479,38 @@ export default function BookingSummaryPage() {
           {/* CỘT PHẢI: Thanh toán & Xác nhận đặt sân */}
           <aside className={styles.rightColumn}>
             <div className={styles.paymentCard}>
-              <h2 className={styles.cardTitle}>Payment</h2>
+              <h2 className={styles.cardTitle}>Chi phí đặt sân</h2>
 
               <div className={styles.priceLine}>
                 <span className={styles.priceLabel}>
-                  Court Fee ({slotSummary.totalSlots} ×{' '}
-                  {slotSummary.unitPrice.toLocaleString('vi-VN')} VND)
+                  Tiền sân ({slotSummary.totalSlots} slot{isOrder ? `, ${ranges.length} dải` : ''})
                 </span>
                 <strong className={styles.priceValue}>
-                  {pricingSummary.listPrice.toLocaleString('vi-VN')} VND
+                  {formatVnd(pricingSummary.listPrice)}
                 </strong>
               </div>
 
               <div className={styles.priceLine}>
                 <span className={styles.priceLabel}>Voucher</span>
                 <strong className={styles.discountValue}>
-                  –{pricingSummary.voucherDiscount.toLocaleString('vi-VN')} VND
+                  –{formatVnd(pricingSummary.voucherDiscount)}
                 </strong>
               </div>
 
               <div className={styles.priceLine}>
-                <span className={styles.priceLabel}>Points</span>
+                <span className={styles.priceLabel}>Điểm thưởng</span>
                 <strong className={styles.discountValue}>
-                  –{pricingSummary.pointsDiscount.toLocaleString('vi-VN')} VND (
-                  {pricingSummary.pointsUsed} points)
+                  –{formatVnd(pricingSummary.pointsDiscount)} (
+                  {pricingSummary.pointsUsed} điểm)
                 </strong>
               </div>
 
               <hr className={styles.divider} />
 
               <div className={styles.totalLine}>
-                <span className={styles.totalLabel}>Total Payment</span>
+                <span className={styles.totalLabel}>Cần thanh toán</span>
                 <strong className={styles.totalValue}>
-                  {pricingSummary.finalAmount.toLocaleString('vi-VN')} VND
+                  {formatVnd(pricingSummary.finalAmount)}
                 </strong>
               </div>
 
@@ -519,27 +536,16 @@ export default function BookingSummaryPage() {
               <button
                 type="button"
                 className={styles.confirmBtn}
-                disabled={submitting}
-                onClick={handleConfirmBooking}
+                disabled={submitting || voucherLoading || !validPoints || !validNote || quote.conflictSessions > 0}
+                onClick={() => pointsUsed > 0 ? setConfirmPoints(true) : handleConfirmBooking()}
               >
-                {submitting ? 'Holding slot...' : 'Confirm Booking'}
+                {submitting ? 'Đang giữ chỗ…' : 'Xác nhận và thanh toán'}
               </button>
 
               <p className={styles.holdNotice}>
-                After confirmation, the slot will be held for 5 minutes for you to transfer funds and upload the receipt.
+                Trang thanh toán sẽ hiển thị mã QR chuyển khoản và giữ chỗ trong 10 phút để bạn gửi chứng từ (BR03).
               </p>
 
-              {/* Hiển thị thông báo xác nhận giữ chỗ thành công (Chuẩn bị nối sang UC18) */}
-              {createdBooking && (
-                <div className={styles.holdingSuccessBox}>
-                  <strong>✅ Slot held with code {createdBooking.booking_code}!</strong>
-                  <span>
-                    Please transfer:{' '}
-                    {createdBooking.pricing_summary.final_amount.toLocaleString('vi-VN')} VND to{' '}
-                    {createdBooking.bank_info.bank_name} ({createdBooking.bank_info.bank_account_number}).
-                  </span>
-                </div>
-              )}
             </div>
           </aside>
         </div>

@@ -13,10 +13,13 @@ import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.dto.promotion.*;
 import com.sep490.bms.dto.request.VoucherGrantRequest;
-import com.sep490.bms.entity.*;
+import com.sep490.bms.entity.account.AccountStatus;
+import com.sep490.bms.entity.account.Role;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.promotion.*;
-import com.sep490.bms.repository.*;
+import com.sep490.bms.repository.account.AccountRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.repository.promotion.*;
 import com.sep490.bms.security.*;
 import jakarta.persistence.EntityManager;
@@ -25,6 +28,9 @@ import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Quản lý vòng đời voucher, kiểm tra điều kiện áp dụng và ghi nhận hoặc trả lại lượt dùng.
+ */
 @Service @Validated @RequiredArgsConstructor
 @Transactional(readOnly=true)
 public class VoucherService {
@@ -197,8 +203,9 @@ public class VoucherService {
             throw new AppException("Đã hết lượt sử dụng cá nhân");
         BigDecimal discount=v.getDiscountType()==DiscountType.AMOUNT ? v.getDiscountValue()
                 :amount.multiply(v.getDiscountValue()).divide(BigDecimal.valueOf(100),0,RoundingMode.DOWN);
-        // The existing SQL schema requires a strictly positive final_amount.
-        discount=discount.min(amount.subtract(BigDecimal.ONE));
+        if (discount.compareTo(amount) >= 0) {
+            throw new AppException("Voucher không thể làm số tiền phải trả bằng 0 (FR78, BR15)");
+        }
         if(discount.signum()<=0) throw new AppException("Giá trị giảm không hợp lệ");
         if(v.getBudget()!=null && v.getBudgetUsed().add(discount).compareTo(v.getBudget())>0) throw new AppException("Voucher không đủ ngân sách");
         return new VoucherCheckResponse(v.getId(),selection.grantId(),amount,discount,amount.subtract(discount));

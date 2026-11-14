@@ -8,6 +8,9 @@ import org.springframework.stereotype.Repository;
 import com.sep490.bms.entity.enums.ApprovalStatus;
 import com.sep490.bms.entity.location.ServiceRegistration;
 
+/**
+ * Tra cứu đơn đăng ký sử dụng dịch vụ theo người gửi và trạng thái xét duyệt.
+ */
 @Repository
 public interface ServiceRegistrationRepository extends JpaRepository<ServiceRegistration, Long> {
 

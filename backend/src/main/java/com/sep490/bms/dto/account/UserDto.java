@@ -1,0 +1,57 @@
+package com.sep490.bms.dto.account;
+
+import java.time.LocalDateTime;
+
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.account.AccountStatus;
+import com.sep490.bms.entity.account.Role;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+/**
+ * Biểu diễn hồ sơ, vai trò và trạng thái tài khoản trong phản hồi API.
+ */
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class UserDto {
+
+    private Long id;
+    private String username;
+    private String email;
+    private String phone;
+    private String fullName;
+    private Role role;
+    private String skillLevel;
+    private Long locationId;
+    private AccountStatus status;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private LocalDateTime lastLoginAt;
+
+    public static UserDto fromEntity(Account account) {
+        if (account == null) {
+            return null;
+        }
+        return UserDto.builder()
+                .id(account.getId())
+                .username(account.getUsername())
+                .email(account.getEmail())
+                .phone(account.getPhone())
+                .fullName(account.getFullName())
+                .role(account.getRole())
+                .skillLevel(account.getSkillLevel())
+                .locationId(account.getLocationId())
+                .status(account.getStatus())
+                .createdAt(account.getCreatedAt())
+                .updatedAt(account.getUpdatedAt())
+                .lastLoginAt(account.getLastLoginAt())
+                .build();
+    }
+}

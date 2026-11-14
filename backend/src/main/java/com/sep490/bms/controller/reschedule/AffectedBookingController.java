@@ -12,6 +12,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Cho Player xem booking bị ảnh hưởng và chọn đổi slot, hoàn tiền hoặc điểm bồi hoàn.
+ */
 @RestController
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('PLAYER')")

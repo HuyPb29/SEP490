@@ -7,6 +7,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận tên đăng nhập hoặc email cùng mật khẩu để xác thực tài khoản.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

@@ -12,6 +12,9 @@ import org.springframework.stereotype.Repository;
 import com.sep490.bms.entity.enums.ApprovalStatus;
 import com.sep490.bms.entity.location.Maintenance;
 
+/**
+ * Tra cứu yêu cầu bảo trì và tìm các khoảng bảo trì giao nhau với lịch sân.
+ */
 @Repository
 public interface MaintenanceRepository extends JpaRepository<Maintenance, Long> {
 

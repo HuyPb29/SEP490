@@ -16,9 +16,9 @@ public record VoucherWriteRequest(
         @NotNull LocalDate validFrom,
         @NotNull LocalDate validTo,
         @Min(1) @Max(3650) Integer grantValidDays,
-        @Min(1) Integer maxUsesPerPlayer,
-        @Min(1) Integer maxTotalUses,
-        @DecimalMin("1") @Digits(integer=12, fraction=0) BigDecimal budget,
+        @NotNull @Min(1) Integer maxUsesPerPlayer,
+        @NotNull @Min(1) Integer maxTotalUses,
+        @NotNull @DecimalMin("1") @Digits(integer=12, fraction=0) BigDecimal budget,
         Boolean allowPoints, @Min(1) @Max(100) Integer maxPointPercent) {
     public VoucherWriteRequest(String code, String name, VoucherTargetGroup targetGroup, DiscountType discountType,
             BigDecimal discountValue, BigDecimal minOrderAmount, LocalDate validFrom, LocalDate validTo,

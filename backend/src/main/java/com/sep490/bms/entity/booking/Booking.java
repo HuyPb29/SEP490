@@ -23,6 +23,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu lượt đặt sân, người đặt, thời gian, giá đã chốt và trạng thái.
+ */
 @Entity
 @Table(name = "booking")
 @Getter

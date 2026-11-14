@@ -16,20 +16,23 @@ import com.sep490.bms.dto.team.JoinRequestCreateRequest;
 import com.sep490.bms.dto.team.JoinRequestResponse;
 import com.sep490.bms.dto.team.TeamMemberResponse;
 import com.sep490.bms.dto.team.TeamResponse;
-import com.sep490.bms.entity.Account;
+import com.sep490.bms.entity.account.Account;
 import com.sep490.bms.entity.team.JoinRequestStatus;
 import com.sep490.bms.entity.team.Team;
 import com.sep490.bms.entity.team.TeamJoinRequest;
 import com.sep490.bms.entity.team.TeamMember;
 import com.sep490.bms.entity.team.TeamMemberStatus;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.repository.team.TeamJoinRequestRepository;
 import com.sep490.bms.repository.team.TeamMemberRepository;
 import com.sep490.bms.repository.team.TeamRepository;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Quản lý đội, thành viên, quyền đội trưởng và yêu cầu tham gia.
+ */
 @Service
 @RequiredArgsConstructor
 public class TeamService {
@@ -90,13 +93,15 @@ public class TeamService {
 
         List<TeamMember> members = teamMemberRepository.findByTeamIdAndStatusOrderByJoinedAtAsc(teamId, TeamMemberStatus.ACTIVE);
         Map<Long, Account> accounts = loadAccounts(members.stream().map(TeamMember::getPlayerId).toList());
+        // D79: chỉ chủ đội xem số điện thoại của thành viên; thành viên khác chỉ thấy số của chính mình.
+        boolean captainView = team.getCaptainId().equals(userId);
         return members.stream().map(m -> {
             Account a = accounts.get(m.getPlayerId());
             return TeamMemberResponse.builder()
                     .id(m.getId())
                     .playerId(m.getPlayerId())
                     .fullName(a.getFullName())
-                    .phone(a.getPhone())
+                    .phone(captainView || m.getPlayerId().equals(userId) ? a.getPhone() : null)
                     .skillLevel(a.getSkillLevel())
                     .captain(m.getPlayerId().equals(team.getCaptainId()))
                     .joinedAt(m.getJoinedAt())
@@ -146,6 +151,11 @@ public class TeamService {
         }
         if (isActiveMember(teamId, userId)) {
             throw new AppException("Bạn đã là thành viên của đội này");
+        }
+        // D78: đội đủ người thì không xin vào được.
+        if (teamMemberRepository.countByTeamIdAndStatus(teamId, TeamMemberStatus.ACTIVE) >= MAX_TEAM_MEMBERS) {
+            throw new AppException("Đội đã đủ " + MAX_TEAM_MEMBERS + " thành viên, không nhận thêm yêu cầu",
+                    HttpStatus.CONFLICT);
         }
         if (teamJoinRequestRepository.existsByTeamIdAndPlayerIdAndStatus(teamId, userId, JoinRequestStatus.PENDING)) {
             throw new AppException("Bạn đã gửi yêu cầu vào đội này và đang chờ duyệt", HttpStatus.CONFLICT);

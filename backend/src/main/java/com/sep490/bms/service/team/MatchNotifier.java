@@ -77,6 +77,12 @@ public class MatchNotifier {
         }
     }
 
+    public void rescheduledMatchKept(MatchResponse match, Collection<Long> approvedPlayerIds) {
+        for (Long playerId : approvedPlayerIds) {
+            send(playerId, "MATCH_RESCHEDULED_KEPT", "Chủ kèo giữ kèo theo giờ mới", describe(match) + ".", match.getId());
+        }
+    }
+
     private void send(Long recipientId, String type, String title, String content, Long matchId) {
         notificationRepository.save(Notification.builder()
                 .recipientId(recipientId)

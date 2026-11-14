@@ -3,14 +3,18 @@ package com.sep490.bms.security;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
-import com.sep490.bms.entity.*;
+import com.sep490.bms.entity.account.Role;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 
 import jakarta.servlet.http.HttpServletRequest;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Xác định địa điểm mà Owner hoặc Staff được phép thao tác.
+ */
 @Service
 @RequiredArgsConstructor
 public class LocationAccessService {

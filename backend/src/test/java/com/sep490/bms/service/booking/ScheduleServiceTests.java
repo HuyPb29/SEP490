@@ -19,15 +19,18 @@ import org.junit.jupiter.api.Test;
 import com.sep490.bms.dto.booking.ScheduleResponse;
 import com.sep490.bms.dto.booking.ScheduleResponse.SlotCell;
 import com.sep490.bms.dto.booking.ScheduleResponse.SlotStatus;
-import com.sep490.bms.entity.Account;
-import com.sep490.bms.entity.Location;
-import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.booking.BookingSlot;
 import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.account.AccountRepository;
+import com.sep490.bms.repository.booking.BookingPackageRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.booking.BookingSlotRepository;
 import com.sep490.bms.security.UserPrincipal;
@@ -35,6 +38,9 @@ import com.sep490.bms.service.booking.SlotAvailabilityService.OpeningWindow;
 import com.sep490.bms.service.location.CourtQueryService;
 import com.sep490.bms.service.location.LocationQueryService;
 
+/**
+ * Kiểm tra cách hiển thị lịch sân, giá và trạng thái slot theo giờ mở cửa và bảo trì.
+ */
 class ScheduleServiceTests {
 
     private static final Long LOCATION = 1L;
@@ -52,8 +58,9 @@ class ScheduleServiceTests {
     private final BookingSlotRepository slots = mock(BookingSlotRepository.class);
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final AccountRepository accounts = mock(AccountRepository.class);
+    private final BookingPackageRepository packages = mock(BookingPackageRepository.class);
     private final ScheduleService service = new ScheduleService(
-            locations, courts, availability, prices, slots, bookings, accounts);
+            locations, courts, availability, prices, slots, bookings, accounts, packages);
 
     private final Location location = Location.builder().id(LOCATION).ownerId(OWNER).build();
 
@@ -234,6 +241,38 @@ class ScheduleServiceTests {
     }
 
     @Test
+    void playerReschedulingPackageSessionSeesUntilPackageEnd() {
+        location.setAdvanceBookingDays((short) 7);
+        LocalDate packageEnd = TODAY.plusDays(28);
+        packageSession(7L, PackageType.RECURRING, packageEnd);
+        UserPrincipal player = user(7L, Role.PLAYER, null);
+
+        assertThat(service.schedule(LOCATION, packageEnd, player, 200L, NOW).getMaxDate()).isEqualTo(packageEnd);
+        assertThatThrownBy(() -> service.schedule(LOCATION, packageEnd.plusDays(1), player, 200L, NOW))
+                .isInstanceOf(AppException.class);
+    }
+
+    @Test
+    void packageWindowIgnoredForOtherPlayerDayOrderOrNoBooking() {
+        location.setAdvanceBookingDays((short) 7);
+        LocalDate limit = TODAY.plusDays(7);
+
+        packageSession(7L, PackageType.RECURRING, TODAY.plusDays(28));
+        assertThat(service.schedule(LOCATION, null, user(8L, Role.PLAYER, null), 200L, NOW).getMaxDate())
+                .as("booking của Player khác").isEqualTo(limit);
+        assertThat(service.schedule(LOCATION, null, null, 200L, NOW).getMaxDate())
+                .as("Guest").isEqualTo(limit);
+
+        packageSession(7L, PackageType.DAY, TODAY.plusDays(28));
+        assertThat(service.schedule(LOCATION, null, user(7L, Role.PLAYER, null), 200L, NOW).getMaxDate())
+                .as("đơn đặt lẻ trong ngày theo BR02").isEqualTo(limit);
+
+        when(bookings.findById(201L)).thenReturn(Optional.empty());
+        assertThat(service.schedule(LOCATION, null, user(7L, Role.PLAYER, null), 201L, NOW).getMaxDate())
+                .as("booking không tồn tại").isEqualTo(limit);
+    }
+
+    @Test
     void pastDateIsRejected() {
         assertThatThrownBy(() -> service.schedule(LOCATION, TODAY.minusDays(1), null, NOW))
                 .isInstanceOf(AppException.class);
@@ -259,6 +298,14 @@ class ScheduleServiceTests {
                 .customerPhone(playerId == null ? "0987654321" : null)
                 .playDate(date).startMinute(startMinute).endMinute(startMinute + 30)
                 .note("Mượn vợt").status(status).build();
+    }
+
+    /** Buổi id 200 thuộc gói id 300 của Player playerId tại địa điểm đang xem. */
+    private void packageSession(Long playerId, PackageType type, LocalDate endDate) {
+        when(bookings.findById(200L)).thenReturn(Optional.of(Booking.builder().id(200L).locationId(LOCATION)
+                .playerId(playerId).packageId(300L).build()));
+        when(packages.findById(300L)).thenReturn(Optional.of(BookingPackage.builder().id(300L)
+                .packageType(type).endDate(endDate).build()));
     }
 
     private static UserPrincipal user(Long id, Role role, Long locationId) {

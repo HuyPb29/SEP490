@@ -3,6 +3,7 @@ package com.sep490.bms.service.operation;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,9 +24,14 @@ import com.sep490.bms.dto.operation.RescheduleReportResponse;
 import com.sep490.bms.dto.operation.RevenueReportResponse;
 import com.sep490.bms.dto.operation.StaffDashboardResponse;
 import com.sep490.bms.dto.operation.VoucherReportResponse;
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.enums.PaymentStatus;
+import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.entity.payment.Payment;
+import com.sep490.bms.repository.booking.BookingRepository;
+import com.sep490.bms.repository.payment.PaymentRepository;
+import com.sep490.bms.service.booking.SlotAvailabilityService;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.repository.operation.OperationQueryRepository;
 import com.sep490.bms.repository.operation.OperationQueryRepository.AmountRow;
@@ -33,6 +39,7 @@ import com.sep490.bms.repository.operation.OperationQueryRepository.BookingCount
 import com.sep490.bms.repository.operation.OperationQueryRepository.BookingDetailRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.CancellationRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.CourtRow;
+import com.sep490.bms.repository.operation.OperationQueryRepository.DiscountRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.OpeningRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.RescheduleRow;
 import com.sep490.bms.repository.operation.OperationQueryRepository.SlotRow;
@@ -55,6 +62,9 @@ public class OperationService {
     private final OperationQueryRepository queryRepository;
     private final LocationRepository locationRepository;
     private final LocationAccessService locationAccess;
+    private final PaymentRepository payments;
+    private final BookingRepository bookings;
+    private final SlotAvailabilityService availability;
 
     // ---------------------------------------------------------------- UC34 – Bảng điều hành Staff
 
@@ -62,7 +72,8 @@ public class OperationService {
         Long locationId = staff.getLocationId();
         Location location = locationRepository.findById(locationId)
                 .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
-        LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
+        LocalDate today = now.toLocalDate();
 
         List<BookingDetailRow> rows = queryRepository.findBookingDetails(locationId, today, today);
         Map<String, Long> byStatus = new LinkedHashMap<>();
@@ -70,6 +81,19 @@ public class OperationService {
 
         BigDecimal todayRevenue = queryRepository.sumConfirmedPayments(locationId, today, today).stream()
                 .map(AmountRow::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        var pending = payments.findByLocationIdAndStatusOrderBySubmittedAtAscIdAsc(locationId,
+                PaymentStatus.AWAITING_CONFIRMATION);
+        var bookingIds = pending.stream().map(Payment::getBookingId).filter(java.util.Objects::nonNull).toList();
+        Map<Long, String> codes = new HashMap<>();
+        bookings.findAllById(bookingIds).forEach(b -> codes.put(b.getId(), b.getBookingCode()));
+        var pendingItems = pending.stream().map(payment -> new StaffDashboardResponse.PendingPayment(payment.getId(),
+                payment.getRescheduleRequestId() != null ? "Phụ thu #" + payment.getRescheduleRequestId()
+                        : payment.getPackageId() != null ? "Đơn/Gói #" + payment.getPackageId()
+                                : codes.get(payment.getBookingId()),
+                payment.getAmountDue(), payment.getSubmittedAt(), payment.getRescheduleRequestId() != null,
+                availability.exceededOpeningTime(locationId, payment.getSubmittedAt(), now, Payment.LATE_CONFIRMATION_WAIT)))
+                .toList();
 
         return StaffDashboardResponse.builder()
                 .locationId(locationId)
@@ -87,10 +111,16 @@ public class OperationService {
                         .status(r.getStatus())
                         .finalAmount(r.getFinalAmount())
                         .build()).toList())
-                .paymentsAwaitingConfirmation(queryRepository.countPaymentsAwaitingConfirmation(locationId))
+                .paymentsAwaitingConfirmation(pendingItems.size())
+                .pendingPayments(pendingItems)
+                .overduePayments(pendingItems.stream().filter(StaffDashboardResponse.PendingPayment::overdue).count())
+                .paymentOverdueMinutes((int) Payment.LATE_CONFIRMATION_WAIT.toMinutes())
                 .complaintsToForward(queryRepository.countComplaintsByStatus(locationId, "SUBMITTED"))
                 .todayRevenue(todayRevenue)
                 .reconciledToday(queryRepository.existsReconciliation(locationId, today))
+                .courts(CourtStatusCalculator.calculate(queryRepository.findActiveCourts(locationId),
+                        queryRepository.findCourtBookingsOn(locationId, today),
+                        queryRepository.findApprovedMaintenanceAt(locationId, now), now))
                 .build();
     }
 
@@ -304,9 +334,13 @@ public class OperationService {
             daily.add(RevenueReportResponse.DayItem.builder()
                     .date(d).revenue(revAmount).refunds(refAmount).net(revAmount.subtract(refAmount)).build());
         }
+        DiscountRow discounts = queryRepository.sumDiscountsOfConfirmedPayments(locationId, from, to);
         return RevenueReportResponse.builder()
                 .from(from).to(to)
                 .totalRevenue(totalRevenue)
+                .grossRevenue(totalRevenue.add(discounts.getVoucherDiscount()).add(discounts.getPointDiscount()))
+                .voucherDiscount(discounts.getVoucherDiscount())
+                .pointDiscount(discounts.getPointDiscount())
                 .totalRefunds(totalRefunds)
                 .netRevenue(totalRevenue.subtract(totalRefunds))
                 .paymentCount(paymentCount)

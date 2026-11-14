@@ -1,7 +1,5 @@
 package com.sep490.bms.controller.account;
 
-import java.util.Map;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -10,14 +8,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sep490.bms.common.ApiResponse;
-import com.sep490.bms.dto.LoginResponse;
+import com.sep490.bms.dto.account.LoginResponse;
+import com.sep490.bms.dto.account.RegistrationResponse;
 import com.sep490.bms.dto.request.ForgotPasswordRequest;
 import com.sep490.bms.dto.request.LoginRequest;
 import com.sep490.bms.dto.request.RegisterRequest;
 import com.sep490.bms.dto.request.ResendOtpRequest;
 import com.sep490.bms.dto.request.ResetPasswordRequest;
 import com.sep490.bms.dto.request.VerifyEmailRequest;
-import com.sep490.bms.service.AuthService;
+import com.sep490.bms.service.account.AuthService;
 import com.sep490.bms.security.UserPrincipal;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
@@ -25,6 +24,9 @@ import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Cung cấp API đăng ký, xác minh OTP, quản lý phiên và khôi phục mật khẩu.
+ */
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -33,8 +35,8 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/register")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> register(@Valid @RequestBody RegisterRequest request) {
-        Map<String, Object> result = authService.register(request);
+    public ResponseEntity<ApiResponse<RegistrationResponse>> register(@Valid @RequestBody RegisterRequest request) {
+        RegistrationResponse result = authService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Đăng ký thành công. Vui lòng kiểm tra email để lấy mã xác thực (MSG08).", result));
     }

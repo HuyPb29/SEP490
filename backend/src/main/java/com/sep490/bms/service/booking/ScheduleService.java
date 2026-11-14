@@ -21,15 +21,18 @@ import com.sep490.bms.dto.booking.ScheduleResponse;
 import com.sep490.bms.dto.booking.ScheduleResponse.CourtRow;
 import com.sep490.bms.dto.booking.ScheduleResponse.SlotCell;
 import com.sep490.bms.dto.booking.ScheduleResponse.SlotStatus;
-import com.sep490.bms.entity.Account;
-import com.sep490.bms.entity.Location;
-import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.booking.BookingSlot;
 import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.exception.AppException;
-import com.sep490.bms.repository.AccountRepository;
+import com.sep490.bms.repository.account.AccountRepository;
+import com.sep490.bms.repository.booking.BookingPackageRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.booking.BookingSlotRepository;
 import com.sep490.bms.security.UserPrincipal;
@@ -59,20 +62,38 @@ public class ScheduleService {
     private final BookingSlotRepository bookingSlotRepository;
     private final BookingRepository bookingRepository;
     private final AccountRepository accountRepository;
+    private final BookingPackageRepository bookingPackageRepository;
 
     /** date không gửi thì lấy hôm nay (UC13 #1). viewer là null khi Guest xem. */
     @Transactional(readOnly = true)
     public ScheduleResponse schedule(Long locationId, LocalDate date, UserPrincipal viewer) {
-        return schedule(locationId, date, viewer, LocalDateTime.now());
+        return schedule(locationId, date, viewer, null, LocalDateTime.now());
+    }
+
+    /**
+     * Lịch sân khi Player chọn slot mới để đổi lịch (UC21, UC22). bookingId là booking đang đổi;
+     * buổi trong gói nhiều buổi được xem tới hết thời hạn gói vì BR31 cho đổi trong thời hạn gói.
+     */
+    @Transactional(readOnly = true)
+    public ScheduleResponse schedule(Long locationId, LocalDate date, UserPrincipal viewer, Long bookingId) {
+        return schedule(locationId, date, viewer, bookingId, LocalDateTime.now());
     }
 
     /** Tách tham số now để test được theo giờ cố định. */
     ScheduleResponse schedule(Long locationId, LocalDate date, UserPrincipal viewer, LocalDateTime now) {
+        return schedule(locationId, date, viewer, null, now);
+    }
+
+    ScheduleResponse schedule(Long locationId, LocalDate date, UserPrincipal viewer, Long bookingId, LocalDateTime now) {
         Location location = locationQueryService.findActive(locationId);
         boolean manager = isManager(location, viewer);
         LocalDate today = now.toLocalDate();
         LocalDate day = date != null ? date : today;
         LocalDate maxDate = maxDate(location, today, manager);
+        LocalDate packageEnd = packageEndForReschedule(locationId, viewer, bookingId);
+        if (packageEnd != null && packageEnd.isAfter(maxDate)) {
+            maxDate = packageEnd;
+        }
         if (day.isBefore(today) || day.isAfter(maxDate)) {
             throw new AppException("Chỉ xem được lịch sân từ hôm nay đến ngày " + maxDate);
         }
@@ -184,6 +205,25 @@ public class ScheduleService {
         }
         return (viewer.getRole() == Role.OWNER && viewer.getId().equals(location.getOwnerId()))
                 || (viewer.getRole() == Role.STAFF && location.getId().equals(viewer.getLocationId()));
+    }
+
+    /**
+     * Ngày kết thúc gói của buổi Player đang đổi lịch (BR31). Trả null khi không áp dụng: không phải Player,
+     * booking không thuộc Player hoặc địa điểm này, booking lẻ, hoặc thuộc đơn đặt lẻ trong ngày (BR64 theo BR02).
+     */
+    private LocalDate packageEndForReschedule(Long locationId, UserPrincipal viewer, Long bookingId) {
+        if (bookingId == null || viewer == null || viewer.getRole() != Role.PLAYER) {
+            return null;
+        }
+        Booking booking = bookingRepository.findById(bookingId).orElse(null);
+        if (booking == null || booking.getPackageId() == null
+                || !viewer.getId().equals(booking.getPlayerId()) || !locationId.equals(booking.getLocationId())) {
+            return null;
+        }
+        return bookingPackageRepository.findById(booking.getPackageId())
+                .filter(pkg -> pkg.getPackageType() != PackageType.DAY)
+                .map(BookingPackage::getEndDate)
+                .orElse(null);
     }
 
     private static LocalDate maxDate(Location location, LocalDate today, boolean manager) {

@@ -5,6 +5,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.promotion.Voucher;
 
+/**
+ * Tra cứu voucher theo địa điểm, mã hoặc trạng thái và khóa voucher khi đổi hạn mức.
+ */
 @Repository
 public interface VoucherRepository extends JpaRepository<Voucher, Long>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<Voucher> {
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)

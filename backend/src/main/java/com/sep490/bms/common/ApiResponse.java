@@ -10,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Định dạng phản hồi API chung cho dữ liệu thành công, thông báo lỗi và chi tiết validation.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

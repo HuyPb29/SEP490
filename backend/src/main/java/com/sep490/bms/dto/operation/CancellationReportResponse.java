@@ -4,12 +4,17 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Tổng hợp lượt hủy theo bên hủy và số tiền hoàn trong kỳ báo cáo.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -34,6 +39,7 @@ public class CancellationReportResponse {
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+    @Schema(name = "CancellationReportDayItem")
     public static class DayItem {
         private LocalDate date;
         private long cancelledByPlayer;

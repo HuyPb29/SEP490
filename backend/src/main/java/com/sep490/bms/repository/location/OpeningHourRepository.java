@@ -8,6 +8,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.location.OpeningHour;
 
+/**
+ * Tra cứu lịch mở cửa định kỳ theo địa điểm và thứ trong tuần.
+ */
 @Repository
 public interface OpeningHourRepository extends JpaRepository<OpeningHour, Long> {
 

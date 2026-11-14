@@ -8,6 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận lý do từ chối khiếu nại.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

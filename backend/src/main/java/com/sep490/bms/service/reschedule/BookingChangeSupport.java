@@ -3,14 +3,14 @@ package com.sep490.bms.service.reschedule;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.List;
-import com.sep490.bms.entity.*;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.booking.*;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.notification.Notification;
 import com.sep490.bms.entity.payment.Payment;
-import com.sep490.bms.entity.team.*;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.team.MatchService;
 import jakarta.persistence.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class BookingChangeSupport {
     private final EntityManager em;
+    private final MatchService matchService;
 
     public <T> T lock(Class<T> type, Long id) {
         if (id == null || id <= 0) throw new AppException("Mã không hợp lệ");
@@ -73,21 +74,17 @@ public class BookingChangeSupport {
         if (recipient != null) em.persist(Notification.builder().recipientId(recipient).type(type)
                 .title("Cập nhật booking").content(content.length()>500?content.substring(0,500):content).refType("BOOKING").refId(bookingId).build());
     }
+    /**
+     * Kèo của booking (F7) do MatchService xử lý: hủy booking thì kèo hết hạn, đổi lịch thì báo MSG76 giờ mới.
+     * Flush trước vì MatchService đọc lại thông tin booking (giờ mới) bằng JDBC trong cùng transaction.
+     */
     public void matches(Booking b, boolean cancel) {
-        var matches = em.createQuery("select m from Match m where m.bookingId=:id and m.status in :states", Match.class)
-                .setParameter("id", b.getId()).setParameter("states", List.of(MatchStatus.OPEN, MatchStatus.CLOSED))
-                .setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
-        for (Match m : matches) {
-            if (cancel) { m.setStatus(MatchStatus.EXPIRED); m.setClosedAt(LocalDateTime.now()); }
-            for (var r : em.createQuery("select r from MatchJoinRequest r where r.matchId=:id", MatchJoinRequest.class)
-                    .setParameter("id", m.getId()).getResultList()) {
-                if (cancel && r.getStatus() == JoinRequestStatus.PENDING) {
-                    r.setStatus(JoinRequestStatus.CANCELLED); r.setDecidedAt(LocalDateTime.now());
-                }
-                if (r.getStatus() == JoinRequestStatus.APPROVED || (cancel && r.getStatus() == JoinRequestStatus.CANCELLED))
-                    notify(r.getPlayerId(), "MATCH_BOOKING_CHANGED", cancel ? "Kèo hết hiệu lực do booking bị hủy" : "Booking của kèo đã đổi lịch", b.getId());
-            }
-            notify(b.getPlayerId(), "MATCH_BOOKING_CHANGED", cancel ? "Kèo đã hết hiệu lực" : "Booking đã đổi lịch; bạn có thể giữ hoặc hủy kèo", b.getId());
-        }
+        em.flush();
+        if (cancel) matchService.onBookingCancelled(b.getId());
+        else matchService.onBookingRescheduled(b.getId());
+    }
+    /** Tên cũ ở luồng hủy booking (F5): kèo của booking bị hủy thì hết hạn, do MatchService xử lý. */
+    public void expireMatches(Booking b) {
+        matches(b, true);
     }
 }

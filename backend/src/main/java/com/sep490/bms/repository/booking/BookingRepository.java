@@ -16,13 +16,34 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.dto.promotion.PointGrantBookingResponse;
 
 import jakarta.persistence.LockModeType;
 
+/**
+ * Truy vấn booking theo người đặt, địa điểm và trạng thái, đồng thời hỗ trợ khóa bản ghi.
+ */
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     boolean existsByBookingCode(String bookingCode);
+
+    @Query("""
+            select new com.sep490.bms.dto.promotion.PointGrantBookingResponse(
+                b.id, b.bookingCode, b.playDate, b.startMinute, b.endMinute)
+            from Booking b
+            where b.locationId = :locationId and b.playerId = :playerId
+              and b.bookingType <> com.sep490.bms.entity.enums.BookingType.WALK_IN
+              and exists (
+                  select a.id from Account a where a.id = :playerId
+                    and a.role = com.sep490.bms.entity.account.Role.PLAYER
+                    and a.status = com.sep490.bms.entity.account.AccountStatus.ACTIVE
+              )
+              and (:query = '' or locate(lower(:query), lower(b.bookingCode)) > 0)
+            order by b.playDate desc, b.startMinute desc, b.id desc
+            """)
+    Page<PointGrantBookingResponse> findPointGrantBookings(@Param("locationId") Long locationId,
+            @Param("playerId") Long playerId, @Param("query") String query, Pageable pageable);
 
     /**
      * Đọc và khóa dòng booking đến hết giao dịch (SQL Server: UPDLOCK). Hai request cùng xử lý một booking,

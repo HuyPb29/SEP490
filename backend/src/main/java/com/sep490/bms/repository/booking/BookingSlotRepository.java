@@ -12,6 +12,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.booking.BookingSlot;
 
+/**
+ * Tra cứu slot đang chiếm lịch theo sân và ngày, đồng thời giải phóng slot của booking.
+ */
 @Repository
 public interface BookingSlotRepository extends JpaRepository<BookingSlot, Long> {
 

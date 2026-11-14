@@ -10,7 +10,10 @@ import org.springframework.transaction.annotation.*;
 import org.springframework.validation.annotation.Validated;
 import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.promotion.*;
-import com.sep490.bms.entity.*;
+import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.account.AccountStatus;
+import com.sep490.bms.entity.account.Role;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.*;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.reschedule.*;
@@ -19,16 +22,21 @@ import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.promotion.*;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.promotion.*;
+import com.sep490.bms.repository.account.AccountRepository;
+import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.security.*;
 import jakarta.persistence.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Quản lý số dư và lịch sử điểm, xử lý tích, dùng, trả lại và thu hồi điểm theo giao dịch.
+ */
 @Service @Validated @RequiredArgsConstructor @Transactional(readOnly=true)
 public class LoyaltyPointService {
     public static final int POINT_VALUE=500;
     public static final int EARNING_RATE=10000;
-    /** BR41, D161: mọi booking và gói, có hay không có voucher. */
+    /** BR41, D161: trần chung cho mọi đơn, tính sau voucher nếu có. */
     public static final int MAX_POINT_PERCENT=50;
     private final PlayerLocationBalanceRepository balances;
     private final PointTransactionRepository transactions;
@@ -37,10 +45,15 @@ public class LoyaltyPointService {
     private final LoyaltyMilestoneService milestones;
     private final LocationAccessService scope;
     private final EntityManager em;
+    private final AccountRepository accounts;
+    private final BookingRepository bookings;
 
     private Pageable page(int page,int size) {
+        return lookupPage(page,size).withSort(Sort.by(Sort.Direction.DESC,"id"));
+    }
+    private PageRequest lookupPage(int page,int size) {
         if(page<0 || size<1 || size>100) throw new AppException("Phân trang không hợp lệ");
-        return PageRequest.of(page,size,Sort.by(Sort.Direction.DESC,"id"));
+        return PageRequest.of(page,size);
     }
     private void role(UserPrincipal u,Role r) {
         if(u==null || u.getRole()!=r) throw new AppException("Không có quyền thực hiện",HttpStatus.FORBIDDEN);
@@ -57,6 +70,21 @@ public class LoyaltyPointService {
                     locationId==null ? c.conjunction():c.equal(b.get("locationId"),locationId));
             return c.and(r.get("balanceId").in(sub),type==null ? c.conjunction():c.equal(r.get("type"),type));
         },page(page,size)).map(PointTransactionResponse::from));
+    }
+    public PageResponse<PointGrantPlayerResponse> pointGrantPlayers(UserPrincipal user,String query,int page,int size) {
+        role(user,Role.OWNER);
+        return PageResponse.from(accounts.findPointGrantPlayers(
+                scope.selectedLocation(user).getId(),pointGrantQuery(query),lookupPage(page,size)));
+    }
+    public PageResponse<PointGrantBookingResponse> pointGrantBookings(UserPrincipal user,Long playerId,String query,int page,int size) {
+        role(user,Role.OWNER);
+        return PageResponse.from(bookings.findPointGrantBookings(
+                scope.selectedLocation(user).getId(),playerId,pointGrantQuery(query),lookupPage(page,size)));
+    }
+    private String pointGrantQuery(String query) {
+        String value=query.strip();
+        if(value.length()>100) throw new AppException("Từ khóa tìm kiếm tối đa 100 ký tự");
+        return value;
     }
     private <T> T lock(Class<T> type,Long id) {
         em.flush(); // Preserve target state changed earlier in this transaction.
@@ -89,6 +117,10 @@ public class LoyaltyPointService {
         Booking b=lock(Booking.class,r.bookingId());
         if(!location.equals(b.getLocationId())) throw new AppException("Booking không thuộc địa điểm đã chọn",HttpStatus.FORBIDDEN);
         if(b.getPlayerId()==null || b.getBookingType()==BookingType.WALK_IN) throw new AppException("Booking không có Player nhận điểm");
+        if(r.playerId()!=null && !r.playerId().equals(b.getPlayerId())) {
+            String message="Booking không thuộc Player đã chọn. (MSG02)";
+            throw new AppException(message,HttpStatus.BAD_REQUEST,Map.of("bookingId",message));
+        }
         PlayerLocationBalance balance=balance(b.getPlayerId(),location,true);
         return PointTransactionResponse.from(change(balance,b.getId(),null,PointTransactionType.ADJUST,r.points(),null,r.reason().trim(),u.getId()));
     }
@@ -101,7 +133,8 @@ public class LoyaltyPointService {
         int available=balances.findByPlayerIdAndLocationId(player,location).map(PlayerLocationBalance::getPointBalance).orElse(0);
         if(points<2 || points>available) throw new AppException("Mỗi lần dùng điểm phải giảm ít nhất 1.000 đồng và không vượt số dư. (MSG37)");
         BigDecimal discount=BigDecimal.valueOf(points).multiply(BigDecimal.valueOf(POINT_VALUE));
-        BigDecimal max=afterVoucher.multiply(BigDecimal.valueOf(MAX_POINT_PERCENT)).divide(BigDecimal.valueOf(100),0,RoundingMode.DOWN);
+        BigDecimal max=afterVoucher.multiply(BigDecimal.valueOf(MAX_POINT_PERCENT))
+                .divide(BigDecimal.valueOf(100),0,RoundingMode.DOWN);
         if(discount.compareTo(max)>0) throw new AppException("Bạn được dùng tối đa "+max.divideToIntegralValue(BigDecimal.valueOf(POINT_VALUE)).toBigInteger()+" điểm cho khoản thanh toán này. (MSG38)");
         return discount;
     }
@@ -127,7 +160,6 @@ public class LoyaltyPointService {
         if(status!=BookingStatus.HOLDING || expiry==null || !expiry.isAfter(LocalDateTime.now())) throw new AppException("Đơn không còn giữ chỗ");
     }
     private BigDecimal redeem(Long booking,Long pkg,Long player,Long location,BigDecimal amount,int points,BigDecimal voucherDiscount) {
-        PlayerLocationBalance b=balance(player,location,true);
         var old=previous(booking,pkg,PointTransactionType.REDEEM);
         if(old.isPresent()) {
             if(old.get().getPoints()!=-points || previous(booking,pkg,PointTransactionType.RETURN).isPresent()) throw new AppException("Đơn đã có lịch sử dùng điểm",HttpStatus.CONFLICT);
@@ -135,6 +167,7 @@ public class LoyaltyPointService {
         }
         var usage=booking!=null ? usages.findByBookingId(booking):usages.findByPackageId(pkg);
         if(voucherDiscount.signum()>0 && usage.isEmpty()) throw new AppException("Thiếu lịch sử voucher",HttpStatus.CONFLICT);
+        PlayerLocationBalance b=balance(player,location,true);
         BigDecimal discount=preview(player,location,amount,points);
         change(b,booking,pkg,PointTransactionType.REDEEM,-points,null,"Dùng điểm khi xác nhận đặt sân",player);
         return discount;
@@ -240,7 +273,7 @@ public class LoyaltyPointService {
         if(observed==null) throw new AppException("Không tìm thấy yêu cầu hoàn tiền",HttpStatus.NOT_FOUND);
         Booking booking=lock(Booking.class,observed.getBookingId());
         RefundRequest refund=lock(RefundRequest.class,refundId);
-        if(booking.getPlayerId()==null) return; // Walk-in has no wallet.
+        if (booking.getPlayerId() == null || refund.getVerifiedUnrecordedAmount() != null) return;
         BigDecimal old=refund.getLoyaltySettledAmount();
         if(amount.compareTo(old)==0) return;
         List<LoyaltyRefundCalculator.Receipt> receipts=refundReceipts(booking);
@@ -252,7 +285,13 @@ public class LoyaltyPointService {
         int delta=LoyaltyRefundCalculator.points(receipts,prior.add(amount))-LoyaltyRefundCalculator.points(receipts,prior.add(old));
         if(delta>0) {
             int revoked=Math.min(delta,wallet.getPointBalance());
-            if(revoked>0) change(wallet,booking.getId(),null,PointTransactionType.REVOKE,-revoked,null,"Thu hồi điểm hoàn tiền #"+refundId,refund.getRecordedBy());
+            if (revoked > 0) {
+                change(wallet,booking.getId(),null,PointTransactionType.REVOKE,-revoked,null,"Thu hồi điểm hoàn tiền #"+refundId,refund.getRecordedBy());
+                em.persist(Notification.builder().recipientId(booking.getPlayerId()).type("REFUND_POINTS_REVOKED")
+                        .title("Đã thu hồi điểm tích lũy")
+                        .content("Đã thu hồi " + revoked + " điểm của khoản hoàn cho " + booking.getBookingCode())
+                        .refType("BOOKING").refId(booking.getId()).build());
+            }
             refund.setLoyaltyRevokedPoints(refund.getLoyaltyRevokedPoints()+revoked);
         } else if(delta<0) {
             int returned=Math.min(-delta,refund.getLoyaltyRevokedPoints());

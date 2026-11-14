@@ -9,9 +9,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.sep490.bms.entity.Location;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.notification.NotificationType;
-import com.sep490.bms.repository.LocationRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.service.notification.NotificationService;
 

@@ -9,6 +9,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận booking nguồn, số người hiện có và số người cần tuyển khi mở kèo.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

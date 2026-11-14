@@ -11,6 +11,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận và kiểm tra thông tin đăng ký Player trước khi gửi OTP.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

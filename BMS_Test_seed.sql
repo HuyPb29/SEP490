@@ -24,7 +24,7 @@ BEGIN TRANSACTION;
 -- account (12)
 SET IDENTITY_INSERT account ON;
 INSERT INTO account (id, username, email, phone, password_hash, full_name, role, skill_level, location_id, status) VALUES
-  (1, N'admin', N'admin@bms.vn', NULL, N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Quản trị hệ thống', N'ADMIN', NULL, NULL, N'ACTIVE'),
+  (1, N'admin1', N'admin@bms.vn', NULL, N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Quản trị hệ thống', N'ADMIN', NULL, NULL, N'ACTIVE'),
   (2, N'owner.sunrise', N'owner.sunrise@bms.vn', N'0901000001', N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Nguyễn Minh Khôi', N'OWNER', NULL, NULL, N'ACTIVE'),
   (3, N'owner.thanglong', N'owner.thanglong@bms.vn', N'0901000002', N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Trần Thu Hà', N'OWNER', NULL, NULL, N'ACTIVE'),
   (7, N'nguyen.an', N'an.nguyen@gmail.com', N'0912000007', N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Nguyễn Văn An', N'PLAYER', N'Khá', NULL, N'ACTIVE'),

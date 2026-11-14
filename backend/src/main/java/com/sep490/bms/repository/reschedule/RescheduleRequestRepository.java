@@ -5,6 +5,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.reschedule.RescheduleRequest;
 
+/**
+ * Truy cập các bản ghi yêu cầu đổi lịch.
+ */
 @Repository
 public interface RescheduleRequestRepository extends JpaRepository<RescheduleRequest, Long> {
 }

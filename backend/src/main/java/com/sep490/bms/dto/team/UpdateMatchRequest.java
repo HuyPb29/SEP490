@@ -8,6 +8,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận số người hiện có và số chỗ cần tuyển mà chủ kèo muốn sửa.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

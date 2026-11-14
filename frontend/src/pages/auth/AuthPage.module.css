@@ -1,19 +1,50 @@
 .splitLayout {
-  min-height: 100vh;
+  min-height: calc(100vh - var(--header-height));
   display: grid;
-  grid-template-columns: 48% 52%;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  grid-template-columns: 1fr 1fr;
+  font-family: var(--font-sans);
 }
 
-/* Cột trái: Nền tối Navy */
+.splitLayout :focus-visible {
+  outline: 3px solid var(--color-primary-accent);
+  outline-offset: 3px;
+}
+
+/* Cột trái: Ảnh sân & thông điệp thương hiệu */
 .leftPanel {
-  background: radial-gradient(circle at 15% 20%, #0d2538 0%, #06101c 70%);
+  background: radial-gradient(ellipse at 12% 12%, #2b614a, transparent 57%), #142f26;
   color: #ffffff;
-  padding: 40px;
+  padding: clamp(28px, 5vw, 56px);
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  justify-content: space-between;
   position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.leftPanel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    180deg,
+    #102b22e6 0%,
+    #102b2259 38%,
+    #102b22d9 74%,
+    #102b22fa 100%
+  );
+}
+
+.courtPhoto {
+  position: absolute;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+  object-fit: cover;
+  object-position: 51% center;
 }
 
 .brandHeader {
@@ -21,18 +52,22 @@
   align-items: center;
   gap: 12px;
   cursor: pointer;
+  text-decoration: none;
+  color: #ffffff;
+  align-self: flex-start;
 }
 
 .brandIcon {
   width: 42px;
   height: 42px;
-  border-radius: 50%;
-  background-color: #0d8a52;
-  color: #ffffff;
+  border-radius: 11px;
+  background: #bce8cc;
+  color: #163d2d;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 18px;
+  font-weight: 800;
 }
 
 .brandName {
@@ -42,73 +77,90 @@
 }
 
 .heroCopy {
-  margin-top: auto;
-  margin-bottom: auto;
+  margin: auto 0;
   max-width: 460px;
 }
 
 .heroHeading {
-  font-size: 42px;
+  max-width: 12ch;
+  font-size: clamp(2.5rem, 5.2vw, 4.25rem);
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.04;
   margin: 0 0 18px;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
 }
 
 .heroDescription {
+  max-width: 38ch;
   font-size: 16.5px;
   line-height: 1.6;
-  color: #94a3b8;
+  color: #eef6f0;
   margin: 0;
 }
 
-/* Cột phải: Khung trắng chứa Card */
+.photoCredit {
+  color: #d2e2d8;
+  font-size: var(--text-xs);
+}
+
+.photoCredit a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Cột phải: Khung chứa Card Đăng nhập / Đăng ký */
 .rightPanel {
-  background-color: #f8faf9;
+  background: var(--color-bg);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 24px;
+  padding: clamp(24px, 4vw, 48px) clamp(18px, 4vw, 56px);
 }
 
 .authCard {
+  box-sizing: border-box;
   width: 100%;
-  max-width: 448px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 20px;
-  padding: 26px 28px 28px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.05);
+  max-width: 500px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: 28px 30px 30px;
+  box-shadow: var(--shadow-md);
 }
 
-/* Thanh 3 Tab */
+/* Thanh chuyển Tab tự chia đều 2 hoặc 3 cột cân đối */
 .tabGroup {
-  background-color: #f1f5f4;
+  background: var(--color-primary-soft);
   padding: 5px;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-  margin-bottom: 22px;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  margin-bottom: 24px;
 }
 
 .tabBtn {
+  box-sizing: border-box;
   border: none;
   background: transparent;
-  padding: 10px 8px;
-  border-radius: 10px;
-  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #334155;
+  color: var(--color-text-secondary);
   cursor: pointer;
+  text-align: center;
   transition: all 0.15s ease;
 }
 
 .tabActive {
-  background-color: #ffffff;
-  color: #0f172a;
+  background-color: var(--color-surface);
+  color: var(--color-primary);
   font-weight: 700;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--shadow-xs);
 }
 
 .formContainer {
@@ -116,124 +168,183 @@
   flex-direction: column;
 }
 
+.cardHeader {
+  margin-bottom: 20px;
+}
+
 .cardTitle {
-  font-size: 26px;
+  font-size: var(--text-2xl);
   font-weight: 800;
-  color: #0f172a;
-  margin: 0 0 22px;
-  letter-spacing: -0.01em;
+  color: var(--color-text);
+  margin: 0 0 6px;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+
+.cardSubtitle {
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  margin: 0;
 }
 
 .formGroup {
   display: flex;
   flex-direction: column;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   min-width: 0;
 }
 
 .twoColRow {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
+  margin-bottom: 8px;
 }
 
 .label {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #1e293b;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--color-text-secondary);
   margin-bottom: 8px;
+}
+
+.labelRow .label {
+  margin-bottom: 0;
 }
 
 .input {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  height: 48px;
-  padding: 0 16px;
-  border-radius: 12px;
-  border: 1px solid #cbd5e1;
-  font-size: 15px;
-  color: #0f172a;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  background-color: var(--color-surface);
+  font-size: var(--text-base);
+  color: var(--color-text);
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .input:focus {
-  border-color: #0d8a52;
+  border-color: var(--color-primary-accent);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
 }
 
 .inputError {
-  border-color: #dc2626 !important;
+  border-color: var(--color-danger) !important;
   background-color: #fffbfa;
+}
+
+.passwordInputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.passwordInput {
+  padding-right: 114px;
+}
+
+.passwordToggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+
+.passwordToggle:hover {
+  background: #d5ebdc;
 }
 
 .otpInput {
   letter-spacing: 0.35em;
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--text-lg);
   text-align: center;
 }
 
 .errorText {
-  color: #dc2626;
-  font-size: 13px;
-  margin: 8px 0 0;
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  margin: 6px 0 0;
   line-height: 1.4;
 }
 
+.sessionDialog {
+  margin: auto;
+  max-width: min(26rem, calc(100% - 2rem));
+  padding: 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.sessionDialog::backdrop {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.sessionDialog h2 {
+  font-weight: 700;
+}
+
+.sessionDialog p {
+  margin: 0.5rem 0 1rem;
+}
+
 .infoBanner {
-  background-color: #e6f4ed;
-  border: 1px solid #b7e1cd;
-  color: #0d8a52;
+  background-color: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  color: var(--color-success);
   padding: 10px 14px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 18px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: 16px;
   line-height: 1.45;
 }
 
-.testOtpHint {
-  color: #64748b;
-  font-size: 13px;
-  margin: -8px 0 18px;
-  text-align: center;
-}
-
-.forgotRow {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: -4px;
-  margin-bottom: 20px;
-}
-
-.greenLink {
-  color: #0d8a52;
-  font-size: 13.5px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.greenLinkBold {
-  color: #0d8a52;
-  font-weight: 700;
-  text-decoration: none;
-}
-
 .primaryBtn {
-  height: 48px;
+  height: 44px;
+  min-height: 44px;
+  margin-top: 4px;
   border: none;
-  border-radius: 12px;
-  background-color: #0d8a52;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
   color: #ffffff;
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 700;
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
 
-.primaryBtn:hover {
-  background-color: #0a7143;
+.primaryBtn:hover:not(:disabled) {
+  background: var(--color-primary-hover);
 }
 
 .primaryBtn:disabled {
@@ -243,24 +354,54 @@
 
 .cardFooterText {
   text-align: center;
-  font-size: 13.5px;
-  color: #64748b;
-  margin: 22px 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.otpActionRow {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
 }
 
 .inlineSwitchBtn {
+  box-sizing: border-box;
   background: none;
   border: none;
-  color: #0d8a52;
+  color: var(--color-primary);
   font-weight: 700;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   cursor: pointer;
   padding: 0;
 }
 
+.inlineSwitchBtn:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .inlineSwitchBtn:disabled {
-  color: #94a3b8;
+  color: var(--color-sidebar-muted);
   cursor: not-allowed;
+}
+
+.toast {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 60;
+  max-width: calc(100vw - 2rem);
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-success-border);
+  border-radius: var(--radius-md);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  font-weight: 600;
 }
 
 @media (max-width: 900px) {
@@ -268,23 +409,28 @@
     grid-template-columns: 1fr;
   }
   .leftPanel {
-    padding: 32px 24px;
-  }
-  .heroHeading {
-    font-size: 32px;
+    display: none;
   }
   .rightPanel {
-    padding: 28px 16px;
+    align-items: flex-start;
+    padding: 20px 12px 32px;
   }
   .authCard {
-    padding: 22px 18px 24px;
-  }
-  .tabBtn {
-    font-size: 12px;
-    padding: 10px 4px;
+    padding: 20px 16px 22px;
   }
   .twoColRow {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .authCard {
+    padding: 16px 14px 18px;
+    border-radius: var(--radius-lg);
+  }
+  .tabBtn {
+    padding-inline: 6px;
+    font-size: var(--text-xs);
   }
 }

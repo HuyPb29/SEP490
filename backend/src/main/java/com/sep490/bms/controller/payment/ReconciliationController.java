@@ -27,6 +27,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Staff ghi nhận đối soát cuối ngày và cho Owner tra cứu kết quả.
+ *
  * Feature: F4 – Thanh toán
  * Owner: Minh
  * UC: UC20 – Đối soát doanh thu cuối ngày

@@ -14,6 +14,8 @@ import com.sep490.bms.service.location.CourtQueryService;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp thông tin sân công khai và bảng giá của sân.
+ *
  * Feature: F3 – Tìm và đặt sân
  * Owner: Minh
  * UC: UC12 – Xem thông tin sân công khai

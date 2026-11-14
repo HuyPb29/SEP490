@@ -9,6 +9,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.location.OpeningException;
 
+/**
+ * Tra cứu giờ mở cửa ngoại lệ theo địa điểm và ngày.
+ */
 @Repository
 public interface OpeningExceptionRepository extends JpaRepository<OpeningException, Long> {
 

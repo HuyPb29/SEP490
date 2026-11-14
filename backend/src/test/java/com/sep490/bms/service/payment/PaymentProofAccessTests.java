@@ -1,6 +1,6 @@
 package com.sep490.bms.service.payment;
 import java.util.Optional;
-import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.payment.*;
 import com.sep490.bms.entity.reschedule.RescheduleRequest;
 import com.sep490.bms.repository.payment.*;
@@ -19,6 +19,9 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.assertj.core.api.Assertions.*;
 
+/**
+ * Kiểm tra quyền xem ảnh chứng từ và chặn truy cập ảnh thuộc giao dịch khác.
+ */
 class PaymentProofAccessTests {
     final PaymentRepository payments=mock(PaymentRepository.class);
     final PaymentProofRepository proofs=mock(PaymentProofRepository.class);

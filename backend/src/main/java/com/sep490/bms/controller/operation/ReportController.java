@@ -23,6 +23,8 @@ import com.sep490.bms.service.operation.OperationService;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Owner xem báo cáo booking, doanh thu, lấp đầy, hủy, đổi lịch và sử dụng voucher.
+ *
  * Feature: F9 – Vận hành và báo cáo
  * Owner: Hoàng
  * UC: UC35 – Xem báo cáo vận hành và doanh thu

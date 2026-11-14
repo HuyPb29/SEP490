@@ -2,14 +2,20 @@ package com.sep490.bms.config;
 import org.springframework.context.annotation.*;
 import org.springdoc.core.models.GroupedOpenApi;
 import io.swagger.v3.oas.models.responses.ApiResponse;
+/**
+ * Khai báo nhóm OpenAPI cho voucher, điểm thưởng và các mốc ưu đãi tích lũy.
+ */
 @Configuration
 public class F6OpenApiConfig {
     @Bean
     public GroupedOpenApi f6LoyaltyOpenApi(@org.springframework.beans.factory.annotation.Qualifier("locationHeader")
             org.springdoc.core.customizers.OpenApiCustomizer locationHeader) {
         return GroupedOpenApi.builder().group("f6-loyalty")
-                .pathsToMatch("/api/me/loyalty-*","/api/owner/loyalty-*","/api/owner/loyalty-milestones/**")
+                .pathsToMatch("/api/me/loyalty-*","/api/owner/loyalty-*","/api/owner/loyalty-milestones/**",
+                        "/api/owner/loyalty-adjustments/**")
                 .addOpenApiCustomizer(locationHeader)
+                .addOpenApiCustomizer(api -> api.getInfo().setDescription("UC25–UC26. Điểm và mốc tổng tiền theo địa điểm. "
+                        + "Điểm giảm tối đa 50% số tiền còn lại sau voucher, hoặc 50% giá niêm yết nếu không áp voucher (BR41, D161)."))
                 .addOpenApiCustomizer(api -> api.getPaths().forEach((path,item) -> item.readOperationsMap().forEach((method,op) -> {
                     for(String code:java.util.List.of("400","401","403","404","409"))
                         op.getResponses().addApiResponse(code,new ApiResponse().description("ApiResponse: validation/auth/scope/resource/conflict"));
@@ -26,6 +32,8 @@ public class F6OpenApiConfig {
                 .pathsToMatch("/api/locations/*/vouchers","/api/me/vouchers","/api/owner/vouchers","/api/owner/vouchers/**",
                         "/api/admin/vouchers","/api/admin/vouchers/**","/api/vouchers/check")
                 .addOpenApiCustomizer(locationHeader)
+                .addOpenApiCustomizer(api -> api.getInfo().setDescription("UC24. Kiểm tra voucher lúc xem trước và kiểm tra lại khi xác nhận. "
+                        + "Lượt dùng, ngân sách và điểm chỉ được trừ trong giao dịch tạo booking hoặc gói."))
                 .addOpenApiCustomizer(api -> api.getPaths().forEach((path,item) -> item.readOperationsMap().forEach((method,op) -> {
                     op.getResponses().addApiResponse("400",new ApiResponse().description("Dữ liệu/điều kiện voucher không hợp lệ (ApiResponse envelope)"));
                     op.getResponses().addApiResponse("404",new ApiResponse().description("Không tìm thấy hoặc facility không hoạt động"));

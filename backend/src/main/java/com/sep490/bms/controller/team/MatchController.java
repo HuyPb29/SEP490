@@ -27,6 +27,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cung cấp API xem và quản lý kèo, gồm quyết định giữ kèo sau khi đổi lịch.
+ *
  * Feature: F7 – Đội và kèo
  * Owner: Hoàng
  * UC: UC28 – Quản lý kèo (chủ kèo); UC29 – Xem thông tin kèo
@@ -72,16 +74,39 @@ public class MatchController {
         return ResponseEntity.ok(ApiResponse.success("Đã hủy kèo", matchService.cancelMatch(currentUser.getId(), id)));
     }
 
+    @PostMapping("/api/matches/{id}/keep-after-reschedule")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ApiResponse<MatchResponse> keepAfterReschedule(@AuthenticationPrincipal UserPrincipal player,
+            @PathVariable("id") Long id) {
+        return ApiResponse.success(matchService.keepRescheduledMatch(player.getId(), id));
+    }
+
     @GetMapping("/api/matches")
     public ResponseEntity<ApiResponse<PageResponse<MatchResponse>>> getMatches(
             @AuthenticationPrincipal UserPrincipal currentUser,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long locationId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate playDate,
+            @RequestParam(required = false) Integer fromMinute,
+            @RequestParam(required = false) Integer toMinute,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(ApiResponse.success(
-                matchService.getMatches(currentUser == null ? null : currentUser.getId(), status, locationId, playDate, page, size)));
+                matchService.getMatches(currentUser == null ? null : currentUser.getId(), status, locationId, playDate,
+                        fromMinute, toMinute, page, size)));
+    }
+
+    /** "Kèo của tôi": role = HOSTED | JOINED (bỏ trống = cả hai), status bỏ trống = mọi trạng thái. */
+    @GetMapping("/api/me/matches")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<PageResponse<MatchResponse>>> getMyMatches(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(ApiResponse.success(
+                matchService.getMyMatches(currentUser.getId(), role, status, page, size)));
     }
 
     @GetMapping("/api/matches/{id}")

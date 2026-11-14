@@ -31,8 +31,8 @@ import com.sep490.bms.dto.payment.PaymentInstructionResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
 import com.sep490.bms.dto.payment.RejectPaymentRequest;
 import com.sep490.bms.dto.payment.ResubmitRequest;
-import com.sep490.bms.entity.Location;
-import com.sep490.bms.entity.Role;
+import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;
@@ -76,7 +76,6 @@ public class PaymentService {
     private static final int NOTIFICATION_CONTENT_MAX = 500;
     private static final DateTimeFormatter RECEIPT_DATE_FORMAT = DateTimeFormatter.ofPattern("yyMMdd");
     private static final DateTimeFormatter DEADLINE_FORMAT = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
-    private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final PaymentRepository paymentRepository;
     private final PaymentProofRepository paymentProofRepository;
@@ -106,7 +105,8 @@ public class PaymentService {
                 .bookingId(booking.getId())
                 .bookingCode(booking.getBookingCode())
                 .status(booking.getStatus())
-                .amountDue(booking.getFinalAmount())
+                .amountDue(holding ? booking.getFinalAmount() : findForBooking(bookingId)
+                        .map(Payment::remainingAmount).orElse(booking.getFinalAmount()))
                 .bankName(location.getBankName())
                 .bankAccountNo(location.getBankAccountNo())
                 .bankAccountHolder(location.getBankAccountHolder())
@@ -187,7 +187,8 @@ public class PaymentService {
         return PaymentInstructionResponse.builder()
                 .packageId(pkg.getId())
                 .status(pkg.getStatus())
-                .amountDue(pkg.getFinalAmount())
+                .amountDue(holding ? pkg.getFinalAmount() : findForPackage(packageId)
+                        .map(Payment::remainingAmount).orElse(pkg.getFinalAmount()))
                 .bankName(location.getBankName())
                 .bankAccountNo(location.getBankAccountNo())
                 .bankAccountHolder(location.getBankAccountHolder())
@@ -430,6 +431,7 @@ public class PaymentService {
                 .payment(PaymentResponse.from(payment, pkg))
                 .customerName(customer.name())
                 .customerPhone(customer.phone())
+                .note(sessions.isEmpty() ? null : sessions.get(0).getNote())
                 .sessions(sessions.stream()
                         .map(session -> PaymentDetailResponse.Session.builder()
                                 .bookingCode(session.getBookingCode())
@@ -536,11 +538,13 @@ public class PaymentService {
             rejectLocked(payment, booking, "Hết lượt gửi lại chứng từ. " + reason);
             return PaymentResponse.from(payment, booking);
         }
+        recordPartialAmount(payment, request.receivedAmount());
         payment.requestResubmission(reason, playEnd(booking), playerAtFault);
         paymentRepository.saveAndFlush(payment);
         bookingService.changeStatus(booking, BookingStatus.RESUBMIT_REQUESTED);
         notify(booking.getPlayerId(), "PAYMENT_RESUBMIT_REQUESTED", "Cần bổ sung thanh toán",
                 "Vui lòng bổ sung cho booking " + booking.getBookingCode() + ": " + reason
+                        + ". Số tiền còn thiếu: " + money(payment.remainingAmount())
                         + ". Hạn: " + payment.getResubmitDeadline().format(DEADLINE_FORMAT)
                         + ". Còn " + (Payment.MAX_RESUBMITS - payment.getResubmitCount()) + " lượt gửi lại.",
                 payment);
@@ -563,6 +567,39 @@ public class PaymentService {
         Booking booking = lockBookingOf(payment);
         rejectLocked(payment, booking, request.reason().trim());
         return PaymentResponse.from(payment, booking);
+    }
+
+    /**
+     * UC37, BR03, FR125 (D80): hết giờ chơi mà giao dịch của booking lẻ vẫn chờ Staff (Chờ xác nhận hoặc Chờ
+     * bổ sung) thì hệ thống chuyển sang Bị từ chối thanh toán: nhả slot, trả voucher và điểm (BR40, BR45), báo
+     * Player (MSG51) và Owner (MSG56). Khóa payment rồi booking theo cùng thứ tự với Staff, rồi kiểm tra lại:
+     * Staff có thể vừa xử lý sau lần quét của job. Player đã chuyển tiền thì khiếu nại (UC33).
+     *
+     * @return true nếu giao dịch vừa bị từ chối
+     */
+    @Transactional
+    public boolean expireBookingPayment(Long paymentId, LocalDateTime now) {
+        Payment payment = paymentRepository.findByIdForUpdate(paymentId).orElse(null);
+        if (payment == null || payment.getBookingId() == null
+                || (payment.getStatus() != PaymentStatus.AWAITING_CONFIRMATION
+                        && payment.getStatus() != PaymentStatus.RESUBMIT_REQUESTED)) {
+            return false;
+        }
+        Booking booking = bookingService.lockForPayment(payment.getBookingId());
+        if ((booking.getStatus() != BookingStatus.AWAITING_CONFIRMATION
+                && booking.getStatus() != BookingStatus.RESUBMIT_REQUESTED)
+                || now.isBefore(playEnd(booking))) {
+            return false;
+        }
+        rejectLocked(payment, booking, "Hết giờ chơi mà giao dịch chưa được xác nhận");
+        // Địa điểm bị khóa vẫn báo Owner, nên không dùng findActive.
+        Location location = locationQueryService.getByIds(List.of(booking.getLocationId())).get(booking.getLocationId());
+        if (location != null) {
+            notify(location.getOwnerId(), "PAYMENT_EXPIRED_AT_PLAY_END", "Hết giờ chơi mà thanh toán chưa được xác nhận",
+                    "Booking " + booking.getBookingCode() + " đã hết giờ chơi mà chưa được xác nhận thanh toán; "
+                            + "hệ thống đã chuyển sang Bị từ chối thanh toán.", payment);
+        }
+        return true;
     }
 
     // ===================== UC19 cho gói đặt nhiều buổi (FR43, BR26) =====================
@@ -624,11 +661,13 @@ public class PaymentService {
             rejectLockedPackage(payment, pkg, "Hết lượt gửi lại chứng từ. " + reason);
             return PaymentResponse.from(payment, pkg);
         }
+        recordPartialAmount(payment, request.receivedAmount());
         payment.requestResubmission(reason, deadline, playerAtFault);
         paymentRepository.saveAndFlush(payment);
         packageService.changeStatus(pkg, BookingStatus.RESUBMIT_REQUESTED);
         notify(pkg.getPlayerId(), "PAYMENT_RESUBMIT_REQUESTED", "Cần bổ sung thanh toán",
                 "Vui lòng bổ sung cho " + packageLabel(pkg) + ": " + reason
+                        + ". Số tiền còn thiếu: " + money(payment.remainingAmount())
                         + ". Hạn: " + payment.getResubmitDeadline().format(DEADLINE_FORMAT)
                         + ". Còn " + (Payment.MAX_RESUBMITS - payment.getResubmitCount()) + " lượt gửi lại.",
                 payment);
@@ -657,9 +696,17 @@ public class PaymentService {
         return pkg;
     }
 
+    private static void recordPartialAmount(Payment payment, BigDecimal receivedAmount) {
+        if (receivedAmount != null) {
+            if (!payment.acceptsPartialAmount(receivedAmount)) {
+                throw new AppException("Số đã nhận phải từ số đã ghi nhận đến dưới tổng phải trả");
+            }
+            payment.setReceivedAmount(receivedAmount);
+        }
+    }
+
     private static String packageLabel(BookingPackage pkg) {
-        return "gói đặt nhiều buổi từ " + pkg.getStartDate().format(DAY_FORMAT) + " đến "
-                + pkg.getEndDate().format(DAY_FORMAT);
+        return PackageService.label(pkg);
     }
 
     /**
@@ -871,7 +918,7 @@ public class PaymentService {
         throw notWaitingForPayment();
     }
 
-    /** Đang giữ chỗ nhưng đã quá 5 phút: coi như hết hạn dù job UC37 chưa kịp đổi trạng thái (BR03). */
+    /** Đang giữ chỗ nhưng đã quá hạn giữ chỗ: coi như hết hạn dù job UC37 chưa kịp đổi trạng thái (BR03). */
     private static void requireHoldNotExpired(Booking booking, LocalDateTime now) {
         if (!booking.getHoldExpiresAt().isAfter(now)) {
             throw holdExpired();

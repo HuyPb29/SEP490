@@ -17,6 +17,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu yêu cầu tham gia đội, đồng ý chia sẻ số điện thoại và kết quả xét duyệt.
+ */
 @Entity
 @Table(name = "team_join_request")
 @Getter

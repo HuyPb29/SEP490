@@ -7,6 +7,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Nhận trạng thái ẩn hoặc hiện mà người quản lý muốn áp dụng cho đánh giá.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

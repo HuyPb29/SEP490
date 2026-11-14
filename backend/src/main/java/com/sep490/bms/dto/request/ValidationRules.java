@@ -1,5 +1,8 @@
 package com.sep490.bms.dto.request;
 
+/**
+ * Tập trung các quy tắc kiểm tra tên đăng nhập, mật khẩu và thông tin tài khoản dùng chung.
+ */
 public final class ValidationRules {
     private ValidationRules() {}
     public static final String USERNAME = "^[a-z][a-z0-9._]{5,31}$";

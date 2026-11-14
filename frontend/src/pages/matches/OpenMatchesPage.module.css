@@ -5,98 +5,30 @@
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.navbar {
-  height: 60px;
-  border-bottom: 1px solid #e4e9e7;
-  background: #fff;
-}
-
-.navInner {
-  width: 100%;
-  max-width: 1280px;
-  height: 100%;
-  margin: 0 auto;
-  padding: 0 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  color: #172033;
-  font-size: 19px;
-  font-weight: 800;
-  text-decoration: none;
-}
-
-.brandIcon {
-  width: 34px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #0d8a52;
-  color: #fff;
-  font-size: 15px;
-}
-
-.navLinks {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 26px;
-}
-
-.navLinks a {
-  height: 100%;
-  display: inline-flex;
-  align-items: center;
-  border-bottom: 2px solid transparent;
-  color: #475569;
-  font-size: 13px;
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.navLinks a:hover,
-.navLinks .activeLink {
-  color: #0d8a52;
-}
-
-.navLinks .activeLink {
-  border-bottom-color: #0d8a52;
-  font-weight: 650;
-}
-
-.profile {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #253044;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.avatar {
-  width: 34px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #e5f3eb;
-  color: #147746;
-  font-size: 11px;
-  font-weight: 800;
-}
-
 .main {
   width: 100%;
   max-width: 1280px;
   margin: 0 auto;
   padding: 22px 20px 36px;
+}
+
+.headingRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 17px;
+}
+
+.headingAction {
+  color: #0d7044;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.headingRow .pageHeading {
+  margin: 0;
 }
 
 .pageHeading {
@@ -647,22 +579,6 @@
 }
 
 @media (max-width: 720px) {
-  .navInner {
-    padding: 0 14px;
-  }
-
-  .navLinks {
-    gap: 13px;
-  }
-
-  .navLinks a {
-    font-size: 11px;
-  }
-
-  .profileName {
-    display: none;
-  }
-
   .main {
     padding: 20px 14px 30px;
   }
@@ -686,27 +602,6 @@
 }
 
 @media (max-width: 480px) {
-  .navbar {
-    height: 56px;
-  }
-
-  .brand {
-    font-size: 16px;
-  }
-
-  .brandIcon {
-    width: 30px;
-    height: 30px;
-  }
-
-  .navLinks {
-    gap: 9px;
-  }
-
-  .navLinks a {
-    font-size: 10px;
-  }
-
   .main {
     padding-right: 11px;
     padding-left: 11px;

@@ -16,6 +16,9 @@ public final class NotificationType {
     /** Voucher đã quá valid_to, không nên tiếp tục phát cho khách. */
     public static final String VOUCHER_EXPIRED = "VOUCHER_EXPIRED";
 
+    /** Khiếu nại chờ Owner quá 3 giờ trong giờ mở cửa (P33, MSG111). */
+    public static final String COMPLAINT_OVERDUE = "COMPLAINT_OVERDUE";
+
     private NotificationType() {
     }
 }

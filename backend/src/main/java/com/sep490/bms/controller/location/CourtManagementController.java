@@ -24,6 +24,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Owner xem, thêm và chỉnh sửa sân tại địa điểm quản lý.
+ *
  * Feature: F2 – Quản lý địa điểm
  * Owner: Minh Anh
  * UC: UC07 – Quản lý địa điểm và sân
@@ -33,6 +35,21 @@ import lombok.RequiredArgsConstructor;
 public class CourtManagementController {
 
     private final CourtManagementService courtManagementService;
+
+    /**
+     * UC10 – Quản lý bảo trì sân (phần chọn sân của Staff)
+     * Feature: F2 – Quản lý địa điểm
+     * Owner: Minh Anh
+     * Status: IMPLEMENTED
+     *
+     * Staff không gọi được /api/owner/** nên cần endpoint riêng để lấy danh sách sân
+     * của địa điểm mình làm việc, phục vụ form tạo yêu cầu bảo trì.
+     */
+    @GetMapping("/api/staff/courts")
+    public ResponseEntity<ApiResponse<List<CourtDto>>> getStaffCourts(
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(courtManagementService.listForStaff(currentUser)));
+    }
 
     /**
      * UC07 – Quản lý địa điểm và sân

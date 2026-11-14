@@ -22,6 +22,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu slot đích, giá cũ, giá mới, phụ thu và trạng thái của yêu cầu đổi lịch.
+ */
 @Entity
 @Table(name = "reschedule_request")
 @Getter

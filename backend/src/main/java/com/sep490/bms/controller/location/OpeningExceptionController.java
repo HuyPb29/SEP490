@@ -27,6 +27,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
+ * Cho Owner quản lý giờ mở cửa ngoại lệ theo ngày của địa điểm.
+ *
  * Feature: F2 – Quản lý địa điểm
  * Owner: Minh Anh
  * UC: UC08 – Quản lý giờ mở cửa và slot

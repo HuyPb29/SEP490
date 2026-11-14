@@ -17,6 +17,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu đơn giá slot theo sân, khung giờ, ngày trong tuần và khoảng hiệu lực.
+ */
 @Entity
 @Table(name = "price_rule")
 @Getter

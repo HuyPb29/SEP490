@@ -20,6 +20,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Lưu khiếu nại gắn với booking hoặc giao dịch và quá trình Staff, Owner xử lý.
+ */
 @Entity
 @Table(name = "complaint")
 @Getter
@@ -31,6 +34,9 @@ public class Complaint {
 
     /** Loại khiếu nại đặc biệt: Owner xác nhận thanh toán trễ (BR49). */
     public static final String TYPE_LATE_PAYMENT_CONFIRMATION = "LATE_PAYMENT_CONFIRMATION";
+
+    /** P33 (cố định, D154): Owner xử lý khiếu nại trong 3 giờ tính trong giờ mở cửa, quá hạn báo gấp (MSG111). */
+    public static final java.time.Duration OWNER_RESOLUTION_WAIT = java.time.Duration.ofHours(3);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -83,6 +89,10 @@ public class Complaint {
 
     @Column(name = "decided_at")
     private LocalDateTime decidedAt;
+
+    /** Thời điểm khiếu nại đến tay Owner (Staff chuyển lên, hoặc lúc tạo với khiếu nại chậm xác nhận) — mốc tính P33. */
+    @Column(name = "forwarded_at")
+    private LocalDateTime forwardedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

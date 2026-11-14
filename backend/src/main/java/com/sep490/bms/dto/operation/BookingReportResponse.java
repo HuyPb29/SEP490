@@ -4,12 +4,17 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * Tổng hợp lượt đặt và tỷ lệ hủy trong kỳ theo ngày và theo sân.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -34,6 +39,7 @@ public class BookingReportResponse {
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+    @Schema(name = "BookingReportDayItem")
     public static class DayItem {
         private LocalDate date;
         private long total;
@@ -45,6 +51,7 @@ public class BookingReportResponse {
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+    @Schema(name = "BookingReportCourtItem")
     public static class CourtItem {
         private Long courtId;
         private String courtName;

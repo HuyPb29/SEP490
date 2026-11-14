@@ -5,6 +5,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.promotion.VoucherUsage;
 
+/**
+ * Tra cứu lượt dùng voucher theo booking hoặc gói và đếm lượt đã dùng của Player.
+ */
 @Repository
 public interface VoucherUsageRepository extends JpaRepository<VoucherUsage, Long> {
     long countByVoucherIdAndPlayerIdAndStatus(Long voucherId, Long playerId, com.sep490.bms.entity.enums.VoucherUsageStatus status);

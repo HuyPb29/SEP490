@@ -5,6 +5,9 @@ import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.promotion.LoyaltyReward;
 
+/**
+ * Truy cập lịch sử các lần cấp thưởng khi Player đạt mốc chi tiêu.
+ */
 @Repository
 public interface LoyaltyRewardRepository extends JpaRepository<LoyaltyReward, Long> {
 }
