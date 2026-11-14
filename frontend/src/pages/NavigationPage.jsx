@@ -6,7 +6,6 @@ import WorkspaceLayout from '../components/layout/WorkspaceLayout'
 import { Button, ConfirmDialog, EmptyState, ErrorState, LoadingState, Pagination } from '../components/common'
 
 const titles = {
-  teams: 'Đội của tôi',
   reschedules: 'Lịch sử đổi lịch',
   reviews: 'Kiểm duyệt đánh giá',
 }
@@ -26,12 +25,8 @@ function NavigationContent({ kind }) {
       const bookings = await getAllPages('/me/bookings', { signal })
       return { content: bookings.filter(({ status }) => canHaveHistory.has(status)) }
     }
-    if (kind === 'reviews') {
-      const { data } = await api.get('/admin/reviews', { signal, params: { page, size: 20 } })
-      return data.data
-    }
-    const { data } = await api.get('/me/teams', { signal })
-    return { content: data.data }
+    const { data } = await api.get('/admin/reviews', { signal, params: { page, size: 20 } })
+    return data.data
   }, [kind, page])
   const resource = useResource(load, kind + ':' + page)
   const rows = resource.data?.content ?? []
@@ -60,8 +55,6 @@ function NavigationContent({ kind }) {
         <ul className="grid gap-3">
           {rows.map((row) => (
             <li className="rounded-lg border border-slate-200 bg-white p-4" key={row.id}>
-              {kind === 'teams' && <><strong>{row.name}</strong>
-                <p>{row.memberCount} thành viên · {row.captain ? 'Bạn là đội trưởng' : 'Đội trưởng ' + row.captainName}</p></>}
               {kind === 'reschedules' && (
                 <Link className="underline" to={'/my-bookings/' + row.id + '/reschedules'}>
                   {row.bookingCode} · {row.locationName} · {row.playDate}
