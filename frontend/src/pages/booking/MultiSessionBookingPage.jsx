@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiErrorMessage } from '../../api';
 import { toMinutes, toTimeLabel } from '../../api/bookingApi';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import PublicFooter from '../../components/layout/PublicFooter';
 import { ConfirmDialog } from '../../components/common/WorkspacePrimitives';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
@@ -364,6 +365,7 @@ export default function MultiSessionBookingPage() {
           <p>Vui lòng mở trang đặt nhiều buổi từ trang chi tiết cụm sân.</p>
           <Link to="/">‹ Tìm sân</Link>
         </main>
+        <PublicFooter />
       </div>
     );
   }
@@ -796,6 +798,7 @@ export default function MultiSessionBookingPage() {
           </div>
         </div>
       </main>
+      <PublicFooter />
 
       {showCompensation && (
         <div className={styles.modalOverlay} role="presentation" onClick={() => setShowCompensation(false)}>

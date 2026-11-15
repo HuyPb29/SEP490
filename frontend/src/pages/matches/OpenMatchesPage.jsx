@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import PublicFooter from '../../components/layout/PublicFooter';
 import { apiErrorMessage } from '../../api';
 import {
   approveJoinRequest,
@@ -372,6 +373,7 @@ export default function OpenMatchesPage() {
 
         {notice && <p className={styles.notice} role="status">{notice}</p>}
       </main>
+      <PublicFooter />
 
       {requestingMatchId && (
         <div className={styles.modalBackdrop} role="presentation" onClick={() => setRequestingMatchId(null)}>
