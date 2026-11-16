@@ -68,6 +68,7 @@ export default function OwnerFacilitySettingsPage() {
   const [message, setMessage] = useState('')
   const [qrPreview, setQrPreview] = useState('')
   const [qrError, setQrError] = useState('')
+  const [qrSavedLocationId, setQrSavedLocationId] = useState(null)
   const [uploadingQr, setUploadingQr] = useState(false)
 
   const selectedLocation = useMemo(
@@ -104,6 +105,7 @@ export default function OwnerFacilitySettingsPage() {
     input.value = ''
     if (!image || !selectedLocationId || locked || uploadingQr) return
     setQrError('')
+    setQrSavedLocationId(null)
     if (!['image/jpeg', 'image/png'].includes(image.type) || image.size > 5 * 1024 * 1024) {
       setQrError('Chọn ảnh JPG hoặc PNG tối đa 5 MB.')
       return
@@ -113,6 +115,7 @@ export default function OwnerFacilitySettingsPage() {
       const path = await uploadOwnerLocationQr(selectedLocationId, image)
       setLocations((rows) => rows.map((row) =>
         row.id === selectedLocationId ? { ...row, qrImagePath: path } : row))
+      setQrSavedLocationId(selectedLocationId)
     } catch (err) {
       setQrError(apiErrorMessage(err))
     } finally {
@@ -456,6 +459,8 @@ export default function OwnerFacilitySettingsPage() {
             </div>
 
             {uploadingQr && <p role="status">Đang tải ảnh QR…</p>}
+            {qrSavedLocationId === selectedLocationId && qrSavedLocationId !== null && !qrError &&
+              <p className={styles.alertOk} role="status">Ảnh QR đã được lưu.</p>}
             {qrError && <p className={styles.alertError} role="alert">{qrError}</p>}
             {qrPreview && (
               <div className={styles.qrBox}>
@@ -463,8 +468,9 @@ export default function OwnerFacilitySettingsPage() {
                   src={qrPreview}
                   alt="Mã QR chuyển khoản của địa điểm"
                   className={styles.qrImage}
-                  onError={(event) => {
-                    event.currentTarget.style.display = 'none'
+                  onError={() => {
+                    setQrPreview('')
+                    setQrError('Ảnh QR đã lưu nhưng không hiển thị được. Hãy chọn lại ảnh JPG hoặc PNG.')
                   }}
                 />
                 <span className={styles.qrHint}>Ảnh QR đã lưu</span>
