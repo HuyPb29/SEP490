@@ -1,3 +1,4 @@
+import { uiMessage } from '../../utils/formatters';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiErrorMessage } from '../../api';
@@ -197,7 +198,7 @@ function PaymentDesk({ role, surcharge }) {
     setReasonError('');
     setErrorMessage('');
     if (action !== 'reject' && !validAmount) {
-      setAmountError('Số tiền thực nhận phải là số nguyên không âm, tối đa 12 chữ số. (MSG02)');
+      setAmountError('Số tiền thực nhận phải là số nguyên không âm, tối đa 12 chữ số.');
       return;
     }
     if (action === 'confirm' && isShortfall) {
@@ -205,7 +206,7 @@ function PaymentDesk({ role, surcharge }) {
       return;
     }
     if (action !== 'confirm' && !reason) {
-      setReasonError('Vui lòng chọn lý do. (MSG01)');
+      setReasonError('Vui lòng chọn lý do.');
       return;
     }
     setDecision({ action, id: selectedId });
@@ -225,11 +226,11 @@ function PaymentDesk({ role, surcharge }) {
       if (action === 'confirm') {
         result = await submit(id, action, { receivedAmount: isOverpaid ? parsedReceived : null });
         const receipt = result.receiptNo ? ' Biên nhận ' + result.receiptNo + '.' : '';
-        const excess = isOverpaid ? ' Đã thông báo Chủ sân về khoản chuyển thừa. (MSG55)' : '';
-        if (result.status === 'EXPIRED') setMessage('Đã hết hạn thanh toán. (MSG33)');
+        const excess = isOverpaid ? ' Đã thông báo Chủ sân về khoản chuyển thừa.' : '';
+        if (result.status === 'EXPIRED') setMessage('Đã hết hạn thanh toán.');
         else if (surcharge && result.status !== 'APPROVED') {
-          setErrorMessage('Đổi lịch không thành công. Booking giữ giờ cũ. (MSG65)');
-        } else setMessage('Đã xác nhận thanh toán cho ' + label + '. (MSG46)' + receipt + excess);
+          setErrorMessage('Đổi lịch không thành công. Booking giữ giờ cũ.');
+        } else setMessage('Đã xác nhận thanh toán cho ' + label + '.' + receipt + excess);
       } else if (action === 'request-resubmission') {
         result = await submit(id, action, { reason: reason.text, playerAtFault: reason.playerAtFault,
           receivedAmount: isShortfall ? parsedReceived : null });
@@ -237,12 +238,12 @@ function PaymentDesk({ role, surcharge }) {
         const attempts = result.resubmitsLeft != null
           ? (result.resubmitsLeft > 0 ? ' Còn ' + result.resubmitsLeft + ' lượt bổ sung.' : ' Yêu cầu bổ sung cuối đang mở.')
           : '';
-        setMessage(result.status === 'REJECTED' ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ. (MSG52)'
-          : 'Đã yêu cầu bổ sung chứng từ cho ' + label + '. (MSG50)' + deadline + attempts);
+        setMessage(result.status === 'REJECTED' ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ.'
+          : 'Đã yêu cầu bổ sung chứng từ cho ' + label + '.' + deadline + attempts);
       } else {
         result = await submit(id, action, { reason: reason.text });
-        setMessage(result?.status === 'EXPIRED' ? 'Đã hết hạn thanh toán. (MSG33)'
-          : 'Đã từ chối thanh toán cho ' + label + '. (MSG51)');
+        setMessage(result?.status === 'EXPIRED' ? 'Đã hết hạn thanh toán.'
+          : 'Đã từ chối thanh toán cho ' + label + '.');
       }
       reload();
     } catch (error) {
@@ -262,7 +263,7 @@ function PaymentDesk({ role, surcharge }) {
   };
 
   const dialogMessage = decision?.action === 'confirm'
-    ? 'Xác nhận đã đối chiếu và nhận đủ ' + formatMoney(parsedReceived) + ' cho ' + formatPaymentLabel(activePayment) + '? (MSG53)'
+    ? 'Xác nhận đã đối chiếu và nhận đủ ' + formatMoney(parsedReceived) + ' cho ' + formatPaymentLabel(activePayment) + '?'
     : decision?.action === 'reject'
       ? 'Từ chối thanh toán ' + formatPaymentLabel(activePayment) + '?'
       : isShortfall
@@ -327,7 +328,7 @@ function PaymentDesk({ role, surcharge }) {
         )}
         {(queueError || errorMessage) && (
           <p className={styles.errorMessage} role="alert" style={{ marginBottom: 14 }}>
-            {queueError || errorMessage}
+            {uiMessage(queueError || errorMessage)}
           </p>
         )}
 
@@ -379,7 +380,7 @@ function PaymentDesk({ role, surcharge }) {
           {selectedId && (
             <section className={styles.detailCard} aria-label="Chi tiết giao dịch đang chọn">
               {detailError?.id === selectedId ? (
-                <p role="alert">{detailError.message} <button type="button" onClick={reload}>Thử lại</button></p>
+                <p role="alert">{uiMessage(detailError.message)} <button type="button" onClick={reload}>Thử lại</button></p>
               ) : !activePayment ? (
                 <p role="status">Đang tải chi tiết giao dịch…</p>
               ) : (
@@ -390,7 +391,7 @@ function PaymentDesk({ role, surcharge }) {
                       {activeDetail?.customerName ? ` · ${activeDetail.customerName}` : ''}
                     </h2>
                     <span className={styles.statusBadge}>
-                      {canDecide ? 'Chờ xác nhận · Còn ' + resubmitsLeft + '/3 lượt bổ sung' : 'Giao dịch đã được xử lý. (MSG54)'}
+                      {canDecide ? 'Chờ xác nhận · Còn ' + resubmitsLeft + '/3 lượt bổ sung' : 'Giao dịch đã được xử lý.'}
                     </span>
                   </header>
 
@@ -532,7 +533,7 @@ function PaymentDesk({ role, surcharge }) {
 
                       {activeDetail?.note && (
                         <p className={styles.ownerNote}>
-                          <strong>Ghi chú cho chủ sân (DR20):</strong> {activeDetail.note}
+                          <strong>Ghi chú cho chủ sân:</strong> {activeDetail.note}
                         </p>
                       )}
 

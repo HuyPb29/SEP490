@@ -47,7 +47,7 @@ export function getAccessToken() {
 /** Câu báo lỗi để hiện cho người dùng: ưu tiên message của backend (ApiResponse.message). */
 export function apiErrorMessage(err, fallback = 'Đã có lỗi xảy ra. Vui lòng thử lại.') {
   const data = err?.response?.data
-  if (data?.errors && typeof data.errors === 'object') {
+  if (data?.errors && typeof data.errors === 'object' && !/^MSG\d+$/.test(data.errors.code)) {
     const first = Object.values(data.errors)[0]
     if (first) return String(first)
   }
