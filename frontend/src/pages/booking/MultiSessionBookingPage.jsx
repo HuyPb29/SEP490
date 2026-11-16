@@ -12,6 +12,7 @@ import { isBookable } from '../../utils/venueSchedule';
 import { usePackagePreview } from '../../hooks/usePackagePreview';
 import ScheduleGrid from '../../components/schedule/ScheduleGrid';
 import SelectedRanges from '../../components/schedule/SelectedRanges';
+import gridStyles from '../../components/schedule/ScheduleGrid.module.css';
 import styles from './MultiSessionBookingPage.module.css';
 
 // value theo Date.getDay() (CN = 0); backend dùng 1 = Thứ 2 … 7 = Chủ nhật
@@ -30,8 +31,20 @@ const MONTH_NAMES = [
   'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12',
 ];
 
-// Mốc 30 phút từ 05:00 đến 24:00; giờ mở cửa thật do backend kiểm (buổi ngoài giờ bị đánh dấu trùng)
-const TIMES = Array.from({ length: 39 }, (_, index) => toTimeLabel(300 + index * 30));
+// Định kỳ: các hàng giờ bắt đầu theo buổi trong ngày; thời lượng từ 1 slot (30 phút), mỗi lựa chọn thêm 1 slot
+const PERIODS = [
+  { label: 'Sáng', from: 0, to: 600 },
+  { label: 'Trưa', from: 600, to: 840 },
+  { label: 'Chiều', from: 840, to: 1080 },
+  { label: 'Tối', from: 1080, to: 1440 },
+];
+const DURATIONS = Array.from({ length: 10 }, (_, index) => (index + 1) * 30);
+const durationLabel = (minutes) => {
+  const hours = Math.floor(minutes / 60);
+  const text = [hours ? `${hours} giờ` : '', minutes % 60 ? '30 phút' : ''].filter(Boolean).join(' ');
+  return `${text} (${minutes / 30} slot)`;
+};
+const shortPrice = (price) => (price == null ? '' : `${Math.round(Number(price) / 1000)}k`);
 
 const CONFLICT_LABELS = {
   TAKEN: 'Đã có người đặt',
@@ -80,6 +93,30 @@ function useDaySchedule(facilityId, date, enabled, load) {
   return enabled && result?.date === date ? result : null;
 }
 
+// Ngày đầu tiên từ fromDate rơi vào thứ weekday (Date.getDay())
+function firstDateOf(fromDate, weekday) {
+  const date = parseDateKey(fromDate);
+  date.setDate(date.getDate() + ((weekday - date.getDay() + 7) % 7));
+  return toDateKey(date);
+}
+
+// Định kỳ: xem trước gói trên từng sân để biết số buổi trùng của mỗi sân và gợi ý sân ít trùng nhất
+function useCourtRanking(pattern, courts, load) {
+  const [result, setResult] = useState(null);
+  useEffect(() => {
+    if (!pattern || courts.length === 0) return undefined;
+    let active = true;
+    const timer = setTimeout(() => {
+      Promise.all(courts.map((court) => load({ ...pattern, courtId: court.court_id })
+        .then((value) => ({ courtId: court.court_id, conflicts: (value?.data ?? value)?.conflictSessions ?? 0 }))
+        .catch(() => ({ courtId: court.court_id, conflicts: null }))))
+        .then((list) => { if (active) setResult({ pattern, list }); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [pattern, courts, load]);
+  return result?.pattern === pattern ? result.list : null;
+}
+
 export default function MultiSessionBookingPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -100,12 +137,17 @@ export default function MultiSessionBookingPage() {
   const [courts, setCourts] = useState([]);
 
   const [mode, setMode] = useState(saved?.mode ?? 'recurring');
+  // Định kỳ: chỉ bắt buộc chọn thứ và giờ; thời gian gói mặc định 1 tháng, sân tự chọn sân ít trùng nhất
   const [courtId, setCourtId] = useState(saved?.courtId ?? null);
-  const [fromDate, setFromDate] = useState(saved?.fromDate ?? today);
-  const [toDate, setToDate] = useState(() => saved?.toDate ?? addMonths(today, 1, 1));
-  const [selectedWeekdays, setSelectedWeekdays] = useState(saved?.selectedWeekdays ?? [2, 4]);
-  const [startTime, setStartTime] = useState(saved?.startTime ?? '19:00');
-  const [endTime, setEndTime] = useState(saved?.endTime ?? '21:00');
+  const [courtTouched, setCourtTouched] = useState(saved?.courtTouched ?? false);
+  const [fromDate, setFromDate] = useState(saved?.fromDate && saved.fromDate >= today ? saved.fromDate : today);
+  const [months, setMonths] = useState(saved?.months ?? 1);
+  const [showFromInput, setShowFromInput] = useState(false);
+  const [selectedWeekdays, setSelectedWeekdays] = useState(saved?.selectedWeekdays ?? []);
+  // Giờ chơi: khóa 'all' dùng chung mọi thứ, hoặc khóa theo thứ khi mỗi thứ một giờ; { start, end, duration } tính bằng phút
+  const [perDayTimes, setPerDayTimes] = useState(saved?.perDayTimes ?? false);
+  const [weeklyTimes, setWeeklyTimes] = useState(saved?.weeklyTimes ?? {});
+  const [timeTab, setTimeTab] = useState(null);
 
   // Tự chọn ngày: các ô 30 phút Player bấm trên bảng slot; ô liền nhau cùng sân, cùng ngày là một buổi
   const [customSlots, setCustomSlots] = useState(saved?.customSlots ?? []);
@@ -113,7 +155,6 @@ export default function MultiSessionBookingPage() {
   const customSessions = useMemo(() => customRanges.map(({ date, courtId, startMinute, endMinute }) =>
     ({ date, courtId, startMinute, endMinute })), [customRanges]);
   const [gridDate, setGridDate] = useState(() => saved?.customSlots?.[0]?.date ?? today);
-  const [weekdayTimes, setWeekdayTimes] = useState(saved?.weekdayTimes ?? {});
   const customDates = useMemo(() => [...new Set(customSlots.map((slot) => slot.date))], [customSlots]);
   // Xử lý buổi trùng (BR50): buổi bỏ và buổi đổi sang slot bù, theo khóa của buổi gốc
   const [removedKeys, setRemovedKeys] = useState(saved?.removedKeys ?? []);
@@ -140,13 +181,34 @@ export default function MultiSessionBookingPage() {
       .catch((err) => setPreviewError(apiErrorMessage(err, 'Không tải được danh sách sân.')));
   }, [facilityId, getLocationCourts]);
 
-  const startMinute = toMinutes(startTime);
-  const endMinute = toMinutes(endTime);
-
   const resetConflictAdjustments = () => {
     setRemovedKeys([]);
     setReplacements({});
   };
+
+  // ---- Định kỳ: thời gian gói 1–3 tháng từ ngày bắt đầu (BR27), mọi buổi trong 3 tháng kể từ hôm nay (D162)
+  const monthEnd = (count) => addMonths(fromDate, count, 1);
+  const monthAllowed = (count) => monthEnd(count) <= maxAllowedDate;
+  const effectiveMonths = monthAllowed(months) ? months : ([3, 2, 1].find(monthAllowed) ?? 1);
+  const toDate = monthEnd(effectiveMonths);
+  const latestFromDate = addMonths(today, 2, 0);
+
+  const timeKey = perDayTimes ? (selectedWeekdays.includes(timeTab) ? timeTab : selectedWeekdays[0]) : 'all';
+  const recurringPattern = useMemo(() => {
+    if (mode !== 'recurring' || selectedWeekdays.length === 0) return null;
+    const slots = selectedWeekdays.map((day) => {
+      const time = perDayTimes ? weeklyTimes[day] : weeklyTimes.all;
+      return time?.start != null ? { dayOfWeek: day === 0 ? 7 : day, startMinute: time.start, endMinute: time.end } : null;
+    });
+    if (slots.some((slot) => !slot)) return null;
+    return { startDate: fromDate, endDate: toDate, packageType: 'RECURRING', weeklySlots: slots };
+  }, [mode, selectedWeekdays, perDayTimes, weeklyTimes, fromDate, toDate]);
+
+  const courtRanking = useCourtRanking(recurringPattern, courts, previewBookingPackage);
+  const bestCourtId = courtRanking?.filter((item) => item.conflicts != null)
+    .sort((a, b) => a.conflicts - b.conflicts)[0]?.courtId ?? null;
+  // Chưa tự đổi sân thì dùng sân ít trùng nhất; xếp hạng lỗi hết thì dùng sân đầu tiên
+  const effectiveCourtId = courtTouched ? courtId : courtRanking ? (bestCourtId ?? courtId) : null;
 
   // UC15 #2, #3: PackageRequest theo mẫu Player nhập (chưa xử lý buổi trùng).
   // Đội, voucher, điểm, ghi chú chọn ở trang tóm tắt gói.
@@ -157,24 +219,53 @@ export default function MultiSessionBookingPage() {
       return { courtId: customSessions[0].courtId, startDate: dates[0], endDate: dates.at(-1),
         packageType: 'CUSTOM', sessions: customSessions };
     }
-    if (!courtId || endMinute <= startMinute || selectedWeekdays.length === 0) return null;
-    return {
-      courtId,
-      startDate: fromDate,
-      endDate: toDate,
-      packageType: 'RECURRING',
-      weeklySlots: selectedWeekdays.map((day) => ({ dayOfWeek: day === 0 ? 7 : day, startMinute, endMinute, ...weekdayTimes[day] })),
-    };
-  }, [
-    courtId,
-    fromDate,
-    toDate,
-    mode,
-    selectedWeekdays, weekdayTimes,
-    customSessions,
-    startMinute,
-    endMinute,
-  ]);
+    if (!recurringPattern || !effectiveCourtId) return null;
+    return { ...recurringPattern, courtId: effectiveCourtId };
+  }, [mode, customSessions, recurringPattern, effectiveCourtId]);
+
+  // Bảng giờ bắt đầu lấy giờ mở cửa và giá của ngày đầu tiên có buổi (theo thứ đang chọn giờ)
+  const representativeDate = (() => {
+    const days = perDayTimes && timeKey != null ? [timeKey] : selectedWeekdays;
+    if (days.length === 0) return fromDate;
+    return days.map((day) => firstDateOf(fromDate, day)).sort()[0];
+  })();
+  const timeGrid = useDaySchedule(facilityId, representativeDate, mode === 'recurring', getVenueSchedule);
+  const timeRow = timeGrid?.data?.courts.find((court) => court.court_id === effectiveCourtId) ?? timeGrid?.data?.courts[0];
+  const openStarts = (timeRow?.slots ?? []).filter((slot) => slot.status !== 'closed').map((slot) => toMinutes(slot.time));
+  const closeMinute = openStarts.length ? Math.max(...openStarts) + 30 : 1440;
+  const currentTime = timeKey != null ? weeklyTimes[timeKey] : null;
+  const currentDuration = currentTime?.duration ?? 30;
+
+  const updateTime = (next) => {
+    if (timeKey == null) return;
+    resetConflictAdjustments();
+    setNotice('');
+    setWeeklyTimes((current) => ({ ...current, [timeKey]: next }));
+  };
+  // Bấm ô = giờ bắt đầu; giờ kết thúc theo thời lượng, sát giờ đóng cửa thì rút ngắn
+  const pickStart = (minute) => updateTime({ start: minute, end: minute + Math.min(currentDuration, closeMinute - minute), duration: currentDuration });
+  const changeDuration = (duration) => updateTime(currentTime?.start != null
+    ? { ...currentTime, duration, end: currentTime.start + Math.min(duration, closeMinute - currentTime.start) }
+    : { start: null, end: null, duration });
+
+  const togglePerDayTimes = () => {
+    resetConflictAdjustments();
+    if (!perDayTimes) {
+      setWeeklyTimes((current) => {
+        const next = { ...current };
+        selectedWeekdays.forEach((day) => { if (!next[day] && current.all) next[day] = { ...current.all }; });
+        return next;
+      });
+      setTimeTab(selectedWeekdays[0] ?? null);
+    }
+    setPerDayTimes((value) => !value);
+  };
+
+  const chooseCourt = (value) => {
+    resetConflictAdjustments();
+    setCourtId(value);
+    setCourtTouched(true);
+  };
 
   const baseResult = usePackagePreview(baseRequest, previewBookingPackage, 0);
   const activeBasePreview = baseResult?.data;
@@ -235,9 +326,15 @@ export default function MultiSessionBookingPage() {
 
   const toggleWeekday = (weekday) => {
     resetConflictAdjustments();
-    setSelectedWeekdays((current) =>
-      current.includes(weekday) ? current.filter((day) => day !== weekday) : [...current, weekday]
-    );
+    const adding = !selectedWeekdays.includes(weekday);
+    // Mỗi thứ một giờ: thứ mới lấy giờ chung (hoặc giờ của thứ đang xem) làm mặc định
+    if (adding && perDayTimes && !weeklyTimes[weekday]) {
+      const copy = weeklyTimes.all ?? (timeKey != null ? weeklyTimes[timeKey] : null);
+      if (copy) setWeeklyTimes((current) => ({ ...current, [weekday]: { ...copy } }));
+    }
+    setSelectedWeekdays((current) => adding
+      ? [...current, weekday].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7))
+      : current.filter((day) => day !== weekday));
     setNotice('');
   };
 
@@ -395,8 +492,8 @@ export default function MultiSessionBookingPage() {
       facilityName: facilityName || preview.locationName || '',
       request: finalRequest,
       schedule: {
-        mode, courtId, fromDate, toDate, selectedWeekdays, startTime, endTime,
-        weekdayTimes, customSlots, removedKeys, replacements,
+        mode, courtId: effectiveCourtId ?? courtId, courtTouched, fromDate, months: effectiveMonths,
+        selectedWeekdays, perDayTimes, weeklyTimes, customSlots, removedKeys, replacements,
       },
     });
     navigate('/booking/package-summary');
@@ -467,58 +564,12 @@ export default function MultiSessionBookingPage() {
 
             {mode === 'recurring' && <>
             <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="court">Sân</label>
-              <select
-                id="court"
-                className={styles.selectInput}
-                value={courtId ?? ''}
-                onChange={(event) => {
-                  resetConflictAdjustments();
-                  setCourtId(Number(event.target.value));
-                }}
-              >
-                {courts.map((court) => (
-                  <option key={court.court_id} value={court.court_id}>{court.court_name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className={styles.twoColRow}>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel} htmlFor="from-date">Từ ngày</label>
-                <input
-                  id="from-date"
-                  type="date"
-                  className={styles.dateInput}
-                  min={today}
-                  max={maxAllowedDate}
-                  value={fromDate}
-                  onChange={(event) => {
-                    resetConflictAdjustments();
-                    setFromDate(event.target.value);
-                    if (event.target.value) setViewMonth(parseDateKey(event.target.value));
-                  }}
-                />
-              </div>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel} htmlFor="to-date">Đến ngày</label>
-                <input
-                  id="to-date"
-                  type="date"
-                  className={styles.dateInput}
-                  min={fromDate}
-                  max={maxAllowedDate}
-                  value={toDate}
-                  onChange={(event) => {
-                    resetConflictAdjustments();
-                    setToDate(event.target.value);
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <span className={styles.fieldLabel}>Thứ trong tuần</span>
+              <span className={styles.fieldLabel}>
+                Thứ trong tuần
+                {selectedWeekdays.length > 0 && <em className={styles.fieldLabelValue}>
+                  {selectedWeekdays.map((day) => WEEKDAYS.find((entry) => entry.value === day)?.label).join(', ')}
+                </em>}
+              </span>
               <div className={styles.weekdayRow}>
                 {WEEKDAYS.map((day) => (
                   <button
@@ -534,59 +585,58 @@ export default function MultiSessionBookingPage() {
               </div>
             </div>
 
-            <div className={styles.twoColRow}>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel} htmlFor="start-time">Giờ bắt đầu</label>
-                <select
-                  id="start-time"
-                  className={styles.selectInput}
-                  value={startTime}
-                  onChange={(event) => {
-                    resetConflictAdjustments();
-                    const nextStart = event.target.value;
-                    setStartTime(nextStart);
-                    if (toMinutes(endTime) <= toMinutes(nextStart)) {
-                      const nextEndMin = Math.min(1440, toMinutes(nextStart) + 60);
-                      setEndTime(toTimeLabel(nextEndMin));
-                    }
-                  }}
-                >
-                  {TIMES.slice(0, -1).map((time) => <option key={time} value={time}>{time}</option>)}
-                </select>
+            <div className={styles.fieldGroup}>
+              <span className={styles.fieldLabel}>
+                Thời gian gói
+                <em className={styles.fieldLabelValue}>{formatDay(fromDate).slice(4, 9)} – {formatDay(toDate).slice(4, 9)}</em>
+              </span>
+              <div className={styles.monthRow} role="group" aria-label="Thời gian gói">
+                {[1, 2, 3].map((count) => (
+                  <button key={count} type="button" aria-pressed={effectiveMonths === count} disabled={!monthAllowed(count)}
+                    className={`${styles.weekdayBtn} ${effectiveMonths === count ? styles.weekdayBtnActive : ''}`}
+                    onClick={() => { resetConflictAdjustments(); setMonths(count); }}>
+                    {count} tháng
+                  </button>
+                ))}
               </div>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel} htmlFor="end-time">Giờ kết thúc</label>
-                <select
-                  id="end-time"
-                  className={styles.selectInput}
-                  value={endTime}
-                  onChange={(event) => {
-                    resetConflictAdjustments();
-                    setEndTime(event.target.value);
-                  }}
-                >
-                  {TIMES.slice(1).filter((time) => toMinutes(time) > startMinute).map((time) => (
-                    <option key={time} value={time}>{time}</option>
-                  ))}
-                </select>
-              </div>
+              <p className={styles.customModeHint}>
+                Bắt đầu từ {formatDay(fromDate)} ·{' '}
+                <button type="button" className={styles.linkBtn} onClick={() => setShowFromInput((value) => !value)}>
+                  Đổi ngày bắt đầu
+                </button>
+              </p>
+              {showFromInput && <input type="date" className={styles.dateInput} aria-label="Ngày bắt đầu gói"
+                min={today} max={latestFromDate} value={fromDate}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (!value || value < today || value > latestFromDate) return;
+                  resetConflictAdjustments();
+                  setFromDate(value);
+                  setViewMonth(parseDateKey(value));
+                }} />}
             </div>
 
-            {mode === 'recurring' && selectedWeekdays.map((day) => <fieldset className="flex flex-wrap gap-2" key={day}>
-              <legend>{WEEKDAYS.find((entry) => entry.value === day)?.label}</legend>
-              <label>Giờ bắt đầu <select className={styles.selectInput} value={weekdayTimes[day]?.startMinute ?? startMinute}
-                onChange={(event) => {
-                  resetConflictAdjustments();
-                  const start = Number(event.target.value);
-                  setWeekdayTimes({ ...weekdayTimes, [day]: { startMinute: start, endMinute: Math.max(start + 30, weekdayTimes[day]?.endMinute ?? endMinute) } });
-                }}>{TIMES.slice(0, -1).map((time) => <option key={time} value={toMinutes(time)}>{time}</option>)}</select></label>
-              <label>Giờ kết thúc <select className={styles.selectInput} value={weekdayTimes[day]?.endMinute ?? endMinute}
-                onChange={(event) => {
-                  resetConflictAdjustments();
-                  setWeekdayTimes({ ...weekdayTimes, [day]: { startMinute: weekdayTimes[day]?.startMinute ?? startMinute, endMinute: Number(event.target.value) } });
-                }}>{TIMES.filter((time) => toMinutes(time) > (weekdayTimes[day]?.startMinute ?? startMinute))
-                  .map((time) => <option key={time} value={toMinutes(time)}>{time}</option>)}</select></label>
-            </fieldset>)}
+            <div className={styles.fieldGroup}>
+              <label className={styles.fieldLabel} htmlFor="court">Sân</label>
+              <select id="court" className={styles.selectInput} value={effectiveCourtId ?? courtId ?? ''}
+                onChange={(event) => chooseCourt(Number(event.target.value))}>
+                {courts.map((court) => {
+                  const rank = courtRanking?.find((item) => item.courtId === court.court_id);
+                  const status = rank?.conflicts == null ? '' : rank.conflicts ? ` · ${rank.conflicts} buổi trùng` : ' · trống mọi buổi';
+                  return <option key={court.court_id} value={court.court_id}>
+                    {court.court_name}{status}{bestCourtId === court.court_id ? ' (ít trùng nhất)' : ''}
+                  </option>;
+                })}
+              </select>
+              <p className={styles.customModeHint}>
+                {courtTouched
+                  ? <>Bạn đã tự chọn sân.{' '}
+                    <button type="button" className={styles.linkBtn} onClick={() => { resetConflictAdjustments(); setCourtTouched(false); }}>
+                      Dùng sân ít trùng nhất
+                    </button></>
+                  : 'Tự chọn sân ít buổi trùng nhất với lịch của bạn; đổi được.'}
+              </p>
+            </div>
             </>}
 
             {mode === 'custom' && <div className={styles.fieldGroup}>
@@ -611,6 +661,102 @@ export default function MultiSessionBookingPage() {
                 <strong>🎁 {preview.batchOffer.name}</strong>
                 <span>{preview.batchOffer.message}</span>
               </div>
+            )}
+
+            {mode === 'recurring' && (
+              <section className={styles.gridCard} aria-label="Khung giờ chơi hằng tuần">
+                <div className={styles.gridHeader}>
+                  <h2 className={styles.gridTitle}>Khung giờ chơi</h2>
+                  <label className={styles.durationField}>
+                    Thời lượng mỗi buổi
+                    <select className={styles.selectInput} value={currentDuration} disabled={timeKey == null}
+                      onChange={(event) => changeDuration(Number(event.target.value))}>
+                      {DURATIONS.map((minutes) => (
+                        <option key={minutes} value={minutes}
+                          disabled={currentTime?.start != null && minutes > closeMinute - currentTime.start}>
+                          {durationLabel(minutes)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {perDayTimes && selectedWeekdays.length > 0 && (
+                  <div className={styles.dayTabs} role="tablist" aria-label="Giờ chơi của từng thứ">
+                    {selectedWeekdays.map((day) => {
+                      const time = weeklyTimes[day];
+                      return (
+                        <button key={day} type="button" role="tab" aria-selected={timeKey === day}
+                          className={`${styles.dayTab} ${timeKey === day ? styles.dayTabActive : ''}`}
+                          onClick={() => setTimeTab(day)}>
+                          {WEEKDAYS.find((entry) => entry.value === day)?.label}
+                          <small>{time?.start != null ? `${toTimeLabel(time.start)}–${toTimeLabel(time.end)}` : 'chưa chọn'}</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className={styles.gridHint} aria-live="polite">
+                  {selectedWeekdays.length === 0
+                    ? 'Chọn thứ trong tuần ở cột bên trái trước.'
+                    : currentTime?.start != null
+                      ? <>Đang chọn <strong>{toTimeLabel(currentTime.start)}–{toTimeLabel(currentTime.end)}</strong>
+                        {currentTime.end - currentTime.start < currentDuration ? ` (rút ngắn vì ${toTimeLabel(closeMinute)} đóng cửa)` : ''}.
+                        {' '}Bấm ô khác để đổi giờ bắt đầu; đổi thời lượng ở ô bên phải.</>
+                      : 'Bấm một ô để chọn giờ bắt đầu, rồi chọn thời lượng ở ô bên phải (tối thiểu 1 slot = 30 phút).'}
+                </p>
+
+                {selectedWeekdays.length > 0 && !timeGrid && <p role="status">Đang tải giờ mở cửa…</p>}
+                {timeGrid?.error && <p role="alert" className={styles.pickMessage + ' ' + styles.pickError}>{timeGrid.error}</p>}
+                {selectedWeekdays.length > 0 && timeRow && (
+                  <div className={gridStyles.wrapper}>
+                    <table className={gridStyles.table}>
+                      <tbody>
+                        {PERIODS.map((period) => {
+                          const cells = timeRow.slots.filter((slot) => {
+                            const minute = toMinutes(slot.time);
+                            return minute >= period.from && minute < period.to;
+                          });
+                          if (cells.length === 0) return null;
+                          return (
+                            <tr key={period.label}>
+                              <th scope="row" className={gridStyles.court}>
+                                {period.label}
+                                <small className={styles.periodRange}>{cells[0].time}–{toTimeLabel(toMinutes(cells.at(-1).time) + 30)}</small>
+                              </th>
+                              {cells.map((slot) => {
+                                const minute = toMinutes(slot.time);
+                                const closed = slot.status === 'closed' || minute >= closeMinute;
+                                const chosen = currentTime?.start != null && minute >= currentTime.start && minute < currentTime.end;
+                                const tone = closed ? gridStyles.closed : chosen ? gridStyles.selected : gridStyles.available;
+                                return (
+                                  <td key={slot.time}>
+                                    <button type="button" className={`${gridStyles.cell} ${tone}`} disabled={closed}
+                                      aria-pressed={closed ? undefined : chosen}
+                                      aria-label={`${slot.time}${closed ? ', ngoài giờ mở cửa' : `, ${formatCurrency(slot.price)} mỗi 30 phút`}`}
+                                      onClick={() => pickStart(minute)}>
+                                      {slot.time}<small>{closed ? 'Đóng' : shortPrice(slot.price)}</small>
+                                    </button>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {selectedWeekdays.length > 0 && (
+                  <p className={styles.customModeHint}>
+                    Giá theo {formatDay(representativeDate)}; giá từng buổi xem ở bước sau.{' '}
+                    <button type="button" className={styles.linkBtn} onClick={togglePerDayTimes}>
+                      {perDayTimes ? 'Dùng cùng một giờ cho mọi thứ' : 'Mỗi thứ chơi một giờ khác nhau?'}
+                    </button>
+                  </p>
+                )}
+              </section>
             )}
 
             <section className={styles.calendarCard} aria-label="Lịch dự kiến các buổi đặt">
