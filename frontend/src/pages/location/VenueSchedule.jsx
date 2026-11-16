@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { F1Dialog } from '../../components/F1Feedback'
 import ScheduleGrid from '../../components/schedule/ScheduleGrid'
+import SelectedRanges from '../../components/schedule/SelectedRanges'
+import { groupRanges } from '../../utils/slotRanges'
 import { isBookable } from '../../utils/venueSchedule'
 import { useVenueSchedule, useVenueSession } from '../../hooks/useVenueSchedule'
 import { formatVnd } from '../../utils/formatters'
@@ -43,6 +45,12 @@ export default function VenueSchedule({ id, facility, scheduleRef, openPackage, 
       ? [{ courtId: court.court_id, courtName: court.court_name, timeIdx, time: slot.time, price: Number(slot.price) }] : [])
   ) : []
   const totalPrice = selected.reduce((total, slot) => total + slot.price, 0)
+  const ranges = groupRanges(selected)
+
+  function removeRange(range) {
+    const dropped = (item) => range.items.some((slot) => slot.courtId === item.courtId && slot.time === item.time)
+    setSelection({ date, slots: (selection.date === date ? selection.slots : []).filter((item) => !dropped(item)) })
+  }
 
   function chooseDate(value) {
     if (maxDate && /^\d{4}-\d{2}-\d{2}$/.test(value) && value >= today && value <= maxDate) {
@@ -107,7 +115,14 @@ export default function VenueSchedule({ id, facility, scheduleRef, openPackage, 
       <button type="button" onClick={() => setInspected(null)}>Đóng</button>
     </div>}
     {allowBooking && <div className={styles.summaryBar}>
-      <div className={styles.summaryMainText} aria-live="polite">{selected.length} khung giờ đã chọn · {formatVnd(totalPrice)}</div>
+      <div aria-live="polite">
+        <div className={styles.summaryMainText}>
+          {ranges.length ? `${ranges.length} khung giờ đã chọn · ${formatVnd(totalPrice)}` : 'Chưa chọn khung giờ'}
+        </div>
+        {ranges.length
+          ? <SelectedRanges ranges={ranges} onRemove={removeRange} />
+          : <div className={styles.summarySubText}>Bấm ô trống để chọn. Chọn được nhiều khung giờ, nhiều sân trong cùng ngày.</div>}
+      </div>
       <button type="button" className={styles.continueBookingBtn} disabled={!selected.length} onClick={continueBooking}>Tiếp tục đặt sân</button>
     </div>}
     {(guestPrompt || openPackage) && <F1Dialog title="Đăng nhập để đặt sân" message={loginMessage}
