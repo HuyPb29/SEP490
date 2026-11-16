@@ -135,6 +135,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     /** UC17: các buổi của một gói, theo ngày giờ chơi. */
     List<Booking> findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(Long packageId);
 
+    List<Booking> findByPackageIdInOrderByPlayDateAscStartMinuteAscIdAsc(Collection<Long> packageIds);
+
     /** UC17 #1: số buổi của từng gói trong một trang danh sách gói, đọc một lần. */
     @Query("""
             SELECT b.packageId AS packageId, COUNT(b) AS sessionCount FROM Booking b

@@ -260,7 +260,8 @@ public class VoucherService {
     @Transactional(propagation=Propagation.MANDATORY)
     public void restoreForFailedPackage(Long packageId) {
         var pkg=em.find(com.sep490.bms.entity.booking.BookingPackage.class,packageId,LockModeType.PESSIMISTIC_WRITE);
-        if(pkg==null || !List.of(BookingStatus.EXPIRED,BookingStatus.PAYMENT_REJECTED,BookingStatus.CANCELLED_BY_FACILITY).contains(pkg.getStatus())) throw new AppException("Gói chưa thất bại");
+        if(pkg==null || !List.of(BookingStatus.EXPIRED,BookingStatus.PAYMENT_REJECTED,BookingStatus.CANCELLED_BY_FACILITY,
+                BookingStatus.CANCELLED_BY_PLAYER).contains(pkg.getStatus())) throw new AppException("Gói chưa thất bại");
         usages.findByPackageId(packageId).ifPresent(this::restoreUsage);
     }
     @Transactional(propagation=Propagation.MANDATORY)

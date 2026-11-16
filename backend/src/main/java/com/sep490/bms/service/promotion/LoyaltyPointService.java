@@ -183,7 +183,9 @@ public class LoyaltyPointService {
     }
     @Transactional(propagation=Propagation.MANDATORY)
     public void restoreForFailedPackage(Long id) {
-        BookingPackage p=lock(BookingPackage.class,id); failed(p.getStatus()); restore(null,p.getId(),p.getPlayerId(),p.getLocationId());
+        BookingPackage p=lock(BookingPackage.class,id);
+        if (p.getStatus() != BookingStatus.CANCELLED_BY_PLAYER) failed(p.getStatus());
+        restore(null,p.getId(),p.getPlayerId(),p.getLocationId());
     }
     private void failed(BookingStatus s) {
         if(s!=BookingStatus.EXPIRED && s!=BookingStatus.PAYMENT_REJECTED) throw new AppException("Chỉ hoàn điểm đơn hết hạn hoặc bị từ chối thanh toán");

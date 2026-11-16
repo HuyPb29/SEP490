@@ -54,7 +54,7 @@ public class BookingOrderController {
                 "Đã tạo đơn, giữ chỗ trong 10 phút.", packageService.createOrder(currentUser, request)));
     }
 
-    /** UC22 #1, BR07, BR64: hủy cả đơn (mọi booking chưa chơi), không hoàn tiền. */
+    /** Hủy đơn đang giữ chỗ hoặc mọi booking chưa chơi của đơn đã thanh toán. */
     @PostMapping("/api/booking-orders/{id}/cancel")
     @PreAuthorize("hasRole('PLAYER')")
     public ResponseEntity<ApiResponse<Integer>> postBookingOrdersByIdCancel(
@@ -62,6 +62,6 @@ public class BookingOrderController {
             @AuthenticationPrincipal UserPrincipal currentUser) {
         List<Booking> cancelled = cancellationService.cancelOrder(currentUser, id);
         return ResponseEntity.ok(ApiResponse.success(
-                "Đã hủy " + cancelled.size() + " booking của đơn. Tiền đã trả không được hoàn.", cancelled.size()));
+                "Đã hủy " + cancelled.size() + " lịch trong đơn.", cancelled.size()));
     }
 }

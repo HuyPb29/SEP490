@@ -424,6 +424,9 @@ public class PackageService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleFailed(BookingPackage pkg, BookingStatus status) {
+        if (status == BookingStatus.CANCELLED_BY_PLAYER && pkg.getStatus() != BookingStatus.HOLDING) {
+            throw new AppException("Chỉ được bỏ giữ chỗ khi đơn chưa gửi chứng từ", HttpStatus.CONFLICT);
+        }
         pkg.setStatus(status);
         bookingPackageRepository.saveAndFlush(pkg);
         for (Booking session : sessionsOf(pkg.getId())) {
@@ -589,6 +592,8 @@ public class PackageService {
                         .playDate(b.getPlayDate())
                         .startTime(MinuteTime.format(b.getStartMinute()))
                         .endTime(MinuteTime.format(b.getEndMinute()))
+                        .listAmount(b.getListAmount())
+                        .bookedHalfHours((long) (b.getEndMinute() - b.getStartMinute()) / MinuteTime.SLOT_MINUTES)
                         .finalAmount(b.getFinalAmount())
                         .status(b.getStatus())
                         .holdExpiresAt(b.getHoldExpiresAt())
