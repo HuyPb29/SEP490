@@ -34,21 +34,21 @@ class ComplaintOverdueJobTests {
     private final NotificationService notifications = mock(NotificationService.class);
     private final ComplaintOverdueJob job = new ComplaintOverdueJob(complaints, locations, availability, notifications);
 
-    private Complaint pendingComplaint(LocalDateTime forwardedAt) {
+    private Complaint pendingComplaint(LocalDateTime createdAt) {
         return Complaint.builder()
                 .id(3L).locationId(2L).playerId(7L).createdBy(7L)
                 .complaintType("COURT_SERVICE").content("Sân dột")
                 .status(ComplaintStatus.PENDING_OWNER)
-                .forwardedAt(forwardedAt)
-                .createdAt(LocalDateTime.now().minusHours(5))
+                .forwardedAt(createdAt.plusMinutes(30))
+                .createdAt(createdAt)
                 .build();
     }
 
     @Test
     void overdueComplaintTriggersUrgentOwnerNotification() {
-        LocalDateTime forwardedAt = LocalDateTime.now().minusHours(4);
-        when(complaints.findByStatus(ComplaintStatus.PENDING_OWNER)).thenReturn(List.of(pendingComplaint(forwardedAt)));
-        when(availability.exceededOpeningTime(eq(2L), eq(forwardedAt), any(), eq(Complaint.OWNER_RESOLUTION_WAIT)))
+        LocalDateTime createdAt = LocalDateTime.now().minusHours(4);
+        when(complaints.findByStatusIn(List.of(ComplaintStatus.SUBMITTED, ComplaintStatus.PENDING_OWNER))).thenReturn(List.of(pendingComplaint(createdAt)));
+        when(availability.exceededOpeningTime(eq(2L), eq(createdAt), any(), eq(Complaint.OWNER_RESOLUTION_WAIT)))
                 .thenReturn(true);
         Location location = mock(Location.class);
         when(location.getOwnerId()).thenReturn(8L);
@@ -63,9 +63,9 @@ class ComplaintOverdueJobTests {
 
     @Test
     void complaintWithinDeadlineIsLeftAlone() {
-        LocalDateTime forwardedAt = LocalDateTime.now().minusHours(1);
-        when(complaints.findByStatus(ComplaintStatus.PENDING_OWNER)).thenReturn(List.of(pendingComplaint(forwardedAt)));
-        when(availability.exceededOpeningTime(eq(2L), eq(forwardedAt), any(), eq(Complaint.OWNER_RESOLUTION_WAIT)))
+        LocalDateTime createdAt = LocalDateTime.now().minusHours(1);
+        when(complaints.findByStatusIn(List.of(ComplaintStatus.SUBMITTED, ComplaintStatus.PENDING_OWNER))).thenReturn(List.of(pendingComplaint(createdAt)));
+        when(availability.exceededOpeningTime(eq(2L), eq(createdAt), any(), eq(Complaint.OWNER_RESOLUTION_WAIT)))
                 .thenReturn(false);
 
         job.warnOverdueComplaints();

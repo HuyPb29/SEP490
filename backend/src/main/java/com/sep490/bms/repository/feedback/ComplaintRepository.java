@@ -1,6 +1,8 @@
 package com.sep490.bms.repository.feedback;
 
 import java.util.Optional;
+import java.util.List;
+import java.util.Collection;
 
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Lock;
@@ -27,8 +29,8 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
 
     Page<Complaint> findByCreatedBy(Long createdBy, Pageable pageable);
 
-    /** Job P33: khiếu nại đang chờ Owner để xét quá hạn xử lý. */
-    java.util.List<Complaint> findByStatus(ComplaintStatus status);
+    /** Job P33: khiếu nại chưa có kết quả để xét quá hạn xử lý. */
+    List<Complaint> findByStatusIn(Collection<ComplaintStatus> statuses);
 
     boolean existsByPaymentIdAndComplaintType(Long paymentId, String complaintType);
 
