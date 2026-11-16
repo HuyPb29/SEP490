@@ -46,6 +46,8 @@ function Inbox() {
       <p>{item.content}</p>
       <time dateTime={item.createdAt} className="cw-muted text-sm">{item.createdAt?.replace('T', ' ')}</time>
       {isPlayer && item.refType === 'BOOKING' && <Link className="block underline" to="/my-bookings">Mở lịch đặt sân</Link>}
+      {role === 'staff' && item.type === 'BOOKING_ENDING_SOON' &&
+        <Link className="block underline" to="/staff/dashboard">Mở bảng điều hành</Link>}
       {role === 'admin' && item.refType === 'SERVICE_REGISTRATION' &&
         <Link className="block underline" to="/admin/facilities">Xem đơn đăng ký dịch vụ</Link>}
       {role === 'owner' && item.refType === 'COMPLAINT' &&

@@ -619,6 +619,12 @@ public class PaymentService {
             return false;
         }
         rejectLockedPackage(payment, pkg, "Quá hạn xác nhận thanh toán gói");
+        Location location = locationQueryService.getByIds(List.of(pkg.getLocationId())).get(pkg.getLocationId());
+        if (location != null) {
+            notify(location.getOwnerId(), "PAYMENT_EXPIRED_AT_PLAY_END",
+                    "Hết giờ chơi mà thanh toán chưa được xác nhận",
+                    "Thanh toán " + packageLabel(pkg) + " đã quá hạn xác nhận và bị hệ thống từ chối.", payment);
+        }
         return true;
     }
 

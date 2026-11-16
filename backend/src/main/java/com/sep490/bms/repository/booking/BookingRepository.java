@@ -28,6 +28,15 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     boolean existsByBookingCode(String bookingCode);
 
+    @Query("""
+            select b.id from Booking b
+            where b.status = com.sep490.bms.entity.enums.BookingStatus.IN_USE
+              and b.playDate = :date and b.endMinute > :minute and b.endMinute <= :limit
+            order by b.id
+            """)
+    List<Long> findEndingSoonIds(@Param("date") LocalDate date, @Param("minute") int minute,
+            @Param("limit") int limit);
+
     interface LocationBookingCount {
         Long getLocationId();
         long getBookingCount();

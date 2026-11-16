@@ -9,6 +9,7 @@ public final class NotificationType {
 
     /** Đơn giữ chỗ HOLDING quá hold_expires_at nên bị huỷ tự động. */
     public static final String BOOKING_HOLD_EXPIRED = "BOOKING_HOLD_EXPIRED";
+    public static final String BOOKING_ENDING_SOON = "BOOKING_ENDING_SOON";
 
     /** Kỳ hạn dịch vụ của địa điểm đã hết, địa điểm bị khoá. */
     public static final String SERVICE_TERM_EXPIRED = "SERVICE_TERM_EXPIRED";
