@@ -8,6 +8,7 @@ import {
   markNotificationRead,
 } from '../../api/notificationApi';
 import { useAuth } from '../../hooks/useAuth';
+import { notificationMessage } from '../../utils/formatters';
 import styles from './NotificationBell.module.css';
 
 /** Nhãn + màu cho từng loại thông báo do job tự động sinh ra. */
@@ -18,6 +19,8 @@ const TYPE_META = {
   BOOKING_AFFECTED: { label: 'Lịch đặt bị ảnh hưởng', tone: 'warn' },
   SERVICE_TERM_EXPIRED: { label: 'Hết hạn dịch vụ', tone: 'danger' },
   VOUCHER_EXPIRED: { label: 'Voucher hết hạn', tone: 'warn' },
+  RESCHEDULE_PROOF_SUBMITTED: { label: 'Chờ xác nhận phụ thu', tone: 'warn' },
+  VENUE_RESCHEDULE_APPROVED: { label: 'Lịch sân đã đổi', tone: 'ok' },
 };
 
 const PREVIEW_SIZE = 8;
@@ -41,7 +44,7 @@ function relativeTime(value) {
 
 export default function NotificationBell() {
   const navigate = useNavigate();
-  const { isAuthenticated, role } = useAuth();
+  const { isAuthenticated, role, setSelectedVenue } = useAuth();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);
@@ -129,7 +132,12 @@ export default function NotificationBell() {
       }
     }
     const upperRole = String(role || '').toUpperCase();
-    if (item.refType === 'LOCATION') {
+    if (item.type === 'RESCHEDULE_PROOF_SUBMITTED' && item.refId &&
+        (upperRole === 'OWNER' || upperRole === 'STAFF')) {
+      setSelectedVenue(item.refId);
+      setOpen(false);
+      navigate('/staff/confirm-payments?type=reschedule');
+    } else if (item.refType === 'LOCATION') {
       setOpen(false);
       navigate(upperRole === 'ADMIN' ? '/admin/facilities' : '/owner/courts');
     } else if (item.refType === 'VOUCHER' && upperRole === 'OWNER') {
@@ -184,7 +192,7 @@ export default function NotificationBell() {
 
           <ul className={styles.list}>
             {items.map((item) => {
-              const meta = TYPE_META[item.type] ?? { label: item.type, tone: 'info' };
+              const meta = TYPE_META[item.type] ?? { label: 'Thông báo', tone: 'info' };
               return (
                 <li key={item.id}>
                   <button
@@ -194,8 +202,8 @@ export default function NotificationBell() {
                   >
                     <span className={`${styles.dot} ${styles[`tone${meta.tone}`] ?? ''}`} aria-hidden="true" />
                     <span className={styles.itemBody}>
-                      <span className={styles.itemTitle}>{item.title}</span>
-                      <span className={styles.itemContent}>{item.content}</span>
+                      <span className={styles.itemTitle}>{notificationMessage(item.title)}</span>
+                      <span className={styles.itemContent}>{notificationMessage(item.content)}</span>
                       <span className={styles.itemMeta}>
                         {meta.label} · {relativeTime(item.createdAt)}
                       </span>

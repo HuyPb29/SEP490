@@ -188,6 +188,7 @@ export async function getMyBookingsApi() {
         booking_date: item.startDate,
         time_range: item.startDate === item.endDate ? item.startDate : item.startDate + ' – ' + item.endDate,
         hold_expires_at: item.holdExpiresAt,
+        day_sessions: item.daySessions?.map((session) => bookingCard(session, item.id)) ?? [],
         final_amount: item.finalAmount,
         created_at: item.createdAt,
         status,
