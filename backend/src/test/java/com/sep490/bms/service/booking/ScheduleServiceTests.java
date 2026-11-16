@@ -273,6 +273,29 @@ class ScheduleServiceTests {
     }
 
     @Test
+    void playerChoosingPackageSessionsSeesThreeMonthsIncludingToday() {
+        location.setAdvanceBookingDays((short) 30);
+        UserPrincipal player = user(7L, Role.PLAYER, null);
+        // D162: hôm nay 30/10 thì buổi xa nhất là 29/01
+        LocalDate limit = LocalDate.of(2027, 1, 29);
+
+        assertThat(service.schedule(LOCATION, limit, player, null, true, NOW).getMaxDate()).isEqualTo(limit);
+        assertThatThrownBy(() -> service.schedule(LOCATION, limit.plusDays(1), player, null, true, NOW))
+                .isInstanceOf(AppException.class);
+    }
+
+    @Test
+    void packageViewIgnoredForGuestAndWithoutFlag() {
+        location.setAdvanceBookingDays((short) 30);
+        LocalDate limit = TODAY.plusDays(30);
+
+        assertThat(service.schedule(LOCATION, null, null, null, true, NOW).getMaxDate())
+                .as("Guest").isEqualTo(limit);
+        assertThat(service.schedule(LOCATION, null, user(7L, Role.PLAYER, null), null, false, NOW).getMaxDate())
+                .as("Player xem lịch đặt lẻ").isEqualTo(limit);
+    }
+
+    @Test
     void pastDateIsRejected() {
         assertThatThrownBy(() -> service.schedule(LOCATION, TODAY.minusDays(1), null, NOW))
                 .isInstanceOf(AppException.class);

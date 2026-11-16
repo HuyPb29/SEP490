@@ -76,15 +76,30 @@ public class ScheduleService {
      */
     @Transactional(readOnly = true)
     public ScheduleResponse schedule(Long locationId, LocalDate date, UserPrincipal viewer, Long bookingId) {
-        return schedule(locationId, date, viewer, bookingId, LocalDateTime.now());
+        return schedule(locationId, date, viewer, bookingId, false, LocalDateTime.now());
+    }
+
+    /**
+     * forPackage: Player đang chọn buổi cho gói đặt nhiều buổi (UC15) hoặc slot bù, được xem lịch tới hết
+     * 3 tháng kể từ hôm nay như giới hạn của gói (BR27, D162), không theo giới hạn đặt lẻ BR02.
+     */
+    @Transactional(readOnly = true)
+    public ScheduleResponse schedule(Long locationId, LocalDate date, UserPrincipal viewer, Long bookingId,
+            boolean forPackage) {
+        return schedule(locationId, date, viewer, bookingId, forPackage, LocalDateTime.now());
     }
 
     /** Tách tham số now để test được theo giờ cố định. */
     ScheduleResponse schedule(Long locationId, LocalDate date, UserPrincipal viewer, LocalDateTime now) {
-        return schedule(locationId, date, viewer, null, now);
+        return schedule(locationId, date, viewer, null, false, now);
     }
 
     ScheduleResponse schedule(Long locationId, LocalDate date, UserPrincipal viewer, Long bookingId, LocalDateTime now) {
+        return schedule(locationId, date, viewer, bookingId, false, now);
+    }
+
+    ScheduleResponse schedule(Long locationId, LocalDate date, UserPrincipal viewer, Long bookingId,
+            boolean forPackage, LocalDateTime now) {
         Location location = locationQueryService.findActive(locationId);
         boolean manager = isManager(location, viewer);
         LocalDate today = now.toLocalDate();
@@ -93,6 +108,10 @@ public class ScheduleService {
         LocalDate packageEnd = packageEndForReschedule(locationId, viewer, bookingId);
         if (packageEnd != null && packageEnd.isAfter(maxDate)) {
             maxDate = packageEnd;
+        }
+        LocalDate packageLimit = packageBookingLimit(viewer, today, forPackage);
+        if (packageLimit != null && packageLimit.isAfter(maxDate)) {
+            maxDate = packageLimit;
         }
         if (day.isBefore(today) || day.isAfter(maxDate)) {
             throw new AppException("Chỉ xem được lịch sân từ hôm nay đến ngày " + maxDate);
@@ -224,6 +243,17 @@ public class ScheduleService {
                 .filter(pkg -> pkg.getPackageType() != PackageType.DAY)
                 .map(BookingPackage::getEndDate)
                 .orElse(null);
+    }
+
+    /**
+     * Ngày xa nhất Player xem được khi chọn buổi cho gói: cùng mốc với PackageService (3 tháng tính cả hôm nay,
+     * D162). Trả null khi không phải Player hoặc không xem cho gói.
+     */
+    private static LocalDate packageBookingLimit(UserPrincipal viewer, LocalDate today, boolean forPackage) {
+        if (!forPackage || viewer == null || viewer.getRole() != Role.PLAYER) {
+            return null;
+        }
+        return today.plusMonths(PackageService.MAX_MONTHS).minusDays(1);
     }
 
     private static LocalDate maxDate(Location location, LocalDate today, boolean manager) {
