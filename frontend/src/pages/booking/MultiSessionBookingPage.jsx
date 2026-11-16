@@ -7,7 +7,11 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import { formatVnd, today as getTodayStr } from '../../utils/formatters';
 import { readPackageDraft, savePackageDraft } from '../../utils/packageDraft';
+import { groupRanges } from '../../utils/slotRanges';
+import { isBookable } from '../../utils/venueSchedule';
 import { usePackagePreview } from '../../hooks/usePackagePreview';
+import ScheduleGrid from '../../components/schedule/ScheduleGrid';
+import SelectedRanges from '../../components/schedule/SelectedRanges';
 import styles from './MultiSessionBookingPage.module.css';
 
 // value theo Date.getDay() (CN = 0); backend dùng 1 = Thứ 2 … 7 = Chủ nhật
@@ -49,14 +53,39 @@ const formatCurrency = formatVnd;
 const sessionKey = (session) => `${session.date}|${session.courtId}|${session.startMinute}`;
 
 const TODAY_DATE = getTodayStr();
-const MAX_ALLOWED_DATE = addMonths(TODAY_DATE, 3, 0);
+// D162: mọi buổi nằm trong 3 tháng kể từ hôm nay, tính cả hôm nay (đặt 07/11 thì xa nhất 06/02)
+const MAX_ALLOWED_DATE = addMonths(TODAY_DATE, 3, 1);
+const shiftDay = (dateKey, offset) => {
+  const date = parseDateKey(dateKey);
+  return toDateKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset));
+};
+const formatDay = (dateKey) => {
+  const date = parseDateKey(dateKey);
+  return `${['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][date.getDay()]}, ${dateKey.slice(8)}/${dateKey.slice(5, 7)}/${dateKey.slice(0, 4)}`;
+};
+
+// Lịch sân một ngày để chọn buổi trên bảng slot; Player xem được tới hết 3 tháng của gói (forPackage)
+function useDaySchedule(facilityId, date, enabled, load) {
+  const [result, setResult] = useState(null);
+  useEffect(() => {
+    if (!enabled || !facilityId || !date) return undefined;
+    const controller = new AbortController();
+    load(facilityId, date, controller.signal, undefined, { forPackage: true })
+      .then((data) => { if (!controller.signal.aborted) setResult({ date, data }); })
+      .catch((error) => {
+        if (!controller.signal.aborted) setResult({ date, error: apiErrorMessage(error, 'Không tải được lịch sân.') });
+      });
+    return () => controller.abort();
+  }, [facilityId, date, enabled, load]);
+  return enabled && result?.date === date ? result : null;
+}
 
 export default function MultiSessionBookingPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
   const { user } = useAuth();
-  const { getLocationCourts, previewBookingPackage } = useBookingActions();
+  const { getLocationCourts, getVenueSchedule, previewBookingPackage } = useBookingActions();
 
   const facilityId = Number(id || location.state?.facilityId) || null;
 
@@ -78,21 +107,26 @@ export default function MultiSessionBookingPage() {
   const [startTime, setStartTime] = useState(saved?.startTime ?? '19:00');
   const [endTime, setEndTime] = useState(saved?.endTime ?? '21:00');
 
-  const [customSessions, setCustomSessions] = useState(saved?.customSessions ?? []);
-  const [sessionDate, setSessionDate] = useState(today);
+  // Tự chọn ngày: các ô 30 phút Player bấm trên bảng slot; ô liền nhau cùng sân, cùng ngày là một buổi
+  const [customSlots, setCustomSlots] = useState(saved?.customSlots ?? []);
+  const customRanges = useMemo(() => groupRanges(customSlots), [customSlots]);
+  const customSessions = useMemo(() => customRanges.map(({ date, courtId, startMinute, endMinute }) =>
+    ({ date, courtId, startMinute, endMinute })), [customRanges]);
+  const [gridDate, setGridDate] = useState(() => saved?.customSlots?.[0]?.date ?? today);
   const [weekdayTimes, setWeekdayTimes] = useState(saved?.weekdayTimes ?? {});
-  const customDates = useMemo(() => [...new Set(customSessions.map((session) => session.date))], [customSessions]);
+  const customDates = useMemo(() => [...new Set(customSlots.map((slot) => slot.date))], [customSlots]);
   // Xử lý buổi trùng (BR50): buổi bỏ và buổi đổi sang slot bù, theo khóa của buổi gốc
   const [removedKeys, setRemovedKeys] = useState(saved?.removedKeys ?? []);
   const [replacements, setReplacements] = useState(saved?.replacements ?? {});
+  // Cửa sổ slot bù: buổi trùng đang chọn bù, ngày đang xem và slot bù đã bấm (chưa áp dụng)
   const [showCompensation, setShowCompensation] = useState(false);
-  const [compensationCourtId, setCompensationCourtId] = useState(null);
-  const [compensationTime, setCompensationTime] = useState('19:00');
+  const [compensationTargetKey, setCompensationTargetKey] = useState(null);
   const [compensationDate, setCompensationDate] = useState('');
-  const [compensationTargetKey, setCompensationTargetKey] = useState('ALL');
+  const [compensationPicks, setCompensationPicks] = useState({});
+  const [compensationMessage, setCompensationMessage] = useState(null);
 
   const [viewMonth, setViewMonth] = useState(() =>
-    parseDateKey(saved?.mode === 'custom' ? (saved.customSessions?.[0]?.date ?? today) : (saved?.fromDate ?? today)));
+    parseDateKey(saved?.mode === 'custom' ? (saved.customSlots?.[0]?.date ?? today) : (saved?.fromDate ?? today)));
   const [previewError, setPreviewError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -117,20 +151,20 @@ export default function MultiSessionBookingPage() {
   // UC15 #2, #3: PackageRequest theo mẫu Player nhập (chưa xử lý buổi trùng).
   // Đội, voucher, điểm, ghi chú chọn ở trang tóm tắt gói.
   const baseRequest = useMemo(() => {
-    if (!courtId || endMinute <= startMinute) return null;
-    const common = { courtId, startDate: fromDate, endDate: toDate };
-    if (mode === 'recurring') {
-      if (selectedWeekdays.length === 0) return null;
-      return {
-        ...common,
-        packageType: 'RECURRING',
-        weeklySlots: selectedWeekdays.map((day) => ({ dayOfWeek: day === 0 ? 7 : day, startMinute, endMinute, ...weekdayTimes[day] })),
-      };
+    if (mode === 'custom') {
+      if (customSessions.length === 0) return null;
+      const dates = customSessions.map((session) => session.date).sort();
+      return { courtId: customSessions[0].courtId, startDate: dates[0], endDate: dates.at(-1),
+        packageType: 'CUSTOM', sessions: customSessions };
     }
-    if (customSessions.length === 0) return null;
-    const dates = customSessions.map((session) => session.date).sort();
-    return { ...common, startDate: dates[0], endDate: dates.at(-1),
-      packageType: 'CUSTOM', sessions: customSessions };
+    if (!courtId || endMinute <= startMinute || selectedWeekdays.length === 0) return null;
+    return {
+      courtId,
+      startDate: fromDate,
+      endDate: toDate,
+      packageType: 'RECURRING',
+      weeklySlots: selectedWeekdays.map((day) => ({ dayOfWeek: day === 0 ? 7 : day, startMinute, endMinute, ...weekdayTimes[day] })),
+    };
   }, [
     courtId,
     fromDate,
@@ -207,22 +241,36 @@ export default function MultiSessionBookingPage() {
     setNotice('');
   };
 
-  const addCustomSession = (date) => {
-    if (!courtId || date < today || date > maxAllowedDate || startMinute >= endMinute) return;
-    resetConflictAdjustments();
-    setCustomSessions((current) => current.some((session) => session.date === date && session.courtId === courtId &&
-      session.startMinute === startMinute && session.endMinute === endMinute) ? current :
-      [...current, { date, courtId, startMinute, endMinute }]);
-    setNotice('');
+  // Tự chọn ngày: bấm ngày trên lịch tháng để xem bảng slot của ngày đó
+  const chooseGridDate = (date) => {
+    if (mode !== 'custom' || date < today || date > maxAllowedDate) return;
+    setGridDate(date);
   };
 
-  const toggleCustomDate = (date) => {
-    if (mode !== 'custom') return;
-    setSessionDate(date);
-    if (!customDates.includes(date)) { addCustomSession(date); return; }
+  const toggleCustomSlot = (court, slot) => {
     resetConflictAdjustments();
-    setCustomSessions((current) => current.filter((session) => session.date !== date));
+    setNotice('');
+    const same = (item) => item.date === gridDate && item.courtId === court.court_id && item.time === slot.time;
+    setCustomSlots((current) => current.some(same) ? current.filter((item) => !same(item))
+      : [...current, { date: gridDate, courtId: court.court_id, courtName: court.court_name, time: slot.time, price: Number(slot.price) }]);
   };
+
+  const removeCustomRange = (range) => {
+    resetConflictAdjustments();
+    setCustomSlots((current) => current.filter((item) => !range.items.includes(item)));
+  };
+
+  const customGrid = useDaySchedule(facilityId, gridDate, mode === 'custom', getVenueSchedule);
+  // Buổi tự chọn bị trùng hiện viền đỏ trên bảng (không hiện như ô đã chọn)
+  const conflictCells = useMemo(() => new Set(conflictedSessions.flatMap((session) => {
+    const cells = [];
+    for (let minute = session.startMinute; minute < session.endMinute; minute += 30) {
+      cells.push(`${session.date}|${session.courtId}|${toTimeLabel(minute)}`);
+    }
+    return cells;
+  })), [conflictedSessions]);
+  const customGridSelected = customSlots.filter((item) => item.date === gridDate &&
+    !conflictCells.has(`${item.date}|${item.courtId}|${item.time}`));
 
   const originalKeyOf = (session) => {
     const replaced = Object.entries(replacements).find(
@@ -245,25 +293,90 @@ export default function MultiSessionBookingPage() {
     setNotice(`Đã bỏ ${keys.length} buổi trùng khỏi lịch đặt.`);
   };
 
-  const applyCompensation = () => {
-    const replacementStart = toMinutes(compensationTime);
-    const next = { ...replacements };
-    const targetSessions = compensationTargetKey === 'ALL'
-      ? conflictedSessions
-      : conflictedSessions.filter((s) => originalKeyOf(s) === compensationTargetKey);
+  // ---- Slot bù (BR50, D48): chọn trên bảng slot của ngày, giữ nguyên thời lượng buổi
+  const compensationTarget = conflictedSessions.find((session) => originalKeyOf(session) === compensationTargetKey) ?? null;
+  const compensationMinDate = mode === 'recurring' && fromDate > today ? fromDate : today;
+  const compensationMaxDate = mode === 'recurring' && toDate < maxAllowedDate ? toDate : maxAllowedDate;
+  const compensationGrid = useDaySchedule(facilityId, compensationDate, showCompensation, getVenueSchedule);
 
-    targetSessions.forEach((session) => {
-      const duration = session.endMinute - session.startMinute;
-      next[originalKeyOf(session)] = {
-        date: compensationTargetKey !== 'ALL' && compensationDate ? compensationDate : session.date,
-        courtId: Number(compensationCourtId),
-        startMinute: replacementStart,
-        endMinute: replacementStart + duration,
-      };
+  const openCompensation = () => {
+    const first = conflictedSessions[0];
+    if (!first) return;
+    setCompensationTargetKey(originalKeyOf(first));
+    setCompensationDate(first.date);
+    setCompensationPicks({});
+    setCompensationMessage(null);
+    setShowCompensation(true);
+  };
+
+  const chooseCompensationTarget = (session) => {
+    const key = originalKeyOf(session);
+    setCompensationTargetKey(key);
+    setCompensationDate(compensationPicks[key]?.date ?? session.date);
+    setCompensationMessage(null);
+  };
+
+  const chooseCompensationDate = (date) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < compensationMinDate || date > compensationMaxDate) return;
+    setCompensationDate(date);
+    setCompensationMessage(null);
+  };
+
+  // Ô thuộc buổi khác của gói (hoặc slot bù đã chọn cho buổi trùng khác) trong ngày đang xem
+  const compensationMark = (court, slot) => {
+    const minute = toMinutes(slot.time);
+    const inside = (item) => item.date === compensationDate && item.courtId === court.court_id &&
+      minute >= item.startMinute && minute < item.endMinute;
+    if (compensationTarget && inside(compensationTarget)) return 'conflict';
+    const otherPicks = Object.entries(compensationPicks).filter(([key]) => key !== compensationTargetKey).map(([, pick]) => pick);
+    if (sessions.some((session) => session !== compensationTarget && inside(session)) || otherPicks.some(inside)) return 'package';
+    return null;
+  };
+
+  const pickCompensation = (court, slot, timeIdx) => {
+    if (!compensationTarget) return;
+    const duration = compensationTarget.endMinute - compensationTarget.startMinute;
+    const startAt = toMinutes(slot.time);
+    const needed = duration / 30;
+    const cells = court.slots.slice(timeIdx, timeIdx + needed);
+    const fits = cells.length === needed && cells.every((cell, index) =>
+      isBookable(cell) && toMinutes(cell.time) === startAt + index * 30 && !compensationMark(court, cell));
+    if (!fits) {
+      setCompensationMessage({ error: true, text: `Từ ${slot.time} trên ${court.court_name} không đủ ${duration} phút trống liên tiếp. Vui lòng chọn ô khác.` });
+      return;
+    }
+    setCompensationPicks((current) => ({ ...current, [compensationTargetKey]: {
+      date: compensationDate, courtId: court.court_id, courtName: court.court_name,
+      startMinute: startAt, endMinute: startAt + duration,
+    } }));
+    setCompensationMessage({ error: false, text: `Slot bù: ${formatDay(compensationDate)} · ${court.court_name} · ${toTimeLabel(startAt)}–${toTimeLabel(startAt + duration)}` });
+  };
+
+  // Áp dụng cùng sân, cùng giờ bắt đầu cho các buổi trùng còn lại, mỗi buổi giữ ngày của mình (xử lý hàng loạt, D49)
+  const applyPickToAll = () => {
+    const pick = compensationPicks[compensationTargetKey];
+    if (!pick) return;
+    const next = { ...compensationPicks };
+    conflictedSessions.forEach((session) => {
+      const key = originalKeyOf(session);
+      if (key === compensationTargetKey || next[key]) return;
+      next[key] = { date: session.date, courtId: pick.courtId, courtName: pick.courtName,
+        startMinute: pick.startMinute, endMinute: pick.startMinute + (session.endMinute - session.startMinute) };
+    });
+    setCompensationPicks(next);
+    setCompensationMessage({ error: false, text: `Đã chọn ${pick.courtName} · ${toTimeLabel(pick.startMinute)} cho mọi buổi trùng, mỗi buổi giữ ngày của mình. Hệ thống kiểm tra lại khi áp dụng.` });
+  };
+
+  const applyCompensation = () => {
+    const entries = Object.entries(compensationPicks);
+    if (!entries.length) return;
+    const next = { ...replacements };
+    entries.forEach(([key, { date, courtId: pickCourt, startMinute: pickStart, endMinute: pickEnd }]) => {
+      next[key] = { date, courtId: pickCourt, startMinute: pickStart, endMinute: pickEnd };
     });
     setReplacements(next);
     setShowCompensation(false);
-    setNotice(`Đã áp dụng slot bù cho ${targetSessions.length} buổi trùng.`);
+    setNotice(`Đã áp dụng slot bù cho ${entries.length} buổi trùng.`);
   };
 
   // Sang trang tóm tắt gói; chưa tạo gói, chưa giữ chỗ (giữ chỗ khi bấm xác nhận ở trang tóm tắt)
@@ -283,7 +396,7 @@ export default function MultiSessionBookingPage() {
       request: finalRequest,
       schedule: {
         mode, courtId, fromDate, toDate, selectedWeekdays, startTime, endTime,
-        weekdayTimes, customSessions, removedKeys, replacements,
+        weekdayTimes, customSlots, removedKeys, replacements,
       },
     });
     navigate('/booking/package-summary');
@@ -352,6 +465,7 @@ export default function MultiSessionBookingPage() {
               </button>
             </div>
 
+            {mode === 'recurring' && <>
             <div className={styles.fieldGroup}>
               <label className={styles.fieldLabel} htmlFor="court">Sân</label>
               <select
@@ -411,7 +525,6 @@ export default function MultiSessionBookingPage() {
                     key={day.value}
                     type="button"
                     aria-pressed={selectedWeekdays.includes(day.value)}
-                    disabled={mode === 'custom'}
                     className={`${styles.weekdayBtn} ${selectedWeekdays.includes(day.value) ? styles.weekdayBtnActive : ''}`}
                     onClick={() => toggleWeekday(day.value)}
                   >
@@ -419,11 +532,6 @@ export default function MultiSessionBookingPage() {
                   </button>
                 ))}
               </div>
-              {mode === 'custom' && (
-                <p className={styles.customModeHint}>
-                  Nhấn trực tiếp vào các ngày trên lịch bên phải để chọn hoặc bỏ chọn buổi tự chọn ({customDates.length} ngày đã chọn).
-                </p>
-              )}
             </div>
 
             <div className={styles.twoColRow}>
@@ -479,16 +587,17 @@ export default function MultiSessionBookingPage() {
                 }}>{TIMES.filter((time) => toMinutes(time) > (weekdayTimes[day]?.startMinute ?? startMinute))
                   .map((time) => <option key={time} value={toMinutes(time)}>{time}</option>)}</select></label>
             </fieldset>)}
+            </>}
+
             {mode === 'custom' && <div className={styles.fieldGroup}>
-              <label>Ngày buổi tự chọn <input type="date" min={today} max={maxAllowedDate} value={sessionDate} onChange={(event) => setSessionDate(event.target.value)} /></label>
-              <button type="button" className={styles.removeConflictsBtn} onClick={() => addCustomSession(sessionDate)}>Thêm buổi với sân và giờ đang chọn</button>
-              <ul>{customSessions.map((session) => <li key={sessionKey(session)}>
-                {session.date} · {courts.find((court) => court.court_id === session.courtId)?.court_name || 'Sân ' + session.courtId} · {toTimeLabel(session.startMinute)}–{toTimeLabel(session.endMinute)}
-                <button type="button" className="ml-2 underline" onClick={() => {
-                  resetConflictAdjustments();
-                  setCustomSessions((current) => current.filter((item) => sessionKey(item) !== sessionKey(session)));
-                }}>Bỏ buổi</button>
-              </li>)}</ul>
+              <span className={styles.fieldLabel}>Các buổi đã chọn ({customRanges.length} buổi · {customDates.length} ngày)</span>
+              <p className={styles.customModeHint}>
+                Bấm một ngày trên lịch tháng để mở bảng slot của ngày đó, rồi bấm các ô trống để thêm buổi.
+                Ô liền nhau trên cùng sân là một buổi; một ngày có thể có nhiều buổi, nhiều sân.
+              </p>
+              {customRanges.length > 0
+                ? <SelectedRanges ranges={customRanges} onRemove={removeCustomRange} showDate />
+                : <p className={styles.customModeHint}>Chưa có buổi nào.</p>}
             </div>}
 
             <p className={styles.ruleHintText}>
@@ -507,9 +616,9 @@ export default function MultiSessionBookingPage() {
             <section className={styles.calendarCard} aria-label="Lịch dự kiến các buổi đặt">
               <div className={styles.calendarHeader}>
                 <h2 className={styles.monthTitle}>
-                  <button type="button" className={styles.weekdayBtn} onClick={() => shiftMonth(-1)} aria-label="Tháng trước">‹</button>
+                  <button type="button" className={styles.navBtn} onClick={() => shiftMonth(-1)} aria-label="Tháng trước">‹</button>
                   {' '}{MONTH_NAMES[viewMonth.getMonth()]} {viewMonth.getFullYear()}{' '}
-                  <button type="button" className={styles.weekdayBtn} onClick={() => shiftMonth(1)} aria-label="Tháng sau">›</button>
+                  <button type="button" className={styles.navBtn} onClick={() => shiftMonth(1)} aria-label="Tháng sau">›</button>
                 </h2>
                 <div className={styles.legendGroup}>
                   <span className={styles.legendItem}>
@@ -554,6 +663,7 @@ export default function MultiSessionBookingPage() {
                     styles.dayCell,
                     day.isSelected && !day.isConflicted ? styles.dayCellSelected : '',
                     day.isConflicted ? styles.dayCellConflicted : '',
+                    mode === 'custom' && day.dateKey === gridDate ? styles.dayCellActive : '',
                   ].filter(Boolean).join(' ');
                   const first = day.sessions[0];
                   const isOutOfWindow = day.dateKey < today || day.dateKey > maxAllowedDate;
@@ -563,10 +673,10 @@ export default function MultiSessionBookingPage() {
                       type="button"
                       key={day.dateKey}
                       disabled={mode !== 'custom' || isOutOfWindow}
-                      aria-pressed={day.isSelected}
-                      aria-label={`${day.day}${day.isConflicted ? ', trùng lịch' : day.isSelected ? ', đã chọn' : ''}`}
+                      aria-current={mode === 'custom' && day.dateKey === gridDate ? 'date' : undefined}
+                      aria-label={`${day.day}${day.isConflicted ? ', trùng lịch' : day.isSelected ? ', có buổi' : ''}${mode === 'custom' ? ', xem bảng slot ngày này' : ''}`}
                       className={className}
-                      onClick={() => toggleCustomDate(day.dateKey)}
+                      onClick={() => chooseGridDate(day.dateKey)}
                     >
                       <strong className={styles.dayNumber}>{day.day}</strong>
                       {day.isConflicted
@@ -589,15 +699,7 @@ export default function MultiSessionBookingPage() {
                       .join(', ')}
                   </strong>
                   <div className={styles.conflictActionRow}>
-                    <button
-                      type="button"
-                      className={styles.compensateBtn}
-                      onClick={() => {
-                        setCompensationCourtId(courtId);
-                        setCompensationTargetKey('ALL');
-                        setShowCompensation(true);
-                      }}
-                    >
+                    <button type="button" className={styles.compensateBtn} onClick={openCompensation}>
                       Chọn slot bù
                     </button>
                     <button type="button" className={styles.removeConflictsBtn} onClick={removeAllConflicts}>
@@ -613,6 +715,36 @@ export default function MultiSessionBookingPage() {
                 </p>}
               {notice && <p className={styles.notice} role="status">{notice}</p>}
             </section>
+
+            {mode === 'custom' && (
+              <section className={styles.gridCard} aria-label="Bảng slot của ngày đang chọn">
+                <div className={styles.gridHeader}>
+                  <h2 className={styles.gridTitle}>Bảng slot {formatDay(gridDate)}</h2>
+                  <div className={styles.gridDateNav}>
+                    <button type="button" className={styles.navBtn} aria-label="Ngày trước"
+                      disabled={gridDate <= today} onClick={() => chooseGridDate(shiftDay(gridDate, -1))}>‹</button>
+                    <input type="date" className={styles.dateInput} aria-label="Chọn ngày xem bảng slot"
+                      min={today} max={maxAllowedDate} value={gridDate}
+                      onChange={(event) => {
+                        chooseGridDate(event.target.value);
+                        if (event.target.value) setViewMonth(parseDateKey(event.target.value));
+                      }} />
+                    <button type="button" className={styles.navBtn} aria-label="Ngày sau"
+                      disabled={gridDate >= maxAllowedDate} onClick={() => chooseGridDate(shiftDay(gridDate, 1))}>›</button>
+                  </div>
+                </div>
+                <p className={styles.gridHint}>Bấm ô trống để thêm vào gói, bấm lại ô đã chọn để bỏ. Đổi ngày khác vẫn giữ các buổi đã chọn.</p>
+                {!customGrid && <p role="status">Đang tải lịch sân…</p>}
+                {customGrid?.error && <p role="alert" className={styles.notice} style={{ background: '#fef2f2', color: '#b91c1c' }}>{customGrid.error}</p>}
+                {customGrid?.data?.time_headers.length === 0 && <p>Ngày này địa điểm không mở cửa.</p>}
+                {customGrid?.data?.time_headers.length > 0 && (
+                  <ScheduleGrid schedule={customGrid.data} selected={customGridSelected} allowBooking
+                    onSlot={toggleCustomSlot}
+                    mark={(court, slot) => conflictCells.has(`${gridDate}|${court.court_id}|${slot.time}`) ? 'conflict' : null}
+                    markLegend={conflictedSessions.length ? ['conflict'] : []} />
+                )}
+              </section>
+            )}
 
             <section className={styles.summaryFooterCard}>
               <div className={styles.summaryLeft}>
@@ -637,57 +769,80 @@ export default function MultiSessionBookingPage() {
 
       {showCompensation && (
         <div className={styles.modalOverlay} role="presentation" onClick={() => setShowCompensation(false)}>
-          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={(event) => event.stopPropagation()}>
+          <section className={`${styles.modalCard} ${styles.modalWide}`} role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={(event) => event.stopPropagation()}>
             <button type="button" className={styles.modalClose} aria-label="Đóng" onClick={() => setShowCompensation(false)}>×</button>
             <h2 id="modal-title" className={styles.modalTitle}>Chọn slot bù cho buổi trùng</h2>
             <p className={styles.modalSub}>
-              Chọn sân hoặc giờ bắt đầu thay thế cho buổi bị trùng (giữ nguyên thời lượng buổi chơi).
+              Chọn buổi trùng cần bù, rồi bấm ô bắt đầu trên bảng: hệ thống tự lấy đủ thời lượng buổi. Đổi được sang ngày khác trong thời gian gói.
             </p>
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="replacement-target">Áp dụng cho</label>
-              <select
-                id="replacement-target"
-                className={styles.selectInput}
-                value={compensationTargetKey}
-                onChange={(event) => { setCompensationTargetKey(event.target.value); setCompensationDate(''); }}
-              >
-                <option value="ALL">Tất cả {conflictedSessions.length} buổi đang trùng</option>
-                {conflictedSessions.map((s) => {
-                  const key = originalKeyOf(s);
-                  return (
-                    <option key={key} value={key}>
-                      Ngày {s.date} · {s.startTime}–{s.endTime} ({s.courtName})
-                    </option>
-                  );
-                })}
-              </select>
+
+            <div className={styles.targetPills} role="group" aria-label="Buổi trùng cần bù">
+              {conflictedSessions.map((session) => {
+                const key = originalKeyOf(session);
+                const picked = compensationPicks[key];
+                const className = [styles.targetPill, key === compensationTargetKey ? styles.targetPillActive : picked ? styles.targetPillDone : '']
+                  .filter(Boolean).join(' ');
+                return (
+                  <button key={key} type="button" className={className} aria-pressed={key === compensationTargetKey}
+                    onClick={() => chooseCompensationTarget(session)}>
+                    {formatDay(session.date)} · {session.courtName} · {session.startTime}–{session.endTime}{picked ? ' ✓' : ''}
+                  </button>
+                );
+              })}
             </div>
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="replacement-court">Sân thay thế</label>
-              <select
-                id="replacement-court"
-                className={styles.selectInput}
-                value={compensationCourtId ?? ''}
-                onChange={(event) => setCompensationCourtId(Number(event.target.value))}
-              >
-                {courts.map((court) => (
-                  <option key={court.court_id} value={court.court_id}>{court.court_name}</option>
-                ))}
-              </select>
+
+            {compensationTarget && (
+              <p className={styles.notice} style={{ background: '#fef2f2', color: '#991b1b', marginBottom: 10 }}>
+                Buổi gốc {formatDay(compensationTarget.date)} · {compensationTarget.courtName} · {compensationTarget.startTime}–{compensationTarget.endTime}
+                {' '}({CONFLICT_LABELS[compensationTarget.conflict] || 'Trùng lịch'}). Cần {compensationTarget.endMinute - compensationTarget.startMinute} phút
+                {' '}= {(compensationTarget.endMinute - compensationTarget.startMinute) / 30} ô liên tiếp.
+              </p>
+            )}
+
+            <div className={styles.gridHeader}>
+              <strong>{compensationDate && formatDay(compensationDate)}{compensationTarget?.date === compensationDate ? ' (ngày gốc)' : ''}</strong>
+              <div className={styles.gridDateNav}>
+                <button type="button" className={styles.navBtn} aria-label="Ngày trước"
+                  disabled={compensationDate <= compensationMinDate} onClick={() => chooseCompensationDate(shiftDay(compensationDate, -1))}>‹</button>
+                <input type="date" className={styles.dateInput} aria-label="Ngày của slot bù"
+                  min={compensationMinDate} max={compensationMaxDate} value={compensationDate}
+                  onChange={(event) => chooseCompensationDate(event.target.value)} />
+                <button type="button" className={styles.navBtn} aria-label="Ngày sau"
+                  disabled={compensationDate >= compensationMaxDate} onClick={() => chooseCompensationDate(shiftDay(compensationDate, 1))}>›</button>
+              </div>
             </div>
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="replacement-time">Giờ bắt đầu thay thế</label>
-              <select id="replacement-time" className={styles.selectInput} value={compensationTime} onChange={(event) => setCompensationTime(event.target.value)}>
-                {TIMES.slice(0, -1).map((time) => <option key={time} value={time}>{time}</option>)}
-              </select>
-            </div>
-            {compensationTargetKey !== 'ALL' && <label>Ngày bù
-              <input type="date" min={mode === 'recurring' ? fromDate : today} max={mode === 'recurring' ? toDate : maxAllowedDate}
-                value={compensationDate} onChange={(event) => setCompensationDate(event.target.value)} />
-            </label>}
+
+            {!compensationGrid && <p role="status">Đang tải lịch sân…</p>}
+            {compensationGrid?.error && <p role="alert" className={styles.pickMessage + ' ' + styles.pickError}>{compensationGrid.error}</p>}
+            {compensationGrid?.data?.time_headers.length === 0 && <p>Ngày này địa điểm không mở cửa.</p>}
+            {compensationGrid?.data?.time_headers.length > 0 && (() => {
+              const pick = compensationPicks[compensationTargetKey];
+              const selected = pick && pick.date === compensationDate
+                ? Array.from({ length: (pick.endMinute - pick.startMinute) / 30 }, (_, index) =>
+                  ({ courtId: pick.courtId, time: toTimeLabel(pick.startMinute + index * 30) }))
+                : [];
+              return <ScheduleGrid schedule={compensationGrid.data} selected={selected} allowBooking={Boolean(compensationTarget)}
+                onSlot={pickCompensation} mark={compensationMark} markLegend={['conflict', 'package']} />;
+            })()}
+
+            {compensationMessage && (
+              <p role={compensationMessage.error ? 'alert' : 'status'}
+                className={styles.pickMessage + (compensationMessage.error ? ' ' + styles.pickError : '')}>
+                {compensationMessage.text}
+              </p>
+            )}
+
             <div className={styles.modalActions}>
+              {conflictedSessions.length > 1 && compensationPicks[compensationTargetKey] && (
+                <button type="button" className={styles.removeConflictsBtn} onClick={applyPickToAll}>
+                  Dùng sân và giờ này cho cả {conflictedSessions.length} buổi trùng
+                </button>
+              )}
               <button type="button" className={styles.removeConflictsBtn} onClick={() => setShowCompensation(false)}>Hủy</button>
-              <button type="button" className={styles.confirmScheduleBtn} onClick={applyCompensation}>Áp dụng slot bù</button>
+              <button type="button" className={styles.confirmScheduleBtn} disabled={!Object.keys(compensationPicks).length}
+                onClick={applyCompensation}>
+                Áp dụng slot bù ({Object.keys(compensationPicks).length}/{conflictedSessions.length})
+              </button>
             </div>
           </section>
         </div>

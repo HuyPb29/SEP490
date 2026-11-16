@@ -596,3 +596,117 @@
     width: 100%;
   }
 }
+
+/* UC15 Tự chọn ngày và slot bù: chọn trên bảng slot của ngày */
+.dayCellActive {
+  outline: 2px solid #7c3aed;
+  outline-offset: 1px;
+}
+
+.gridCard {
+  padding: 20px 22px;
+  border: 1px solid #e2e8e4;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(27, 55, 39, 0.045);
+}
+
+.gridHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.gridTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.gridDateNav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gridHint {
+  margin: 0 0 10px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.modalWide {
+  max-width: 980px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.targetPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.targetPill {
+  padding: 6px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fff;
+  color: #991b1b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.targetPillActive {
+  border-color: #991b1b;
+  background: #991b1b;
+  color: #fff;
+}
+
+.targetPillDone {
+  border-color: #bfe3cf;
+  background: #e9f5ee;
+  color: #065f46;
+}
+
+.pickMessage {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: #166534;
+}
+
+.pickError {
+  color: #b91c1c;
+}
+
+/* Nút ‹ › chuyển tháng, chuyển ngày */
+.navBtn {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #dce5de;
+  border-radius: 8px;
+  background: #fff;
+  color: #34443a;
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.navBtn:hover:not(:disabled) {
+  border-color: #17884f;
+  color: #17884f;
+}
+
+.navBtn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
