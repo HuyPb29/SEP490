@@ -307,8 +307,9 @@ export default function PackageSummaryPage() {
                   </tbody>
                 </table>
               </div>
+              {sessions.length > 10 && <p className={own.tableCaption}>Cuộn trong bảng để xem đủ {sessions.length} buổi.</p>}
 
-              <div className={styles.noteGroup}>
+              <div className={`${styles.noteGroup} ${own.noteSpacing}`}>
                 <label className={styles.noteLabel} htmlFor="package-note">Ghi chú cho chủ sân (không bắt buộc, tối đa 200 ký tự)</label>
                 <textarea rows={3} maxLength={200} id="package-note" className={styles.noteTextarea}
                   placeholder="Ví dụ: Chuẩn bị thêm 2 ống cầu..." value={note} onChange={(event) => setNote(event.target.value)} />

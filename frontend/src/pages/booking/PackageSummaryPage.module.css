@@ -1,10 +1,21 @@
 /* Chỉ phần riêng của trang tóm tắt gói; phần còn lại dùng BookingSummaryPage.module.css */
 .tableWrap {
   margin-top: 16px;
-  max-height: 360px;
+  max-height: 440px;
   overflow: auto;
   border: 1px solid var(--cw-border, #e2e8f0);
   border-radius: 10px;
+}
+
+.tableCaption {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+/* Tách ô ghi chú khỏi bảng buổi */
+.noteSpacing {
+  margin-top: 18px;
 }
 
 .sessionTable {

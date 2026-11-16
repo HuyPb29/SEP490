@@ -359,7 +359,26 @@
 .card, .paymentCard { border-color: var(--cw-border); box-shadow: var(--cw-shadow); }
 .teamPill, .confirmBtn, .voucherBtn { min-height: 44px; }
 .confirmBtn, .voucherBtn { background: var(--cw-primary); }
+/* Nút voucher nền xanh thì chữ trắng (trước đây chữ xanh trên nền xanh, gần như không đọc được) */
+.voucherBtn { border-color: var(--cw-primary); color: #fff; }
+.voucherBtn:disabled { opacity: .55; cursor: not-allowed; }
 .confirmBtn:hover:not(:disabled), .voucherBtn:hover:not(:disabled) { background: var(--cw-primary-hover); }
+/* Ô nhập số điểm thưởng: cùng kiểu với ô mã voucher */
+.pointsRow input[type="number"] {
+  flex: 0 0 120px;
+  width: 120px;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  color: #0f172a;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: right;
+}
+.pointsRow input[type="number"]:focus { border-color: var(--cw-primary); outline: none; box-shadow: 0 0 0 3px rgba(13, 138, 82, .12); }
+.pointsRow input[type="number"][aria-invalid="true"] { border-color: #dc2626; }
 .totalValue, .discountValue { color: var(--cw-primary); }
 .infoValue { overflow-wrap: anywhere; }
 @media (min-width: 901px) { .paymentCard { position: sticky; top: 16px; } }
