@@ -3,11 +3,10 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiErrorMessage } from '../../api';
 import { toMinutes, toTimeLabel } from '../../api/bookingApi';
 import { PublicHeader } from '../../components/layout/PublicLayout';
-import { ConfirmDialog } from '../../components/common/WorkspacePrimitives';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import { formatVnd, today as getTodayStr } from '../../utils/formatters';
-import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, pointInputError } from '../../utils/checkoutPoints';
+import { readPackageDraft, savePackageDraft } from '../../utils/packageDraft';
 import { usePackagePreview } from '../../hooks/usePackagePreview';
 import styles from './MultiSessionBookingPage.module.css';
 
@@ -57,83 +56,55 @@ export default function MultiSessionBookingPage() {
   const location = useLocation();
   const { id } = useParams();
   const { user } = useAuth();
-  const {
-    getLocationCourts,
-    getMyOwnedTeams,
-    getCheckoutVouchers,
-    getMyPointsAtFacility,
-    previewBookingPackage,
-    createBookingPackage,
-  } = useBookingActions();
+  const { getLocationCourts, previewBookingPackage } = useBookingActions();
 
   const facilityId = Number(id || location.state?.facilityId) || null;
-  const facilityName = location.state?.facilityName || '';
 
   const today = TODAY_DATE;
   const maxAllowedDate = MAX_ALLOWED_DATE;
 
+  // Quay lại từ trang tóm tắt gói thì khôi phục lịch đã chọn, kể cả buổi bỏ và slot bù
+  const [draft] = useState(() => readPackageDraft(facilityId));
+  const saved = draft?.schedule;
+  const facilityName = location.state?.facilityName || draft?.facilityName || '';
+
   const [courts, setCourts] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [myVouchers, setMyVouchers] = useState([]);
-  const [availablePoints, setAvailablePoints] = useState(0);
 
-  const [mode, setMode] = useState('recurring');
-  const [courtId, setCourtId] = useState(null);
-  const [fromDate, setFromDate] = useState(today);
-  const [toDate, setToDate] = useState(() => addMonths(today, 1, 1));
-  const [selectedWeekdays, setSelectedWeekdays] = useState([2, 4]);
-  const [startTime, setStartTime] = useState('19:00');
-  const [endTime, setEndTime] = useState('21:00');
-  const [teamId, setTeamId] = useState('');
-  const [note, setNote] = useState('');
-  const [voucherCode, setVoucherCode] = useState('');
-  const [selectedGrantId, setSelectedGrantId] = useState(null);
-  const [pointsToUse, setPointsToUse] = useState(0);
+  const [mode, setMode] = useState(saved?.mode ?? 'recurring');
+  const [courtId, setCourtId] = useState(saved?.courtId ?? null);
+  const [fromDate, setFromDate] = useState(saved?.fromDate ?? today);
+  const [toDate, setToDate] = useState(() => saved?.toDate ?? addMonths(today, 1, 1));
+  const [selectedWeekdays, setSelectedWeekdays] = useState(saved?.selectedWeekdays ?? [2, 4]);
+  const [startTime, setStartTime] = useState(saved?.startTime ?? '19:00');
+  const [endTime, setEndTime] = useState(saved?.endTime ?? '21:00');
 
-  const [customSessions, setCustomSessions] = useState([]);
+  const [customSessions, setCustomSessions] = useState(saved?.customSessions ?? []);
   const [sessionDate, setSessionDate] = useState(today);
-  const [weekdayTimes, setWeekdayTimes] = useState({});
+  const [weekdayTimes, setWeekdayTimes] = useState(saved?.weekdayTimes ?? {});
   const customDates = useMemo(() => [...new Set(customSessions.map((session) => session.date))], [customSessions]);
   // Xử lý buổi trùng (BR50): buổi bỏ và buổi đổi sang slot bù, theo khóa của buổi gốc
-  const [removedKeys, setRemovedKeys] = useState([]);
-  const [replacements, setReplacements] = useState({});
+  const [removedKeys, setRemovedKeys] = useState(saved?.removedKeys ?? []);
+  const [replacements, setReplacements] = useState(saved?.replacements ?? {});
   const [showCompensation, setShowCompensation] = useState(false);
   const [compensationCourtId, setCompensationCourtId] = useState(null);
   const [compensationTime, setCompensationTime] = useState('19:00');
   const [compensationDate, setCompensationDate] = useState('');
   const [compensationTargetKey, setCompensationTargetKey] = useState('ALL');
 
-  const [viewMonth, setViewMonth] = useState(() => parseDateKey(today));
-  const [revision, setRevision] = useState(0);
+  const [viewMonth, setViewMonth] = useState(() =>
+    parseDateKey(saved?.mode === 'custom' ? (saved.customSessions?.[0]?.date ?? today) : (saved?.fromDate ?? today)));
   const [previewError, setPreviewError] = useState('');
   const [notice, setNotice] = useState('');
-  const [rewardSubmitError, setRewardSubmitError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [confirmPoints, setConfirmPoints] = useState(false);
 
   useEffect(() => {
     if (!facilityId) return;
-    Promise.all([
-      getLocationCourts(facilityId),
-      getMyOwnedTeams().catch(() => []),
-      getCheckoutVouchers(facilityId).catch(() => ({ publicVouchers: [], grants: [] })),
-      getMyPointsAtFacility(facilityId).catch(() => 0),
-    ])
-      .then(([courtList, teamList, voucherData, pointBalance]) => {
+    getLocationCourts(facilityId)
+      .then((courtList) => {
         setCourts(courtList);
         setCourtId((current) => current ?? courtList[0]?.court_id ?? null);
-        setTeams(Array.isArray(teamList) ? teamList : (teamList?.data || []));
-        const grants = (voucherData?.grants || []).map((g) => ({
-          grant_id: g.grantId,
-          code: g.voucher?.code,
-          name: g.voucher?.name,
-          end_date: g.expiresAt || g.voucher?.validTo || '',
-        }));
-        setMyVouchers(grants);
-        setAvailablePoints(Number(pointBalance || 0));
       })
       .catch((err) => setPreviewError(apiErrorMessage(err, 'Không tải được danh sách sân.')));
-  }, [facilityId, getLocationCourts, getMyOwnedTeams, getCheckoutVouchers, getMyPointsAtFacility]);
+  }, [facilityId, getLocationCourts]);
 
   const startMinute = toMinutes(startTime);
   const endMinute = toMinutes(endTime);
@@ -143,19 +114,11 @@ export default function MultiSessionBookingPage() {
     setReplacements({});
   };
 
-  // UC15 #2, #3: PackageRequest theo mẫu Player nhập (chưa xử lý buổi trùng)
+  // UC15 #2, #3: PackageRequest theo mẫu Player nhập (chưa xử lý buổi trùng).
+  // Đội, voucher, điểm, ghi chú chọn ở trang tóm tắt gói.
   const baseRequest = useMemo(() => {
     if (!courtId || endMinute <= startMinute) return null;
-    const common = {
-      courtId,
-      startDate: fromDate,
-      endDate: toDate,
-      teamId: teamId ? Number(teamId) : null,
-      voucherCode: voucherCode.trim() || null,
-      voucherGrantId: selectedGrantId || null,
-      pointsToUse: Number(pointsToUse) > 0 ? Number(pointsToUse) : 0,
-      note: note.trim() || null,
-    };
+    const common = { courtId, startDate: fromDate, endDate: toDate };
     if (mode === 'recurring') {
       if (selectedWeekdays.length === 0) return null;
       return {
@@ -172,11 +135,6 @@ export default function MultiSessionBookingPage() {
     courtId,
     fromDate,
     toDate,
-    teamId,
-    voucherCode,
-    selectedGrantId,
-    pointsToUse,
-    note,
     mode,
     selectedWeekdays, weekdayTimes,
     customSessions,
@@ -184,7 +142,7 @@ export default function MultiSessionBookingPage() {
     endMinute,
   ]);
 
-  const baseResult = usePackagePreview(baseRequest, previewBookingPackage, revision);
+  const baseResult = usePackagePreview(baseRequest, previewBookingPackage, 0);
   const activeBasePreview = baseResult?.data;
   const hasAdjustments = removedKeys.length > 0 || Object.keys(replacements).length > 0;
 
@@ -205,20 +163,12 @@ export default function MultiSessionBookingPage() {
     return sessions.length ? { ...baseRequest, sessions } : null;
   }, [baseRequest, activeBasePreview, hasAdjustments, removedKeys, replacements]);
 
-  const adjustedResult = usePackagePreview(adjustedRequest, previewBookingPackage, revision);
+  const adjustedResult = usePackagePreview(adjustedRequest, previewBookingPackage, 0);
   const finalRequest = hasAdjustments ? adjustedRequest : baseRequest;
   const result = hasAdjustments ? adjustedResult : baseResult;
   const preview = result?.data;
   const sessions = useMemo(() => preview?.sessions ?? [], [preview]);
   const conflictedSessions = sessions.filter((session) => session.conflict);
-  const pointsLimit = preview ? checkoutPointLimit(preview.listAmount - preview.voucherDiscount, availablePoints) : availablePoints;
-  const selectedPoints = Number(pointsToUse);
-  const pointValidation = pointInputError(selectedPoints, availablePoints, pointsLimit);
-  const invalidPoints = Boolean(pointValidation);
-  const rewardError = rewardSubmitError || result?.error;
-  const rewardErrorField = checkoutRewardErrorField(rewardError);
-  const voucherError = rewardErrorField === 'voucher' ? rewardError : '';
-  const pointError = pointValidation || (rewardErrorField === 'points' ? rewardError : '');
   const distinctDays = new Set(sessions.map((session) => session.date)).size;
 
   const sessionsByDate = useMemo(() => {
@@ -316,40 +266,27 @@ export default function MultiSessionBookingPage() {
     setNotice(`Đã áp dụng slot bù cho ${targetSessions.length} buổi trùng.`);
   };
 
-  const confirmSchedule = async () => {
+  // Sang trang tóm tắt gói; chưa tạo gói, chưa giữ chỗ (giữ chỗ khi bấm xác nhận ở trang tóm tắt)
+  const goToSummary = () => {
     setNotice('');
-    setRewardSubmitError('');
-    if (note.length > 200) {
-      setPreviewError('Ghi chú không được vượt quá 200 ký tự.');
-      return;
-    }
-    if (!finalRequest || !preview || invalidPoints || distinctDays < 2) {
-      setNotice(previewError || 'Vui lòng chọn sân, khung giờ và ít nhất 1 buổi đặt.');
+    if (!finalRequest || !preview || distinctDays < 2) {
+      setNotice(previewError || 'Gói phải có buổi trong ít nhất 2 ngày khác nhau. Vui lòng chọn sân, khung giờ và các buổi đặt.');
       return;
     }
     if (conflictedSessions.length > 0) {
-      setNotice('Vui lòng xử lý tất cả các buổi trùng (chọn slot bù hoặc bỏ buổi trùng) trước khi xác nhận.');
+      setNotice('Vui lòng xử lý tất cả các buổi trùng (chọn slot bù hoặc bỏ buổi trùng) trước khi tiếp tục.');
       return;
     }
-    if ((preview.totalSessions - preview.conflictSessions) <= 0) {
-      setPreviewError('Không còn buổi hợp lệ sau khi bỏ các buổi trùng.');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      // UC15 #11: giữ chỗ gói 15 phút (P27) rồi sang thanh toán UC18
-      const pkg = await createBookingPackage(finalRequest);
-      const packageId = pkg?.id ?? pkg?.booking_id ?? pkg?.data?.booking_id;
-      sessionStorage.setItem('active_holding_booking', JSON.stringify(pkg));
-      navigate(`/booking/payment?packageId=${packageId}`);
-    } catch (err) {
-      if (err.response?.status === 409 || err.response?.data?.message?.includes('MSG44')) setRevision((value) => value + 1);
-      const message = apiErrorMessage(err, 'Không thể tạo gói đặt sân.');
-      if (checkoutRewardErrorField(message)) setRewardSubmitError(message);
-      else setNotice(message);
-    } finally {
-      setSubmitting(false);
-    }
+    savePackageDraft({
+      facilityId,
+      facilityName: facilityName || preview.locationName || '',
+      request: finalRequest,
+      schedule: {
+        mode, courtId, fromDate, toDate, selectedWeekdays, startTime, endTime,
+        weekdayTimes, customSessions, removedKeys, replacements,
+      },
+    });
+    navigate('/booking/package-summary');
   };
 
   const shiftMonth = (offset) =>
@@ -371,11 +308,6 @@ export default function MultiSessionBookingPage() {
   return (
     <div className={styles.pageWrapper + ' cw-workspace'}>
       <PublicHeader user={user} />
-      {confirmPoints && <ConfirmDialog title="Xác nhận dùng điểm" onCancel={() => setConfirmPoints(false)}
-        onConfirm={() => { setConfirmPoints(false); confirmSchedule(); }}>
-        Dùng {selectedPoints} điểm để giảm {formatCurrency(preview?.pointDiscount ?? 0)}?
-        Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy booking. (MSG39)
-      </ConfirmDialog>}
 
       <main className={styles.mainContainer}>
         <div style={{ marginBottom: 10 }}>
@@ -559,92 +491,6 @@ export default function MultiSessionBookingPage() {
               </li>)}</ul>
             </div>}
 
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="book-for">Đặt cho</label>
-              <select id="book-for" className={styles.selectInput} value={teamId} onChange={(event) => setTeamId(event.target.value)}>
-                <option value="">Cá nhân</option>
-                {teams.map((team) => (
-                  <option key={team.team_id} value={team.team_id}>Đội: {team.team_name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="voucher-code">Mã giảm giá (Voucher)</label>
-              <input
-                id="voucher-code"
-                type="text"
-                className={styles.dateInput}
-                placeholder="Nhập mã voucher..."
-                value={voucherCode}
-                aria-invalid={Boolean(voucherError)}
-                aria-describedby={voucherError ? 'package-voucher-error' : undefined}
-                onChange={(event) => {
-                  setVoucherCode(event.target.value);
-                  setSelectedGrantId(null);
-                  setRewardSubmitError('');
-                }}
-              />
-              {myVouchers.length > 0 && (
-                <select
-                  aria-label="Chọn từ ví voucher của tôi"
-                  className={styles.selectInput}
-                  value={selectedGrantId ?? ''}
-                  aria-invalid={Boolean(voucherError)}
-                  aria-describedby={voucherError ? 'package-voucher-error' : undefined}
-                  onChange={(event) => {
-                    const grantId = event.target.value ? Number(event.target.value) : null;
-                    setSelectedGrantId(grantId);
-                    setVoucherCode('');
-                    setRewardSubmitError('');
-                  }}
-                >
-                  <option value="">-- Chọn từ ví voucher của tôi ({myVouchers.length}) --</option>
-                  {myVouchers.map((v) => (
-                    <option key={v.grant_id} value={v.grant_id}>
-                      {v.code} — {v.name} (HSD: {v.end_date})
-                    </option>
-                  ))}
-                </select>
-              )}
-              {voucherError && <small id="package-voucher-error" className="cw-field-error" role="alert">{voucherError}</small>}
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="points-input">
-                Điểm thưởng sử dụng (Khả dụng: {availablePoints} điểm · 1 điểm = 500đ)
-              </label>
-              <input
-                id="points-input"
-                type="number"
-                min={0}
-                max={pointsLimit}
-                className={styles.dateInput}
-                value={pointsToUse}
-                disabled={submitting}
-                aria-invalid={Boolean(pointError)}
-                aria-describedby={pointError ? 'package-point-error' : undefined}
-                onChange={(event) => { setPointsToUse(event.target.value); setRewardSubmitError(''); }}
-              />
-              {preview && <small>Tối đa {checkoutPointPercent}% số tiền {preview.voucherDiscount > 0 ? 'còn lại sau voucher' : 'niêm yết'}.</small>}
-              {pointError && <small id="package-point-error" className="cw-field-error" role="alert">{pointError}</small>}
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="owner-note">
-                Ghi chú cho chủ sân ({note.length}/200)
-              </label>
-              <input
-                id="owner-note"
-                type="text"
-                maxLength={200}
-                className={styles.dateInput}
-                placeholder="VD: Chuẩn bị thêm 2 ống cầu..."
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-              />
-            </div>
-
             <p className={styles.ruleHintText}>
               Định kỳ: tối thiểu 1 buổi/tuần, kéo dài từ 1 đến 3 tháng. Tất cả các buổi phải nằm trong vòng 3 tháng kể từ hôm nay.
             </p>
@@ -761,7 +607,7 @@ export default function MultiSessionBookingPage() {
                 </div>
               )}
               {finalRequest && !result && <p role="status">Đang kiểm tra lịch gói…</p>}
-              {((result?.error && !checkoutRewardErrorField(result.error)) || previewError) &&
+              {(result?.error || previewError) &&
                 <p className={styles.notice} style={{ background: '#fef2f2', color: '#b91c1c' }} role="alert">
                   {previewError || result.error}
                 </p>}
@@ -772,25 +618,17 @@ export default function MultiSessionBookingPage() {
               <div className={styles.summaryLeft}>
                 <span className={styles.formulaText}>
                   {preview
-                    ? `${preview.totalSessions - preview.conflictSessions} buổi hợp lệ · Giá gốc ${formatCurrency(preview.listAmount)}${
-                      Number(preview.voucherDiscount ?? preview.discountAmount) > 0
-                        ? ` · Giảm voucher -${formatCurrency(preview.voucherDiscount ?? preview.discountAmount)}`
-                        : ''
-                    }${
-                      Number(preview.pointDiscount ?? preview.pointsDiscountAmount) > 0
-                        ? ` · Đổi điểm -${formatCurrency(preview.pointDiscount ?? preview.pointsDiscountAmount)}`
-                        : ''
-                    }`
+                    ? `${preview.totalSessions - preview.conflictSessions} buổi hợp lệ · Giá gốc (chưa trừ voucher, điểm)`
                     : 'Chưa có buổi đặt nào'}
                 </span>
-                <strong className={styles.totalPriceText}>{formatCurrency(preview?.finalAmount)}</strong>
+                <strong className={styles.totalPriceText}>{formatCurrency(preview?.listAmount)}</strong>
                 <span className={styles.holdNoteText}>
-                  Thanh toán 1 lần cho toàn bộ gói. Sau khi xác nhận, gói được giữ chỗ 15 phút.
+                  Chọn đội, voucher, điểm và ghi chú ở bước sau. Gói chỉ được giữ chỗ 15 phút khi bạn bấm xác nhận ở bước sau.
                 </span>
               </div>
-              <button type="button" className={styles.confirmScheduleBtn} disabled={submitting || !preview || invalidPoints || distinctDays < 2 || conflictedSessions.length > 0}
-                onClick={() => selectedPoints > 0 ? setConfirmPoints(true) : confirmSchedule()}>
-                {submitting ? 'Đang giữ chỗ gói...' : 'Xác nhận lịch đặt'}
+              <button type="button" className={styles.confirmScheduleBtn} disabled={!preview || distinctDays < 2 || conflictedSessions.length > 0}
+                onClick={goToSummary}>
+                Tiếp tục ›
               </button>
             </section>
           </div>
