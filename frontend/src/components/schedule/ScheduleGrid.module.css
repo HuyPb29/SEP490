@@ -246,3 +246,22 @@ thead .court {
 .chipRemove:hover {
   color: #b91c1c;
 }
+
+/* Lịch hôm nay: cột giờ hiện tại, vạch đỏ bên trái; bảng tự cuộn tới cột này */
+.halfRow .nowHeader {
+  color: #dc2626;
+  font-weight: 800;
+  background: #fef2f2;
+  white-space: nowrap;
+}
+
+.nowCell {
+  box-shadow: inset 2px 0 0 #ef4444;
+}
+
+/* Khoảng trống sau cột cuối, chỉ để cột "Bây giờ" kéo được sát trái khi gần cuối ngày */
+.hourRow .tailSpacer {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react'
 import { isBookable } from '../../utils/venueSchedule'
+import { today } from '../../utils/formatters'
 import styles from './ScheduleGrid.module.css'
 
 // Bảng slot dùng chung (UC13): đặt lẻ, gói nhiều buổi, slot bù, đổi lịch, đặt tại quầy.
@@ -45,6 +46,17 @@ function hourGroups(headers) {
   return groups
 }
 
+const toMinute = (time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
+
+// Lịch hôm nay: index = cột chứa giờ hiện tại (-1 nếu chưa mở cửa hoặc đã đóng cửa), afterClose = đã qua giờ đóng cửa
+function nowColumn(schedule, headers) {
+  if ((schedule.play_date ?? schedule.date) !== today() || headers.length === 0) return { index: -1, afterClose: false }
+  const now = new Date()
+  const minute = now.getHours() * 60 + now.getMinutes()
+  const index = minute < toMinute(headers[0]) ? -1 : headers.findIndex((time) => minute < toMinute(time) + 30)
+  return { index, afterClose: index === -1 && minute >= toMinute(headers[0]) }
+}
+
 export function ScheduleLegend({ marks = [] }) {
   return <ul className={styles.legend} aria-label="Chú thích màu">
     {LEGEND.map((item) => <li key={item.key}><i className={styles.swatch + ' ' + item.className} />{item.text}</li>)}
@@ -63,16 +75,33 @@ export default function ScheduleGrid({
 }) {
   const headers = schedule.time_headers
   const wrapperRef = useRef(null)
-  // Mở bảng (hoặc đổi ngày) thì cuộn ngang tới ô đã chọn / được đánh dấu, không có thì tới ô còn trống đầu tiên
+  const spacerRef = useRef(null)
+  const { index: nowIdx, afterClose } = nowColumn(schedule, headers)
+  // Mở bảng (hoặc đổi ngày) thì cuộn ngang tới ô đã chọn / được đánh dấu. Không có thì với lịch hôm nay
+  // kéo cột "Bây giờ" sát cột tên sân (phần đã qua vẫn kéo sang trái để xem), đã đóng cửa thì về cuối ngày;
+  // ngày khác tới ô còn trống đầu tiên.
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current
-    const target = wrapper?.querySelector('[data-focus="pin"]') || wrapper?.querySelector('[data-focus="free"]')
+    const spacer = spacerRef.current
     const courtColumn = wrapper?.querySelector('tbody th')
-    if (!target || !courtColumn) return
+    if (!wrapper || !courtColumn) return
+    if (spacer) spacer.style.width = '0px'
+    const pin = wrapper.querySelector('[data-focus="pin"]')
+    if (!pin && afterClose) {
+      wrapper.scrollLeft = wrapper.scrollWidth
+      return
+    }
+    const target = pin || wrapper.querySelector('[data-now]') || wrapper.querySelector('[data-focus="free"]')
+    if (!target) return
+    const isNow = target.hasAttribute('data-now')
     const offset = target.getBoundingClientRect().left - wrapper.getBoundingClientRect().left + wrapper.scrollLeft
-    wrapper.scrollLeft = Math.max(0, offset - courtColumn.offsetWidth - 8)
+    const left = Math.max(0, offset - courtColumn.offsetWidth - (isNow ? 0 : 8))
+    // Cuối ngày còn ít cột thì không đủ chỗ cuộn: thêm khoảng trống sau cột cuối để cột "Bây giờ" vẫn sát trái
+    const room = wrapper.scrollWidth - wrapper.clientWidth
+    if (isNow && spacer && left > room) spacer.style.width = `${left - room}px`
+    wrapper.scrollLeft = left
     // chỉ chạy khi đổi lịch được xem, không chạy lại mỗi lần bấm chọn ô
-  }, [schedule])
+  }, [schedule, afterClose])
   return <>
     {legend && <ScheduleLegend marks={markLegend} />}
     <div ref={wrapperRef} className={styles.wrapper + (showBooker ? ' ' + styles.wide : '')} role="region" aria-label="Bảng chọn khung giờ" tabIndex={0}>
@@ -82,9 +111,12 @@ export default function ScheduleGrid({
             <th scope="col" rowSpan={2} className={styles.court}>Sân</th>
             {hourGroups(headers).map((group, index) =>
               <th scope="colgroup" key={group.hour + ':' + index} colSpan={group.span}>{Number(group.hour)}h</th>)}
+            {nowIdx >= 0 && <th rowSpan={2} aria-hidden="true" className={styles.tailSpacer}><div ref={spacerRef} /></th>}
           </tr>
           <tr className={styles.halfRow}>
-            {headers.map((time) => <th scope="col" key={time}>:{time.slice(3, 5)}</th>)}
+            {headers.map((time, index) => index === nowIdx
+              ? <th scope="col" key={time} data-now className={styles.nowHeader} title="Giờ hiện tại">Bây giờ</th>
+              : <th scope="col" key={time}>:{time.slice(3, 5)}</th>)}
           </tr>
         </thead>
         <tbody>{schedule.courts.map((court) => <tr key={court.court_id}>
@@ -103,7 +135,8 @@ export default function ScheduleGrid({
             const description = [court.court_name, slot.time, status, price,
               info && [info.name, info.phone].filter(Boolean).join(' · ')].filter(Boolean).join(', ')
             const focus = chosen || kind ? 'pin' : isBookable(slot) ? 'free' : undefined
-            return <td key={slot.time} className={newHour ? styles.hourStart : undefined}>
+            const cellClass = [newHour && styles.hourStart, timeIdx === nowIdx && styles.nowCell].filter(Boolean).join(' ')
+            return <td key={slot.time} className={cellClass || undefined}>
               <button type="button" title={description} aria-label={description} data-focus={focus}
                 className={styles.cell + ' ' + tone + (info ? ' ' + styles.inspectable : '')}
                 aria-pressed={bookable || chosen ? chosen : undefined}
