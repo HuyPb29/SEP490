@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { F1Dialog } from '../../components/F1Feedback'
+import BookingSummaryBar from '../../components/booking/BookingSummaryBar'
 import ScheduleGrid from '../../components/schedule/ScheduleGrid'
 import SelectedRanges from '../../components/schedule/SelectedRanges'
 import { groupRanges } from '../../utils/slotRanges'
@@ -114,17 +115,12 @@ export default function VenueSchedule({ id, facility, scheduleRef, openPackage, 
       <p>Ghi chú: {inspected.info.note || '—'}</p>
       <button type="button" onClick={() => setInspected(null)}>Đóng</button>
     </div>}
-    {allowBooking && <div className={styles.summaryBar}>
-      <div aria-live="polite">
-        <div className={styles.summaryMainText}>
-          {ranges.length ? `${ranges.length} khung giờ đã chọn · ${formatVnd(totalPrice)}` : 'Chưa chọn khung giờ'}
-        </div>
-        {ranges.length
-          ? <SelectedRanges ranges={ranges} onRemove={removeRange} />
-          : <div className={styles.summarySubText}>Bấm ô trống để chọn. Chọn được nhiều khung giờ, nhiều sân trong cùng ngày.</div>}
-      </div>
-      <button type="button" className={styles.continueBookingBtn} disabled={!selected.length} onClick={continueBooking}>Tiếp tục đặt sân</button>
-    </div>}
+    {allowBooking && <BookingSummaryBar
+      title={ranges.length ? `${ranges.length} khung giờ đã chọn · ${formatVnd(totalPrice)}` : 'Chưa chọn khung giờ'}
+      hint={ranges.length ? null : 'Bấm ô trống để chọn. Chọn được nhiều khung giờ, nhiều sân trong cùng ngày.'}
+      disabled={!selected.length} onContinue={continueBooking}>
+      <SelectedRanges ranges={ranges} onRemove={removeRange} />
+    </BookingSummaryBar>}
     {(guestPrompt || openPackage) && <F1Dialog title="Đăng nhập để đặt sân" message={loginMessage}
       confirmLabel="Đăng nhập / Đăng ký" onConfirm={goToLogin}
       onClose={() => { setGuestPrompt(false); onClosePackage() }} />}

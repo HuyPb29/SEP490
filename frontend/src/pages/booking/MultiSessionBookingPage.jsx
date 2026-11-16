@@ -11,6 +11,7 @@ import { readPackageDraft, savePackageDraft } from '../../utils/packageDraft';
 import { groupRanges } from '../../utils/slotRanges';
 import { isBookable } from '../../utils/venueSchedule';
 import { usePackagePreview } from '../../hooks/usePackagePreview';
+import BookingSummaryBar from '../../components/booking/BookingSummaryBar';
 import ScheduleGrid from '../../components/schedule/ScheduleGrid';
 import SelectedRanges from '../../components/schedule/SelectedRanges';
 import gridStyles from '../../components/schedule/ScheduleGrid.module.css';
@@ -215,14 +216,15 @@ export default function MultiSessionBookingPage() {
   // Đội, voucher, điểm, ghi chú chọn ở trang tóm tắt gói.
   const baseRequest = useMemo(() => {
     if (mode === 'custom') {
-      if (customSessions.length === 0) return null;
+      // Chưa đủ 2 ngày (D163) thì chưa xem trước gói; thanh tóm tắt cộng giá các ô đã chọn
+      if (customDates.length < 2) return null;
       const dates = customSessions.map((session) => session.date).sort();
       return { courtId: customSessions[0].courtId, startDate: dates[0], endDate: dates.at(-1),
         packageType: 'CUSTOM', sessions: customSessions };
     }
     if (!recurringPattern || !effectiveCourtId) return null;
     return { ...recurringPattern, courtId: effectiveCourtId };
-  }, [mode, customSessions, recurringPattern, effectiveCourtId]);
+  }, [mode, customSessions, customDates, recurringPattern, effectiveCourtId]);
 
   // Bảng giờ bắt đầu lấy giờ mở cửa và giá của ngày đầu tiên có buổi (theo thứ đang chọn giờ)
   const representativeDate = (() => {
@@ -500,6 +502,34 @@ export default function MultiSessionBookingPage() {
     navigate('/booking/package-summary');
   };
 
+  // Thanh tóm tắt giống đặt lẻ: số buổi · tổng giá niêm yết, các buổi/lịch đã chọn, gợi ý bước còn thiếu.
+  // Có bản xem trước thì lấy số buổi và giá của backend (đã trừ buổi trùng, tính buổi bù).
+  const summaryCount = preview ? preview.totalSessions - preview.conflictSessions : customRanges.length;
+  const summaryAmount = preview ? preview.listAmount : customSlots.reduce((total, slot) => total + slot.price, 0);
+  const pendingTitle = result?.error ? 'Chưa tính được giá gói' : finalRequest ? 'Đang tính giá gói…' : null;
+  const courtName = courts.find((court) => court.court_id === effectiveCourtId)?.court_name;
+  const weeklyChips = selectedWeekdays.map((day) => {
+    const time = perDayTimes ? weeklyTimes[day] : weeklyTimes.all;
+    const text = [WEEKDAYS.find((entry) => entry.value === day)?.label, courtName,
+      time?.start != null ? `${toTimeLabel(time.start)}–${toTimeLabel(time.end)}` : 'chưa chọn giờ'].filter(Boolean).join(' · ');
+    return { day, text, missing: time?.start == null };
+  });
+  const conflictHint = conflictedSessions.length > 0
+    ? `Còn ${conflictedSessions.length} buổi trùng: chọn slot bù hoặc bỏ buổi trùng ở lịch phía trên.` : null;
+  const summaryTitle = mode === 'custom'
+    ? customRanges.length
+      ? `${summaryCount} buổi · ${preview ? distinctDays : customDates.length} ngày · ${formatCurrency(summaryAmount)}`
+      : 'Chưa chọn buổi'
+    : preview ? `${summaryCount} buổi · ${formatCurrency(summaryAmount)}` : pendingTitle ?? 'Chưa chọn lịch';
+  const summaryHint = mode === 'custom'
+    ? customRanges.length === 0
+      ? 'Bấm ô trống để chọn. Ô liền nhau trên cùng sân là một buổi; gói cần buổi ở ít nhất 2 ngày khác nhau.'
+      : customDates.length < 2 ? 'Chọn thêm buổi ở ít nhất một ngày khác để đặt gói.' : conflictHint
+    : selectedWeekdays.length === 0
+      ? 'Chọn thứ trong tuần rồi bấm ô giờ bắt đầu trên bảng khung giờ.'
+      : weeklyChips.some((chip) => chip.missing)
+        ? 'Bấm ô giờ bắt đầu cho các thứ chưa chọn giờ.' : conflictHint;
+
   const shiftMonth = (offset) =>
     setViewMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
 
@@ -646,10 +676,8 @@ export default function MultiSessionBookingPage() {
               <p className={styles.customModeHint}>
                 Bấm một ngày trên lịch tháng để mở bảng slot của ngày đó, rồi bấm các ô trống để thêm buổi.
                 Ô liền nhau trên cùng sân là một buổi; một ngày có thể có nhiều buổi, nhiều sân.
+                Các buổi đã chọn hiện ở thanh tóm tắt dưới bảng.
               </p>
-              {customRanges.length > 0
-                ? <SelectedRanges ranges={customRanges} onRemove={removeCustomRange} showDate />
-                : <p className={styles.customModeHint}>Chưa có buổi nào.</p>}
             </div>}
 
             <p className={styles.ruleHintText}>
@@ -894,23 +922,22 @@ export default function MultiSessionBookingPage() {
               </section>
             )}
 
-            <section className={styles.summaryFooterCard}>
-              <div className={styles.summaryLeft}>
-                <span className={styles.formulaText}>
-                  {preview
-                    ? `${preview.totalSessions - preview.conflictSessions} buổi hợp lệ · Giá gốc (chưa trừ voucher, điểm)`
-                    : 'Chưa có buổi đặt nào'}
-                </span>
-                <strong className={styles.totalPriceText}>{formatCurrency(preview?.listAmount)}</strong>
-                <span className={styles.holdNoteText}>
-                  Chọn đội, voucher, điểm và ghi chú ở bước sau. Gói chỉ được giữ chỗ 15 phút khi bạn bấm xác nhận ở bước sau.
-                </span>
-              </div>
-              <button type="button" className={styles.confirmScheduleBtn} disabled={!preview || distinctDays < 2 || conflictedSessions.length > 0}
-                onClick={goToSummary}>
-                Tiếp tục ›
-              </button>
-            </section>
+            <BookingSummaryBar title={summaryTitle} hint={summaryHint}
+              disabled={!preview || distinctDays < 2 || conflictedSessions.length > 0} onContinue={goToSummary}>
+              {mode === 'custom'
+                ? <SelectedRanges ranges={customRanges} onRemove={removeCustomRange} showDate />
+                : weeklyChips.length > 0 && (
+                  <ul className={gridStyles.chips} aria-label="Lịch chơi hằng tuần">
+                    {weeklyChips.map(({ day, text }) => (
+                      <li key={day} className={gridStyles.chip}>
+                        {text}
+                        <button type="button" className={gridStyles.chipRemove} aria-label={'Bỏ ' + text}
+                          onClick={() => toggleWeekday(day)}>×</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+            </BookingSummaryBar>
           </div>
         </div>
       </main>
