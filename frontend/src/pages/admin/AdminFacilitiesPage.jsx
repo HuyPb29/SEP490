@@ -383,6 +383,7 @@ export default function AdminFacilitiesPage() {
               <span role="columnheader">Trạng thái</span>
               <span role="columnheader">Kỳ hạn dịch vụ</span>
               <span role="columnheader">Số sân</span>
+              <span role="columnheader">Số booking</span>
               <span role="columnheader">Hành động</span>
             </div>
             {filteredFacilities.map((facility) => {
@@ -408,6 +409,7 @@ export default function AdminFacilitiesPage() {
                     )}
                   </div>
                   <span className={styles.numberCell} role="cell">{facility.courtCount ?? 0}</span>
+                  <span className={styles.numberCell} role="cell">{facility.bookingCount ?? 0}</span>
                   <div className={styles.facilityActions} role="cell">
                     <button className={styles.extendButton} type="button" onClick={() => openExtendModal(facility)} disabled={saving}>
                       Gia hạn

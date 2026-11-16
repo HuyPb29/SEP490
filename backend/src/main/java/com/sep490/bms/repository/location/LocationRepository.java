@@ -4,17 +4,23 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.location.Location;
+import jakarta.persistence.LockModeType;
 
 /**
  * Tra cứu địa điểm theo chủ sở hữu, trạng thái và bộ lọc tìm kiếm công khai.
  */
 @Repository
 public interface LocationRepository extends JpaRepository<Location, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from Location l where l.id = :id")
+    Optional<Location> findByIdForUpdate(@Param("id") Long id);
 
     List<Location> findAllByOwnerId(Long ownerId);
 

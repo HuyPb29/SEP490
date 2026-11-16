@@ -48,6 +48,7 @@ public class AdminLocationDto {
     private String ownerEmail;
 
     private Integer courtCount;
+    private long bookingCount;
 
     /** Ngày hết hạn của kỳ hạn dịch vụ xa nhất, null nếu chưa có kỳ hạn nào. */
     private LocalDate serviceTermEndDate;
@@ -63,11 +64,10 @@ public class AdminLocationDto {
     private List<CourtDto> courts;
 
     public static AdminLocationDto fromEntity(Location location, Account owner, int courtCount,
-            LocalDate serviceTermEndDate, List<CourtDto> courts) {
+            long bookingCount, LocalDate serviceTermEndDate, boolean serviceActive, List<CourtDto> courts) {
         if (location == null) {
             return null;
         }
-        LocalDate today = LocalDate.now();
         return AdminLocationDto.builder()
                 .id(location.getId())
                 .name(location.getName())
@@ -81,8 +81,9 @@ public class AdminLocationDto {
                 .ownerName(owner == null ? null : owner.getFullName())
                 .ownerEmail(owner == null ? null : owner.getEmail())
                 .courtCount(courtCount)
+                .bookingCount(bookingCount)
                 .serviceTermEndDate(serviceTermEndDate)
-                .serviceActive(serviceTermEndDate != null && !serviceTermEndDate.isBefore(today))
+                .serviceActive(serviceActive)
                 .createdAt(location.getCreatedAt())
                 .updatedAt(location.getUpdatedAt())
                 .courts(courts)
