@@ -616,3 +616,10 @@
     padding: 7px;
   }
 }
+
+/* Đặt tại quầy chọn khung giờ trên bảng slot nên cần hộp rộng hơn */
+.modalWide {
+  width: min(100%, 980px);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}

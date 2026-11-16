@@ -27,8 +27,7 @@
 }
 
 .configCard,
-.calendarCard,
-.summaryFooterCard {
+.calendarCard {
   border: 1px solid #e2e8e4;
   border-radius: 16px;
   background: #fff;
@@ -385,41 +384,6 @@
   line-height: 1.45;
 }
 
-.summaryFooterCard {
-  min-width: 0;
-  padding: 17px 22px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.summaryLeft {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.formulaText {
-  color: #47564c;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.totalPriceText {
-  color: #111827;
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-
-.holdNoteText {
-  color: #87938b;
-  font-size: 10px;
-  line-height: 1.4;
-}
-
 .confirmScheduleBtn {
   min-height: 43px;
   flex: 0 0 auto;
@@ -585,14 +549,207 @@
     font-size: 7px;
   }
 
-  .summaryFooterCard {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 12px;
-    padding: 16px;
-  }
-
   .confirmScheduleBtn {
     width: 100%;
   }
+}
+
+/* UC15 Tự chọn ngày và slot bù: chọn trên bảng slot của ngày */
+.dayCellActive {
+  outline: 2px solid #7c3aed;
+  outline-offset: 1px;
+}
+
+.gridCard {
+  padding: 20px 22px;
+  border: 1px solid #e2e8e4;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(27, 55, 39, 0.045);
+}
+
+.gridHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.gridTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.gridDateNav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gridHint {
+  margin: 0 0 10px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.modalWide {
+  max-width: 980px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.targetPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.targetPill {
+  padding: 6px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fff;
+  color: #991b1b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.targetPillActive {
+  border-color: #991b1b;
+  background: #991b1b;
+  color: #fff;
+}
+
+.targetPillDone {
+  border-color: #bfe3cf;
+  background: #e9f5ee;
+  color: #065f46;
+}
+
+.pickMessage {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: #166534;
+}
+
+.pickError {
+  color: #b91c1c;
+}
+
+/* Nút ‹ › chuyển tháng, chuyển ngày */
+.navBtn {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #dce5de;
+  border-radius: 8px;
+  background: #fff;
+  color: #34443a;
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.navBtn:hover:not(:disabled) {
+  border-color: #17884f;
+  color: #17884f;
+}
+
+.navBtn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* UC15 Định kỳ: chỉ bắt buộc chọn thứ và giờ; giờ bắt đầu chọn trên các ô cùng kiểu bảng slot */
+.fieldLabelValue {
+  float: right;
+  color: #147a49;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.monthRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.monthRow .weekdayBtn {
+  font-size: 12px;
+}
+
+.linkBtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #0d8a52;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.durationField {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #425148;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.durationField .selectInput {
+  width: auto;
+  min-width: 190px;
+  height: 38px;
+}
+
+.dayTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.dayTab {
+  padding: 5px 12px;
+  border: 1px solid #dce5de;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dayTab small {
+  margin-left: 6px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.dayTabActive {
+  border-color: #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+
+.dayTabActive small {
+  color: #cbd5e1;
+}
+
+.periodRange {
+  display: block;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 500;
 }

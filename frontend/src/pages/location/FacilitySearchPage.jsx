@@ -24,7 +24,11 @@ export default function FacilitySearchPage() {
   const { facilities, loading, loadError, fetchFacilities } = useFacilitySearch();
   const { position, locating, locationError, requestLocation } = useGeolocation();
 
-  useEffect(() => { void fetchFacilities(''); }, [fetchFacilities]);
+  // Tìm ngay khi gõ, chờ 250 ms sau phím cuối để không gọi API mỗi phím; ô trống thì tải tất cả ngay
+  useEffect(() => {
+    const timer = setTimeout(() => { void fetchFacilities(keyword); }, keyword.trim() ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [keyword, fetchFacilities]);
 
   const handleSearchSubmit = (event) => {
     event.preventDefault();
@@ -147,7 +151,7 @@ export default function FacilitySearchPage() {
 
         <div className={styles.contentGrid}>
           <div className={styles.cardsGrid}>
-            {loading ? (
+            {loading && facilities.length === 0 ? (
               <p>Đang tải danh sách địa điểm...</p>
             ) : loadError ? (
               <p>Không tải được danh sách địa điểm. Vui lòng thử lại.</p>

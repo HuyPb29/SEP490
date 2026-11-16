@@ -36,6 +36,7 @@ const OwnerReconciliationPage = lazy(() => import('../pages/owner/OwnerReconcili
 const OwnerReportPage = lazy(() => import('../pages/owner/OwnerReportPage'));
 const OwnerWorkspace = lazy(() => import('../pages/owner/OwnerWorkspace'));
 const MultiSessionBookingPage = lazy(() => import('../pages/booking/MultiSessionBookingPage'));
+const PackageSummaryPage = lazy(() => import('../pages/booking/PackageSummaryPage'));
 
 function LegacyMultiBookingRedirect() {
   const location = useLocation();
@@ -75,6 +76,16 @@ export default function AppRoutes() {
           }
         />
         <Route path="/booking/multi" element={<LegacyMultiBookingRedirect />} />
+
+        {/* UC15: Tóm tắt gói, chọn đội, voucher, điểm, ghi chú rồi xác nhận giữ chỗ */}
+        <Route
+          path="/booking/package-summary"
+          element={
+            <RequireRole roles={['player']}>
+              <PackageSummaryPage />
+            </RequireRole>
+          }
+        />
 
         {/* UC29-30: Open matches */}
         <Route path="/open-matches" element={<OpenMatchesPage />} />
