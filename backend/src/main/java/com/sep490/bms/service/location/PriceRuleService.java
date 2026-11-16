@@ -226,7 +226,7 @@ public class PriceRuleService {
             if (!dateRangesOverlap(validFrom, validTo, other.getValidFrom(), other.getValidTo())) {
                 continue;
             }
-            throw new AppException("Bảng giá bị trùng với quy tắc #" + other.getId() + " ("
+            throw new AppException("MSG17: Bảng giá bị trùng với quy tắc #" + other.getId() + " ("
                     + String.join(", ", ApplyDays.toLabels(other.getApplyDays())) + ", "
                     + OpeningTime.toTime(other.getStartMinute()) + "–"
                     + OpeningTime.toTime(other.getEndMinute()) + ")", HttpStatus.CONFLICT);

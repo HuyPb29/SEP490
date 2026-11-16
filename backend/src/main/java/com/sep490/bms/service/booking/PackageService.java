@@ -154,6 +154,7 @@ public class PackageService {
         Court court = courtRepository.findByIdAndActiveTrue(request.courtId())
                 .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
         Location location = locationQueryService.findActive(court.getLocationId());
+        BookingService.requireOnlinePaymentDetails(location);
         bookingService.requireOwnTeam(player.getId(), request.teamId());
         boolean order = isOrder(request);
         if (order) {
@@ -227,6 +228,7 @@ public class PackageService {
         Court court = courtRepository.findByIdAndActiveTrue(request.courtId())
                 .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
         Location location = locationQueryService.findActive(court.getLocationId());
+        BookingService.requireOnlinePaymentDetails(location);
         bookingService.requireOwnTeam(player.getId(), request.teamId());
         LocalDate today = now.toLocalDate();
         boolean order = isOrder(request);
@@ -680,8 +682,12 @@ public class PackageService {
      * D162, BR27, MSG115: mọi buổi của gói nằm trong 3 tháng kể từ hôm nay (tính cả hôm nay, như cách đếm của BR27), khớp với
      * lịch 3 tháng Owner/Staff xem được (D140). Hôm nay 07/11 thì buổi xa nhất là 06/02 năm sau.
      */
+    public static LocalDate lastBookablePackageDate(LocalDate today) {
+        return today.plusMonths(MAX_MONTHS).minusDays(1);
+    }
+
     private static void requireWithinBookingWindow(LocalDate lastDate, LocalDate today) {
-        LocalDate latest = today.plusMonths(MAX_MONTHS).minusDays(1);
+        LocalDate latest = lastBookablePackageDate(today);
         if (lastDate.isAfter(latest)) {
             throw new AppException("Chỉ đặt được các buổi trong vòng 3 tháng kể từ hôm nay, muộn nhất ngày "
                     + latest.format(DATE) + ". (MSG115)");

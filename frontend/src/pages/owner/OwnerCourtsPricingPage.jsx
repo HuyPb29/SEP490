@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   apiErrorMessage,
   createBatchOffer,
@@ -784,15 +785,17 @@ export default function OwnerCourtsPricingPage() {
             <label className={styles.field}>
               <span>Voucher (PUBLISHED only)</span>
               <select value={offerForm.voucherId} onChange={(event) => updateOfferForm('voucherId', event.target.value)}>
-                <option value="">{vouchers.length === 0 ? 'No published voucher in this facility' : 'Select a voucher'}</option>
+                <option value="">{vouchers.length === 0 ? 'Địa điểm chưa có voucher đã phát hành' : 'Chọn voucher tặng'}</option>
                 {vouchers.map((voucher) => (
                   <option key={voucher.id} value={voucher.id}>
                     {voucher.code} · {voucher.name} ({voucher.discountType === 'PERCENT'
                       ? `${voucher.discountValue}%`
                       : `${formatPrice(voucher.discountValue)} VND`})
+                    {voucher.validTo && ` · Hạn dùng ${formatDate(voucher.validTo)}`}
                   </option>
                 ))}
               </select>
+              <Link to="/owner/workspace?tab=rewards">Cấu hình giá trị và hạn dùng voucher</Link>
             </label>
             <button className={styles.saveButton} type="submit" disabled={saving || locked || !selectedLocation}>
               {editingOfferId ? 'Update Offer' : 'Create Offer'}

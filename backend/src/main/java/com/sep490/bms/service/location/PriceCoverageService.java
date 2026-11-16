@@ -21,6 +21,7 @@ import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.location.OpeningExceptionRepository;
 import com.sep490.bms.repository.location.OpeningHourRepository;
 import com.sep490.bms.repository.location.PriceRuleRepository;
+import com.sep490.bms.service.booking.PackageService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -53,6 +54,10 @@ public class PriceCoverageService {
                 .collect(Collectors.toMap(OpeningException::getExceptionDate, Function.identity()));
         LocalDate today = LocalDate.now();
         LocalDate lastBookableDay = today.plusDays(location.getAdvanceBookingDays());
+        LocalDate lastPackageDay = PackageService.lastBookablePackageDate(today);
+        if (lastPackageDay.isAfter(lastBookableDay)) {
+            lastBookableDay = lastPackageDay;
+        }
         List<LocalDate> dates = today.datesUntil(lastBookableDay.plusDays(1)).toList();
         for (Court court : courtsToCheck) {
             List<PriceRule> rules = prices.findAllByCourtIdOrderByStartMinuteAsc(court.getId());
