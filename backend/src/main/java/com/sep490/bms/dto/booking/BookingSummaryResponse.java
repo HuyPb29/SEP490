@@ -34,6 +34,7 @@ public class BookingSummaryResponse {
     private BigDecimal listAmount;
     private BigDecimal voucherDiscount;
     private BigDecimal pointDiscount;
+    private int pointRedemptionValue;
     /** listAmount − voucherDiscount − pointDiscount (BR41). */
     private BigDecimal finalAmount;
 

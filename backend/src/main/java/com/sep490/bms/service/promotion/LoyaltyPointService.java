@@ -34,7 +34,7 @@ import lombok.RequiredArgsConstructor;
  */
 @Service @Validated @RequiredArgsConstructor @Transactional(readOnly=true)
 public class LoyaltyPointService {
-    public static final int POINT_VALUE=500;
+    private static final int COMPENSATION_POINT_VALUE=500;
     public static final int EARNING_RATE=10000;
     /** BR41, D161: trần chung cho mọi đơn, tính sau voucher nếu có. */
     public static final int MAX_POINT_PERCENT=50;
@@ -131,11 +131,13 @@ public class LoyaltyPointService {
     /** Preview is pure: no balance creation or reservation. F3 calls redeem only after confirmation. */
     public BigDecimal preview(Long player,Long location,BigDecimal afterVoucher,int points) {
         int available=balances.findByPlayerIdAndLocationId(player,location).map(PlayerLocationBalance::getPointBalance).orElse(0);
-        if(points<2 || points>available) throw new AppException("Mỗi lần dùng điểm phải giảm ít nhất 1.000 đồng và không vượt số dư. (MSG37)");
-        BigDecimal discount=BigDecimal.valueOf(points).multiply(BigDecimal.valueOf(POINT_VALUE));
+        BigDecimal value=BigDecimal.valueOf(em.find(Location.class,location).getPointRedemptionValue());
+        BigDecimal discount=BigDecimal.valueOf(points).multiply(value);
+        if(discount.compareTo(BigDecimal.valueOf(1000))<0 || points>available)
+            throw new AppException("Mỗi lần dùng điểm phải giảm ít nhất 1.000 đồng và không vượt số dư. (MSG37)");
         BigDecimal max=afterVoucher.multiply(BigDecimal.valueOf(MAX_POINT_PERCENT))
                 .divide(BigDecimal.valueOf(100),0,RoundingMode.DOWN);
-        if(discount.compareTo(max)>0) throw new AppException("Bạn được dùng tối đa "+max.divideToIntegralValue(BigDecimal.valueOf(POINT_VALUE)).toBigInteger()+" điểm cho khoản thanh toán này. (MSG38)");
+        if(discount.compareTo(max)>0) throw new AppException("Bạn được dùng tối đa "+max.divideToIntegralValue(value).toBigInteger()+" điểm cho khoản thanh toán này. (MSG38)");
         return discount;
     }
     @Transactional(propagation=Propagation.MANDATORY)
@@ -143,7 +145,7 @@ public class LoyaltyPointService {
         Booking b=lock(Booking.class,id);
         if(b.getBookingType()!=BookingType.SINGLE || b.getPackageId()!=null || b.getPlayerId()==null) throw new AppException("MSG40: Booking không thể dùng điểm");
         holding(b.getStatus(),b.getHoldExpiresAt());
-        BigDecimal discount=redeem(b.getId(),null,b.getPlayerId(),b.getLocationId(),b.getListAmount().subtract(b.getVoucherDiscount()),points,b.getVoucherDiscount());
+        BigDecimal discount=redeem(b.getId(),null,b.getPlayerId(),b.getLocationId(),b.getListAmount().subtract(b.getVoucherDiscount()),points,b.getVoucherDiscount(),b.getPointDiscount());
         b.setPointsUsed(points); b.setPointDiscount(discount); b.setFinalAmount(b.getListAmount().subtract(b.getVoucherDiscount()).subtract(discount));
         return discount;
     }
@@ -152,18 +154,19 @@ public class LoyaltyPointService {
         BookingPackage p=lock(BookingPackage.class,id); holding(p.getStatus(),p.getHoldExpiresAt());
         // F3 persists finalAmount after bulk discount and voucher, before applying points (BR28/41).
         BigDecimal afterVoucher=p.getFinalAmount().add(p.getPointDiscount());
-        BigDecimal discount=redeem(null,p.getId(),p.getPlayerId(),p.getLocationId(),afterVoucher,points,p.getVoucherDiscount());
+        BigDecimal discount=redeem(null,p.getId(),p.getPlayerId(),p.getLocationId(),afterVoucher,points,p.getVoucherDiscount(),p.getPointDiscount());
         p.setPointsUsed(points); p.setPointDiscount(discount); p.setFinalAmount(afterVoucher.subtract(discount));
         return discount;
     }
     private void holding(BookingStatus status,LocalDateTime expiry) {
         if(status!=BookingStatus.HOLDING || expiry==null || !expiry.isAfter(LocalDateTime.now())) throw new AppException("Đơn không còn giữ chỗ");
     }
-    private BigDecimal redeem(Long booking,Long pkg,Long player,Long location,BigDecimal amount,int points,BigDecimal voucherDiscount) {
+    private BigDecimal redeem(Long booking,Long pkg,Long player,Long location,BigDecimal amount,int points,
+            BigDecimal voucherDiscount,BigDecimal existingPointDiscount) {
         var old=previous(booking,pkg,PointTransactionType.REDEEM);
         if(old.isPresent()) {
             if(old.get().getPoints()!=-points || previous(booking,pkg,PointTransactionType.RETURN).isPresent()) throw new AppException("Đơn đã có lịch sử dùng điểm",HttpStatus.CONFLICT);
-            return BigDecimal.valueOf(points).multiply(BigDecimal.valueOf(POINT_VALUE));
+            return existingPointDiscount;
         }
         var usage=booking!=null ? usages.findByBookingId(booking):usages.findByPackageId(pkg);
         if(voucherDiscount.signum()>0 && usage.isEmpty()) throw new AppException("Thiếu lịch sử voucher",HttpStatus.CONFLICT);
@@ -199,11 +202,13 @@ public class LoyaltyPointService {
         if(p.getStatus()!=PaymentStatus.CONFIRMED) throw new AppException("Thanh toán chưa xác nhận");
         if(accruals.existsByPaymentId(paymentId)) return;
         Long player,booking=null,pkg=null;
+        Integer earningRateSnapshot;
         if(p.getPackageId()!=null) {
             BookingPackage target=lock(BookingPackage.class,p.getPackageId());
             if(target.getStatus()!=BookingStatus.CONFIRMED || !p.getLocationId().equals(target.getLocationId()) || p.getAmountDue().compareTo(target.getFinalAmount())!=0)
                 throw new AppException("Package chưa xác nhận hoặc số tiền không khớp");
             pkg=target.getId(); player=target.getPlayerId();
+            earningRateSnapshot=target.getPointEarningRateSnapshot();
             List<Booking> children=em.createQuery("select b from Booking b where b.packageId=:p order by b.id",Booking.class).setParameter("p",pkg).getResultList();
             if(children.isEmpty() || children.stream().anyMatch(b -> b.getStatus()!=BookingStatus.CONFIRMED || !target.getPlayerId().equals(b.getPlayerId()) || !target.getLocationId().equals(b.getLocationId())))
                 throw new AppException("Các buổi của package chưa xác nhận đồng bộ");
@@ -220,9 +225,10 @@ public class LoyaltyPointService {
             if(b.getStatus()!=BookingStatus.CONFIRMED || !b.getLocationId().equals(p.getLocationId()) || b.getPlayerId()==null)
                 throw new AppException("Booking chưa xác nhận");
             booking=b.getId(); player=b.getPlayerId();
+            earningRateSnapshot=b.getPointEarningRateSnapshot();
         }
         PlayerLocationBalance b=balance(player,p.getLocationId(),false);
-        int rate=em.find(Location.class,p.getLocationId()).getPointEarningRate();
+        int rate=earningRateSnapshot != null ? earningRateSnapshot : em.find(Location.class,p.getLocationId()).getPointEarningRate();
         if(rate<1000 || rate>100000) throw new AppException("Tỷ lệ tích điểm ngoài giới hạn P09");
         int earned=p.getAmountDue().divideToIntegralValue(BigDecimal.valueOf(rate)).intValueExact();
         if(earned>0) change(b,booking,pkg,PointTransactionType.EARN,earned,rate,"Thanh toán #"+p.getId(),p.getConfirmedBy());
@@ -257,7 +263,7 @@ public class LoyaltyPointService {
             settleRefund(refund.getId(),refund.getSuggestedAmount());
             b.setLoyaltyRefundProcessed(true);
         } else {
-            int points=paid.divide(BigDecimal.valueOf(POINT_VALUE),0,RoundingMode.CEILING).intValueExact();
+            int points=paid.divide(BigDecimal.valueOf(COMPENSATION_POINT_VALUE),0,RoundingMode.CEILING).intValueExact();
             change(balance,b.getId(),null,PointTransactionType.ADJUST,points,null,"Bồi hoàn khi sân hủy (BR54)",a.getCreatedBy());
             a.setCompensationPoints(points); b.setLoyaltyCompensationProcessed(true);
             em.persist(Notification.builder().recipientId(b.getPlayerId()).type("COMPENSATION_POINTS").title("Đã cộng điểm bồi hoàn")

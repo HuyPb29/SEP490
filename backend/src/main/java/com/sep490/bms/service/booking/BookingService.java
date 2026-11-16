@@ -111,6 +111,7 @@ public class BookingService {
                 .listAmount(listAmount)
                 .voucherDiscount(voucherDiscount)
                 .pointDiscount(pointDiscount)
+                .pointRedemptionValue(location.getPointRedemptionValue())
                 .finalAmount(afterVoucher.subtract(pointDiscount))
                 .build();
     }
@@ -137,6 +138,7 @@ public class BookingService {
                 .bookingCode(bookingCodeGenerator.next())
                 .bookingType(BookingType.SINGLE)
                 .locationId(summary.getLocationId())
+                .pointEarningRateSnapshot(locationQueryService.findActive(summary.getLocationId()).getPointEarningRate())
                 .courtId(summary.getCourtId())
                 .playerId(player.getId())
                 .teamId(request.teamId())

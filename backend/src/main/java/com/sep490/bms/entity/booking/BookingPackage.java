@@ -72,6 +72,9 @@ public class BookingPackage {
     @Builder.Default
     private BigDecimal pointDiscount = BigDecimal.ZERO;
 
+    @Column(name = "point_earning_rate_snapshot")
+    private Integer pointEarningRateSnapshot;
+
     @Column(name = "final_amount", nullable = false, precision = 12, scale = 0)
     private BigDecimal finalAmount;
 

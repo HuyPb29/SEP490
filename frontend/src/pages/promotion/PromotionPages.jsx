@@ -18,9 +18,11 @@ const grantLabels = { AVAILABLE: 'Có thể sử dụng', USED: 'Đã sử dụn
 const pointTypes = { EARN: 'Tích điểm', REDEEM: 'Dùng điểm', RETURN: 'Hoàn điểm', REVOKE: 'Thu hồi điểm', ADJUST: 'Điều chỉnh' }
 
 function VoucherDescription({ voucher, showCampaign = true }) {
+  const discount = voucher.discountType === 'PERCENT' ? voucher.discountValue + '%' : money(voucher.discountValue)
+  const terms = 'Giảm ' + discount + (voucher.minOrderAmount > 0 ? ' cho đơn từ ' + money(voucher.minOrderAmount) : '')
   return <div className="cw-voucher-heading">
-    <div><p className="cw-record-title">{voucher.name}</p>{voucher.code && <code>{voucher.code}</code>}</div>
-    <strong>{voucher.discountType === 'PERCENT' ? voucher.discountValue + '%' : money(voucher.discountValue)}</strong>
+    <div><p className="cw-record-title">{showCampaign ? voucher.name : terms}</p>{voucher.code && <code>{voucher.code}</code>}</div>
+    {showCampaign && <strong>{discount}</strong>}
     {showCampaign && voucher.status && <StatusPill tone={voucher.status === 'PUBLISHED' ? 'positive' : 'neutral'}>
       {voucherStatus[voucher.status] ?? voucher.status}
     </StatusPill>}
@@ -33,6 +35,7 @@ function PersonalRewards() {
   const [location, setLocation] = useState('')
   const [tab, setTab] = useState('vouchers')
   const [voucherFilter, setVoucherFilter] = useState('all')
+  const [voucherLocation, setVoucherLocation] = useState('')
   const loadHistory = useCallback((signal) => getAllPages('/me/loyalty-transactions', {
     signal, params: { locationId: location || undefined },
   }), [location])
@@ -44,21 +47,24 @@ function PersonalRewards() {
   const name = (id) => locationNames.data?.find((item) => item.id === id)?.name || 'Địa điểm #' + id
 
   const [now] = useState(() => new Date())
+  const voucherLocationIds = [...new Set(vouchers.data?.map(({ voucher }) => voucher.locationId))]
   const visibleVouchers = vouchers.data?.map((entry) => ({ ...entry, state: voucherGrantState(entry, now) }))
     .filter((entry) => voucherFilter === 'all' || entry.state === voucherFilter)
+    .filter((entry) => !voucherLocation || String(entry.voucher.locationId) === voucherLocation)
   return <>
     <div className="cw-tabs" role="group" aria-label="Ví ưu đãi">
       <button type="button" aria-pressed={tab === 'vouchers'} onClick={() => setTab('vouchers')}>Voucher</button>
       <button type="button" aria-pressed={tab === 'points'} onClick={() => setTab('points')}>Điểm và lịch sử</button>
     </div>
     {tab === 'vouchers' ? <Section title="Voucher của tôi" resource={vouchers}>
+      <Field label="Địa điểm" value={voucherLocation} onChange={(event) => setVoucherLocation(event.target.value)}
+        options={[[ '', 'Tất cả địa điểm' ], ...voucherLocationIds.map((id) => [id, name(id)])]} />
       <Field label="Trạng thái" value={voucherFilter} onChange={(event) => setVoucherFilter(event.target.value)}
         options={[[ 'all', 'Tất cả' ], ...Object.entries(grantLabels)]} />
       {visibleVouchers?.length === 0 && <EmptyState>Không có voucher trong mục này.</EmptyState>}
       <div className="cw-columns">{visibleVouchers?.map((entry) => <article key={entry.grantId} className="cw-voucher">
         <VoucherDescription voucher={entry.voucher} showCampaign={false} />
         <p>{name(entry.voucher.locationId)}</p>
-        {entry.voucher.minOrderAmount > 0 && <small className="cw-muted">Đơn từ {money(entry.voucher.minOrderAmount)}</small>}
         <div className="cw-voucher-meta"><span>Hạn dùng {entry.expiresAt?.slice(0, 10) || entry.voucher.validTo || '—'}</span>
           <StatusPill tone={entry.state === 'AVAILABLE' ? 'positive' : 'neutral'}>
             {grantLabels[entry.state] ?? entry.state}
@@ -98,7 +104,7 @@ function VoucherForm({ voucher, refresh }) {
   const [startDate, setStartDate] = useState(voucher?.validFrom ?? today())
   const campaignPath = '/owner/vouchers'
   return <ActionForm label={voucher ? 'Lưu voucher' : 'Tạo bản nháp'} after={refresh}
-    successMessage="Đã lưu thay đổi. (MSG03)" action={(form) => {
+    successMessage="Đã lưu thay đổi." action={(form) => {
     const payload = {
       ...form, code: form.code?.trim().toUpperCase() || null, discountValue: Number(form.discountValue),
       minOrderAmount: Number(form.minOrderAmount), grantValidDays: optionalNumber(form.grantValidDays),
@@ -224,7 +230,7 @@ function Milestones({ locationId }) {
   const afterSave = () => { setSaved(true); milestones.reload() }
   const beforeSave = () => setSaved(false)
   return <Section title="Mốc chi tiêu nhận voucher" resource={milestones}>
-    {saved && <Feedback tone="success">Đã lưu thay đổi. (MSG03)</Feedback>}
+    {saved && <Feedback tone="success">Đã lưu thay đổi.</Feedback>}
     <details><summary>Thêm mốc chi tiêu</summary><MilestoneForm save={save} beforeSave={beforeSave} afterSave={afterSave} /></details>
     {milestones.data?.length === 0 && <EmptyState>Chưa thiết lập mốc chi tiêu.</EmptyState>}
     {milestones.data?.map((item) => <details key={item.id} className="space-y-2 border-t py-3">
@@ -240,10 +246,16 @@ export function OwnerPromotions({ location, refreshLocation }) {
     <Campaigns campaigns={campaigns} />
     <BatchOffers vouchers={campaigns.data ?? []} />
     <Section title="Điểm thưởng">
-      <ActionForm label="Lưu tỷ lệ tích điểm" action={(form) => api.patch('/owner/locations/' + location.id, {
+      <ActionForm key={location.id} label="Lưu cấu hình điểm" action={(form) => api.patch('/owner/locations/' + location.id, {
         pointEarningRate: Number(form.pointEarningRate),
-      })} after={refreshLocation}>
-        <Field label="VND để tích 1 điểm" name="pointEarningRate" type="number" min={1000} max={100000} defaultValue={location.pointEarningRate ?? 10000} required />
+        pointRedemptionValue: Number(form.pointRedemptionValue),
+      })} after={refreshLocation} preserve>
+        {(errors) => <>
+          <Field label="VND để tích 1 điểm" name="pointEarningRate" type="number" min={1000} max={100000}
+            defaultValue={location.pointEarningRate ?? 10000} required error={errors.pointEarningRate} />
+          <Field label="Số đồng giảm khi dùng 1 điểm" name="pointRedemptionValue" type="number" min={1} max={100000} step={1}
+            defaultValue={location.pointRedemptionValue ?? 500} required error={errors.pointRedemptionValue} />
+        </>}
       </ActionForm>
     </Section>
     <PointGrantForm locationId={location.id} />

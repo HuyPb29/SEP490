@@ -36,6 +36,7 @@ public class LocationDetailDto {
 
     private Short advanceBookingDays;
     private Integer pointEarningRate;
+    private Integer pointRedemptionValue;
 
     /** Ngày hết hạn kỳ hạn dịch vụ gần nhất; null = địa điểm chưa được ghi nhận kỳ hạn nào. */
     private LocalDate serviceTermEndDate;
@@ -68,6 +69,7 @@ public class LocationDetailDto {
                 .qrImagePath(location.getQrImagePath())
                 .advanceBookingDays(location.getAdvanceBookingDays())
                 .pointEarningRate(location.getPointEarningRate())
+                .pointRedemptionValue(location.getPointRedemptionValue())
                 .serviceTermEndDate(serviceTermEndDate)
                 .serviceActive(serviceTermEndDate != null && !serviceTermEndDate.isBefore(LocalDate.now()))
                 .status(location.getStatus())
