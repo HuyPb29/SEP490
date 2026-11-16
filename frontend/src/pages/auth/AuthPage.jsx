@@ -1,3 +1,4 @@
+import { uiMessage } from '../../utils/formatters';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import PublicLayout from '../../components/layout/PublicLayout';
@@ -313,7 +314,7 @@ export default function AuthPage() {
                   Nhập thông tin tài khoản để tiếp tục đặt sân và quản lý lịch chơi.
                 </p>
               </div>
-              {loginNotice && <div role="status" className={loginNotice === location.state?.notice ? styles.infoBanner : styles.toast}>{loginNotice}</div>}
+              {loginNotice && <div role="status" className={loginNotice === location.state?.notice ? styles.infoBanner : styles.toast}>{uiMessage(loginNotice)}</div>}
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="login-identity">
                   Tên đăng nhập hoặc email
@@ -333,7 +334,7 @@ export default function AuthPage() {
                   aria-invalid={Boolean(loginFields.identity)}
                   aria-describedby={loginFields.identity ? 'login-identity-error' : undefined}
                 />
-                {loginFields.identity && <p id="login-identity-error" role="alert" className={styles.errorText}>{loginFields.identity}</p>}
+                {loginFields.identity && <p id="login-identity-error" role="alert" className={styles.errorText}>{uiMessage(loginFields.identity)}</p>}
               </div>
               <div className={styles.formGroup}>
                 <div className={styles.labelRow}>
@@ -370,8 +371,8 @@ export default function AuthPage() {
                     {visiblePassword === 'login' ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   </button>
                 </div>
-                {loginFields.password && <p id="login-password-error" role="alert" className={styles.errorText}>{loginFields.password}</p>}
-                {loginError && <p role="alert" className={styles.errorText}>{loginError}</p>}
+                {loginFields.password && <p id="login-password-error" role="alert" className={styles.errorText}>{uiMessage(loginFields.password)}</p>}
+                {loginError && <p role="alert" className={styles.errorText}>{uiMessage(loginError)}</p>}
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={loginLoading}>
                 {loginLoading ? 'Đang đăng nhập…' : 'Đăng nhập'}
@@ -408,11 +409,11 @@ export default function AuthPage() {
                     value={registerForm.username}
                     onChange={(event) => updateRegisterField('username', event.target.value)}
                     autoComplete="username"
-                    placeholder="Ví dụ: player_01"
+                    placeholder="6–32 ký tự, bắt đầu bằng chữ thường"
                     aria-invalid={Boolean(registerFields.username)}
                     aria-describedby={registerFields.username ? 'register-username-error' : undefined}
                   />
-                  {registerFields.username && <p id="register-username-error" role="alert" className={styles.errorText}>{registerFields.username}</p>}
+                  {registerFields.username && <p id="register-username-error" role="alert" className={styles.errorText}>{uiMessage(registerFields.username)}</p>}
                 </div>
                 <div className={styles.formGroup}>
                   <label className={styles.label} htmlFor="register-name">
@@ -428,7 +429,7 @@ export default function AuthPage() {
                     aria-invalid={Boolean(registerFields.full_name)}
                     aria-describedby={registerFields.full_name ? 'register-name-error' : undefined}
                   />
-                  {registerFields.full_name && <p id="register-name-error" role="alert" className={styles.errorText}>{registerFields.full_name}</p>}
+                  {registerFields.full_name && <p id="register-name-error" role="alert" className={styles.errorText}>{uiMessage(registerFields.full_name)}</p>}
                 </div>
               </div>
               <div className={styles.twoColRow}>
@@ -447,7 +448,7 @@ export default function AuthPage() {
                     aria-invalid={Boolean(registerFields.email)}
                     aria-describedby={registerFields.email ? 'register-email-error' : undefined}
                   />
-                  {registerFields.email && <p id="register-email-error" role="alert" className={styles.errorText}>{registerFields.email}</p>}
+                  {registerFields.email && <p id="register-email-error" role="alert" className={styles.errorText}>{uiMessage(registerFields.email)}</p>}
                 </div>
                 <div className={styles.formGroup}>
                   <label className={styles.label} htmlFor="register-phone">
@@ -464,7 +465,7 @@ export default function AuthPage() {
                     aria-invalid={Boolean(registerFields.phone_number)}
                     aria-describedby={registerFields.phone_number ? 'register-phone-error' : undefined}
                   />
-                  {registerFields.phone_number && <p id="register-phone-error" role="alert" className={styles.errorText}>{registerFields.phone_number}</p>}
+                  {registerFields.phone_number && <p id="register-phone-error" role="alert" className={styles.errorText}>{uiMessage(registerFields.phone_number)}</p>}
                 </div>
               </div>
               <div className={styles.formGroup}>
@@ -493,8 +494,8 @@ export default function AuthPage() {
                     {visiblePassword === 'register' ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   </button>
                 </div>
-                {registerFields.password && <p id="register-password-error" role="alert" className={styles.errorText}>{registerFields.password}</p>}
-                {registerError && <p role="alert" className={styles.errorText}>{registerError}</p>}
+                {registerFields.password && <p id="register-password-error" role="alert" className={styles.errorText}>{uiMessage(registerFields.password)}</p>}
+                {registerError && <p role="alert" className={styles.errorText}>{uiMessage(registerError)}</p>}
               </div>
               <button className={styles.primaryBtn} type="submit" disabled={registerLoading}>
                 {registerLoading ? 'Đang gửi mã…' : 'Đăng ký và nhận mã'}
@@ -523,7 +524,7 @@ export default function AuthPage() {
                 </p>
               </div>
               <dialog ref={otpDialog} className={styles.sessionDialog} aria-label="Mã xác minh" onClose={() => setOtpMessage('')}>
-                <p>{otpMessage}</p>
+                <p>{uiMessage(otpMessage)}</p>
                 <button type="button" className={styles.primaryBtn} onClick={() => otpDialog.current.close()}>Đã hiểu</button>
               </dialog>
               <div className={styles.formGroup}>
@@ -541,7 +542,7 @@ export default function AuthPage() {
                   autoComplete="email"
                   aria-describedby={otpFields.email ? "otp-email-error" : undefined}
                 />
-                {otpFields.email && <p id="otp-email-error" role="alert" className={styles.errorText}>{otpFields.email}</p>}
+                {otpFields.email && <p id="otp-email-error" role="alert" className={styles.errorText}>{uiMessage(otpFields.email)}</p>}
               </div>
               {!registrationExpired && (!resettingPassword || resetCodeSent) && (
                 <>
@@ -562,7 +563,7 @@ export default function AuthPage() {
                       autoComplete="one-time-code"
                       aria-describedby={otpFields.otp ? "otp-code-error" : undefined}
                     />
-                    {otpFields.otp && <p id="otp-code-error" role="alert" className={styles.errorText}>{otpFields.otp}</p>}
+                    {otpFields.otp && <p id="otp-code-error" role="alert" className={styles.errorText}>{uiMessage(otpFields.otp)}</p>}
                   </div>
                   {resettingPassword && (
                     <>
@@ -572,14 +573,14 @@ export default function AuthPage() {
                           autoComplete="new-password" value={newPassword} required
                           onChange={(event) => setNewPassword(event.target.value)}
                           aria-describedby={otpFields.password ? "reset-password-error" : undefined} />
-                        {otpFields.password && <p id="reset-password-error" role="alert" className={styles.errorText}>{otpFields.password}</p>}
+                        {otpFields.password && <p id="reset-password-error" role="alert" className={styles.errorText}>{uiMessage(otpFields.password)}</p>}
                       </div>
                       <div className={styles.formGroup}>
                         <label className={styles.label} htmlFor="reset-confirm">Xác nhận mật khẩu mới</label>
                         <input id="reset-confirm" className={`${styles.input} ${otpFields.confirmation ? styles.inputError : ''}`} type="password" autoComplete="new-password"
                           value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)}
                           aria-describedby={otpFields.confirmation ? "reset-confirm-error" : undefined} />
-                        {otpFields.confirmation && <p id="reset-confirm-error" role="alert" className={styles.errorText}>{otpFields.confirmation}</p>}
+                        {otpFields.confirmation && <p id="reset-confirm-error" role="alert" className={styles.errorText}>{uiMessage(otpFields.confirmation)}</p>}
                       </div>
                     </>
                   )}
@@ -588,7 +589,7 @@ export default function AuthPage() {
                   </button>
                 </>
               )}
-              {otpError && <p role="alert" className={styles.errorText}>{otpError}</p>}
+              {otpError && <p role="alert" className={styles.errorText}>{uiMessage(otpError)}</p>}
               <div className={styles.otpActionRow}>
                 {registrationExpired ? (
                   <button type="button" className={styles.inlineSwitchBtn} onClick={() => setActiveTab('register')}>
@@ -611,7 +612,7 @@ export default function AuthPage() {
                   </button>
                 )}
               </div>
-              {sendError && <p role="alert" className={styles.errorText}>{sendError}</p>}
+              {sendError && <p role="alert" className={styles.errorText}>{uiMessage(sendError)}</p>}
             </form>
           )}
           </section>

@@ -104,6 +104,9 @@ public class LocationManagementService {
         if (request.getPointEarningRate() != null) {
             location.setPointEarningRate(request.getPointEarningRate());
         }
+        if (request.getPointRedemptionValue() != null) {
+            location.setPointRedemptionValue(request.getPointRedemptionValue());
+        }
         location.setUpdatedAt(LocalDateTime.now());
 
         Location saved = locationRepository.save(location);

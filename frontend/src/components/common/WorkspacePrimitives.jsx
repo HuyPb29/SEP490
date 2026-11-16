@@ -1,10 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { errorMessage } from '../../utils/formatters';
+import { errorMessage, uiMessage } from '../../utils/formatters';
 
 export function Feedback({ tone = 'info', children }) {
   return (
     <div className={'cw-feedback cw-feedback--' + tone} role={tone === 'error' ? 'alert' : 'status'}>
-      {children}
+      {uiMessage(children)}
     </div>
   );
 }
@@ -85,7 +85,7 @@ export function Field({ label, options, hint, error, ...props }) {
       )}
       {describedBy && (
         <small id={describedBy} className={error ? 'cw-field-error' : undefined}>
-          {error || hint}
+          {uiMessage(error || hint)}
         </small>
       )}
     </label>
@@ -120,7 +120,7 @@ export function ConfirmDialog({ title, children, onCancel, onConfirm, tone = 'pr
     <Modal labelledBy={titleId} onDismiss={onCancel}>
       <div className="cw-modal-content">
         <h2 id={titleId}>{title}</h2>
-        <p>{children}</p>
+        <p>{uiMessage(children)}</p>
         <div className="cw-modal-actions">
           <button type="button" className="cw-secondary" onClick={onCancel}>
             Quay lại

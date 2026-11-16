@@ -17,4 +17,6 @@ public interface TeamJoinRequestRepository extends JpaRepository<TeamJoinRequest
     List<TeamJoinRequest> findByTeamIdOrderByCreatedAtDesc(Long teamId);
 
     List<TeamJoinRequest> findByTeamIdAndStatusOrderByCreatedAtDesc(Long teamId, JoinRequestStatus status);
+
+    java.util.Optional<TeamJoinRequest> findFirstByTeamIdAndPlayerIdAndStatus(Long teamId, Long playerId, JoinRequestStatus status);
 }

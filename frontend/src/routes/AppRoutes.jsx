@@ -14,7 +14,6 @@ import FacilityDetailPage from '../pages/location/FacilityDetailPage';
 import FacilitySearchPage from '../pages/location/FacilitySearchPage';
 import ServiceRegistrationPage from '../pages/location/ServiceRegistrationPage';
 import OpenMatchesPage from '../pages/matches/OpenMatchesPage';
-import TeamsPage from '../pages/team/TeamsPage';
 import NotificationsPage from '../pages/NotificationsPage';
 import MaintenanceRequestsPage from '../pages/operation/MaintenanceRequestsPage';
 import OwnerCourtsPricingPage from '../pages/owner/OwnerCourtsPricingPage';
@@ -23,6 +22,7 @@ import OwnerOpeningHoursPage from '../pages/owner/OwnerOpeningHoursPage';
 import { AdminVouchers, PersonalRewardsPage } from '../pages/promotion/PromotionPages';
 import StaffConfirmPaymentPage from '../pages/staff/StaffConfirmPaymentPage';
 import StaffDashboardPage from '../pages/staff/StaffDashboardPage';
+import StaffSchedulePage from '../pages/staff/StaffSchedulePage';
 import { RequireAuth, RequireRole } from './RequireRole';
 
 const PlayerComplaintsPage = lazy(() =>
@@ -31,6 +31,7 @@ const PlayerComplaintsPage = lazy(() =>
   }))
 );
 const CourtComplaintsPage = lazy(() => import('../pages/feedback/CourtComplaintsPage'));
+const TeamsPage = lazy(() => import('../pages/team/TeamsPage'));
 const OwnerReconciliationPage = lazy(() => import('../pages/owner/OwnerReconciliationPage'));
 const OwnerReportPage = lazy(() => import('../pages/owner/OwnerReportPage'));
 const OwnerWorkspace = lazy(() => import('../pages/owner/OwnerWorkspace'));
@@ -92,6 +93,15 @@ export default function AppRoutes() {
           element={
             <RequireRole roles={['staff']}>
               <StaffDashboardPage />
+            </RequireRole>
+          }
+        />
+        {/* UC13: Lịch sân của Staff */}
+        <Route
+          path="/staff/schedule"
+          element={
+            <RequireRole roles={['staff']}>
+              <StaffSchedulePage />
             </RequireRole>
           }
         />

@@ -29,6 +29,7 @@ export async function loadPayment({ kind, id }, signal) {
     paymentId: payment?.id ?? detail.paymentId,
     resubmitting,
     deadline: resubmitting ? (payment?.resubmitDeadline ?? detail.resubmitDeadline) : detail.holdExpiresAt,
+    approveDeadline: kind === 'reschedule' ? detail.approveDeadline : null,
     reason: payment?.resubmitReason ?? detail.resubmitReason,
     resubmitsLeft: payment?.resubmitsLeft ?? detail.resubmitsLeft ?? detail.remainingResubmissions,
     receivedAmount: payment?.receivedAmount,

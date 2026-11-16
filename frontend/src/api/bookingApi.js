@@ -41,10 +41,10 @@ export function voucherGrantState({ voucher, grantStatus, expiresAt }, now = new
   return 'AVAILABLE';
 }
 
-export async function getCheckoutVouchers(locationId) {
+export async function getCheckoutVouchers(locationId, signal) {
   const [publicVouchers, grants] = await Promise.all([
-    getAllPages('/locations/' + locationId + '/vouchers'),
-    getAllPages('/me/vouchers'),
+    getAllPages('/locations/' + locationId + '/vouchers', { signal }),
+    getAllPages('/me/vouchers', { signal }),
   ]);
   const now = new Date();
   return {
@@ -55,9 +55,37 @@ export async function getCheckoutVouchers(locationId) {
   };
 }
 
-export async function applyVoucherApi({ locationId, orderAmount, selection }) {
-  const { data } = await api.post('/vouchers/check', { locationId, orderAmount, selection });
+export async function applyVoucherApi({ locationId, orderAmount, selection }, signal) {
+  const { data } = await api.post('/vouchers/check', { locationId, orderAmount, selection }, { signal });
   return data.data;
+}
+
+export async function getEligibleCheckoutVouchers(locationId, orderAmount, signal) {
+  const { publicVouchers, grants } = await getCheckoutVouchers(Number(locationId), signal);
+  const eligible = [];
+  const candidates = [
+    ...grants.map(({ grantId, voucher, expiresAt }) => ({
+      key: 'grant-' + grantId, selection: { grantId }, voucher, expiresAt,
+    })),
+    ...publicVouchers.map((voucher) => ({
+      key: 'code-' + voucher.id, selection: { code: voucher.code }, voucher,
+    })),
+  ].filter(({ voucher }) => orderAmount >= Number(voucher.minOrderAmount ?? 0));
+
+  // Kiểm tra cả đối tượng và lượt dùng cá nhân qua cùng API mà bước áp voucher sử dụng.
+  for (let index = 0; index < candidates.length; index += 5) {
+    const checked = await Promise.all(candidates.slice(index, index + 5).map(async (candidate) => {
+      try {
+        const quote = await applyVoucherApi({ locationId, orderAmount, selection: candidate.selection }, signal);
+        return { ...candidate, ...quote };
+      } catch (error) {
+        if (error.response?.status === 400 || error.response?.status === 404 || error.response?.status === 409) return null;
+        throw error;
+      }
+    }));
+    eligible.push(...checked.filter(Boolean));
+  }
+  return eligible;
 }
 
 export async function previewBookingApi(payload, signal) {
@@ -160,6 +188,7 @@ export async function getMyBookingsApi() {
         booking_date: item.startDate,
         time_range: item.startDate === item.endDate ? item.startDate : item.startDate + ' – ' + item.endDate,
         hold_expires_at: item.holdExpiresAt,
+        day_sessions: item.daySessions?.map((session) => bookingCard(session, item.id)) ?? [],
         final_amount: item.finalAmount,
         created_at: item.createdAt,
         status,

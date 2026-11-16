@@ -4,7 +4,7 @@ const locationKey = 'bms_selected_location'
 const legacyLocationKey = 'bms_selected_location_id'
 
 export const roleHome = {
-  player: '/',
+  player: '/my-bookings',
   owner: '/owner/workspace',
   staff: '/staff/dashboard',
   admin: '/admin/workspace',

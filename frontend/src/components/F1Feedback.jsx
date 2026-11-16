@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { uiMessage } from '../utils/formatters';
 import styles from './common/CommonUI.module.css';
 
 export function F1Dialog({ message, onClose, onConfirm, title, confirmLabel = 'Xác nhận' }) {
@@ -22,7 +23,7 @@ export function F1Dialog({ message, onClose, onConfirm, title, confirmLabel = 'X
       }}
     >
       {title && <h2 className={styles.modalTitle}>{title}</h2>}
-      <p className={styles.modalBody}>{message}</p>
+      <p className={styles.modalBody}>{uiMessage(message)}</p>
       <div className={styles.modalActions}>
         <button
           type="button"
@@ -49,7 +50,7 @@ export function F1Toast({ children }) {
   if (!children) return null;
   return (
     <p role="status" className={`${styles.toast} ${styles.toastSuccess}`}>
-      {children}
+      {uiMessage(children)}
     </p>
   );
 }

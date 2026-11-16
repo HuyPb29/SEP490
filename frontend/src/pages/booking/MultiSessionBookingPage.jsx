@@ -6,8 +6,10 @@ import { PublicHeader } from '../../components/layout/PublicLayout';
 import { ConfirmDialog } from '../../components/common/WorkspacePrimitives';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
-import { formatVnd, today as getTodayStr } from '../../utils/formatters';
-import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, pointInputError } from '../../utils/checkoutPoints';
+import { formatVnd, today as getTodayStr, uiMessage } from '../../utils/formatters';
+import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, defaultPointRedemptionValue, pointInputError } from '../../utils/checkoutPoints';
+import CheckoutVoucherPicker from '../../components/booking/CheckoutVoucherPicker';
+import { useCheckoutVoucherSelection } from '../../hooks/useCheckoutVouchers';
 import { usePackagePreview } from '../../hooks/usePackagePreview';
 import styles from './MultiSessionBookingPage.module.css';
 
@@ -60,7 +62,6 @@ export default function MultiSessionBookingPage() {
   const {
     getLocationCourts,
     getMyOwnedTeams,
-    getCheckoutVouchers,
     getMyPointsAtFacility,
     previewBookingPackage,
     createBookingPackage,
@@ -74,7 +75,6 @@ export default function MultiSessionBookingPage() {
 
   const [courts, setCourts] = useState([]);
   const [teams, setTeams] = useState([]);
-  const [myVouchers, setMyVouchers] = useState([]);
   const [availablePoints, setAvailablePoints] = useState(0);
 
   const [mode, setMode] = useState('recurring');
@@ -86,8 +86,6 @@ export default function MultiSessionBookingPage() {
   const [endTime, setEndTime] = useState('21:00');
   const [teamId, setTeamId] = useState('');
   const [note, setNote] = useState('');
-  const [voucherCode, setVoucherCode] = useState('');
-  const [selectedGrantId, setSelectedGrantId] = useState(null);
   const [pointsToUse, setPointsToUse] = useState(0);
 
   const [customSessions, setCustomSessions] = useState([]);
@@ -116,24 +114,16 @@ export default function MultiSessionBookingPage() {
     Promise.all([
       getLocationCourts(facilityId),
       getMyOwnedTeams().catch(() => []),
-      getCheckoutVouchers(facilityId).catch(() => ({ publicVouchers: [], grants: [] })),
       getMyPointsAtFacility(facilityId).catch(() => 0),
     ])
-      .then(([courtList, teamList, voucherData, pointBalance]) => {
+      .then(([courtList, teamList, pointBalance]) => {
         setCourts(courtList);
         setCourtId((current) => current ?? courtList[0]?.court_id ?? null);
         setTeams(Array.isArray(teamList) ? teamList : (teamList?.data || []));
-        const grants = (voucherData?.grants || []).map((g) => ({
-          grant_id: g.grantId,
-          code: g.voucher?.code,
-          name: g.voucher?.name,
-          end_date: g.expiresAt || g.voucher?.validTo || '',
-        }));
-        setMyVouchers(grants);
         setAvailablePoints(Number(pointBalance || 0));
       })
       .catch((err) => setPreviewError(apiErrorMessage(err, 'Không tải được danh sách sân.')));
-  }, [facilityId, getLocationCourts, getMyOwnedTeams, getCheckoutVouchers, getMyPointsAtFacility]);
+  }, [facilityId, getLocationCourts, getMyOwnedTeams, getMyPointsAtFacility]);
 
   const startMinute = toMinutes(startTime);
   const endMinute = toMinutes(endTime);
@@ -151,9 +141,6 @@ export default function MultiSessionBookingPage() {
       startDate: fromDate,
       endDate: toDate,
       teamId: teamId ? Number(teamId) : null,
-      voucherCode: voucherCode.trim() || null,
-      voucherGrantId: selectedGrantId || null,
-      pointsToUse: Number(pointsToUse) > 0 ? Number(pointsToUse) : 0,
       note: note.trim() || null,
     };
     if (mode === 'recurring') {
@@ -173,9 +160,6 @@ export default function MultiSessionBookingPage() {
     fromDate,
     toDate,
     teamId,
-    voucherCode,
-    selectedGrantId,
-    pointsToUse,
     note,
     mode,
     selectedWeekdays, weekdayTimes,
@@ -206,15 +190,32 @@ export default function MultiSessionBookingPage() {
   }, [baseRequest, activeBasePreview, hasAdjustments, removedKeys, replacements]);
 
   const adjustedResult = usePackagePreview(adjustedRequest, previewBookingPackage, revision);
-  const finalRequest = hasAdjustments ? adjustedRequest : baseRequest;
-  const result = hasAdjustments ? adjustedResult : baseResult;
-  const preview = result?.data;
+  const scheduleRequest = hasAdjustments ? adjustedRequest : baseRequest;
+  const scheduleResult = hasAdjustments ? adjustedResult : baseResult;
+  const schedule = scheduleResult?.data;
+  const voucher = useCheckoutVoucherSelection(facilityId, schedule?.conflictSessions ? 0 : Number(schedule?.listAmount ?? 0));
+  const selectedPoints = Number(pointsToUse);
+  const pointValue = schedule?.pointRedemptionValue || defaultPointRedemptionValue;
+  const afterVoucher = Number(schedule?.listAmount ?? 0) - Number(voucher.applied?.discountAmount ?? 0);
+  const pointsLimit = schedule ? checkoutPointLimit(afterVoucher, availablePoints, pointValue) : availablePoints;
+  const pointValidation = pointInputError(selectedPoints, availablePoints, pointsLimit, pointValue);
+  const invalidPoints = Boolean(pointValidation);
+  const appliedVoucher = voucher.applied;
+  const finalRequest = useMemo(() => {
+    if (!scheduleRequest || (!appliedVoucher && !(selectedPoints > 0 && !invalidPoints))) return scheduleRequest;
+    return {
+      ...scheduleRequest,
+      voucherCode: appliedVoucher?.selection.code ?? null,
+      voucherGrantId: appliedVoucher?.selection.grantId ?? null,
+      pointsToUse: invalidPoints ? 0 : selectedPoints,
+    };
+  }, [scheduleRequest, appliedVoucher, selectedPoints, invalidPoints]);
+  const rewardRequest = schedule && finalRequest !== scheduleRequest ? finalRequest : null;
+  const rewardResult = usePackagePreview(rewardRequest, previewBookingPackage, revision);
+  const result = rewardRequest ? rewardResult : scheduleResult;
+  const preview = result?.data ?? schedule;
   const sessions = useMemo(() => preview?.sessions ?? [], [preview]);
   const conflictedSessions = sessions.filter((session) => session.conflict);
-  const pointsLimit = preview ? checkoutPointLimit(preview.listAmount - preview.voucherDiscount, availablePoints) : availablePoints;
-  const selectedPoints = Number(pointsToUse);
-  const pointValidation = pointInputError(selectedPoints, availablePoints, pointsLimit);
-  const invalidPoints = Boolean(pointValidation);
   const rewardError = rewardSubmitError || result?.error;
   const rewardErrorField = checkoutRewardErrorField(rewardError);
   const voucherError = rewardErrorField === 'voucher' ? rewardError : '';
@@ -323,7 +324,7 @@ export default function MultiSessionBookingPage() {
       setPreviewError('Ghi chú không được vượt quá 200 ký tự.');
       return;
     }
-    if (!finalRequest || !preview || invalidPoints || distinctDays < 2) {
+    if (!finalRequest || !result?.data || voucher.checking || invalidPoints || distinctDays < 2) {
       setNotice(previewError || 'Vui lòng chọn sân, khung giờ và ít nhất 1 buổi đặt.');
       return;
     }
@@ -345,7 +346,9 @@ export default function MultiSessionBookingPage() {
     } catch (err) {
       if (err.response?.status === 409 || err.response?.data?.message?.includes('MSG44')) setRevision((value) => value + 1);
       const message = apiErrorMessage(err, 'Không thể tạo gói đặt sân.');
-      if (checkoutRewardErrorField(message)) setRewardSubmitError(message);
+      const field = checkoutRewardErrorField(message);
+      if (field === 'voucher') voucher.invalidate(message);
+      else if (field === 'points') setRewardSubmitError(message);
       else setNotice(message);
     } finally {
       setSubmitting(false);
@@ -374,7 +377,7 @@ export default function MultiSessionBookingPage() {
       {confirmPoints && <ConfirmDialog title="Xác nhận dùng điểm" onCancel={() => setConfirmPoints(false)}
         onConfirm={() => { setConfirmPoints(false); confirmSchedule(); }}>
         Dùng {selectedPoints} điểm để giảm {formatCurrency(preview?.pointDiscount ?? 0)}?
-        Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy booking. (MSG39)
+        Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy lịch.
       </ConfirmDialog>}
 
       <main className={styles.mainContainer}>
@@ -570,49 +573,8 @@ export default function MultiSessionBookingPage() {
             </div>
 
             <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="voucher-code">Mã giảm giá (Voucher)</label>
-              <input
-                id="voucher-code"
-                type="text"
-                className={styles.dateInput}
-                placeholder="Nhập mã voucher..."
-                value={voucherCode}
-                aria-invalid={Boolean(voucherError)}
-                aria-describedby={voucherError ? 'package-voucher-error' : undefined}
-                onChange={(event) => {
-                  setVoucherCode(event.target.value);
-                  setSelectedGrantId(null);
-                  setRewardSubmitError('');
-                }}
-              />
-              {myVouchers.length > 0 && (
-                <select
-                  aria-label="Chọn từ ví voucher của tôi"
-                  className={styles.selectInput}
-                  value={selectedGrantId ?? ''}
-                  aria-invalid={Boolean(voucherError)}
-                  aria-describedby={voucherError ? 'package-voucher-error' : undefined}
-                  onChange={(event) => {
-                    const grantId = event.target.value ? Number(event.target.value) : null;
-                    setSelectedGrantId(grantId);
-                    setVoucherCode('');
-                    setRewardSubmitError('');
-                  }}
-                >
-                  <option value="">-- Chọn từ ví voucher của tôi ({myVouchers.length}) --</option>
-                  {myVouchers.map((v) => (
-                    <option key={v.grant_id} value={v.grant_id}>
-                      {v.code} — {v.name} (HSD: {v.end_date})
-                    </option>
-                  ))}
-                </select>
-              )}
-              {voucherError && <small id="package-voucher-error" className="cw-field-error" role="alert">{voucherError}</small>}
-            </div>
-
-            <div className={styles.fieldGroup}>
               <label className={styles.fieldLabel} htmlFor="points-input">
-                Điểm thưởng sử dụng (Khả dụng: {availablePoints} điểm · 1 điểm = 500đ)
+                Điểm thưởng sử dụng (Khả dụng: {availablePoints} điểm · 1 điểm = {formatCurrency(pointValue)})
               </label>
               <input
                 id="points-input"
@@ -627,7 +589,7 @@ export default function MultiSessionBookingPage() {
                 onChange={(event) => { setPointsToUse(event.target.value); setRewardSubmitError(''); }}
               />
               {preview && <small>Tối đa {checkoutPointPercent}% số tiền {preview.voucherDiscount > 0 ? 'còn lại sau voucher' : 'niêm yết'}.</small>}
-              {pointError && <small id="package-point-error" className="cw-field-error" role="alert">{pointError}</small>}
+              {pointError && <small id="package-point-error" className="cw-field-error" role="alert">{uiMessage(pointError)}</small>}
             </div>
 
             <div className={styles.fieldGroup}>
@@ -760,12 +722,14 @@ export default function MultiSessionBookingPage() {
                   </div>
                 </div>
               )}
+              <CheckoutVoucherPicker {...voucher} error={voucher.error || voucherError} disabled={submitting || conflictedSessions.length > 0}
+                onApply={(...args) => { setRewardSubmitError(''); voucher.onApply(...args); }} />
               {finalRequest && !result && <p role="status">Đang kiểm tra lịch gói…</p>}
               {((result?.error && !checkoutRewardErrorField(result.error)) || previewError) &&
                 <p className={styles.notice} style={{ background: '#fef2f2', color: '#b91c1c' }} role="alert">
-                  {previewError || result.error}
+                  {uiMessage(previewError || result.error)}
                 </p>}
-              {notice && <p className={styles.notice} role="status">{notice}</p>}
+              {notice && <p className={styles.notice} role="status">{uiMessage(notice)}</p>}
             </section>
 
             <section className={styles.summaryFooterCard}>
@@ -788,7 +752,7 @@ export default function MultiSessionBookingPage() {
                   Thanh toán 1 lần cho toàn bộ gói. Sau khi xác nhận, gói được giữ chỗ 15 phút.
                 </span>
               </div>
-              <button type="button" className={styles.confirmScheduleBtn} disabled={submitting || !preview || invalidPoints || distinctDays < 2 || conflictedSessions.length > 0}
+              <button type="button" className={styles.confirmScheduleBtn} disabled={submitting || voucher.checking || !result?.data || invalidPoints || distinctDays < 2 || conflictedSessions.length > 0}
                 onClick={() => selectedPoints > 0 ? setConfirmPoints(true) : confirmSchedule()}>
                 {submitting ? 'Đang giữ chỗ gói...' : 'Xác nhận lịch đặt'}
               </button>

@@ -70,6 +70,10 @@ public class Location {
     @Builder.Default
     private int pointEarningRate = 10000;
 
+    @Column(name = "point_redemption_value", nullable = false)
+    @Builder.Default
+    private int pointRedemptionValue = 500;
+
     @Column(nullable = false, length = 10)
     @Builder.Default
     private String status = "ACTIVE";

@@ -185,6 +185,7 @@ public class PackageService {
                 .voucherDiscount(quote.voucherDiscount())
                 .pointsUsed(quote.pointsUsed())
                 .pointDiscount(quote.pointDiscount())
+                .pointRedemptionValue(location.getPointRedemptionValue())
                 .finalAmount(quote.finalAmount())
                 .batchOffer(offer)
                 .build();
@@ -253,6 +254,7 @@ public class PackageService {
         // Lưu với giá niêm yết; consumeForPackage, redeemForPackage tự ghi số giảm và finalAmount vào gói.
         BookingPackage pkg = bookingPackageRepository.save(BookingPackage.builder()
                 .locationId(location.getId())
+                .pointEarningRateSnapshot(location.getPointEarningRate())
                 .playerId(player.getId())
                 .packageType(request.packageType())
                 .startDate(sessions.get(0).date())
@@ -273,6 +275,7 @@ public class PackageService {
                     .playerId(player.getId())
                     .teamId(request.teamId())
                     .packageId(pkg.getId())
+                    .pointEarningRateSnapshot(pkg.getPointEarningRateSnapshot())
                     .playDate(session.session().date())
                     .startMinute(session.session().startMinute())
                     .endMinute(session.session().endMinute())
@@ -421,6 +424,9 @@ public class PackageService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleFailed(BookingPackage pkg, BookingStatus status) {
+        if (status == BookingStatus.CANCELLED_BY_PLAYER && pkg.getStatus() != BookingStatus.HOLDING) {
+            throw new AppException("Chỉ được bỏ giữ chỗ khi đơn chưa gửi chứng từ", HttpStatus.CONFLICT);
+        }
         pkg.setStatus(status);
         bookingPackageRepository.saveAndFlush(pkg);
         for (Booking session : sessionsOf(pkg.getId())) {
@@ -586,6 +592,8 @@ public class PackageService {
                         .playDate(b.getPlayDate())
                         .startTime(MinuteTime.format(b.getStartMinute()))
                         .endTime(MinuteTime.format(b.getEndMinute()))
+                        .listAmount(b.getListAmount())
+                        .bookedHalfHours((long) (b.getEndMinute() - b.getStartMinute()) / MinuteTime.SLOT_MINUTES)
                         .finalAmount(b.getFinalAmount())
                         .status(b.getStatus())
                         .holdExpiresAt(b.getHoldExpiresAt())
@@ -807,7 +815,7 @@ public class PackageService {
 
     /**
      * BR28: chia phần giảm của cả gói cho từng buổi theo tỷ lệ giá niêm yết của buổi; mỗi buổi làm tròn xuống,
-     * phần lẻ dồn vào buổi cuối. Voucher chia theo đồng, điểm chia theo điểm (1 điểm = 500 đồng, P10) để số điểm
+     * phần lẻ dồn vào buổi cuối. Voucher chia theo đồng, điểm chia theo số điểm đã dùng để số điểm
      * trả lại khi sân hủy một buổi khớp với số tiền đã giảm. Buổi nào không còn tiền phải trả thì không chia được.
      */
     static List<Priced> allocate(List<Priced> sessions, BigDecimal voucherDiscount, int points, BigDecimal pointDiscount) {

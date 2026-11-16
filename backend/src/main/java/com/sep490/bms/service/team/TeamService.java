@@ -271,14 +271,22 @@ public class TeamService {
 
     private TeamResponse toTeamResponse(Team team, Long userId) {
         String captainName = accountRepository.findById(team.getCaptainId()).map(Account::getFullName).orElse(null);
+        boolean member = isActiveMember(team.getId(), userId);
+        // D78: người chưa ở trong đội cần biết mình có yêu cầu đang chờ không, để màn hình hiện "rút yêu cầu".
+        TeamJoinRequest pending = member || userId == null ? null
+                : teamJoinRequestRepository.findFirstByTeamIdAndPlayerIdAndStatus(team.getId(), userId, JoinRequestStatus.PENDING)
+                        .orElse(null);
         return TeamResponse.builder()
                 .id(team.getId())
                 .name(team.getName())
                 .captainId(team.getCaptainId())
                 .captainName(captainName)
                 .memberCount(teamMemberRepository.countByTeamIdAndStatus(team.getId(), TeamMemberStatus.ACTIVE))
-                .member(isActiveMember(team.getId(), userId))
+                .maxMembers(MAX_TEAM_MEMBERS)
+                .member(member)
                 .captain(team.getCaptainId().equals(userId))
+                .myJoinStatus(pending == null ? null : pending.getStatus().name())
+                .myJoinRequestId(pending == null ? null : pending.getId())
                 .createdAt(team.getCreatedAt())
                 .build();
     }

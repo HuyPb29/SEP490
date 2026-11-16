@@ -290,6 +290,34 @@
   border-bottom: 1px solid #f1f5f9;
 }
 
+.scheduleCourtsAsColumns {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.rescheduleGridViewport {
+  max-height: min(48dvh, 420px);
+}
+
+.scheduleCourtsAsColumns thead th {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background: var(--cw-surface, #fff);
+}
+
+.scheduleCourtsAsColumns tr > th:first-child {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  min-width: 64px;
+  background: var(--cw-surface, #fff);
+}
+
+.scheduleCourtsAsColumns thead tr > th:first-child {
+  z-index: 3;
+}
+
 .courtNameCell {
   text-align: left;
   padding-left: 16px !important;

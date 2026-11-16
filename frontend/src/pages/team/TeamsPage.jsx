@@ -1,750 +1,314 @@
-import { useCallback, useEffect, useState } from 'react';
-import api, { apiErrorMessage } from '../../api';
-import PublicLayout from '../../components/layout/PublicLayout';
-import { LoadingState } from '../../components/common';
-import styles from './TeamsPage.module.css';
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { apiErrorMessage } from '../../api'
+import {
+  approveTeamJoinRequest,
+  cancelTeamJoinRequest,
+  createTeam,
+  getMyTeams,
+  getTeamJoinRequests,
+  getTeamMembers,
+  getTeams,
+  leaveTeam,
+  rejectTeamJoinRequest,
+  removeTeamMember,
+  sendTeamJoinRequest,
+} from '../../api/teamApi'
+import WorkspaceLayout, { ConfirmDialog, EmptyState, Feedback, Field, Modal, Section, StatusPill } from '../WorkspaceLayout'
+import { useResource } from '../workspaceSupport'
 
-export default function TeamsPage() {
-  const [activeTab, setActiveTab] = useState('my-teams'); // 'my-teams' | 'explore'
+/**
+ * Trang đội của Player (UC26, UC27).
+ * Ba phần: yêu cầu tham gia (đội mình làm chủ) → đội của tôi (+ tạo đội, xem thành viên) → các đội khác (xin vào).
+ * Mọi thao tác gọi API rồi tải lại từ server, không tự sửa số liệu ở state.
+ */
 
-  // State Tab: Đội của tôi
-  const [myTeams, setMyTeams] = useState([]);
-  const [loadingMyTeams, setLoadingMyTeams] = useState(false);
-  const [myTeamsError, setMyTeamsError] = useState('');
+function formatTime(value) {
+  return value ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : ''
+}
 
-  // State Tab: Khám phá đội
-  const [exploreTeams, setExploreTeams] = useState([]);
-  const [searchKeyword, setSearchKeyword] = useState('');
-  const [loadingExplore, setLoadingExplore] = useState(false);
-  const [exploreError, setExploreError] = useState('');
+function rowStyle(selected) {
+  return selected ? { borderColor: 'var(--cw-accent, #059669)', borderWidth: 2, display: 'block' } : undefined
+}
 
-  // Thông báo chung
-  const [notice, setNotice] = useState({ text: '', type: 'success' });
+const rowHead = { display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px 14px' }
 
-  // Modal: Tạo đội mới
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createName, setCreateName] = useState('');
-  const [createError, setCreateError] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-
-  // Modal: Xem thành viên
-  const [selectedTeamForMembers, setSelectedTeamForMembers] = useState(null);
-  const [members, setMembers] = useState([]);
-  const [loadingMembers, setLoadingMembers] = useState(false);
-  const [membersError, setMembersError] = useState('');
-  const [actionInProgress, setActionInProgress] = useState(false);
-
-  // Modal: Quản lý yêu cầu gia nhập
-  const [selectedTeamForRequests, setSelectedTeamForRequests] = useState(null);
-  const [joinRequests, setJoinRequests] = useState([]);
-  const [loadingRequests, setLoadingRequests] = useState(false);
-  const [requestsError, setRequestsError] = useState('');
-
-  // Modal: Xin gia nhập đội
-  const [teamToJoin, setTeamToJoin] = useState(null);
-  const [phoneConsent, setPhoneConsent] = useState(true);
-  const [joinConsentError, setJoinConsentError] = useState('');
-  const [isJoining, setIsJoining] = useState(false);
-
-  // 1. Tải danh sách Đội của tôi
-  const loadMyTeams = useCallback(async () => {
-    setLoadingMyTeams(true);
-    setMyTeamsError('');
+/** Thao tác một nút gọi API, hiện lỗi của backend ngay cạnh nút. */
+function useAction(afterSuccess) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const run = useCallback(async (fn) => {
+    setBusy(true)
+    setError('')
     try {
-      const res = await api.get('/me/teams');
-      const list = res.data?.data ?? res.data ?? [];
-      setMyTeams(Array.isArray(list) ? list : []);
-    } catch (err) {
-      setMyTeamsError(apiErrorMessage(err, 'Không thể tải danh sách đội của bạn.'));
+      await fn()
+      afterSuccess?.()
+    } catch (cause) {
+      setError(apiErrorMessage(cause))
     } finally {
-      setLoadingMyTeams(false);
+      setBusy(false)
     }
-  }, []);
+  }, [afterSuccess])
+  return { busy, error, run, clearError: () => setError('') }
+}
 
-  // 2. Tải danh sách Khám phá đội
-  const loadExploreTeams = useCallback(async (keyword = '') => {
-    setLoadingExplore(true);
-    setExploreError('');
-    try {
-      const res = await api.get('/teams', {
-        params: keyword.trim() ? { search: keyword.trim() } : undefined,
-      });
-      const list = res.data?.data ?? res.data ?? [];
-      setExploreTeams(Array.isArray(list) ? list : []);
-    } catch (err) {
-      setExploreError(apiErrorMessage(err, 'Không thể tải danh sách đội công khai.'));
-    } finally {
-      setLoadingExplore(false);
-    }
-  }, []);
+// ---------------------------------------------------------------- Yêu cầu tham gia (đội trưởng duyệt)
 
-  useEffect(() => {
-    Promise.resolve().then(() => {
-      if (activeTab === 'my-teams') {
-        loadMyTeams();
-      } else {
-        loadExploreTeams(searchKeyword);
-      }
-    });
-  }, [activeTab, loadMyTeams, loadExploreTeams, searchKeyword]);
+function IncomingRequests({ revision, refreshAll }) {
+  const load = useCallback(async (signal) => {
+    const teams = (await getMyTeams(signal)).filter((team) => team.captain)
+    const groups = await Promise.all(teams.map(async (team) => {
+      const requests = await getTeamJoinRequests(team.id, 'PENDING', signal)
+      return requests.map((request) => ({ ...request, teamName: team.name, teamId: team.id }))
+    }))
+    return groups.flat().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+  }, [])
+  const requests = useResource(load, revision)
+  const action = useAction(refreshAll)
 
-  // Xử lý tạo đội mới (UC27)
-  const handleCreateTeam = async (e) => {
-    e.preventDefault();
-    setCreateError('');
-
-    const trimmed = createName.trim();
-    if (!trimmed) {
-      setCreateError('Tên đội không được để trống.');
-      return;
-    }
-    if (trimmed.length > 30) {
-      setCreateError('Tên đội tối đa 30 ký tự.');
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      await api.post('/teams', { name: trimmed });
-      setNotice({ text: 'Tạo đội mới thành công!', type: 'success' });
-      setShowCreateModal(false);
-      setCreateName('');
-      loadMyTeams();
-    } catch (err) {
-      setCreateError(apiErrorMessage(err, 'Không thể tạo đội.'));
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  // Mở modal xem thành viên
-  const openMembersModal = async (team) => {
-    setSelectedTeamForMembers(team);
-    setMembers([]);
-    setLoadingMembers(true);
-    setMembersError('');
-    try {
-      const res = await api.get(`/teams/${team.id}/members`);
-      const list = res.data?.data ?? res.data ?? [];
-      setMembers(Array.isArray(list) ? list : []);
-    } catch (err) {
-      setMembersError(apiErrorMessage(err, 'Không thể tải danh sách thành viên.'));
-    } finally {
-      setLoadingMembers(false);
-    }
-  };
-
-  // Đội trưởng xóa thành viên khỏi đội
-  const handleKickMember = async (memberRecordId, memberName) => {
-    if (!window.confirm(`Xác nhận xóa thành viên "${memberName}" khỏi đội?`)) return;
-    setActionInProgress(true);
-    try {
-      await api.delete(`/team-members/${memberRecordId}`);
-      setNotice({ text: `Đã xóa thành viên "${memberName}" khỏi đội.`, type: 'success' });
-      // Tải lại thành viên
-      if (selectedTeamForMembers) {
-        const res = await api.get(`/teams/${selectedTeamForMembers.id}/members`);
-        const list = res.data?.data ?? res.data ?? [];
-        setMembers(Array.isArray(list) ? list : []);
-      }
-      loadMyTeams();
-    } catch (err) {
-      setMembersError(apiErrorMessage(err, 'Không thể xóa thành viên.'));
-    } finally {
-      setActionInProgress(false);
-    }
-  };
-
-  // Rời đội (thành viên tự rời)
-  const handleLeaveTeam = async (teamId, teamName) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn rời khỏi đội "${teamName}"?`)) return;
-    setActionInProgress(true);
-    try {
-      await api.post(`/teams/${teamId}/leave`);
-      setNotice({ text: `Bạn đã rời khỏi đội "${teamName}".`, type: 'success' });
-      loadMyTeams();
-    } catch (err) {
-      setNotice({ text: apiErrorMessage(err, 'Không thể rời đội.'), type: 'danger' });
-    } finally {
-      setActionInProgress(false);
-    }
-  };
-
-  // Mở modal yêu cầu gia nhập (dành cho Đội trưởng)
-  const openRequestsModal = async (team) => {
-    setSelectedTeamForRequests(team);
-    setJoinRequests([]);
-    setLoadingRequests(true);
-    setRequestsError('');
-    try {
-      const res = await api.get(`/teams/${team.id}/join-requests`, {
-        params: { status: 'PENDING' },
-      });
-      const list = res.data?.data ?? res.data ?? [];
-      setJoinRequests(Array.isArray(list) ? list : []);
-    } catch (err) {
-      setRequestsError(apiErrorMessage(err, 'Không thể tải yêu cầu gia nhập.'));
-    } finally {
-      setLoadingRequests(false);
-    }
-  };
-
-  // Đội trưởng duyệt yêu cầu
-  const handleApproveRequest = async (requestId) => {
-    setActionInProgress(true);
-    try {
-      await api.post(`/team-join-requests/${requestId}/approve`);
-      setNotice({ text: 'Đã duyệt yêu cầu vào đội thành công.', type: 'success' });
-      setJoinRequests((prev) => prev.filter((r) => r.id !== requestId));
-      loadMyTeams();
-    } catch (err) {
-      setRequestsError(apiErrorMessage(err, 'Không thể duyệt yêu cầu.'));
-    } finally {
-      setActionInProgress(false);
-    }
-  };
-
-  // Đội trưởng từ chối yêu cầu
-  const handleRejectRequest = async (requestId) => {
-    setActionInProgress(true);
-    try {
-      await api.post(`/team-join-requests/${requestId}/reject`);
-      setNotice({ text: 'Đã từ chối yêu cầu gia nhập.', type: 'success' });
-      setJoinRequests((prev) => prev.filter((r) => r.id !== requestId));
-    } catch (err) {
-      setRequestsError(apiErrorMessage(err, 'Không thể từ chối yêu cầu.'));
-    } finally {
-      setActionInProgress(false);
-    }
-  };
-
-  // Gửi yêu cầu xin gia nhập đội (từ tab Khám phá)
-  const handleSendJoinRequest = async () => {
-    if (!phoneConsent) {
-      setJoinConsentError('Vui lòng đồng ý chia sẻ số điện thoại với đội trưởng.');
-      return;
-    }
-    if (!teamToJoin) return;
-
-    setIsJoining(true);
-    setJoinConsentError('');
-    try {
-      await api.post(`/teams/${teamToJoin.id}/join-requests`, { phoneConsent: true });
-      setNotice({ text: `Đã gửi yêu cầu gia nhập đội "${teamToJoin.name}"!`, type: 'success' });
-      setTeamToJoin(null);
-      loadExploreTeams(searchKeyword);
-    } catch (err) {
-      setJoinConsentError(apiErrorMessage(err, 'Không thể gửi yêu cầu gia nhập đội.'));
-    } finally {
-      setIsJoining(false);
-    }
-  };
-
-  return (
-    <PublicLayout
-      title="Quản lý Đội Cầu Lông"
-      subtitle="Tham gia hoặc thành lập đội cầu lông để cùng nhau tập luyện và giao lưu"
-    >
-      <div className={styles.container}>
-        {/* Banner thông báo */}
-        {notice.text && (
-          <div
-            className={`${styles.alertBox} ${
-              notice.type === 'danger' ? styles.alertDanger : styles.alertSuccess
-            }`}
-          >
-            <span>{notice.text}</span>
-            <button
-              type="button"
-              onClick={() => setNotice({ text: '', type: 'success' })}
-              style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Tab chuyển đổi */}
-        <div className={styles.tabGroup} role="tablist" aria-label="Nhóm chức năng đội">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'my-teams'}
-            className={`${styles.tabBtn} ${activeTab === 'my-teams' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('my-teams')}
-          >
-            Đội của tôi ({myTeams.length})
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'explore'}
-            className={`${styles.tabBtn} ${activeTab === 'explore' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('explore')}
-          >
-            Khám phá đội
-          </button>
+  return <Section title="Yêu cầu tham gia" resource={requests}>
+    <p className="cw-muted">Người chơi xin vào đội bạn làm đội trưởng. Duyệt thì họ thành thành viên; đội tối đa 20 người.</p>
+    {action.error && <Feedback tone="error">{action.error}</Feedback>}
+    {requests.data?.length > 0 && <ul className="cw-records">
+      {requests.data.map((request) => <li key={request.id} className="cw-record">
+        <div>
+          <div className="cw-record-title">{request.fullName} · xin vào đội {request.teamName}</div>
+          <small>
+            {request.skillLevel ? 'Trình độ: ' + request.skillLevel + ' · ' : ''}
+            {request.phone ? 'SĐT: ' + request.phone + ' · ' : ''}
+            Gửi lúc {formatTime(request.createdAt)}
+          </small>
         </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="cw-secondary" disabled={action.busy}
+            onClick={() => action.run(() => rejectTeamJoinRequest(request.id))}>Từ chối</button>
+          <button type="button" className="action" disabled={action.busy}
+            onClick={() => action.run(() => approveTeamJoinRequest(request.id))}>Xác nhận</button>
+        </div>
+      </li>)}
+    </ul>}
+    {requests.data?.length === 0 && <EmptyState>Không có yêu cầu tham gia đang chờ.</EmptyState>}
+  </Section>
+}
 
-        {/* ================= TAB 1: ĐỘI CỦA TÔI ================= */}
-        {activeTab === 'my-teams' && (
+// ---------------------------------------------------------------- Đội của tôi
+
+function TeamDetails({ team, refreshAll }) {
+  const container = useRef(null)
+  useEffect(() => { container.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }, [])
+  const load = useCallback((signal) => getTeamMembers(team.id, signal), [team.id])
+  const members = useResource(load, team.id)
+  const [confirm, setConfirm] = useState(null) // { kind: 'remove', member } | { kind: 'leave' }
+  const action = useAction(() => { setConfirm(null); members.reload(); refreshAll() })
+
+  function runConfirmed() {
+    if (!confirm) return
+    if (confirm.kind === 'leave') action.run(() => leaveTeam(team.id))
+    else action.run(() => removeTeamMember(confirm.member.id))
+  }
+
+  return <div ref={container} style={{ marginTop: 12 }}>
+    <Section title={'Thành viên đội ' + team.name} resource={members}>
+      <p className="cw-muted">
+        Đội trưởng: {team.captainName} · {team.memberCount}/{team.maxMembers ?? 20} thành viên
+        {team.captain ? ' · Bạn là đội trưởng, chỉ bạn thấy số điện thoại của thành viên.' : ''}
+      </p>
+      {action.error && <Feedback tone="error">{action.error}</Feedback>}
+      {members.data?.length > 0 && <ul className="cw-records">
+        {members.data.map((member) => <li key={member.id} className="cw-record">
           <div>
-            <div className={styles.actionBar}>
-              <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: 'var(--color-text)' }}>
-                Các đội bạn đang tham gia
-              </h2>
-              <button
-                type="button"
-                className={styles.primaryBtn}
-                onClick={() => {
-                  setCreateError('');
-                  setCreateName('');
-                  setShowCreateModal(true);
-                }}
-              >
-                + Tạo đội mới
+            <div className="cw-record-title">{member.fullName}</div>
+            <small>
+              {member.skillLevel ? 'Trình độ: ' + member.skillLevel + ' · ' : ''}
+              {member.phone ? 'SĐT: ' + member.phone + ' · ' : ''}
+              Vào đội {formatTime(member.joinedAt)}
+            </small>
+          </div>
+          {member.captain
+            ? <StatusPill tone="positive">Đội trưởng</StatusPill>
+            : team.captain && <button type="button" className="cw-danger" disabled={action.busy}
+              onClick={() => setConfirm({ kind: 'remove', member })}>Xóa khỏi đội</button>}
+        </li>)}
+      </ul>}
+      {!team.captain && <div className="cw-modal-actions" style={{ justifyContent: 'start' }}>
+        <button type="button" className="cw-danger" disabled={action.busy} onClick={() => setConfirm({ kind: 'leave' })}>
+          Rời đội
+        </button>
+      </div>}
+    </Section>
+    {confirm && <ConfirmDialog tone="danger" onCancel={() => setConfirm(null)} onConfirm={runConfirmed}
+      title={confirm.kind === 'leave' ? 'Rời đội ' + team.name : 'Xóa ' + confirm.member.fullName + ' khỏi đội'}>
+      {confirm.kind === 'leave'
+        ? 'Bạn sẽ không còn là thành viên của đội này. Muốn quay lại phải gửi yêu cầu và được đội trưởng duyệt.'
+        : 'Thành viên này sẽ bị xóa khỏi đội. Muốn quay lại họ phải gửi yêu cầu mới.'}
+    </ConfirmDialog>}
+  </div>
+}
+
+function CreateTeamModal({ onClose, onCreated }) {
+  const titleId = useId()
+  const [name, setName] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(event) {
+    event.preventDefault()
+    const trimmed = name.trim()
+    if (!trimmed) { setError('Tên đội không được để trống.'); return }
+    setBusy(true)
+    setError('')
+    try {
+      const team = await createTeam(trimmed)
+      onCreated(team)
+    } catch (cause) {
+      setError(apiErrorMessage(cause, 'Không tạo được đội.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <Modal labelledBy={titleId} onDismiss={onClose} busy={busy}>
+    <form className="cw-modal-content" onSubmit={submit}>
+      <h2 id={titleId}>Tạo đội mới</h2>
+      <p className="cw-muted">Bạn sẽ là đội trưởng. Tên đội không trùng với đội đã có, tối đa 30 ký tự.</p>
+      <Field label="Tên đội" value={name} maxLength={30} required autoFocus error={error || undefined}
+        onChange={(event) => { setName(event.target.value); setError('') }} />
+      <div className="cw-modal-actions">
+        <button type="button" className="cw-secondary" onClick={onClose} disabled={busy}>Hủy</button>
+        <button type="submit" className="action" disabled={busy}>{busy ? 'Đang tạo…' : 'Tạo đội'}</button>
+      </div>
+    </form>
+  </Modal>
+}
+
+function MyTeams({ revision, refreshAll }) {
+  const load = useCallback((signal) => getMyTeams(signal), [])
+  const teams = useResource(load, revision)
+  const [selectedId, setSelectedId] = useState(null)
+  const [creating, setCreating] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  const createButton = <button type="button" className="action" onClick={() => setCreating(true)}>+ Tạo đội</button>
+
+  return <>
+    <Section title="Đội của tôi" resource={teams} actions={createButton}>
+      {notice && <Feedback tone="success">{notice}</Feedback>}
+      {teams.data?.length > 0 && <ul className="cw-records">
+        {teams.data.map((team) => {
+          const selected = team.id === selectedId
+          return <li key={team.id} className="cw-record" style={rowStyle(selected)}>
+            <div style={rowHead}>
+              <div>
+                <div className="cw-record-title">{team.name}</div>
+                <small>{team.memberCount}/{team.maxMembers ?? 20} thành viên · {team.captain ? 'Bạn là đội trưởng' : 'Đội trưởng ' + team.captainName}</small>
+              </div>
+              {team.captain && <StatusPill tone="positive">Đội trưởng</StatusPill>}
+              <button type="button" className="cw-secondary" onClick={() => setSelectedId(selected ? null : team.id)}>
+                {selected ? 'Đóng chi tiết' : 'Xem chi tiết'}
               </button>
             </div>
+            {selected && <TeamDetails key={team.id} team={team} refreshAll={refreshAll} />}
+          </li>
+        })}
+      </ul>}
+      {teams.data?.length === 0 && <EmptyState>Bạn chưa ở trong đội nào. Tạo đội mới hoặc xin vào một đội ở mục bên dưới.</EmptyState>}
+    </Section>
+    {creating && <CreateTeamModal onClose={() => setCreating(false)}
+      onCreated={(team) => { setCreating(false); setNotice('Đã tạo đội "' + team.name + '".'); refreshAll() }} />}
+  </>
+}
 
-            {loadingMyTeams ? (
-              <LoadingState message="Đang tải danh sách đội của bạn…" />
-            ) : myTeamsError ? (
-              <div className={`${styles.alertBox} ${styles.alertDanger}`}>{myTeamsError}</div>
-            ) : myTeams.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '48px 20px', background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
-                <p style={{ color: 'var(--color-text-muted)', fontSize: 16, margin: '0 0 16px' }}>
-                  Bạn hiện chưa tham gia đội cầu lông nào.
-                </p>
-                <button
-                  type="button"
-                  className={styles.primaryBtn}
-                  onClick={() => setShowCreateModal(true)}
-                >
-                  Tạo đội đầu tiên ngay
-                </button>
-              </div>
-            ) : (
-              <div className={styles.grid}>
-                {myTeams.map((team) => (
-                  <article key={team.id} className={styles.teamCard}>
-                    <div>
-                      <div className={styles.teamHeader}>
-                        <h3 className={styles.teamName}>{team.name}</h3>
-                        {team.captain ? (
-                          <span className={`${styles.badge} ${styles.badgeCaptain}`}>Đội trưởng</span>
-                        ) : (
-                          <span className={`${styles.badge} ${styles.badgeMember}`}>Thành viên</span>
-                        )}
-                      </div>
+// ---------------------------------------------------------------- Các đội khác
 
-                      <div className={styles.teamMeta}>
-                        <div className={styles.metaRow}>
-                          <span>👥</span>
-                          <span><strong>{team.memberCount}</strong> thành viên</span>
-                        </div>
-                        <div className={styles.metaRow}>
-                          <span>👑</span>
-                          <span>Đội trưởng: <strong>{team.captainName || (team.captain ? 'Bạn' : '—')}</strong></span>
-                        </div>
-                        {team.createdAt && (
-                          <div className={styles.metaRow}>
-                            <span>📅</span>
-                            <span>Ngày lập: {new Date(team.createdAt).toLocaleDateString('vi-VN')}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+function JoinTeamModal({ team, onClose, onSent }) {
+  const titleId = useId()
+  const [consent, setConsent] = useState(false)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-                    <div className={styles.cardActions}>
-                      <button
-                        type="button"
-                        className={styles.secondaryBtn}
-                        onClick={() => openMembersModal(team)}
-                      >
-                        Xem thành viên
-                      </button>
+  async function submit() {
+    if (!consent) { setError('Vui lòng đồng ý chia sẻ số điện thoại với đội trưởng để gửi yêu cầu.'); return }
+    setBusy(true)
+    setError('')
+    try {
+      await sendTeamJoinRequest(team.id, true)
+      onSent()
+    } catch (cause) {
+      setError(apiErrorMessage(cause, 'Không gửi được yêu cầu.'))
+    } finally {
+      setBusy(false)
+    }
+  }
 
-                      {team.captain ? (
-                        <button
-                          type="button"
-                          className={styles.secondaryBtn}
-                          onClick={() => openRequestsModal(team)}
-                        >
-                          Duyệt đơn xin vào
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className={styles.dangerBtn}
-                          disabled={actionInProgress}
-                          onClick={() => handleLeaveTeam(team.id, team.name)}
-                        >
-                          Rời đội
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ================= TAB 2: KHÁM PHÁ ĐỘI ================= */}
-        {activeTab === 'explore' && (
-          <div>
-            <div className={styles.actionBar}>
-              <form
-                className={styles.searchBar}
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  loadExploreTeams(searchKeyword);
-                }}
-              >
-                <input
-                  type="search"
-                  placeholder="Tìm theo tên đội..."
-                  className={styles.input}
-                  value={searchKeyword}
-                  onChange={(e) => setSearchKeyword(e.target.value)}
-                />
-                <button type="submit" className={styles.primaryBtn}>
-                  Tìm kiếm
-                </button>
-              </form>
-            </div>
-
-            {loadingExplore ? (
-              <LoadingState message="Đang tìm kiếm đội…" />
-            ) : exploreError ? (
-              <div className={`${styles.alertBox} ${styles.alertDanger}`}>{exploreError}</div>
-            ) : exploreTeams.length === 0 ? (
-              <p style={{ textAlign: 'center', padding: '36px 0', color: 'var(--color-text-muted)' }}>
-                Không tìm thấy đội nào phù hợp với từ khóa tìm kiếm.
-              </p>
-            ) : (
-              <div className={styles.grid}>
-                {exploreTeams.map((team) => (
-                  <article key={team.id} className={styles.teamCard}>
-                    <div>
-                      <div className={styles.teamHeader}>
-                        <h3 className={styles.teamName}>{team.name}</h3>
-                        {team.member && (
-                          <span className={`${styles.badge} ${team.captain ? styles.badgeCaptain : styles.badgeMember}`}>
-                            {team.captain ? 'Đội trưởng' : 'Đã tham gia'}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className={styles.teamMeta}>
-                        <div className={styles.metaRow}>
-                          <span>👥</span>
-                          <span><strong>{team.memberCount}</strong> thành viên</span>
-                        </div>
-                        <div className={styles.metaRow}>
-                          <span>👑</span>
-                          <span>Đội trưởng: <strong>{team.captainName || '—'}</strong></span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className={styles.cardActions}>
-                      <button
-                        type="button"
-                        className={styles.secondaryBtn}
-                        onClick={() => openMembersModal(team)}
-                      >
-                        Xem thành viên
-                      </button>
-
-                      {team.member ? (
-                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary)', fontWeight: 650, alignSelf: 'center' }}>
-                          ✓ Bạn là thành viên
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className={styles.primaryBtn}
-                          style={{ height: 38, fontSize: 'var(--text-xs)' }}
-                          onClick={() => {
-                            setTeamToJoin(team);
-                            setPhoneConsent(true);
-                            setJoinConsentError('');
-                          }}
-                        >
-                          Xin gia nhập
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ================= MODAL: TẠO ĐỘI MỚI ================= */}
-        {showCreateModal && (
-          <div className={styles.modalBackdrop} role="presentation" onClick={() => setShowCreateModal(false)}>
-            <div className={styles.modal} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-              <div className={styles.modalHeader}>
-                <h3 className={styles.modalTitle}>Tạo đội cầu lông mới</h3>
-                <button
-                  type="button"
-                  className={styles.modalClose}
-                  onClick={() => setShowCreateModal(false)}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateTeam} noValidate>
-                <div className={styles.formGroup}>
-                  <label className={styles.label} htmlFor="teamNameInput">
-                    Tên đội <span style={{ color: 'var(--color-danger)' }}>*</span>
-                  </label>
-                  <input
-                    id="teamNameInput"
-                    type="text"
-                    maxLength={30}
-                    placeholder="VD: Cầu Giấy Smashers"
-                    className={`${styles.input} ${createError ? styles.inputError : ''}`}
-                    value={createName}
-                    onChange={(e) => {
-                      setCreateName(e.target.value);
-                      if (createError) setCreateError('');
-                    }}
-                    disabled={isCreating}
-                    autoFocus
-                  />
-                  {createError && (
-                    <p className={styles.errorText} role="alert">{createError}</p>
-                  )}
-                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                    Tối đa 30 ký tự. Bạn sẽ trở thành Đội trưởng của đội này.
-                  </p>
-                </div>
-
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
-                  <button
-                    type="button"
-                    className={styles.secondaryBtn}
-                    onClick={() => setShowCreateModal(false)}
-                    disabled={isCreating}
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="submit"
-                    className={styles.primaryBtn}
-                    disabled={isCreating}
-                  >
-                    {isCreating ? 'Đang tạo…' : 'Xác nhận tạo đội'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* ================= MODAL: DANH SÁCH THÀNH VIÊN ================= */}
-        {selectedTeamForMembers && (
-          <div className={styles.modalBackdrop} role="presentation" onClick={() => setSelectedTeamForMembers(null)}>
-            <div className={styles.modal} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-              <div className={styles.modalHeader}>
-                <h3 className={styles.modalTitle}>
-                  Thành viên · {selectedTeamForMembers.name}
-                </h3>
-                <button
-                  type="button"
-                  className={styles.modalClose}
-                  onClick={() => setSelectedTeamForMembers(null)}
-                >
-                  ✕
-                </button>
-              </div>
-
-              {loadingMembers ? (
-                <LoadingState message="Đang tải danh sách thành viên…" />
-              ) : membersError ? (
-                <div className={`${styles.alertBox} ${styles.alertDanger}`}>{membersError}</div>
-              ) : members.length === 0 ? (
-                <p style={{ color: 'var(--color-text-muted)' }}>Chưa có thông tin thành viên.</p>
-              ) : (
-                <ul className={styles.memberList}>
-                  {members.map((m) => {
-                    const initial = (m.fullName || 'U').charAt(0).toUpperCase();
-                    return (
-                      <li key={m.id} className={styles.memberItem}>
-                        <div className={styles.memberInfo}>
-                          <span className={styles.memberAvatar}>{initial}</span>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
-                              {m.fullName}
-                              {m.captain && (
-                                <span className={`${styles.badge} ${styles.badgeCaptain}`} style={{ marginLeft: 6 }}>
-                                  Đội trưởng
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                              {m.skillLevel ? `Trình độ: ${m.skillLevel}` : 'Thành viên'}
-                              {m.phone && ` · SĐT: ${m.phone}`}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Đội trưởng có quyền kick thành viên khác */}
-                        {selectedTeamForMembers.captain && !m.captain && (
-                          <button
-                            type="button"
-                            className={styles.dangerBtn}
-                            disabled={actionInProgress}
-                            onClick={() => handleKickMember(m.id, m.fullName)}
-                          >
-                            Xóa khỏi đội
-                          </button>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ================= MODAL: DUYỆT YÊU CẦU GIA NHẬP ================= */}
-        {selectedTeamForRequests && (
-          <div className={styles.modalBackdrop} role="presentation" onClick={() => setSelectedTeamForRequests(null)}>
-            <div className={styles.modal} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-              <div className={styles.modalHeader}>
-                <h3 className={styles.modalTitle}>
-                  Yêu cầu xin gia nhập ({joinRequests.length})
-                </h3>
-                <button
-                  type="button"
-                  className={styles.modalClose}
-                  onClick={() => setSelectedTeamForRequests(null)}
-                >
-                  ✕
-                </button>
-              </div>
-
-              {loadingRequests ? (
-                <LoadingState message="Đang tải các yêu cầu…" />
-              ) : requestsError ? (
-                <div className={`${styles.alertBox} ${styles.alertDanger}`}>{requestsError}</div>
-              ) : joinRequests.length === 0 ? (
-                <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '24px 0' }}>
-                  Không có yêu cầu gia nhập nào đang chờ duyệt.
-                </p>
-              ) : (
-                <ul className={styles.requestList}>
-                  {joinRequests.map((req) => (
-                    <li key={req.id} className={styles.requestItem}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{req.fullName}</div>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                          SĐT: <strong>{req.phone || 'Đã ẩn'}</strong>
-                          {req.skillLevel && ` · Trình độ: ${req.skillLevel}`}
-                        </div>
-                        {req.createdAt && (
-                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                            Gửi ngày: {new Date(req.createdAt).toLocaleDateString('vi-VN')}
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          type="button"
-                          className={styles.dangerBtn}
-                          disabled={actionInProgress}
-                          onClick={() => handleRejectRequest(req.id)}
-                        >
-                          Từ chối
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.primaryBtn}
-                          style={{ height: 34, fontSize: 'var(--text-xs)', padding: '0 12px' }}
-                          disabled={actionInProgress}
-                          onClick={() => handleApproveRequest(req.id)}
-                        >
-                          Duyệt
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ================= MODAL: XIN GIA NHẬP ĐỘI ================= */}
-        {teamToJoin && (
-          <div className={styles.modalBackdrop} role="presentation" onClick={() => setTeamToJoin(null)}>
-            <div className={styles.modal} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-              <div className={styles.modalHeader}>
-                <h3 className={styles.modalTitle}>Xin gia nhập {teamToJoin.name}</h3>
-                <button
-                  type="button"
-                  className={styles.modalClose}
-                  onClick={() => setTeamToJoin(null)}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', margin: '0 0 16px' }}>
-                Đơn xin gia nhập của bạn sẽ được gửi tới Đội trưởng <strong>{teamToJoin.captainName}</strong> để xem xét.
-              </p>
-
-              <label className={styles.consentBox}>
-                <input
-                  type="checkbox"
-                  checked={phoneConsent}
-                  onChange={(e) => {
-                    setPhoneConsent(e.target.checked);
-                    if (joinConsentError) setJoinConsentError('');
-                  }}
-                  disabled={isJoining}
-                />
-                <span>
-                  Tôi đồng ý chia sẻ số điện thoại liên hệ của tôi với Đội trưởng để tiện trao đổi khi cần thiết.
-                </span>
-              </label>
-
-              {joinConsentError && (
-                <p className={styles.errorText} role="alert" style={{ marginBottom: 12 }}>
-                  {joinConsentError}
-                </p>
-              )}
-
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-                <button
-                  type="button"
-                  className={styles.secondaryBtn}
-                  onClick={() => setTeamToJoin(null)}
-                  disabled={isJoining}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  className={styles.primaryBtn}
-                  onClick={handleSendJoinRequest}
-                  disabled={isJoining}
-                >
-                  {isJoining ? 'Đang gửi…' : 'Gửi yêu cầu'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+  return <Modal labelledBy={titleId} onDismiss={onClose} busy={busy}>
+    <div className="cw-modal-content">
+      <h2 id={titleId}>Xin vào đội {team.name}</h2>
+      <p className="cw-muted">Đội trưởng {team.captainName} sẽ xét duyệt. Mỗi đội chỉ nhận một yêu cầu đang chờ của bạn.</p>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'start' }}>
+        <input type="checkbox" checked={consent} onChange={(event) => { setConsent(event.target.checked); setError('') }} />
+        <span>Tôi đồng ý chia sẻ số điện thoại với đội trưởng</span>
+      </label>
+      {error && <Feedback tone="error">{error}</Feedback>}
+      <div className="cw-modal-actions">
+        <button type="button" className="cw-secondary" onClick={onClose} disabled={busy}>Hủy</button>
+        <button type="button" className="action" onClick={submit} disabled={busy}>{busy ? 'Đang gửi…' : 'Gửi yêu cầu'}</button>
       </div>
-    </PublicLayout>
-  );
+    </div>
+  </Modal>
+}
+
+function OtherTeams({ revision, refreshAll }) {
+  const [search, setSearch] = useState('')
+  const [applied, setApplied] = useState('')
+  const load = useCallback(async (signal) => (await getTeams(applied, signal)).filter((team) => !team.member), [applied])
+  const teams = useResource(load, revision + ':' + applied)
+  const [joining, setJoining] = useState(null)
+  const [notice, setNotice] = useState('')
+  const action = useAction(refreshAll)
+
+  return <>
+    <Section title="Các đội khác" resource={teams}>
+      <form className="cw-form" onSubmit={(event) => { event.preventDefault(); setApplied(search.trim()) }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'end' }}>
+          <div style={{ flex: '1 1 240px' }}>
+            <Field label="Tìm đội theo tên" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nhập tên đội" />
+          </div>
+          <button type="submit" className="cw-secondary" style={{ minHeight: 44 }}>Tìm</button>
+        </div>
+      </form>
+      {notice && <Feedback tone="success">{notice}</Feedback>}
+      {action.error && <Feedback tone="error">{action.error}</Feedback>}
+      {teams.data?.length > 0 && <ul className="cw-records">
+        {teams.data.map((team) => {
+          const full = team.memberCount >= (team.maxMembers ?? 20)
+          return <li key={team.id} className="cw-record">
+            <div>
+              <div className="cw-record-title">{team.name}</div>
+              <small>Đội trưởng {team.captainName} · {team.memberCount}/{team.maxMembers ?? 20} thành viên</small>
+            </div>
+            {team.myJoinStatus === 'PENDING' ? <>
+              <StatusPill tone="pending">Đang chờ duyệt</StatusPill>
+              <button type="button" className="cw-secondary" disabled={action.busy}
+                onClick={() => action.run(() => cancelTeamJoinRequest(team.myJoinRequestId))}>Rút yêu cầu</button>
+            </> : full ? <StatusPill tone="negative">Đội đã đủ người</StatusPill>
+              : <button type="button" className="action" onClick={() => { setNotice(''); setJoining(team) }}>Xin tham gia</button>}
+          </li>
+        })}
+      </ul>}
+      {teams.data?.length === 0 && <EmptyState>{applied ? 'Không có đội nào khớp tên "' + applied + '".' : 'Chưa có đội nào khác.'}</EmptyState>}
+    </Section>
+    {joining && <JoinTeamModal team={joining} onClose={() => setJoining(null)}
+      onSent={() => { setNotice('Đã gửi yêu cầu vào đội "' + joining.name + '". Chờ đội trưởng duyệt.'); setJoining(null); refreshAll() }} />}
+  </>
+}
+
+// ---------------------------------------------------------------- Trang
+
+export default function TeamsPage() {
+  const [revision, setRevision] = useState(0)
+  const refreshAll = useCallback(() => setRevision((value) => value + 1), [])
+  return <WorkspaceLayout role="player" title="Đội">
+    <IncomingRequests revision={revision} refreshAll={refreshAll} />
+    <MyTeams revision={revision} refreshAll={refreshAll} />
+    <OtherTeams revision={revision} refreshAll={refreshAll} />
+  </WorkspaceLayout>
 }

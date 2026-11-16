@@ -141,52 +141,6 @@
   border-color: #0d8a52;
 }
 
-/* Ưu đãi: Voucher & Điểm */
-.voucherRow {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.voucherInput {
-  flex: 1;
-  height: 44px;
-  padding: 0 14px;
-  border-radius: 12px;
-  border: 1px solid #cbd5e1;
-  font-size: 14px;
-  font-weight: 700;
-  color: #0f172a;
-  outline: none;
-}
-
-.voucherInput:disabled {
-  background: #ffffff;
-  color: #0f172a;
-}
-
-.voucherBtn {
-  height: 44px;
-  padding: 0 18px;
-  border-radius: 12px;
-  border: 1px solid #0d8a52;
-  background: #ffffff;
-  color: #0d8a52;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.voucherSuccessBanner {
-  background: #e9f5ee;
-  color: #0d8a52;
-  padding: 10px 14px;
-  border-radius: 10px;
-  font-size: 13.5px;
-  font-weight: 600;
-  margin-bottom: 18px;
-}
-
 .pointsRow {
   display: flex;
   align-items: center;
@@ -357,15 +311,14 @@
 .mainContainer { width: min(100% - 32px, 1160px); margin-inline: auto; }
 .pageTitle { font-size: clamp(1.65rem, 4vw, 2.8rem); letter-spacing: -.04em; }
 .card, .paymentCard { border-color: var(--cw-border); box-shadow: var(--cw-shadow); }
-.teamPill, .confirmBtn, .voucherBtn { min-height: 44px; }
-.confirmBtn, .voucherBtn { background: var(--cw-primary); }
-.confirmBtn:hover:not(:disabled), .voucherBtn:hover:not(:disabled) { background: var(--cw-primary-hover); }
+.teamPill, .confirmBtn { min-height: 44px; }
+.confirmBtn { background: var(--cw-primary); }
+.confirmBtn:hover:not(:disabled) { background: var(--cw-primary-hover); }
 .totalValue, .discountValue { color: var(--cw-primary); }
 .infoValue { overflow-wrap: anywhere; }
 @media (min-width: 901px) { .paymentCard { position: sticky; top: 16px; } }
 @media (max-width: 560px) {
   .mainContainer { padding-inline: 0; }
   .infoGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .voucherRow, .pointsRow { flex-wrap: wrap; }
-  .voucherInput { min-width: 0; }
+  .pointsRow { flex-wrap: wrap; }
 }

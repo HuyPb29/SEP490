@@ -26,11 +26,14 @@ import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;
+import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.booking.BookingPackageRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
+import com.sep490.bms.repository.booking.BookingSlotRepository;
+import com.sep490.bms.repository.booking.BookingSlotRepository.OriginalSlotCount;
 import com.sep490.bms.repository.booking.BookingRepository.PackageSessionCount;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.team.TeamRepository;
@@ -54,6 +57,7 @@ public class BookingQueryService {
 
     private final BookingRepository bookingRepository;
     private final BookingPackageRepository bookingPackageRepository;
+    private final BookingSlotRepository bookingSlotRepository;
     private final CourtRepository courtRepository;
     private final TeamRepository teamRepository;
     private final LocationQueryService locationQueryService;
@@ -154,6 +158,18 @@ public class BookingQueryService {
         Map<Long, Long> sessionCounts = result.isEmpty() ? Map.of()
                 : bookingRepository.countSessionsByPackageIds(result.map(BookingPackage::getId).toSet()).stream()
                         .collect(Collectors.toMap(PackageSessionCount::getPackageId, PackageSessionCount::getSessionCount));
+        List<Long> dayOrderIds = result.stream().filter(pkg -> pkg.getPackageType() == PackageType.DAY)
+                .map(BookingPackage::getId).toList();
+        List<Booking> daySessions = dayOrderIds.isEmpty() ? List.of()
+                : bookingRepository.findByPackageIdInOrderByPlayDateAscStartMinuteAscIdAsc(dayOrderIds);
+        Map<Long, Court> dayCourts = courtsByIds(daySessions.stream().map(Booking::getCourtId).collect(Collectors.toSet()));
+        Map<Long, List<PackageListItem.DaySession>> sessionsByOrder = daySessions.stream()
+                .collect(Collectors.groupingBy(Booking::getPackageId, Collectors.mapping(session -> {
+                    Court court = dayCourts.get(session.getCourtId());
+                    return new PackageListItem.DaySession(session.getId(), court == null ? null : court.getName(),
+                            session.getPlayDate(), MinuteTime.format(session.getStartMinute()),
+                            MinuteTime.format(session.getEndMinute()), session.getStatus());
+                }, Collectors.toList())));
 
         return PageResponse.from(result.map(pkg -> {
             BookingStatus shown = shownStatus(pkg.getStatus(), pkg.getHoldExpiresAt(), now);
@@ -166,6 +182,7 @@ public class BookingQueryService {
                     .startDate(pkg.getStartDate())
                     .endDate(pkg.getEndDate())
                     .sessionCount(sessionCounts.getOrDefault(pkg.getId(), 0L))
+                    .daySessions(sessionsByOrder.getOrDefault(pkg.getId(), List.of()))
                     .finalAmount(pkg.getFinalAmount())
                     .status(shown)
                     .holdExpiresAt(shown == BookingStatus.HOLDING ? pkg.getHoldExpiresAt() : null)
@@ -191,6 +208,9 @@ public class BookingQueryService {
         }
         Location location = locationQueryService.getByIds(List.of(pkg.getLocationId())).get(pkg.getLocationId());
         List<Booking> sessions = bookingRepository.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(pkg.getId());
+        Map<Long, Long> bookedHalfHours = sessions.isEmpty() ? Map.of()
+                : bookingSlotRepository.countOriginalSlots(sessions.stream().map(Booking::getId).toList()).stream()
+                        .collect(Collectors.toMap(OriginalSlotCount::getBookingId, OriginalSlotCount::getSlotCount));
         Map<Long, Court> courts = courtsByIds(sessions.stream().map(Booking::getCourtId).collect(Collectors.toSet()));
         Set<Long> reviewable = reviewService.reviewableBookingIds(sessions);
         Map<Long, RescheduleEligibility> eligibility = reschedules.eligibility(sessions, now);
@@ -220,8 +240,12 @@ public class BookingQueryService {
                 .receiptNo(payment.map(Payment::getReceiptNo).orElse(null))
                 // Buổi đang giữ chỗ theo hạn giữ chỗ của cả gói
                 .sessions(sessions.stream()
-                        .map(session -> toListItem(session, location, courts.get(session.getCourtId()),
-                                pkg.getHoldExpiresAt(), now, reviewable.contains(session.getId()), eligibility.get(session.getId())))
+                        .map(session -> {
+                            BookingListItem item = toListItem(session, location, courts.get(session.getCourtId()),
+                                    pkg.getHoldExpiresAt(), now, reviewable.contains(session.getId()), eligibility.get(session.getId()));
+                            item.setBookedHalfHours(bookedHalfHours.get(session.getId()));
+                            return item;
+                        })
                         .toList())
                 .build();
     }
@@ -257,6 +281,7 @@ public class BookingQueryService {
                 .playDate(booking.getPlayDate())
                 .startTime(MinuteTime.format(booking.getStartMinute()))
                 .endTime(MinuteTime.format(booking.getEndMinute()))
+                .listAmount(booking.getListAmount())
                 .finalAmount(booking.getFinalAmount())
                 .status(status)
                 .holdExpiresAt(status == BookingStatus.HOLDING ? holdExpiresAt : null)

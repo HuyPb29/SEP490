@@ -177,6 +177,34 @@ class LoyaltyApiTests {
         assertThatThrownBy(() -> tx.execute(s -> { points.restoreForFailedBooking(cancelled.getId()); return null; })).hasMessageContaining("Chỉ hoàn");
         assertThat(balance().getPointBalance()).isEqualTo(8);
     }
+
+    @Test void ownerChangesVenueRatesAndExistingOrderKeepsItsPointSnapshot() throws Exception {
+        seed(10);
+        Booking existing = booking(20000);
+        tx.executeWithoutResult(s -> {
+            em.find(Booking.class, existing.getId()).setPointEarningRateSnapshot(10000);
+            assertThat(points.redeemForBooking(existing.getId(), 2)).isEqualByComparingTo("1000");
+        });
+
+        String path = "/api/owner/locations/" + location.getId();
+        String rates = "{\"pointEarningRate\":5000,\"pointRedemptionValue\":1500}";
+        mvc.perform(patch(path).header("Authorization", token(account(Role.ADMIN)))
+                .contentType(MediaType.APPLICATION_JSON).content(rates)).andExpect(status().isForbidden());
+        mvc.perform(patch(path).header("Authorization", token(owner))
+                .contentType(MediaType.APPLICATION_JSON).content(rates))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.pointRedemptionValue").value(1500));
+
+        Booking next = booking(20000);
+        tx.executeWithoutResult(s -> {
+            assertThat(points.redeemForBooking(existing.getId(), 2)).isEqualByComparingTo("1000");
+            assertThat(points.redeemForBooking(next.getId(), 1)).isEqualByComparingTo("1500");
+        });
+
+        Payment confirmed = payment(tx.execute(s -> em.find(Booking.class, existing.getId())));
+        tx.executeWithoutResult(s -> points.accrueForConfirmedPayment(confirmed.getId()));
+        assertThat(jdbc.queryForObject("SELECT earning_rate FROM loyalty_accrual WHERE payment_id=?", Integer.class,
+                confirmed.getId())).isEqualTo(10000);
+    }
     @Test void concurrentSpendingCannotOverdraw() throws Exception {
         seed(3); Booking a=booking(10000),b=booking(10000);
         var pool=Executors.newFixedThreadPool(2); var start=new CountDownLatch(1);

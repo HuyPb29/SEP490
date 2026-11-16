@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { usePaymentActions } from '../../hooks/useBooking';
 import { ReschedulePaymentDetail } from './RescheduleHistoryPage';
 import styles from './BookingPaymentPage.module.css';
-import { formatVnd } from '../../utils/formatters';
+import { formatVnd, uiMessage } from '../../utils/formatters';
 import { CheckoutProgress, Feedback } from '../../components/common/WorkspacePrimitives';
 import { PublicHeader } from '../../components/layout/PublicLayout';
 
@@ -180,7 +180,7 @@ export default function BookingPaymentPage() {
       && (!file.type || ALLOWED_MIME_TYPES.includes(file.type));
 
     if (!isValidType || file.size === 0 || file.size > MAX_FILE_SIZE_BYTES) {
-      setErrorMessage('Ảnh chứng từ không đúng định dạng. Vui lòng chọn ảnh JPG hoặc PNG, tối đa 5 MB. (MSG02)');
+      setErrorMessage('Ảnh chứng từ không đúng định dạng. Vui lòng chọn ảnh JPG hoặc PNG, tối đa 5 MB.');
       return;
     }
 
@@ -214,7 +214,7 @@ export default function BookingPaymentPage() {
     if (submitting || !bookingData?.canPay || (!Number.isFinite(deadline) || deadline <= Date.now())) return;
     setErrorMessage('');
     if (!selectedFile) {
-      setErrorMessage('Vui lòng đính kèm ảnh chứng từ thanh toán. (MSG106)');
+      setErrorMessage('Vui lòng đính kèm ảnh chứng từ thanh toán.');
       return;
     }
     setSubmitting(true);
@@ -229,7 +229,9 @@ export default function BookingPaymentPage() {
       }));
       setSelectedFile(null);
       if (result.status !== 'EXPIRED') {
-        setToastSuccess('Đã báo thanh toán. Vui lòng chờ nhân viên xác nhận. (MSG48)');
+        setToastSuccess(kind === 'reschedule'
+          ? 'Đã gửi chứng từ.'
+          : 'Đã báo thanh toán. Vui lòng chờ nhân viên xác nhận.');
       }
       const refreshed = await loadPayment({ kind, id }).catch(() => null);
       if (refreshed) setBookingData(refreshed);
@@ -252,7 +254,7 @@ export default function BookingPaymentPage() {
   if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/payment?' + params.toString() }} replace />;
   if (!isPlayer) return <p role="alert">Chỉ tài khoản Người chơi được thanh toán đặt sân.</p>;
   if (!bookingData) return <div className="cw-workspace"><PublicHeader user={user} /><main className={styles.mainContainer}>
-    <Feedback tone={loadError ? 'error' : 'info'}>{loadError || 'Đang tải thông tin thanh toán…'}
+    <Feedback tone={loadError ? 'error' : 'info'}>{uiMessage(loadError) || 'Đang tải thông tin thanh toán…'}
       {loadError && <>
         <button className="cw-secondary" type="button" onClick={() => { setLoadError(''); setReload((value) => value + 1); }}>Thử lại</button>
         <Link className="cw-secondary" to="/my-bookings">Về lịch đặt sân</Link>
@@ -280,7 +282,15 @@ export default function BookingPaymentPage() {
         {isConfirmedWait ? (
           <div className={styles.confirmedBanner}>
             <span>
-              <strong>Chờ xác nhận</strong> · {toastSuccess || 'Nhân viên đang kiểm tra khoản chuyển của bạn.'}
+              {kind === 'reschedule' ? <>
+                {toastSuccess && <>{toastSuccess}{' '}</>}
+                <strong>Chờ cơ sở xác nhận phụ thu</strong>
+                {bookingData.approveDeadline && <> trước {new Date(bookingTimestamp(bookingData.approveDeadline))
+                  .toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</>}.
+                {' '}Lịch cũ được giữ trong lúc chờ.
+              </> : <>
+                <strong>Chờ xác nhận</strong> · {toastSuccess || 'Nhân viên đang kiểm tra khoản chuyển của bạn.'}
+              </>}
             </span>
             <button
               type="button"
@@ -297,7 +307,7 @@ export default function BookingPaymentPage() {
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Trạng thái</span>
                 <strong className={styles.bankValue} style={{ color: '#0d8a52' }}>
-                  {STATUS_LABELS[bookingData.status] || bookingData.status} (MSG49)
+                  {STATUS_LABELS[bookingData.status] || bookingData.status}
                 </strong>
               </div>
               {bookingData.receiptNo && (
@@ -340,8 +350,8 @@ export default function BookingPaymentPage() {
         ) : isRejected ? (
           <div className={styles.expiredBanner}>
             <span>
-              <strong>Thanh toán đã bị từ chối. (MSG51)</strong>
-              {bookingData.rejectReason ? ` Lý do: ${bookingData.rejectReason}` : ''}
+              <strong>Thanh toán đã bị từ chối.</strong>
+              {bookingData.rejectReason ? ` Lý do: ${uiMessage(bookingData.rejectReason)}` : ''}
             </span>
             <div style={{ display: 'flex', gap: 8 }}>
               {bookingId && (
@@ -361,8 +371,8 @@ export default function BookingPaymentPage() {
         ) : isExpired ? (
           <div className={styles.expiredBanner}>
             <span>{bookingData.resubmitting
-                ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ. (MSG52)'
-                : 'Đã hết thời gian giữ chỗ. Slot đã được nhả. (MSG33)'}</span>
+                ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ.'
+                : 'Đã hết thời gian giữ chỗ. Slot đã được nhả.'}</span>
             <span className={styles.countdownText}>00:00</span>
           </div>
         ) : bookingData.canPay ? (
@@ -371,7 +381,7 @@ export default function BookingPaymentPage() {
               <span className={styles.clockIcon}>🕒</span>
               <span>
                 {bookingData.reason
-                  ? `Yêu cầu bổ sung chứng từ: ${bookingData.reason}`
+                  ? `Yêu cầu bổ sung chứng từ: ${uiMessage(bookingData.reason)}`
                   : 'Chuyển khoản và gửi chứng từ trước khi hết hạn.'}
                 {bookingData.resubmitting && bookingData.resubmitsLeft != null &&
                   (bookingData.resubmitsLeft > 0 ? ' · Còn ' + bookingData.resubmitsLeft + ' lượt bổ sung'
@@ -498,7 +508,7 @@ export default function BookingPaymentPage() {
               </div>
             )}
 
-            {errorMessage && <p id="proof-error" className={styles.errorText} role="alert">{errorMessage}</p>}
+            {errorMessage && <p id="proof-error" className={styles.errorText} role="alert">{uiMessage(errorMessage)}</p>}
 
             <div className={styles.afterSubmitBox}>
               <strong className={styles.afterSubmitTitle}>Sau khi gửi chứng từ</strong>
