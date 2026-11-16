@@ -14,6 +14,7 @@ import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.location.CourtRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.security.UserPrincipal;
 
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,8 @@ public class CourtManagementService {
     private static final String STATUS_ACTIVE = "ACTIVE";
 
     private final CourtRepository courtRepository;
+    private final LocationRepository locationRepository;
+    private final PriceCoverageService priceCoverage;
     private final LocationManagementService locationManagementService;
     private final com.sep490.bms.service.reschedule.CancellationService cancellations;
 
@@ -61,7 +64,7 @@ public class CourtManagementService {
                 .toList();
     }
 
-    /** UC07 - Owner thêm sân mới. Sân mới mặc định ở trạng thái hoạt động. */
+    /** UC07 - Owner thêm sân mới để thiết lập giá trước khi bật bán. */
     @Transactional
     public CourtDto create(UserPrincipal user, Long locationId, CreateCourtRequest request) {
         Location location = locationManagementService.ownedLocation(user, locationId);
@@ -82,7 +85,7 @@ public class CourtManagementService {
                 .locationId(location.getId())
                 .name(name)
                 .description(trimToNull(request.getDescription()))
-                .active(true)
+                .active(false)
                 .build();
         return CourtDto.fromEntity(courtRepository.save(court));
     }
@@ -90,8 +93,12 @@ public class CourtManagementService {
     /** UC07 - Owner cập nhật tên, mô tả hoặc tạm ngưng sân. */
     @Transactional
     public CourtDto update(UserPrincipal user, Long courtId, UpdateCourtRequest request) {
+        Location location = locationManagementService.requireOwnership(user, locationRepository.findByCourtIdForUpdate(courtId)
+                .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND)));
+        if (!STATUS_ACTIVE.equals(location.getStatus())) {
+            throw new AppException("Địa điểm đang bị khoá, không thể cập nhật sân", HttpStatus.FORBIDDEN);
+        }
         Court court = requireCourt(courtId);
-        locationManagementService.ownedLocation(user, court.getLocationId());
 
         if (request.getName() != null) {
             String name = request.getName().trim();
@@ -109,6 +116,9 @@ public class CourtManagementService {
         }
         if (request.getIsActive() != null) {
             boolean wasActive = court.isActive();
+            if (!wasActive && request.getIsActive()) {
+                priceCoverage.requireCourtCoverage(location, court);
+            }
             court.setActive(request.getIsActive());
             if (wasActive && !court.isActive()) cancellations.courtDisabled(court.getId(), user.getId());
         }

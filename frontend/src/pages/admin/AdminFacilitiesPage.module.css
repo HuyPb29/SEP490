@@ -360,10 +360,10 @@
 
 .facilityTable {
   display: grid;
-  grid-template-columns: minmax(190px, 1.5fr) minmax(88px, .7fr) minmax(168px, 1.2fr) minmax(50px, .45fr) minmax(136px, 1.05fr);
+  grid-template-columns: minmax(190px, 1.5fr) minmax(88px, .7fr) minmax(168px, 1.2fr) minmax(50px, .45fr) minmax(82px, .6fr) minmax(136px, 1.05fr);
   align-items: center;
   column-gap: 8px;
-  min-width: 720px;
+  min-width: 810px;
 }
 
 .tableHeader {
@@ -629,7 +629,7 @@
   }
 
   .facilityTable {
-    min-width: 720px;
+    min-width: 810px;
   }
 }
 

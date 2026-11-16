@@ -60,7 +60,7 @@ class SrsV18IntegrationTests {
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         owner=account(Role.OWNER,null);player=account(Role.PLAYER,null);
         location=Location.builder().ownerId(owner.getId()).name("SRS v18 test").address("Test").latitude(BigDecimal.ONE).longitude(BigDecimal.ONE)
-                .contactPhone("0987654321").pointEarningRate(5000).build();em.persist(location);em.flush();
+                .contactPhone("0987654321").pointEarningRate(5000).bankName("Test Bank").bankAccountNo("123456").bankAccountHolder("Owner").qrImagePath("test-qr.png").build();em.persist(location);em.flush();
         staff=account(Role.STAFF,location.getId());
         court=Court.builder().locationId(location.getId()).name("SRS court").active(true).build();em.persist(court);em.flush();
         for(int d=1;d<=7;d++) em.persist(OpeningHour.builder().locationId(location.getId()).dayOfWeek(d).openMinute(0).closeMinute(1440).build());

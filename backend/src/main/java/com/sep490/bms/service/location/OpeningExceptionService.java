@@ -14,6 +14,7 @@ import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.OpeningException;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.location.OpeningExceptionRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.security.UserPrincipal;
 
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,8 @@ public class OpeningExceptionService {
     private static final String STATUS_ACTIVE = "ACTIVE";
 
     private final OpeningExceptionRepository openingExceptionRepository;
+    private final LocationRepository locations;
+    private final PriceCoverageService priceCoverage;
     private final LocationManagementService locationManagementService;
     private final com.sep490.bms.service.reschedule.CancellationService cancellations;
 
@@ -53,10 +56,8 @@ public class OpeningExceptionService {
     /** UC08 - Thêm ngoại lệ cho một ngày cụ thể. */
     @Transactional
     public OpeningExceptionDto create(UserPrincipal user, Long locationId, CreateOpeningExceptionRequest request) {
-        Location location = locationManagementService.ownedLocation(user, locationId);
-        if (!STATUS_ACTIVE.equals(location.getStatus())) {
-            throw new AppException("Địa điểm đang bị khoá, không thể thêm ngày ngoại lệ", HttpStatus.FORBIDDEN);
-        }
+        Location location = locationManagementService.lockOwnedLocation(user, locationId);
+        requireActive(location);
 
         LocalDate date = request.getExceptionDate();
         ensureDateAvailable(location.getId(), date, null);
@@ -73,6 +74,7 @@ public class OpeningExceptionService {
                 .note(trimToNull(request.getNote()))
                 .build();
         openingExceptionRepository.save(entity);
+        priceCoverage.requireActiveCourtCoverage(location);
         cancellations.hoursChanged(location.getId(), user.getId());
         return OpeningExceptionDto.fromEntity(entity);
     }
@@ -80,8 +82,8 @@ public class OpeningExceptionService {
     /** UC08 - Sửa ngoại lệ. Trường null nghĩa là giữ nguyên. */
     @Transactional
     public OpeningExceptionDto update(UserPrincipal user, Long exceptionId, UpdateOpeningExceptionRequest request) {
+        Location location = requireExceptionLocationForUpdate(user, exceptionId);
         OpeningException entity = requireException(exceptionId);
-        locationManagementService.ownedLocation(user, entity.getLocationId());
 
         if (request.getExceptionDate() != null && !request.getExceptionDate().equals(entity.getExceptionDate())) {
             ensureDateAvailable(entity.getLocationId(), request.getExceptionDate(), entity.getId());
@@ -104,6 +106,7 @@ public class OpeningExceptionService {
             entity.setNote(trimToNull(request.getNote()));
         }
         openingExceptionRepository.save(entity);
+        priceCoverage.requireActiveCourtCoverage(location);
         cancellations.hoursChanged(entity.getLocationId(), user.getId());
         return OpeningExceptionDto.fromEntity(entity);
     }
@@ -111,13 +114,28 @@ public class OpeningExceptionService {
     /** UC08 - Xoá ngoại lệ, ngày đó quay lại dùng giờ mở cửa thường. */
     @Transactional
     public void delete(UserPrincipal user, Long exceptionId) {
+        Location location = requireExceptionLocationForUpdate(user, exceptionId);
         OpeningException entity = requireException(exceptionId);
-        locationManagementService.ownedLocation(user, entity.getLocationId());
         openingExceptionRepository.delete(entity);
+        priceCoverage.requireActiveCourtCoverage(location);
         cancellations.hoursChanged(entity.getLocationId(), user.getId());
     }
 
     // --------------------------------------------------------------- helpers
+
+    private Location requireExceptionLocationForUpdate(UserPrincipal user, Long exceptionId) {
+        Location location = locationManagementService.requireOwnership(user,
+                locations.findByOpeningExceptionIdForUpdate(exceptionId)
+                        .orElseThrow(() -> new AppException("Không tìm thấy ngày ngoại lệ", HttpStatus.NOT_FOUND)));
+        requireActive(location);
+        return location;
+    }
+
+    private void requireActive(Location location) {
+        if (!STATUS_ACTIVE.equals(location.getStatus())) {
+            throw new AppException("Địa điểm đang bị khoá, không thể cập nhật ngày ngoại lệ", HttpStatus.FORBIDDEN);
+        }
+    }
 
     private List<OpeningException> exceptionsOf(Long locationId) {
         return openingExceptionRepository.findAllByLocationIdOrderByExceptionDateAsc(locationId);

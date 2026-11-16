@@ -29,6 +29,37 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     boolean existsByBookingCode(String bookingCode);
 
     @Query("""
+            select b.id from Booking b
+            where b.status = com.sep490.bms.entity.enums.BookingStatus.IN_USE
+              and b.playDate = :date and b.endMinute > :minute and b.endMinute <= :limit
+            order by b.id
+            """)
+    List<Long> findEndingSoonIds(@Param("date") LocalDate date, @Param("minute") int minute,
+            @Param("limit") int limit);
+
+    interface LocationBookingCount {
+        Long getLocationId();
+        long getBookingCount();
+    }
+
+    @Query("select b.locationId as locationId, count(b) as bookingCount from Booking b group by b.locationId")
+    List<LocationBookingCount> countGroupedByLocation();
+
+    long countByLocationId(Long locationId);
+
+    @Query("""
+            select distinct b.playerId from Booking b
+              join BookingPackage p on p.id = b.packageId
+            where b.locationId = :locationId and b.playerId is not null
+              and p.packageType in (com.sep490.bms.entity.enums.PackageType.RECURRING,
+                                    com.sep490.bms.entity.enums.PackageType.CUSTOM)
+              and b.status = com.sep490.bms.entity.enums.BookingStatus.CONFIRMED
+              and (b.playDate > :today or (b.playDate = :today and b.startMinute >= :minute))
+            """)
+    List<Long> findPlayersWithUnplayedPackageSessions(@Param("locationId") Long locationId,
+            @Param("today") LocalDate today, @Param("minute") int minute);
+
+    @Query("""
             select new com.sep490.bms.dto.promotion.PointGrantBookingResponse(
                 b.id, b.bookingCode, b.playDate, b.startMinute, b.endMinute)
             from Booking b

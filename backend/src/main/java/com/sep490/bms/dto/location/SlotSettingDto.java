@@ -1,6 +1,7 @@
 package com.sep490.bms.dto.location;
 
 import java.time.LocalDateTime;
+import com.sep490.bms.common.MinuteTime;
 
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.Court;
@@ -27,7 +28,7 @@ import lombok.Setter;
 @Builder
 public class SlotSettingDto {
 
-    public static final int DEFAULT_SLOT_MINUTES = 30;
+    public static final int DEFAULT_SLOT_MINUTES = MinuteTime.SLOT_MINUTES;
     public static final int DEFAULT_BUFFER_MINUTES = 0;
     public static final int DEFAULT_MAX_SLOTS = 4;
 
@@ -56,7 +57,7 @@ public class SlotSettingDto {
 
     public static SlotSettingDto fromEntity(LocationSlotSetting entity, Location location, Court court) {
         boolean configured = entity != null;
-        int slotMinutes = configured ? entity.getSlotMinutes() : DEFAULT_SLOT_MINUTES;
+        int slotMinutes = DEFAULT_SLOT_MINUTES;
         int bufferMinutes = configured ? entity.getBufferMinutes() : DEFAULT_BUFFER_MINUTES;
         int maxSlots = configured ? entity.getMaxSlotsPerBooking() : DEFAULT_MAX_SLOTS;
         return SlotSettingDto.builder()

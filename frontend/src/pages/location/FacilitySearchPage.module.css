@@ -410,3 +410,14 @@
   .resultsHeader { flex-wrap: wrap; align-items: flex-start; gap: 12px; }
   .sortGroup { flex-wrap: wrap; }
 }
+.registerServiceLink {
+  display: inline-flex;
+  margin-top: 16px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: #fff;
+  color: #14532d;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

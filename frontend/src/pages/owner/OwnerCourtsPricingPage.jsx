@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   apiErrorMessage,
   createBatchOffer,
@@ -33,6 +34,8 @@ const WEEKDAY_VALUES = [1, 2, 3, 4, 5]
 const WEEKEND_VALUES = [6, 7]
 
 const DAY_LOOKUP = Object.fromEntries(WEEK_DAYS.map((day) => [day.value, day]))
+const SLOT_TIMES = Array.from({ length: 49 }, (_, index) =>
+  `${String(Math.floor(index / 2)).padStart(2, '0')}:${index % 2 === 0 ? '00' : '30'}`)
 
 function todayIso() {
   const now = new Date()
@@ -96,6 +99,7 @@ export default function OwnerCourtsPricingPage() {
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
+  const [newCourt, setNewCourt] = useState(null)
 
   // UC09 — bảng giá
   const [priceRules, setPriceRules] = useState([])
@@ -208,8 +212,8 @@ export default function OwnerCourtsPricingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocationId, selectedLocation?.id, courts.length])
 
-  const handleFacilityChange = (event) => {
-    const nextId = event.target.value
+  const handleFacilityChange = (nextId) => {
+    setNewCourt(null)
     setSelectedLocationId(nextId)
     storeLocationId(nextId)
     setActionError('')
@@ -220,23 +224,18 @@ export default function OwnerCourtsPricingPage() {
 
   // ---------------------------------------------------------------- UC07: sân
 
-  const handleAddCourt = async () => {
-    if (!selectedLocation) {
-      setActionError('Select a facility first.')
-      return
-    }
-    const name = window.prompt('Court name')
-    if (name === null) return
-    if (!name.trim()) {
-      setActionError('Enter a court name.')
-      return
-    }
+  const handleAddCourt = async (event) => {
+    event.preventDefault()
+    const name = newCourt?.trim()
+    if (!selectedLocation || locked || saving || !name) return
     setSaving(true)
+    setActionError('')
+    setStatusMessage('')
     try {
-      await createCourt(selectedLocation.id, { name: name.trim() })
+      await createCourt(selectedLocation.id, { name })
+      setNewCourt(null)
       await loadLocations()
-      setActionError('')
-      setStatusMessage(`Court "${name.trim()}" added.`)
+      setStatusMessage(`Đã thêm sân "${name}". Hãy cấu hình bảng giá trước khi bật sân.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -506,16 +505,33 @@ export default function OwnerCourtsPricingPage() {
         <section className={`${styles.panel} ${styles.courtPanel}`} aria-labelledby="court-list-heading">
           <div className={styles.panelHeader}>
             <h2 id="court-list-heading">Court List ({courts.length})</h2>
-            <button className={styles.primaryButton} type="button" onClick={handleAddCourt} disabled={saving || !selectedLocation || locked}>
-              + Add Court
+            <button className={styles.primaryButton} type="button" onClick={() => setNewCourt('')}
+              disabled={saving || !selectedLocation || locked || newCourt !== null}>
+              + Thêm sân
             </button>
           </div>
+          {newCourt !== null && (
+            <form className={styles.ruleForm} onSubmit={handleAddCourt}>
+              <label className={styles.field}>
+                <span>Tên sân</span>
+                <input value={newCourt} onChange={(event) => setNewCourt(event.target.value)}
+                  required maxLength={50} disabled={saving} />
+              </label>
+              <button className={styles.primaryButton} type="submit" disabled={saving || !newCourt.trim()}>
+                {saving ? 'Đang lưu…' : 'Lưu sân'}
+              </button>
+              <button className={styles.secondaryButton} type="button" onClick={() => setNewCourt(null)} disabled={saving}>
+                Hủy
+              </button>
+            </form>
+          )}
+          <p>Thêm giá cho tất cả giờ mở cửa trước khi bật bán sân mới.</p>
           {loading && <p className={styles.emptyState}>Loading courts…</p>}
           {!loading && !selectedLocation && (
             <p className={styles.emptyState}>No facility is assigned to this account.</p>
           )}
           {!loading && selectedLocation && courts.length === 0 && (
-            <p className={styles.emptyState}>This facility has no court yet. Use “+ Add Court” to create the first one.</p>
+            <p className={styles.emptyState}>Địa điểm chưa có sân. Bấm “+ Thêm sân” để tạo sân đầu tiên.</p>
           )}
           <div className={styles.courtGrid}>
             {courts.map((court) => (
@@ -623,23 +639,27 @@ export default function OwnerCourtsPricingPage() {
               <div className={styles.timeFields}>
                 <label className={styles.field}>
                   <span>From</span>
-                  <input
+                  <select
                     className={ruleTimeInvalid ? styles.invalidInput : ''}
-                    type="time"
                     value={ruleForm.startTime}
                     aria-invalid={ruleTimeInvalid}
                     onChange={(event) => updateRuleForm('startTime', event.target.value)}
-                  />
+                  >
+                    {SLOT_TIMES.slice(0, -1).map((time) => <option key={time} value={time}>{time}</option>)}
+                  </select>
                 </label>
                 <label className={styles.field}>
                   <span>To</span>
-                  <input
+                  <select
                     className={ruleTimeInvalid ? styles.invalidInput : ''}
-                    type="time"
                     value={ruleForm.endTime}
                     aria-invalid={ruleTimeInvalid}
                     onChange={(event) => updateRuleForm('endTime', event.target.value)}
-                  />
+                  >
+                    {SLOT_TIMES.slice(1).map((time) => (
+                      <option key={time} value={time}>{time === '24:00' ? '24:00 (00:00 hôm sau)' : time}</option>
+                    ))}
+                  </select>
                 </label>
               </div>
               {ruleTimeInvalid && <p className={styles.overlapMessage} role="alert">The end time must be later than the start time.</p>}
@@ -765,15 +785,17 @@ export default function OwnerCourtsPricingPage() {
             <label className={styles.field}>
               <span>Voucher (PUBLISHED only)</span>
               <select value={offerForm.voucherId} onChange={(event) => updateOfferForm('voucherId', event.target.value)}>
-                <option value="">{vouchers.length === 0 ? 'No published voucher in this facility' : 'Select a voucher'}</option>
+                <option value="">{vouchers.length === 0 ? 'Địa điểm chưa có voucher đã phát hành' : 'Chọn voucher tặng'}</option>
                 {vouchers.map((voucher) => (
                   <option key={voucher.id} value={voucher.id}>
                     {voucher.code} · {voucher.name} ({voucher.discountType === 'PERCENT'
                       ? `${voucher.discountValue}%`
                       : `${formatPrice(voucher.discountValue)} VND`})
+                    {voucher.validTo && ` · Hạn dùng ${formatDate(voucher.validTo)}`}
                   </option>
                 ))}
               </select>
+              <Link to="/owner/workspace?tab=rewards">Cấu hình giá trị và hạn dùng voucher</Link>
             </label>
             <button className={styles.saveButton} type="submit" disabled={saving || locked || !selectedLocation}>
               {editingOfferId ? 'Update Offer' : 'Create Offer'}

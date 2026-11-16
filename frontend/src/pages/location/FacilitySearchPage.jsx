@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { PublicHeader } from '../../components/layout/PublicLayout';
 import PublicFooter from '../../components/layout/PublicFooter';
 import { today } from '../../utils/formatters';
 import LocationMap from '../../components/map/LocationMap';
 import { useFacilitySearch } from '../../hooks/useFacilitySearch';
 import { useGeolocation } from '../../hooks/useGeolocation';
+import { useAuth } from '../../hooks/useAuth';
 import { distanceKm } from '../../utils/distance';
 import styles from './FacilitySearchPage.module.css';
 
@@ -13,6 +14,8 @@ const MIN_PLAY_DATE = today();
 
 export default function FacilitySearchPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isOwner = String(user?.role_code || user?.role || '').toLowerCase() === 'owner';
   const [keyword, setKeyword] = useState('');
   const [playDate, setPlayDate] = useState(MIN_PLAY_DATE);
   const [sortBy, setSortBy] = useState('nearest'); // 'nearest' | 'rating'
@@ -100,6 +103,11 @@ export default function FacilitySearchPage() {
               🔍 Tìm sân
             </button>
           </form>
+          {(!user || isOwner) && (
+            <Link to="/register-service" className={styles.registerServiceLink}>
+              {isOwner ? 'Đăng ký thêm địa điểm' : 'Đăng ký sân cho chủ địa điểm'}
+            </Link>
+          )}
         </div>
       </section>
 

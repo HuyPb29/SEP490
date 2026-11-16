@@ -4,17 +4,41 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.location.Location;
+import jakarta.persistence.LockModeType;
 
 /**
  * Tra cứu địa điểm theo chủ sở hữu, trạng thái và bộ lọc tìm kiếm công khai.
  */
 @Repository
 public interface LocationRepository extends JpaRepository<Location, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from Location l where l.id = :id")
+    Optional<Location> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from Location l where l.id = (select c.locationId from Court c where c.id = :courtId)")
+    Optional<Location> findByCourtIdForUpdate(@Param("courtId") Long courtId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select l from Location l where l.id = (
+                select c.locationId from Court c join PriceRule p on p.courtId = c.id where p.id = :ruleId)
+            """)
+    Optional<Location> findByPriceRuleIdForUpdate(@Param("ruleId") Long ruleId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select l from Location l where l.id = (
+                select e.locationId from OpeningException e where e.id = :exceptionId)
+            """)
+    Optional<Location> findByOpeningExceptionIdForUpdate(@Param("exceptionId") Long exceptionId);
 
     List<Location> findAllByOwnerId(Long ownerId);
 

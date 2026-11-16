@@ -3,6 +3,7 @@ package com.sep490.bms.repository.location;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -20,6 +21,11 @@ public interface ServiceTermRepository extends JpaRepository<ServiceTerm, Long> 
     List<ServiceTerm> findAllByLocationIdOrderByStartDateDescIdDesc(Long locationId);
 
     List<ServiceTerm> findAllByLocationId(Long locationId);
+
+    boolean existsByLocationIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+            Long locationId, LocalDate startDate, LocalDate endDate);
+
+    Optional<ServiceTerm> findFirstByLocationIdOrderByEndDateDescIdDesc(Long locationId);
 
     /**
      * UC07 - Kỳ hạn của nhiều địa điểm trong một truy vấn.
