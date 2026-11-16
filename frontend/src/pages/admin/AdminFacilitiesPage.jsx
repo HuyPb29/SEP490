@@ -116,13 +116,13 @@ export default function AdminFacilitiesPage() {
   // --------------------------------------------------- UC05: duyệt / từ chối đơn đăng ký
 
   const handleApprove = async (request) => {
-    if (!window.confirm(`Approve "${request.locationName}"? Courts and default opening hours (06:00–24:00) will be created.`)) return
+    if (!window.confirm(`Duyệt "${request.locationName}"? Owner sẽ tự cấu hình giờ mở cửa và bảng giá.`)) return
     setSaving(true)
     try {
       await approveServiceRegistration(request.id)
       await loadAll()
       setActionError('')
-      setStatusMessage(`Approved "${request.locationName}". Courts and default opening hours were created.`)
+      setStatusMessage(`Đã duyệt "${request.locationName}". Owner có thể cấu hình giờ mở cửa và bảng giá.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')

@@ -2,15 +2,20 @@ package com.sep490.bms.controller.location;
 
 import java.util.List;
 
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.MediaTypeFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.dto.location.AdminLocationDto;
@@ -38,6 +43,23 @@ public class LocationManagementController {
 
     private final LocationManagementService locationManagementService;
     private final AdminLocationService adminLocationService;
+
+    @PostMapping(path = "/api/owner/locations/{id}/qr", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<String> uploadQr(@AuthenticationPrincipal UserPrincipal user, @PathVariable("id") Long id,
+            @RequestParam("image") MultipartFile image) {
+        return ApiResponse.success(locationManagementService.uploadQr(user, id, image));
+    }
+
+    @GetMapping("/api/owner/locations/{id}/qr")
+    public ResponseEntity<Resource> loadQr(@AuthenticationPrincipal UserPrincipal user, @PathVariable("id") Long id) {
+        Resource image = locationManagementService.loadQr(user, id);
+        return ResponseEntity.ok()
+                .header("X-Content-Type-Options", "nosniff")
+                .contentType(MediaTypeFactory.getMediaType(image)
+                        .filter(type -> type.equals(MediaType.IMAGE_JPEG) || type.equals(MediaType.IMAGE_PNG))
+                        .orElse(MediaType.APPLICATION_OCTET_STREAM))
+                .body(image);
+    }
 
     /**
      * UC06 – Quản lý địa điểm sử dụng dịch vụ

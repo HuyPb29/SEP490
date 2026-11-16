@@ -7,11 +7,6 @@ import PublicLayout from '../../components/layout/PublicLayout';
 import { LoadingState } from '../../components/common';
 import styles from './ServiceRegistrationPage.module.css';
 
-const DEFAULT_COORDS = {
-  latitude: 21.028511,
-  longitude: 105.854444,
-};
-
 export default function ServiceRegistrationPage() {
   const { user } = useAuth();
 
@@ -22,9 +17,9 @@ export default function ServiceRegistrationPage() {
   const [formData, setFormData] = useState({
     locationName: '',
     address: '',
-    latitude: DEFAULT_COORDS.latitude,
-    longitude: DEFAULT_COORDS.longitude,
-    courtCount: 4,
+    latitude: '',
+    longitude: '',
+    courtCount: '',
     contactName: '',
     contactPhone: '',
     contactEmail: '',
@@ -34,6 +29,9 @@ export default function ServiceRegistrationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState('');
   const [submitError, setSubmitError] = useState('');
+  const [coordinatePair, setCoordinatePair] = useState('');
+  const [locationError, setLocationError] = useState('');
+  const [locating, setLocating] = useState(false);
 
   // Danh sách đơn đăng ký đã gửi
   const [myRegistrations, setMyRegistrations] = useState([]);
@@ -73,26 +71,48 @@ export default function ServiceRegistrationPage() {
     }
   };
 
-  const handleGetCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setSubmitError('Trình duyệt không hỗ trợ định vị GPS.');
+  const fillCoordinates = (latitude, longitude) => {
+    setFormData((prev) => ({
+      ...prev,
+      latitude: Number(latitude.toFixed(6)),
+      longitude: Number(longitude.toFixed(6)),
+    }));
+    setFieldErrors(({ latitude: _latitude, longitude: _longitude, ...rest }) => rest);
+    setLocationError('');
+  };
+
+  const applyCoordinatePair = () => {
+    const match = coordinatePair.trim().match(/^([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)$/);
+    if (!match || Math.abs(Number(match[1])) > 90 || Math.abs(Number(match[2])) > 180) {
+      setLocationError('Dán tọa độ theo dạng vĩ độ, kinh độ. Ví dụ: 21.028511, 105.854444.');
       return;
     }
+    fillCoordinates(Number(match[1]), Number(match[2]));
+    setCoordinatePair('');
+  };
+
+  const handleGetCurrentLocation = () => {
+    if (!window.isSecureContext || !navigator.geolocation) {
+      setLocationError('Không thể dùng định vị ở trình duyệt này. Bạn có thể dán tọa độ từ Google Maps.');
+      return;
+    }
+    setLocationError('');
+    setLocating(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = parseFloat(pos.coords.latitude.toFixed(6));
-        const lng = parseFloat(pos.coords.longitude.toFixed(6));
-        setFormData((prev) => ({ ...prev, latitude: lat, longitude: lng }));
-        setFieldErrors((prev) => {
-          const next = { ...prev };
-          delete next.latitude;
-          delete next.longitude;
-          return next;
-        });
+      ({ coords }) => {
+        fillCoordinates(coords.latitude, coords.longitude);
+        setLocating(false);
       },
-      () => {
-        setSubmitError('Không thể lấy tọa độ hiện tại. Vui lòng cấp quyền định vị hoặc nhập thủ công.');
-      }
+      (error) => {
+        const messages = {
+          1: 'Quyền vị trí đang bị chặn. Hãy cho phép vị trí trong cài đặt trang hoặc dán tọa độ từ Google Maps.',
+          2: 'Thiết bị không xác định được vị trí. Bạn có thể dán tọa độ từ Google Maps.',
+          3: 'Đã hết thời gian lấy vị trí. Hãy thử lại hoặc dán tọa độ từ Google Maps.',
+        };
+        setLocationError(messages[error.code] ?? 'Không lấy được vị trí. Bạn có thể dán tọa độ từ Google Maps.');
+        setLocating(false);
+      },
+      { timeout: 10000 }
     );
   };
 
@@ -341,37 +361,34 @@ export default function ServiceRegistrationPage() {
                 type="button"
                 className={styles.secondaryBtn}
                 onClick={handleGetCurrentLocation}
-                disabled={!canSubmit || isSubmitting}
+                disabled={!canSubmit || isSubmitting || locating}
               >
-                📍 Lấy tọa độ GPS hiện tại
-              </button>
-              <button
-                type="button"
-                className={styles.secondaryBtn}
-                onClick={() => {
-                  setFormData((prev) => ({
-                    ...prev,
-                    latitude: DEFAULT_COORDS.latitude,
-                    longitude: DEFAULT_COORDS.longitude,
-                  }));
-                }}
-                disabled={!canSubmit || isSubmitting}
-              >
-                Tọa độ mẫu (Hà Nội)
+                {locating ? 'Đang lấy vị trí…' : 'Lấy tọa độ GPS hiện tại'}
               </button>
             </div>
+            <div className={styles.formGroup}>
+              <label className={styles.label} htmlFor="coordinatePair">Tọa độ từ Google Maps</label>
+              <div className={styles.coordActionRow}>
+                <input id="coordinatePair" className={styles.input} value={coordinatePair}
+                  onChange={(event) => setCoordinatePair(event.target.value)}
+                  placeholder="Vĩ độ, kinh độ" disabled={!canSubmit || isSubmitting || locating} />
+                <button type="button" className={styles.secondaryBtn} onClick={applyCoordinatePair}
+                  disabled={!canSubmit || isSubmitting || locating || !coordinatePair.trim()}>
+                  Điền tọa độ
+                </button>
+              </div>
+              {locationError && <p className={styles.errorText} role="alert">{locationError}</p>}
+            </div>
 
-            {import.meta.env.VITE_LOCATION_MAP_TILE_URL && canSubmit &&
-              Number.isFinite(Number(formData.latitude)) && Math.abs(Number(formData.latitude)) <= 90 &&
-              Number.isFinite(Number(formData.longitude)) && Math.abs(Number(formData.longitude)) <= 180 && (
+            {canSubmit && (
               <div className="mt-4 max-w-md">
                 <p>Chọn điểm ghim trên bản đồ hoặc nhập tọa độ bên trên.</p>
                 <LocationMap
-                  venues={[{ facility_id: 'registration', latitude: formData.latitude, longitude: formData.longitude }]}
-                  onPick={isSubmitting ? undefined : (latitude, longitude) => {
-                    handleChange('latitude', latitude);
-                    handleChange('longitude', longitude);
-                  }}
+                  initialCenter={{ latitude: 21.028511, longitude: 105.854444 }}
+                  venues={formData.latitude === '' || formData.longitude === '' ? [] :
+                    [{ facility_id: 'registration', latitude: formData.latitude, longitude: formData.longitude }]}
+                  onPick={fillCoordinates}
+                  pickDisabled={isSubmitting || locating}
                 />
               </div>
             )}

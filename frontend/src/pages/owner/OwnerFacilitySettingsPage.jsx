@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { fetchProtectedImage } from '../../api'
 import {
   apiErrorMessage,
   getOwnerLocations, getStoredLocationId,
   storeLocationId,
   updateOwnerLocation,
+  uploadOwnerLocationQr,
 } from '../../api/locationApi'
 import ManagementLayout from '../../components/layout/ManagementLayout'
 import styles from './OwnerFacilitySettingsPage.module.css'
@@ -16,7 +18,6 @@ const LIMITS = {
   bankName: 100,
   bankAccountNo: 30,
   bankAccountHolder: 100,
-  qrImagePath: 255,
   advanceBookingDays: { min: 1, max: 365 },
   pointEarningRate: { min: 1000, max: 100000 },
   latitude: { min: -90, max: 90 },
@@ -42,7 +43,6 @@ function toForm(location) {
     bankName: location?.bankName ?? '',
     bankAccountNo: location?.bankAccountNo ?? '',
     bankAccountHolder: location?.bankAccountHolder ?? '',
-    qrImagePath: location?.qrImagePath ?? '',
   }
 }
 
@@ -66,12 +66,59 @@ export default function OwnerFacilitySettingsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [qrPreview, setQrPreview] = useState('')
+  const [qrError, setQrError] = useState('')
+  const [uploadingQr, setUploadingQr] = useState(false)
 
   const selectedLocation = useMemo(
     () => locations.find((location) => location.id === selectedLocationId) ?? null,
     [locations, selectedLocationId],
   )
   const locked = selectedLocation?.status === 'LOCKED'
+  const qrPath = selectedLocation?.qrImagePath
+  useEffect(() => {
+    let active = true
+    let objectUrl
+    setQrPreview('')
+    setQrError('')
+    if (qrPath && !locked) {
+      fetchProtectedImage(`/api/owner/locations/${selectedLocationId}/qr`)
+        .then((url) => {
+          objectUrl = url
+          if (active) setQrPreview(url)
+          else URL.revokeObjectURL(url)
+        })
+        .catch(() => {
+          if (active) setQrError('Không tải được ảnh QR đã lưu.')
+        })
+    }
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [selectedLocationId, qrPath, locked])
+
+  const handleQrUpload = async (event) => {
+    const input = event.currentTarget
+    const image = input.files?.[0]
+    input.value = ''
+    if (!image || !selectedLocationId || locked || uploadingQr) return
+    setQrError('')
+    if (!['image/jpeg', 'image/png'].includes(image.type) || image.size > 5 * 1024 * 1024) {
+      setQrError('Chọn ảnh JPG hoặc PNG tối đa 5 MB.')
+      return
+    }
+    setUploadingQr(true)
+    try {
+      const path = await uploadOwnerLocationQr(selectedLocationId, image)
+      setLocations((rows) => rows.map((row) =>
+        row.id === selectedLocationId ? { ...row, qrImagePath: path } : row))
+    } catch (err) {
+      setQrError(apiErrorMessage(err))
+    } finally {
+      setUploadingQr(false)
+    }
+  }
   const dirty = useMemo(
     () => Object.keys(form).some((key) => form[key] !== original[key]),
     [form, original],
@@ -108,9 +155,9 @@ export default function OwnerFacilitySettingsPage() {
     }
   }, [loadLocations])
 
-  const handleFacilityChange = (event) => {
-    const nextId = Number(event.target.value)
-    if (!Number.isFinite(nextId)) return
+  const handleFacilityChange = (value) => {
+    const nextId = Number(value)
+    if (!Number.isInteger(nextId) || nextId <= 0) return
     const next = locations.find((location) => location.id === nextId) ?? null
     setSelectedLocationId(nextId)
     storeLocationId(nextId)
@@ -180,7 +227,6 @@ export default function OwnerFacilitySettingsPage() {
     if (form.bankAccountHolder !== original.bankAccountHolder) {
       payload.bankAccountHolder = form.bankAccountHolder.trim()
     }
-    if (form.qrImagePath !== original.qrImagePath) payload.qrImagePath = form.qrImagePath.trim()
     return payload
   }
 
@@ -229,7 +275,6 @@ export default function OwnerFacilitySettingsPage() {
     setMessage('Reverted to the saved values.')
   }
 
-  const qrPreview = form.qrImagePath.trim()
 
   return (
     <ManagementLayout
@@ -400,28 +445,29 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={`${styles.field} ${styles.fieldWide}`}>
-                <span>QR image path</span>
+                <span>Ảnh QR chuyển khoản (JPG/PNG, tối đa 5 MB)</span>
                 <input
-                  type="text"
-                  maxLength={LIMITS.qrImagePath}
-                  placeholder="/uploads/qr/location-1.png"
-                  value={form.qrImagePath}
-                  onChange={updateField('qrImagePath')}
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  onChange={handleQrUpload}
+                  disabled={uploadingQr || saving || locked || !selectedLocationId}
                 />
               </label>
             </div>
 
+            {uploadingQr && <p role="status">Đang tải ảnh QR…</p>}
+            {qrError && <p className={styles.alertError} role="alert">{qrError}</p>}
             {qrPreview && (
               <div className={styles.qrBox}>
                 <img
                   src={qrPreview}
-                  alt="Facility payment QR"
+                  alt="Mã QR chuyển khoản của địa điểm"
                   className={styles.qrImage}
                   onError={(event) => {
                     event.currentTarget.style.display = 'none'
                   }}
                 />
-                <span className={styles.qrHint}>Preview — hidden if the path does not resolve.</span>
+                <span className={styles.qrHint}>Ảnh QR đã lưu</span>
               </div>
             )}
           </section>

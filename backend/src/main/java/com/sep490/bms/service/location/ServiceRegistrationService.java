@@ -24,14 +24,12 @@ import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.enums.ApprovalStatus;
 import com.sep490.bms.entity.location.Court;
-import com.sep490.bms.entity.location.OpeningHour;
 import com.sep490.bms.entity.location.ServiceRegistration;
 import com.sep490.bms.entity.location.ServiceTerm;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.repository.location.CourtRepository;
-import com.sep490.bms.repository.location.OpeningHourRepository;
 import com.sep490.bms.repository.location.ServiceRegistrationRepository;
 import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.security.UserPrincipal;
@@ -62,16 +60,10 @@ public class ServiceRegistrationService {
      */
     private static final int MAX_COURT_COUNT = 50;
 
-    /** Giờ mở cửa mặc định của địa điểm mới: 06:00 – 24:00, owner chỉnh lại sau bằng UC08. */
-    private static final int DEFAULT_OPEN_MINUTE = 6 * 60;
-    private static final int DEFAULT_CLOSE_MINUTE = 24 * 60;
-    private static final int DAYS_IN_WEEK = 7;
-
     private final ServiceRegistrationRepository serviceRegistrationRepository;
     private final ServiceTermRepository serviceTermRepository;
     private final LocationRepository locationRepository;
     private final CourtRepository courtRepository;
-    private final OpeningHourRepository openingHourRepository;
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
     private final NotificationService notifications;
@@ -146,8 +138,7 @@ public class ServiceRegistrationService {
      * UC05 - Admin duyệt đơn: tạo địa điểm thật cho owner gửi đơn, sinh đủ số sân mà đơn
      * đã khai báo và mở kỳ hạn dịch vụ 12 tháng.
      *
-     * Số sân sinh ra đặt tên mặc định "Sân 1".."Sân N" và bật hoạt động ngay, để Owner
-     * đăng nhập là bán được sân; Owner đổi tên/mô tả sau bằng UC07.
+     * Các sân mặc định ở trạng thái tạm ngưng để Owner thiết lập giá trước khi bật.
      */
     @Transactional
     public ServiceRegistrationDto approve(UserPrincipal admin, Long registrationId) {
@@ -174,7 +165,6 @@ public class ServiceRegistrationService {
                 .build());
 
         courtRepository.saveAll(defaultCourts(location.getId(), courtCount));
-        openingHourRepository.saveAll(defaultOpeningHours(location.getId()));
 
         LocalDate startDate = LocalDate.now();
         serviceTermRepository.save(ServiceTerm.builder()
@@ -242,35 +232,17 @@ public class ServiceRegistrationService {
         }
     }
 
-    /** Sinh danh sách sân mặc định cho địa điểm mới: "Sân 1".."Sân N", bật hoạt động. */
+    /** Sinh danh sách sân mặc định cho địa điểm mới: "Sân 1".."Sân N". */
     private List<Court> defaultCourts(Long locationId, int courtCount) {
         List<Court> courts = new ArrayList<>(courtCount);
         for (int index = 1; index <= courtCount; index++) {
             courts.add(Court.builder()
                     .locationId(locationId)
                     .name("Sân " + index)
-                    .active(true)
+                    .active(false)
                     .build());
         }
         return courts;
-    }
-
-    /**
-     * Giờ mở cửa mặc định 06:00 – 24:00 cho cả 7 ngày, để địa điểm vừa duyệt là bán được ngay.
-     * Đây chỉ là giá trị khởi tạo: mỗi địa điểm tự chỉnh lại giờ riêng bằng UC08
-     * (PUT /api/owner/locations/{id}/opening-hours), kể cả đóng cửa ngày nào đó.
-     */
-    private List<OpeningHour> defaultOpeningHours(Long locationId) {
-        List<OpeningHour> hours = new ArrayList<>(DAYS_IN_WEEK);
-        for (int day = 1; day <= DAYS_IN_WEEK; day++) {
-            hours.add(OpeningHour.builder()
-                    .locationId(locationId)
-                    .dayOfWeek(day)
-                    .openMinute(DEFAULT_OPEN_MINUTE)
-                    .closeMinute(DEFAULT_CLOSE_MINUTE)
-                    .build());
-        }
-        return hours;
     }
 
     /** Số sân phải trong khoảng 1..MAX_COURT_COUNT (ck_sreg_courts chỉ chặn điều kiện lớn hơn 0). */

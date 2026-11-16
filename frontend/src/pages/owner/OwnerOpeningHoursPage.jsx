@@ -6,11 +6,10 @@ import {
   getOpeningExceptions,
   getOpeningHours,
   getOwnerLocations,
-  getSlotSetting, getStoredLocationId,
+  getStoredLocationId,
   storeLocationId,
   updateOpeningException,
   updateOpeningHours,
-  updateSlotSetting,
 } from '../../api/locationApi'
 import ManagementLayout from '../../components/layout/ManagementLayout'
 import styles from './OwnerOpeningHoursPage.module.css'
@@ -32,12 +31,6 @@ const CLOSE_OPTIONS = Array.from(
 )
 
 const WEEKDAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-
-// Slot length: backend yêu cầu bội số 30, từ 30 đến 240 phút.
-const SLOT_MINUTE_OPTIONS = [30, 60, 90, 120, 150, 180, 210, 240]
-// Thời gian nghỉ: 0–60 phút VÀ cũng phải là bội số của 30 (backend chặn 10/15/20/45).
-const BUFFER_OPTIONS = [0, 30, 60]
-const MAX_SLOT_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 10, 12]
 
 function todayIso() {
   const now = new Date()
@@ -85,13 +78,6 @@ export default function OwnerOpeningHoursPage() {
   const [weekError, setWeekError] = useState('')
   const [weekMessage, setWeekMessage] = useState('')
 
-  const [slotCourtId, setSlotCourtId] = useState('')
-  const [slot, setSlot] = useState({ slotMinutes: 30, bufferMinutes: 0, maxSlotsPerBooking: 4 })
-  const [slotConfigured, setSlotConfigured] = useState(false)
-  const [slotSaving, setSlotSaving] = useState(false)
-  const [slotError, setSlotError] = useState('')
-  const [slotMessage, setSlotMessage] = useState('')
-
   const [exceptions, setExceptions] = useState([])
   const [exceptionFilter, setExceptionFilter] = useState({ from: '', to: '' })
   const [exceptionForm, setExceptionForm] = useState({
@@ -109,7 +95,6 @@ export default function OwnerOpeningHoursPage() {
     () => locations.find((location) => location.id === selectedLocationId) ?? null,
     [locations, selectedLocationId],
   )
-  const courts = useMemo(() => selectedLocation?.courts ?? [], [selectedLocation])
   const locationLocked = selectedLocation?.status === 'LOCKED'
 
   const loadWeek = useCallback(async (locationId) => {
@@ -120,21 +105,6 @@ export default function OwnerOpeningHoursPage() {
   const loadExceptions = useCallback(async (locationId, filter) => {
     const rows = await getOpeningExceptions(locationId, filter)
     setExceptions(rows)
-  }, [])
-
-  const loadSlot = useCallback(async (courtId, locationId) => {
-    if (!courtId) {
-      Promise.resolve().then(() => setSlotConfigured(false))
-      return
-    }
-    const setting = await getSlotSetting(courtId, locationId)
-    if (!setting) return
-    setSlot({
-      slotMinutes: setting.slotMinutes ?? 30,
-      bufferMinutes: setting.bufferMinutes ?? 0,
-      maxSlotsPerBooking: setting.maxSlotsPerBooking ?? 4,
-    })
-    setSlotConfigured(Boolean(setting.configured))
   }, [])
 
   // Nạp danh sách địa điểm một lần, chọn địa điểm nhớ lần trước nếu còn hợp lệ.
@@ -178,8 +148,6 @@ export default function OwnerOpeningHoursPage() {
         setWeekMessage('')
         setExceptionError('')
         setExceptionMessage('')
-        setSlotError('')
-        setSlotMessage('')
       } catch (err) {
         if (!cancelled) setWeekError(apiErrorMessage(err))
       }
@@ -189,21 +157,9 @@ export default function OwnerOpeningHoursPage() {
     }
   }, [selectedLocationId, loadWeek, loadExceptions])
 
-  // Cấu hình slot thuộc về địa điểm, nên chỉ cần xem qua sân đầu tiên.
-  useEffect(() => {
-    if (!selectedLocationId) return
-    const firstCourtId = courts[0]?.id ?? ''
-    Promise.resolve().then(() => setSlotCourtId(firstCourtId ? String(firstCourtId) : ''))
-    if (!firstCourtId) {
-      Promise.resolve().then(() => setSlotConfigured(false))
-      return
-    }
-    Promise.resolve().then(() => loadSlot(firstCourtId, selectedLocationId)).catch((err) => setSlotError(apiErrorMessage(err)))
-  }, [selectedLocationId, courts, loadSlot])
-
-  const handleFacilityChange = (event) => {
-    const nextId = Number(event.target.value)
-    if (!Number.isFinite(nextId)) return
+  const handleFacilityChange = (value) => {
+    const nextId = Number(value)
+    if (!Number.isInteger(nextId) || nextId <= 0) return
     setSelectedLocationId(nextId)
     storeLocationId(nextId)
   }
@@ -283,51 +239,7 @@ export default function OwnerOpeningHoursPage() {
       .catch((err) => setWeekError(apiErrorMessage(err)))
   }
 
-  // ------------------------------------------------------------- cấu hình slot
-
-  const handleSlotCourtChange = (event) => {
-    const courtId = event.target.value
-    setSlotCourtId(courtId)
-    setSlotError('')
-    setSlotMessage('')
-    if (courtId) {
-      loadSlot(Number(courtId), selectedLocationId).catch((err) => setSlotError(apiErrorMessage(err)))
-    }
-  }
-
-  const handleSaveSlot = async () => {
-    if (!slotCourtId) {
-      setSlotError('This facility has no court yet, so the slot setting cannot be saved.')
-      return
-    }
-    setSlotSaving(true)
-    try {
-      const saved = await updateSlotSetting(
-        Number(slotCourtId),
-        {
-          slotMinutes: Number(slot.slotMinutes),
-          bufferMinutes: Number(slot.bufferMinutes),
-          maxSlotsPerBooking: Number(slot.maxSlotsPerBooking),
-        },
-        selectedLocationId,
-      )
-      setSlot({
-        slotMinutes: saved?.slotMinutes ?? slot.slotMinutes,
-        bufferMinutes: saved?.bufferMinutes ?? slot.bufferMinutes,
-        maxSlotsPerBooking: saved?.maxSlotsPerBooking ?? slot.maxSlotsPerBooking,
-      })
-      setSlotConfigured(true)
-      setSlotError('')
-      setSlotMessage('Slot setting saved. It applies to every court of this facility.')
-    } catch (err) {
-      setSlotError(apiErrorMessage(err))
-      setSlotMessage('')
-    } finally {
-      setSlotSaving(false)
-    }
-  }
-
-  // ------------------------------------------------------------ ngày ngoại lệ
+  // ------------------------------------------------------------- ngày ngoại lệ
 
   const resetExceptionForm = () => {
     setExceptionForm({
@@ -434,9 +346,9 @@ export default function OwnerOpeningHoursPage() {
             Cụm sân này đã bị khóa. Anh/chị chỉ có thể xem dữ liệu mà không thể chỉnh sửa.
           </p>
         )}
-        {serviceExpired && (
+        {selectedLocation?.status === 'ACTIVE' && selectedLocation.serviceActive === false && (
           <p className={styles.alertWarn}>
-            Kỳ hạn dịch vụ đã hết hạn. Vui lòng liên hệ Quản trị viên để gia hạn trước khi thay đổi cấu hình.
+            Kỳ hạn dịch vụ đã hết. Vui lòng liên hệ Quản trị viên để gia hạn.
           </p>
         )}
 
@@ -532,90 +444,9 @@ export default function OwnerOpeningHoursPage() {
           </div>
         </section>
 
-        {/* ------------------------------------------------------- slot */}
         <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div>
-              <h2 className={styles.cardTitle}>Slot configuration</h2>
-              <p className={styles.cardHint}>
-                Belongs to the whole facility, not to a single court
-                {slotConfigured ? '' : ' · currently using the default values'}
-              </p>
-            </div>
-            {courts.length > 1 && (
-              <label className={styles.inlineField}>
-                <span>View via court</span>
-                <select
-                  className={styles.timeSelect}
-                  value={slotCourtId}
-                  onChange={handleSlotCourtChange}
-                >
-                  {courts.map((court) => (
-                    <option key={court.id} value={court.id}>{court.name}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </div>
-
-          <div className={styles.fieldGrid}>
-            <label className={styles.field}>
-              <span>Slot length</span>
-              <select
-                value={slot.slotMinutes}
-                onChange={(event) => setSlot((current) => ({ ...current, slotMinutes: Number(event.target.value) }))}
-              >
-                {SLOT_MINUTE_OPTIONS.map((value) => (
-                  <option key={value} value={value}>{value} minutes</option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.field}>
-              <span>Buffer between slots</span>
-              <select
-                value={slot.bufferMinutes}
-                onChange={(event) => setSlot((current) => ({ ...current, bufferMinutes: Number(event.target.value) }))}
-              >
-                {BUFFER_OPTIONS.map((value) => (
-                  <option key={value} value={value}>{value} minutes</option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.field}>
-              <span>Max slots per booking</span>
-              <select
-                value={slot.maxSlotsPerBooking}
-                onChange={(event) =>
-                  setSlot((current) => ({ ...current, maxSlotsPerBooking: Number(event.target.value) }))
-                }
-              >
-                {MAX_SLOT_OPTIONS.map((value) => (
-                  <option key={value} value={value}>{value}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <p className={styles.note}>
-            One booking occupies {slot.slotMinutes + slot.bufferMinutes} minutes
-            ({slot.slotMinutes} minutes of play + {slot.bufferMinutes} minutes buffer).
-          </p>
-
-          {slotError && <p className={styles.alertError} role="alert">{slotError}</p>}
-          {slotMessage && <p className={styles.alertOk}>{slotMessage}</p>}
-
-          <div className={styles.cardFooter}>
-            <button
-              className={styles.primaryButton}
-              type="button"
-              onClick={handleSaveSlot}
-              disabled={slotSaving || locationLocked || !slotCourtId}
-            >
-              {slotSaving ? 'Saving…' : 'Save slot setting'}
-            </button>
-          </div>
+          <h2 className={styles.cardTitle}>Cấu hình slot</h2>
+          <p>Mỗi slot trên lịch sân dài {SLOT_STEP} phút.</p>
         </section>
 
         {/* --------------------------------------------- ngày ngoại lệ */}

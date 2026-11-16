@@ -22,6 +22,24 @@ public interface LocationRepository extends JpaRepository<Location, Long> {
     @Query("select l from Location l where l.id = :id")
     Optional<Location> findByIdForUpdate(@Param("id") Long id);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from Location l where l.id = (select c.locationId from Court c where c.id = :courtId)")
+    Optional<Location> findByCourtIdForUpdate(@Param("courtId") Long courtId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select l from Location l where l.id = (
+                select c.locationId from Court c join PriceRule p on p.courtId = c.id where p.id = :ruleId)
+            """)
+    Optional<Location> findByPriceRuleIdForUpdate(@Param("ruleId") Long ruleId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select l from Location l where l.id = (
+                select e.locationId from OpeningException e where e.id = :exceptionId)
+            """)
+    Optional<Location> findByOpeningExceptionIdForUpdate(@Param("exceptionId") Long exceptionId);
+
     List<Location> findAllByOwnerId(Long ownerId);
 
     /**

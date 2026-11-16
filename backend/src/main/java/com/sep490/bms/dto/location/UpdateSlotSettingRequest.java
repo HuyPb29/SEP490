@@ -3,6 +3,7 @@ package com.sep490.bms.dto.location;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import com.sep490.bms.common.MinuteTime;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -15,8 +16,7 @@ import lombok.Setter;
  * Owner: Minh Anh
  * UC08 - Owner cập nhật cấu hình slot của địa điểm (FR18).
  *
- * PUT thay thế toàn phần nên cả 3 trường đều bắt buộc. Giá trị phải là bội số 30
- * để khớp cách chia slot của toàn hệ thống (booking_slot, price_rule, opening_hour).
+ * PUT thay thế toàn phần nên cả 3 trường đều bắt buộc. Độ dài slot cố định theo lịch đặt sân.
  */
 @Getter
 @Setter
@@ -26,8 +26,8 @@ import lombok.Setter;
 public class UpdateSlotSettingRequest {
 
     @NotNull(message = "Độ dài slot không được để trống")
-    @Min(value = 30, message = "Độ dài slot tối thiểu 30 phút")
-    @Max(value = 240, message = "Độ dài slot tối đa 240 phút")
+    @Min(value = MinuteTime.SLOT_MINUTES, message = "Độ dài slot phải là 30 phút")
+    @Max(value = MinuteTime.SLOT_MINUTES, message = "Độ dài slot phải là 30 phút")
     private Integer slotMinutes;
 
     @NotNull(message = "Thời gian nghỉ giữa hai slot không được để trống")
