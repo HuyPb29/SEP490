@@ -23,6 +23,10 @@ public interface ServiceRegistrationRepository extends JpaRepository<ServiceRegi
     @Query("select r from ServiceRegistration r where r.id = :id")
     Optional<ServiceRegistration> findByIdForUpdate(@Param("id") Long id);
 
+    boolean existsByRequesterIdIsNullAndStatusAndContactEmailIgnoreCase(ApprovalStatus status, String email);
+
+    boolean existsByRequesterIdIsNullAndStatusAndContactPhone(ApprovalStatus status, String phone);
+
     /** UC05 - Đơn của một owner, đơn mới nhất lên đầu. */
     List<ServiceRegistration> findAllByRequesterIdOrderByCreatedAtDescIdDesc(Long requesterId);
 

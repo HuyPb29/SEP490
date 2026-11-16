@@ -33,6 +33,7 @@ import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.location.ServiceRegistrationRepository;
 import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.account.OtpLockService;
 import com.sep490.bms.service.notification.NotificationService;
 
 import lombok.RequiredArgsConstructor;
@@ -67,6 +68,7 @@ public class ServiceRegistrationService {
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
     private final NotificationService notifications;
+    private final OtpLockService contactLocks;
 
     /** UC05 - Guest đăng ký dịch vụ hoặc Owner đăng ký thêm địa điểm. */
     @Transactional
@@ -85,7 +87,9 @@ public class ServiceRegistrationService {
         String contactEmail = owner == null
                 ? requireText(request.getContactEmail(), "Email liên hệ", 100).toLowerCase(Locale.ROOT) : owner.getEmail();
         if (owner == null) {
+            lockContact(contactEmail, contactPhone);
             requireAvailableContact(contactEmail, contactPhone);
+            requireNoPendingGuestRegistration(contactEmail, contactPhone);
         }
 
         ServiceRegistration entity = ServiceRegistration.builder()
@@ -204,6 +208,7 @@ public class ServiceRegistrationService {
 
     private Account createOwner(ServiceRegistration registration) {
         String email = requireText(registration.getContactEmail(), "Email liên hệ", 100).toLowerCase(Locale.ROOT);
+        lockContact(email, registration.getContactPhone());
         requireAvailableContact(email, registration.getContactPhone());
         // The Owner sets their first password through the existing email OTP reset flow.
         try {
@@ -219,6 +224,22 @@ public class ServiceRegistrationService {
         } catch (DataIntegrityViolationException ex) {
             throw new AppException("Không thể tạo tài khoản Owner. Kiểm tra email và số điện thoại của đơn.",
                     HttpStatus.CONFLICT);
+        }
+    }
+
+    private void lockContact(String email, String phone) {
+        contactLocks.acquire(email);
+        contactLocks.acquire("phone:" + phone);
+    }
+
+    private void requireNoPendingGuestRegistration(String email, String phone) {
+        if (serviceRegistrationRepository.existsByRequesterIdIsNullAndStatusAndContactEmailIgnoreCase(
+                ApprovalStatus.PENDING, email)) {
+            throw new AppException("Email đã có đơn đăng ký dịch vụ đang chờ duyệt.", HttpStatus.CONFLICT);
+        }
+        if (serviceRegistrationRepository.existsByRequesterIdIsNullAndStatusAndContactPhone(
+                ApprovalStatus.PENDING, phone)) {
+            throw new AppException("Số điện thoại đã có đơn đăng ký dịch vụ đang chờ duyệt.", HttpStatus.CONFLICT);
         }
     }
 
