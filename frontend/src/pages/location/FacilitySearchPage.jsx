@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import PublicFooter from '../../components/layout/PublicFooter';
 import { today } from '../../utils/formatters';
 import LocationMap from '../../components/map/LocationMap';
 import { useFacilitySearch } from '../../hooks/useFacilitySearch';
@@ -204,6 +205,7 @@ export default function FacilitySearchPage() {
           </aside>
         </div>
       </main>
+      <PublicFooter />
     </div>
   );
 }

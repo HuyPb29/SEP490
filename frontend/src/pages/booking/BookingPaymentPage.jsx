@@ -8,6 +8,7 @@ import styles from './BookingPaymentPage.module.css';
 import { formatVnd, uiMessage } from '../../utils/formatters';
 import { CheckoutProgress, Feedback } from '../../components/common/WorkspacePrimitives';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import PublicFooter from '../../components/layout/PublicFooter';
 
 // DR21: Dung lượng ảnh tối đa 5MB & chỉ nhận JPG, PNG
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -260,7 +261,7 @@ export default function BookingPaymentPage() {
         <Link className="cw-secondary" to="/my-bookings">Về lịch đặt sân</Link>
       </>}
     </Feedback>
-  </main></div>;
+  </main><PublicFooter /></div>;
 
   const isExpired = bookingData.status === 'EXPIRED' || (bookingData.canPay && remainingSeconds === 0);
   const isConfirmedWait = bookingData.awaiting;
@@ -530,6 +531,7 @@ export default function BookingPaymentPage() {
           </section>
         </div>}
       </main>
+      <PublicFooter />
     </div>
   );
 }

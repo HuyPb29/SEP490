@@ -6,6 +6,7 @@ import { useVenueSession } from '../../hooks/useVenueSchedule';
 import VenueInformation from './VenueInformation';
 import styles from './FacilityDetailPage.module.css';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import PublicFooter from '../../components/layout/PublicFooter';
 
 export default function FacilityDetailPage() {
   const { id } = useParams();
@@ -87,6 +88,7 @@ export default function FacilityDetailPage() {
 
         <VenueInformation key={'info:' + facility.facility_id} facility={facility} retryVenue={() => setReload((value) => value + 1)} />
       </main>
+      <PublicFooter />
     </div>
   );
 }

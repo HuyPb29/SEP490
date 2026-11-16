@@ -1,0 +1,123 @@
+.footer {
+  margin-top: auto;
+  background: #142f26;
+  color: #d7e6dd;
+  font-family: var(--font-sans);
+}
+
+.inner {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-5) var(--space-6);
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  gap: var(--space-8);
+}
+
+.brandBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.brandLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  align-self: flex-start;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  text-decoration: none;
+}
+
+.brandMark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-accent);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.tagline {
+  margin: 0;
+  max-width: 36ch;
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: #a9c2b4;
+}
+
+.column {
+  min-width: 0;
+}
+
+.columnTitle {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+
+.linkList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.link {
+  color: #a9c2b4;
+  font-size: var(--text-base);
+  text-decoration: none;
+}
+
+.link:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.link:focus-visible,
+.brandLink:focus-visible {
+  outline: 3px solid var(--color-primary-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.bottomBar {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bottomBar p {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--text-xs);
+  color: #8aa597;
+}
+
+@media (max-width: 767px) {
+  .inner {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-6);
+    padding: var(--space-6) var(--space-4);
+  }
+
+  .brandBlock {
+    grid-column: 1 / -1;
+  }
+
+  .bottomBar p {
+    padding: var(--space-4);
+  }
+}

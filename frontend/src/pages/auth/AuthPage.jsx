@@ -260,7 +260,7 @@ export default function AuthPage() {
   };
 
   return (
-    <PublicLayout fullWidth>
+    <PublicLayout fullWidth hideHeader hideFooter>
       <div className={styles.splitLayout}>
         <aside className={styles.leftPanel}>
           <img className={styles.courtPhoto} src={courtPhoto} width="1600" height="900" alt="" fetchPriority="high" />

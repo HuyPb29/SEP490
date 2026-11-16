@@ -2,6 +2,7 @@ import { useNavigationDrawer } from '../../hooks/useNavigationDrawer';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { PageHeader } from '../common/PageHeader';
+import PublicFooter from './PublicFooter';
 import styles from './AppLayouts.module.css';
 import { UserMenu } from './UserMenu';
 
@@ -163,6 +164,8 @@ export default function PublicLayout({
   backTo,
   actions,
   fullWidth = false,
+  hideHeader = false,
+  hideFooter = false,
   className = '',
   children,
 }) {
@@ -171,7 +174,7 @@ export default function PublicLayout({
       <a href="#public-main" className={styles.skipLink}>
         Đến nội dung chính
       </a>
-      <PublicHeader />
+      {!hideHeader && <PublicHeader />}
       <main id="public-main" className={fullWidth ? styles.publicMainFull : styles.publicMain}>
         {(title || backTo || actions) && (
           <PageHeader
@@ -184,6 +187,7 @@ export default function PublicLayout({
         )}
         {children}
       </main>
+      {!hideFooter && <PublicFooter />}
     </div>
   );
 }
