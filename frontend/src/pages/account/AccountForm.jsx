@@ -47,6 +47,14 @@ export default function AccountForm({ fields = [], label, submit, confirmation, 
         return [name, error];
       })
     );
+    if (
+      'currentPassword' in values &&
+      'newPassword' in values &&
+      !validation.newPassword &&
+      values.newPassword === values.currentPassword
+    ) {
+      validation.newPassword = 'Mật khẩu mới phải khác mật khẩu hiện tại.';
+    }
     if ('confirmation' in values) {
       if (!validation.confirmation && values.confirmation !== values.newPassword) {
         validation.confirmation = 'Xác nhận mật khẩu mới không khớp.';

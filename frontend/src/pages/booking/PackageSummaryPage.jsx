@@ -4,6 +4,7 @@ import { apiErrorMessage } from '../../api';
 import { toTimeLabel } from '../../api/bookingApi';
 import { CheckoutProgress, ConfirmDialog, Feedback } from '../../components/common/WorkspacePrimitives';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import PublicFooter from '../../components/layout/PublicFooter';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import { usePackagePreview } from '../../hooks/usePackagePreview';
@@ -198,7 +199,7 @@ export default function PackageSummaryPage() {
         <Feedback tone={previewError ? 'error' : 'info'}>{previewError || 'Đang tải tóm tắt gói…'}
           {previewError && <Link className="cw-secondary" to={editPath}>Quay lại sửa lịch gói</Link>}
         </Feedback>
-      </main></div>
+      </main><PublicFooter /></div>
     );
   }
 
@@ -430,6 +431,7 @@ export default function PackageSummaryPage() {
           </aside>
         </div>
       </main>
+      <PublicFooter />
     </div>
   );
 }

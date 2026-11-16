@@ -7,6 +7,7 @@ import { formatVnd } from '../../utils/formatters';
 import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, pointInputError } from '../../utils/checkoutPoints';
 import { CheckoutProgress, ConfirmDialog, Feedback } from '../../components/common/WorkspacePrimitives';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import PublicFooter from '../../components/layout/PublicFooter';
 
 function toMinutes(time) {
   const [hours, minutes] = time.split(':').map(Number);
@@ -281,7 +282,7 @@ export default function BookingSummaryPage() {
     <Feedback tone={quoteError ? 'error' : 'info'}>{quoteError || 'Đang tải giá đặt sân…'}
       {quoteError && <Link className="cw-secondary" to={'/facilities/' + bookingContext.facility.facility_id}>Quay lại lịch sân</Link>}
     </Feedback>
-  </main></div>;
+  </main><PublicFooter /></div>;
 
   return (
     <div className={`${styles.pageWrapper} cw-workspace`}>
@@ -550,6 +551,7 @@ export default function BookingSummaryPage() {
           </aside>
         </div>
       </main>
+      <PublicFooter />
     </div>
   );
 }

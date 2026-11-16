@@ -111,6 +111,8 @@ export default function OwnerOpeningHoursPage() {
   )
   const courts = useMemo(() => selectedLocation?.courts ?? [], [selectedLocation])
   const locationLocked = selectedLocation?.status === 'LOCKED'
+  // D123: quá hạn dịch vụ thì địa điểm vẫn hoạt động, quá hạn 10 ngày (P31) mới bị khóa.
+  const serviceExpired = !locationLocked && Boolean(selectedLocation?.serviceTermEndDate) && !selectedLocation?.serviceActive
 
   const loadWeek = useCallback(async (locationId) => {
     const days = await getOpeningHours(locationId)
@@ -436,7 +438,8 @@ export default function OwnerOpeningHoursPage() {
         )}
         {serviceExpired && (
           <p className={styles.alertWarn}>
-            Kỳ hạn dịch vụ đã hết hạn. Vui lòng liên hệ Quản trị viên để gia hạn trước khi thay đổi cấu hình.
+            Thời hạn sử dụng dịch vụ đã hết ngày {selectedLocation.serviceTermEndDate}. Địa điểm sẽ bị khóa khi quá hạn 10 ngày;
+            vui lòng liên hệ Quản trị viên để gia hạn.
           </p>
         )}
 

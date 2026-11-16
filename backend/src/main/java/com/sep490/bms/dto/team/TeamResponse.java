@@ -25,5 +25,10 @@ public class TeamResponse {
     private long memberCount;
     private boolean member;
     private boolean captain;
+    /** DR12: tối đa 20 thành viên, để màn hình hiện "số thành viên/tối đa" (D78). */
+    private int maxMembers;
+    /** Yêu cầu vào đội đang chờ của người xem (PENDING) — null nếu không có. */
+    private String myJoinStatus;
+    private Long myJoinRequestId;
     private LocalDateTime createdAt;
 }
