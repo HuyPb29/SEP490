@@ -15,7 +15,10 @@ import {
   rejectJoinRequest,
   sendJoinRequest,
 } from '../../api/matchApi';
+import { searchFacilities } from '../../api/facilityApi';
+import { getMySkillLevel } from '../../api/teamApi';
 import { useAuth } from '../../hooks/useAuth';
+import { isSkillLevel, SKILL_LEVELS } from '../../utils/skillLevels';
 import styles from './OpenMatchesPage.module.css';
 
 const TIME_SLOTS = {
@@ -47,18 +50,26 @@ export default function OpenMatchesPage() {
 
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [timeSlot, setTimeSlot] = useState('all');
-  const [appliedFilters, setAppliedFilters] = useState(() => ({ date: todayIso(), timeSlot: 'all' }));
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState(() => ({ date: todayIso(), timeSlot: 'all', locationId: '' }));
+  // FR104: lọc kèo theo địa điểm; danh sách địa điểm đang hoạt động lấy từ UC11.
+  const [locations, setLocations] = useState([]);
 
   const [matches, setMatches] = useState([]);
   const [matchesError, setMatchesError] = useState('');
   const [loadingMatches, setLoadingMatches] = useState(true);
 
-  // Kèo tôi làm chủ đang mở, kèm yêu cầu tham gia đang chờ của từng kèo.
+  // Kèo tôi làm chủ đang mở, kèm yêu cầu đang chờ và người đã được duyệt (FR103: chủ kèo xem SĐT người đã duyệt).
   const [hostedMatches, setHostedMatches] = useState([]);
   const [hostedError, setHostedError] = useState('');
+  // Kèo tôi đã được duyệt vào, còn hiệu lực (FR103: người đã duyệt xem SĐT chủ kèo).
+  const [joinedMatches, setJoinedMatches] = useState([]);
 
   const [requestingMatchId, setRequestingMatchId] = useState(null);
   const [sharePhone, setSharePhone] = useState(false);
+  // FR99: hồ sơ chưa có trình độ thì chọn khi gửi yêu cầu; null = chưa tải xong.
+  const [mySkill, setMySkill] = useState(null);
+  const [chosenSkill, setChosenSkill] = useState('');
   const [requestError, setRequestError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState('');
@@ -68,6 +79,7 @@ export default function OpenMatchesPage() {
     try {
       const slot = TIME_SLOTS[appliedFilters.timeSlot] ?? TIME_SLOTS.all;
       const page = await getOpenMatches({
+        locationId: appliedFilters.locationId || undefined,
         playDate: appliedFilters.date || undefined,
         fromMinute: slot.fromMinute,
         toMinute: slot.toMinute,
@@ -84,18 +96,26 @@ export default function OpenMatchesPage() {
   const loadHosted = useCallback(async () => {
     if (!isPlayer) return;
     try {
-      const page = await getMyMatches({ role: 'HOSTED', status: 'OPEN' });
+      const [page, joined] = await Promise.all([
+        getMyMatches({ role: 'HOSTED', status: 'OPEN' }),
+        getMyMatches({ role: 'JOINED' }),
+      ]);
       const hosted = await Promise.all(
         (page.content ?? []).map(async (match) => {
           try {
-            const requests = await getJoinRequests(match.id, 'PENDING');
-            return { match, requests };
+            const [requests, approved] = await Promise.all([
+              getJoinRequests(match.id, 'PENDING'),
+              getJoinRequests(match.id, 'APPROVED'),
+            ]);
+            return { match, requests, approved };
           } catch {
-            return { match, requests: [] };
+            return { match, requests: [], approved: [] };
           }
         })
       );
       setHostedMatches(hosted);
+      setJoinedMatches((joined.content ?? []).filter((match) =>
+        match.myJoinStatus === 'APPROVED' && (match.status === 'OPEN' || match.status === 'CLOSED')));
       setHostedError('');
     } catch (cause) {
       setHostedError(apiErrorMessage(cause, 'Không tải được kèo của bạn.'));
@@ -113,27 +133,44 @@ export default function OpenMatchesPage() {
     return () => clearTimeout(timer);
   }, [isPlayer, loadHosted]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    searchFacilities({ signal: controller.signal })
+      .then((result) => setLocations(result?.data?.items ?? []))
+      .catch(() => setLocations([]));
+    return () => controller.abort();
+  }, []);
+
   const reloadAll = useCallback(() => Promise.all([loadMatches(), loadHosted()]), [loadMatches, loadHosted]);
 
   const submitFilters = (event) => {
     event.preventDefault();
-    setAppliedFilters({ date: selectedDate, timeSlot });
+    setAppliedFilters({ date: selectedDate, timeSlot, locationId: selectedLocation });
   };
 
   const openJoinDialog = (matchId) => {
     setRequestingMatchId(matchId);
     setSharePhone(false);
     setRequestError('');
+    setChosenSkill('');
+    setMySkill(null);
+    getMySkillLevel().then(setMySkill).catch(() => setMySkill(''));
   };
 
+  const needsSkill = mySkill !== null && !isSkillLevel(mySkill);
+
   const submitJoinRequest = async () => {
+    if (needsSkill && !isSkillLevel(chosenSkill)) {
+      setRequestError('Hồ sơ của bạn chưa có trình độ chơi, vui lòng chọn trình độ.');
+      return;
+    }
     if (!sharePhone) {
       setRequestError('Vui lòng đồng ý chia sẻ số điện thoại để tham gia kèo. (MSG24)');
       return;
     }
     setSubmitting(true);
     try {
-      await sendJoinRequest(requestingMatchId, true);
+      await sendJoinRequest(requestingMatchId, true, needsSkill ? chosenSkill : undefined);
       setRequestingMatchId(null);
       setRequestError('');
       setNotice('Đã gửi yêu cầu tham gia. Chủ kèo sẽ xét duyệt.');
@@ -192,7 +229,12 @@ export default function OpenMatchesPage() {
       );
     }
     if (match.myJoinStatus === 'APPROVED') {
-      return <div className={styles.requestStatusRow}><strong>Bạn đã được duyệt vào kèo</strong></div>;
+      return (
+        <div className={styles.requestStatusRow}>
+          <strong>Bạn đã được duyệt vào kèo</strong>
+          {match.hostPhone && <span>SĐT chủ kèo: {match.hostPhone}</span>}
+        </div>
+      );
     }
     if (match.myJoinStatus === 'REJECTED') {
       // D61: bị từ chối thì không xin lại kèo đó.
@@ -235,6 +277,15 @@ export default function OpenMatchesPage() {
 
         <form className={styles.filterBar} onSubmit={submitFilters}>
           <label className={styles.filterField}>
+            <span>Địa điểm</span>
+            <select value={selectedLocation} onChange={(event) => setSelectedLocation(event.target.value)}>
+              <option value="">Mọi địa điểm</option>
+              {locations.map((location) => (
+                <option key={location.facility_id} value={location.facility_id}>{location.facility_name}</option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.filterField}>
             <span>Ngày chơi</span>
             <input
               type="date"
@@ -266,13 +317,15 @@ export default function OpenMatchesPage() {
               <article className={styles.matchCard} key={match.id}>
                 <div className={styles.matchTop}>
                   <h2>{match.locationName} · {match.courtName}</h2>
-                  {match.hostSkillLevel && <span className={styles.skillBadge}>{match.hostSkillLevel}</span>}
+                  {match.teamSkillLevel && (
+                    <span className={styles.skillBadge} title="Trình độ của đội mở kèo">{match.teamSkillLevel}</span>
+                  )}
                 </div>
                 <p className={styles.matchTime}>
                   {formatMatchDate(match.playDate)} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}
                 </p>
                 <div className={styles.hostRow}>
-                  <span>Chủ kèo: <strong>{match.hostName}</strong></span>
+                  <span>Đội <strong>{match.teamName}</strong> · Chủ kèo: <strong>{match.hostName}</strong></span>
                   <strong>{match.currentPlayers}/{capacityOf(match)} người</strong>
                 </div>
                 <div
@@ -290,7 +343,7 @@ export default function OpenMatchesPage() {
               </article>
             ))}
             {!loadingMatches && !matchesError && matches.length === 0 && (
-              <div className={styles.emptyState}>Không có kèo phù hợp với ngày và khung giờ đã chọn.</div>
+              <div className={styles.emptyState}>Không có kèo phù hợp với địa điểm, ngày và khung giờ đã chọn.</div>
             )}
           </section>
 
@@ -303,7 +356,7 @@ export default function OpenMatchesPage() {
                   Bạn chưa có kèo đang mở. Mở kèo từ chi tiết booking đã xác nhận đặt dưới tên đội của bạn.
                 </p>
               )}
-              {hostedMatches.map(({ match, requests }) => (
+              {hostedMatches.map(({ match, requests, approved }) => (
                 <div key={match.id}>
                   <div className={styles.hostedSummary}>
                     <strong>{match.locationName} · {match.courtName}</strong>
@@ -349,6 +402,28 @@ export default function OpenMatchesPage() {
                     <p className={styles.noRequests}>Không có yêu cầu tham gia đang chờ.</p>
                   )}
 
+                  {approved.length > 0 && (
+                    <>
+                      <h3 className={styles.requestsTitle}>Đã được duyệt ({approved.length})</h3>
+                      <ul className={styles.requestList}>
+                        {approved.map((request) => (
+                          <li className={styles.requestItem} key={request.id}>
+                            <div className={styles.requestPerson}>
+                              <span className={styles.requestAvatar}>
+                                {(request.fullName || '?').trim().charAt(0).toUpperCase()}
+                              </span>
+                              <div>
+                                <strong>{request.fullName}</strong>
+                                {request.skillLevel && <span>Trình độ: {request.skillLevel}</span>}
+                                {request.phone && <span>SĐT: {request.phone}</span>}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+
                   <div className={styles.hostedActions}>
                     <button
                       type="button"
@@ -365,6 +440,22 @@ export default function OpenMatchesPage() {
                       Hủy kèo
                     </button>
                   </div>
+                </div>
+              ))}
+
+              <h2 className={styles.hostedTitle}>Kèo tôi đã được duyệt</h2>
+              {joinedMatches.length === 0 && (
+                <p className={styles.noRequests}>Bạn chưa được duyệt vào kèo nào sắp diễn ra.</p>
+              )}
+              {joinedMatches.map((match) => (
+                <div className={styles.hostedSummary} key={match.id}>
+                  <strong>{match.locationName} · {match.courtName}</strong>
+                  <span>
+                    {formatMatchDate(match.playDate)} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}
+                  </span>
+                  <span>
+                    Chủ kèo: {match.hostName}{match.hostPhone ? ` · SĐT: ${match.hostPhone}` : ''}
+                  </span>
                 </div>
               ))}
             </aside>
@@ -396,6 +487,22 @@ export default function OpenMatchesPage() {
               ×
             </button>
             <h2 id="join-modal-title">Xin tham gia kèo</h2>
+            {needsSkill && (
+              <label className={styles.filterField}>
+                <span>Trình độ chơi của bạn</span>
+                <select
+                  value={chosenSkill}
+                  onChange={(event) => {
+                    setChosenSkill(event.target.value);
+                    setRequestError('');
+                  }}
+                >
+                  <option value="">Chọn trình độ</option>
+                  {SKILL_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
+                </select>
+                <small>Hồ sơ của bạn chưa có trình độ. Trình độ bạn chọn sẽ được lưu vào hồ sơ.</small>
+              </label>
+            )}
             <label className={styles.consentLabel}>
               <input
                 type="checkbox"
@@ -419,7 +526,7 @@ export default function OpenMatchesPage() {
               >
                 Hủy
               </button>
-              <button type="button" className={styles.modalSubmit} disabled={submitting} onClick={submitJoinRequest}>
+              <button type="button" className={styles.modalSubmit} disabled={submitting || mySkill === null} onClick={submitJoinRequest}>
                 {submitting ? 'Đang gửi…' : 'Gửi yêu cầu'}
               </button>
             </div>
