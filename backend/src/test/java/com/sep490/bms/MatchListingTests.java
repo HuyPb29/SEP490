@@ -39,12 +39,12 @@ class MatchListingTests {
 
     @BeforeEach
     void setUp() {
-        hostId = account("Advanced");
+        hostId = account("Mới chơi");
         playerId = account(null);
         Long ownerId = account(null);
         jdbc.update("UPDATE account SET role = 'OWNER' WHERE id = ?", ownerId);
         String teamName = "L" + UUID.randomUUID().toString().substring(0, 8);
-        jdbc.update("INSERT INTO team (name, captain_id) VALUES (?, ?)", teamName, hostId);
+        jdbc.update("INSERT INTO team (name, captain_id, skill_level) VALUES (?, ?, N'Nâng cao')", teamName, hostId);
         teamId = jdbc.queryForObject("SELECT id FROM team WHERE name = ?", Long.class, teamName);
         locationId = locations.saveAndFlush(Location.builder().ownerId(ownerId).name("Listing test")
                 .address("Test").contactPhone("0987654321").latitude(BigDecimal.ONE).longitude(BigDecimal.ONE)
@@ -86,14 +86,15 @@ class MatchListingTests {
     }
 
     @Test
-    void openMatchesFilterByStartTimeWindowAndShowHostSkill() {
+    void openMatchesFilterByStartTimeWindowAndShowTeamSkill() {
         long morning = match(booking(480), "OPEN");
         long evening = match(booking(1080), "OPEN");
 
         List<MatchResponse> eveningOnly = matches
                 .getMatches(null, null, locationId, playDate, 1020, 1380, 0, 10).getContent();
         assertThat(ids(eveningOnly)).containsExactly(evening);
-        assertThat(eveningOnly.get(0).getHostSkillLevel()).isEqualTo("Advanced");
+        // FR104 (D165): nhãn trình độ của kèo là trình độ của đội, không phải của chủ kèo ("Mới chơi").
+        assertThat(eveningOnly.get(0).getTeamSkillLevel()).isEqualTo("Nâng cao");
         assertThat(ids(matches.getMatches(null, null, locationId, playDate, 360, 720, 0, 10).getContent()))
                 .containsExactly(morning);
     }
