@@ -77,6 +77,13 @@ export function OwnerReviews() {
 
   // Ẩn / Hiện lại đánh giá (UC32)
   const handleToggleHidden = async (review) => {
+    // BR22: chỉ ẩn đánh giá vi phạm quy định nội dung, không ẩn vì bị chấm điểm thấp.
+    if (!review.hidden && !window.confirm(
+      'Chỉ ẩn đánh giá vi phạm quy định nội dung (xúc phạm, quảng cáo, thông tin cá nhân…), '
+      + 'không ẩn vì bị chấm điểm thấp. Ẩn đánh giá này khỏi trang công khai?'
+    )) {
+      return;
+    }
     setActionInProgress(true);
     try {
       await api.patch(`/owner/reviews/${review.id}`, { hidden: !review.hidden });
