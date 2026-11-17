@@ -707,9 +707,9 @@ export default function MyBookingsPage() {
           >
             Đã qua
           </button>
-          <label>
-            Trạng thái
-            <select value={exactStatus} onChange={(event) => { setExactStatus(event.target.value); setActiveTab('all'); }}>
+          <label className={`${styles.statusFilter} ${exactStatus ? styles.statusFilterActive : ''}`}>
+            <span className={styles.statusFilterLabel}>Trạng thái</span>
+            <select className={styles.statusSelect} value={exactStatus} onChange={(event) => { setExactStatus(event.target.value); setActiveTab('all'); }}>
               <option value="">Tất cả trạng thái</option>
               {Object.entries(bookingStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
             </select>
