@@ -6,10 +6,13 @@ import api from './index'
  * không tự cộng trừ số liệu ở state (D60, D61, D62, D79, D83).
  */
 
-/** Danh sách kèo đang mở, Guest cũng xem được (D64). Giờ tính theo phút trong ngày. */
-export async function getOpenMatches({ playDate, fromMinute, toMinute, page = 0, size = 50 } = {}) {
+/**
+ * Danh sách kèo đang mở, Guest cũng xem được (D64); lọc theo địa điểm, ngày và khung giờ (FR104).
+ * Giờ tính theo phút trong ngày.
+ */
+export async function getOpenMatches({ locationId, playDate, fromMinute, toMinute, page = 0, size = 50 } = {}) {
   const { data } = await api.get('/matches', {
-    params: { status: 'OPEN', playDate, fromMinute, toMinute, page, size },
+    params: { status: 'OPEN', locationId, playDate, fromMinute, toMinute, page, size },
   })
   return data.data
 }
@@ -52,9 +55,15 @@ export async function getJoinRequests(matchId, status) {
   return data.data
 }
 
-/** Gửi yêu cầu xin vào kèo; bắt buộc đồng ý chia sẻ số điện thoại (D79). */
-export async function sendJoinRequest(matchId, phoneConsent) {
-  const { data } = await api.post(`/matches/${matchId}/join-requests`, { phoneConsent })
+/**
+ * Gửi yêu cầu xin vào kèo; bắt buộc đồng ý chia sẻ số điện thoại (D79).
+ * skillLevel chỉ cần khi hồ sơ chưa có trình độ; backend lưu vào hồ sơ (FR99).
+ */
+export async function sendJoinRequest(matchId, phoneConsent, skillLevel) {
+  const { data } = await api.post(`/matches/${matchId}/join-requests`, {
+    phoneConsent,
+    skillLevel: skillLevel || undefined,
+  })
   return data.data
 }
 
