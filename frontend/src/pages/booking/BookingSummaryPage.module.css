@@ -314,6 +314,25 @@
 .teamPill, .confirmBtn { min-height: 44px; }
 .confirmBtn { background: var(--cw-primary); }
 .confirmBtn:hover:not(:disabled) { background: var(--cw-primary-hover); }
+.pointsRow input[type="number"] {
+  flex: 0 1 120px;
+  width: 120px;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--cw-border);
+  border-radius: 12px;
+  color: var(--cw-text);
+  font: inherit;
+  font-weight: 700;
+  text-align: right;
+}
+.pointsRow input[type="number"]:focus {
+  border-color: var(--cw-primary);
+  outline: 2px solid var(--cw-primary);
+  outline-offset: 1px;
+}
+.pointsRow input[type="number"][aria-invalid="true"] { border-color: #dc2626; }
 .totalValue, .discountValue { color: var(--cw-primary); }
 .infoValue { overflow-wrap: anywhere; }
 @media (min-width: 901px) { .paymentCard { position: sticky; top: 16px; } }

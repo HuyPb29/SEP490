@@ -64,9 +64,15 @@ export async function getPublicVenue(id, signal) {
 }
 
 // bookingId (tùy chọn): booking đang đổi lịch; buổi trong gói được xem tới hết thời hạn gói (BR31)
-export async function getVenueSchedule(id, date, signal, bookingId) {
-  const response = await api.get('/locations/' + id + '/schedules', { params: { date, bookingId }, signal })
-  const schedule = body(response)
+// forPackage: Player chọn buổi cho gói đặt nhiều buổi, xem được tới hết 3 tháng (BR27, D162)
+export async function getVenueSchedule(id, date, signal, bookingId, { forPackage = false } = {}) {
+  const params = { date, bookingId, ...(forPackage ? { forPackage: true } : {}) }
+  const response = await api.get('/locations/' + id + '/schedules', { params, signal })
+  return mapSchedule(body(response))
+}
+
+// Đổi dữ liệu lịch sân của backend sang dạng ScheduleGrid dùng
+export function mapSchedule(schedule) {
   const courts = schedule.courts.map((court) => ({
     court_id: court.courtId,
     court_name: court.name,

@@ -52,6 +52,10 @@ function Inbox() {
       {(role === 'owner' || role === 'staff') && item.type === 'RESCHEDULE_PROOF_SUBMITTED' && item.refId &&
         <Link className="block underline" to="/staff/confirm-payments?type=reschedule"
           onClick={() => setSelectedVenue(item.refId)}>Mở danh sách phụ thu chờ xác nhận</Link>}
+      {role === 'staff' && item.type === 'BOOKING_ENDING_SOON' &&
+        <Link className="block underline" to="/staff/dashboard">Mở bảng điều hành</Link>}
+      {role === 'admin' && item.refType === 'SERVICE_REGISTRATION' &&
+        <Link className="block underline" to="/admin/facilities">Xem đơn đăng ký dịch vụ</Link>}
       {role === 'owner' && item.refType === 'COMPLAINT' &&
         <Link className="block underline" to={`/owner/workspace?tab=complaints&complaintId=${item.refId}`}>Xem khiếu nại</Link>}
       {role === 'owner' && item.type === 'REFUND_REQUEST' &&

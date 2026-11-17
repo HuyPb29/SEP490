@@ -85,6 +85,7 @@ public class BookingService {
         Court court = courtRepository.findByIdAndActiveTrue(request.courtId())
                 .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
         Location location = locationQueryService.findActive(court.getLocationId());
+        requireOnlinePaymentDetails(location);
         requireBookable(location, request.courtId(), request.date(), request.startMinute(), request.endMinute(), now);
         requireOwnTeam(player.getId(), request.teamId());
         Account booker = accountRepository.findById(player.getId())
@@ -392,6 +393,14 @@ public class BookingService {
      * Slot đã có người giữ hoặc đặt, kể cả chính Player đang giữ (D132): MSG28.
      * Dùng chung cho booking lẻ (UC14) và booking tại quầy (UC16: cùng giới hạn đặt trước BR02, BR43).
      */
+    static void requireOnlinePaymentDetails(Location location) {
+        if (!StringUtils.hasText(location.getBankName()) || !StringUtils.hasText(location.getBankAccountNo())
+                || !StringUtils.hasText(location.getBankAccountHolder()) || !StringUtils.hasText(location.getQrImagePath())) {
+            throw new AppException("Địa điểm chưa cấu hình đầy đủ thông tin chuyển khoản để nhận đặt sân online",
+                    HttpStatus.CONFLICT);
+        }
+    }
+
     public void requireBookable(Location location, Long courtId, LocalDate date, int startMinute, int endMinute,
             LocalDateTime now) {
         int advanceDays = location.getAdvanceBookingDays();

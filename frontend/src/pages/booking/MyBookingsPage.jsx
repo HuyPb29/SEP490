@@ -8,6 +8,7 @@ import styles from './MyBookingsPage.module.css';
 import { formatVnd, uiMessage } from '../../utils/formatters';
 import { ConfirmDialog, EmptyState, Feedback, Field, Modal } from '../../components/common/WorkspacePrimitives';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import PublicFooter from '../../components/layout/PublicFooter';
 import ScheduleGrid from '../../components/schedule/ScheduleGrid';
 
 // Phân nhóm 10 trạng thái chính thức theo chuẩn SRS (Sheet Trang_thai)
@@ -963,6 +964,7 @@ export default function MyBookingsPage() {
           </div>
         )}
       </main>
+      <PublicFooter />
 
       {detailTarget && (
         <HistoryDetailDialog key={detailTarget.booking_type + ':' + detailTarget.booking_id}

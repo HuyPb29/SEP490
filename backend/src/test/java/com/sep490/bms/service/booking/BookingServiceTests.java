@@ -95,7 +95,7 @@ class BookingServiceTests {
         when(courts.findByIdAndActiveTrue(COURT)).thenReturn(Optional.of(
                 Court.builder().id(COURT).locationId(LOCATION).name("Sân 1").build()));
         when(locations.findActive(LOCATION)).thenReturn(
-                Location.builder().id(LOCATION).name("Cầu lông Sunrise").advanceBookingDays((short) 30).build());
+                Location.builder().id(LOCATION).name("Cầu lông Sunrise").advanceBookingDays((short) 30).bankName("Test Bank").bankAccountNo("123456").bankAccountHolder("Owner").qrImagePath("test-qr.png").build());
         Account account = Account.builder().id(PLAYER).fullName("Nguyễn An").phone("0912345678").build();
         when(accounts.findById(PLAYER)).thenReturn(Optional.of(account));
         when(accounts.findByIdForUpdate(PLAYER)).thenReturn(Optional.of(account));

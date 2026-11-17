@@ -401,44 +401,6 @@
   max-width: 120px;
 }
 
-/* Summary Bar */
-.summaryBar {
-  background: #e9f5ee;
-  border-radius: 14px;
-  padding: 16px 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.summaryMainText {
-  font-size: 15px;
-  font-weight: 800;
-  color: #0f172a;
-  margin-bottom: 4px;
-}
-
-.summarySubText {
-  font-size: 12.5px;
-  color: #475569;
-}
-
-.continueBookingBtn {
-  background: #0d8a52;
-  color: #ffffff;
-  border: none;
-  border-radius: 12px;
-  padding: 12px 22px;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.continueBookingBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 /* Bottom Grid: Price Table & Reviews */
 .bottomGrid {
   display: grid;
@@ -520,10 +482,10 @@
 .venueHeader { margin-bottom: 18px; }
 .facilityTitle { font-size: clamp(1.8rem, 4.3vw, 3rem); letter-spacing: -.045em; }
 .facilityInfoCard, .scheduleCard { border-color: var(--cw-border); box-shadow: var(--cw-shadow); min-width: 0; }
-.scheduleHeader, .dateControls, .summaryBar { flex-wrap: wrap; }
-.scrollScheduleBtn, .continueBookingBtn { background: var(--cw-primary); }
-.scrollScheduleBtn:hover:not(:disabled), .continueBookingBtn:hover:not(:disabled) { background: var(--cw-primary-hover); }
-.slotBtn, .navArrowBtn, .continueBookingBtn, .packageBookingBtn, .scrollScheduleBtn { min-height: 44px; }
+.scheduleHeader, .dateControls { flex-wrap: wrap; }
+.scrollScheduleBtn { background: var(--cw-primary); }
+.scrollScheduleBtn:hover:not(:disabled) { background: var(--cw-primary-hover); }
+.slotBtn, .navArrowBtn, .packageBookingBtn, .scrollScheduleBtn { min-height: 44px; }
 .tableWrapper { overflow: auto; }
 .slotBtn[aria-pressed=true] { background: var(--cw-primary); color: white; }
 @media (max-width: 640px) {

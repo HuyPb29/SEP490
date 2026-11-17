@@ -14,6 +14,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.account.AccountStatus;
 import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.dto.promotion.PointGrantPlayerResponse;
 
@@ -52,6 +53,8 @@ public interface AccountRepository extends JpaRepository<Account, Long>, JpaSpec
     boolean existsByPhone(String phone);
 
     List<Account> findByRoleAndLocationId(Role role, Long locationId);
+
+    List<Account> findByRoleAndStatus(Role role, AccountStatus status);
 
     @Query("""
             select new com.sep490.bms.dto.promotion.PointGrantPlayerResponse(a.id, a.username, a.fullName)

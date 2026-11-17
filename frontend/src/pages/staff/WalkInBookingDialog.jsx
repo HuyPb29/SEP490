@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import api, { apiErrorMessage } from '../../api'
+import { mapSchedule } from '../../api/facilityApi'
 import { fieldError, normalizeName, validName, validPhone } from '../../api/f1Rules'
 import { F1Dialog, F1Toast } from '../../components/F1Feedback'
+import ScheduleGrid from '../../components/schedule/ScheduleGrid'
+import { pickRange } from '../../utils/slotRanges'
 import styles from './StaffDashboardPage.module.css'
 
 const dateFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
@@ -87,6 +90,24 @@ export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }
     for (let minute = Number(start); free.has(minute); minute += 30) ends.push(minute + 30)
   }
 
+  // Bảng slot cả địa điểm trong ngày; booking tại quầy là một dải liền nhau trên một sân (BR43)
+  const gridSchedule = courts ? mapSchedule(schedule) : null
+  const range = court && start !== '' && end !== ''
+    ? { courtId: Number(court), startMinute: Number(start), endMinute: Number(end) } : null
+  const gridSelected = range ? Array.from({ length: (range.endMinute - range.startMinute) / 30 }, (_, index) =>
+    ({ courtId: range.courtId, time: timeLabel(range.startMinute + index * 30) })) : []
+  const rangePrice = range ? slots.filter(({ startMinute }) => startMinute >= range.startMinute && startMinute < range.endMinute)
+    .reduce((total, slot) => total + Number(slot.price || 0), 0) : 0
+  const courtName = gridSchedule?.courts.find((item) => String(item.court_id) === court)?.court_name
+
+  const pickSlot = (row, slot) => {
+    const next = pickRange(range, row.court_id, slot.time)
+    setFields((current) => ({ ...current, courtId: undefined, startMinute: undefined, endMinute: undefined }))
+    setCourt(String(row.court_id))
+    setStart(next ? String(next.startMinute) : '')
+    setEnd(next ? String(next.endMinute) : '')
+  }
+
   const clearSlots = () => {
     setStart('')
     setEnd('')
@@ -107,8 +128,8 @@ export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }
       customerPhone: fieldError(phone, 'số điện thoại khách', validPhone),
       courtId: !court ? 'Vui lòng chọn sân.' : undefined,
       date: !date || date < today || date > maxDate ? 'Vui lòng chọn ngày trong giới hạn đặt trước.' : undefined,
-      startMinute: start === '' || !starts.includes(Number(start)) ? 'Vui lòng chọn giờ bắt đầu còn trống.' : undefined,
-      endMinute: end === '' || !ends.includes(Number(end)) ? 'Vui lòng chọn giờ kết thúc.' : undefined,
+      startMinute: start === '' || !starts.includes(Number(start)) ? 'Vui lòng bấm chọn khung giờ còn trống trên bảng.' : undefined,
+      endMinute: start !== '' && (end === '' || !ends.includes(Number(end))) ? 'Khung giờ đã chọn không còn trống liên tục.' : undefined,
     }
     setFields(next)
     if (Object.values(next).some(Boolean)) return
@@ -171,7 +192,7 @@ export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }
 
   return (
     <div className={styles.modalOverlay}>
-      <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="walk-in-title">
+      <section className={styles.modal + ' ' + styles.modalWide} role="dialog" aria-modal="true" aria-labelledby="walk-in-title">
         <h2 id="walk-in-title" className={styles.modalTitle}>Đặt sân tại quầy</h2>
         {booking ? (
           <div className={styles.bookingForm}>
@@ -218,40 +239,25 @@ export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }
             {!courts && !loadError && <p role="status">Đang tải lịch sân…</p>}
             {loadError && <p role="alert">{loadError} <button type="button" onClick={reload}>Tải lại</button></p>}
             {courts?.length === 0 && <p role="status">Địa điểm chưa có sân đang hoạt động.</p>}
-            {courts?.length > 0 && (
-              <>
-                <label className={styles.formField}>
-                  Sân
-                  <select value={court} onChange={(event) => { setCourt(event.target.value); clearSlots() }}>
-                    {courts.map(({ courtId, name: courtName }) => <option key={courtId} value={courtId}>{courtName}</option>)}
-                  </select>
-                  {fieldMessage('courtId')}
-                </label>
-                {!starts.length && <p role="status">Sân này không còn slot trống vào ngày đã chọn.</p>}
-                <div className={styles.formRow}>
-                  <label className={styles.formField}>
-                    Giờ bắt đầu
-                    <select value={start} onChange={(event) => { setStart(event.target.value); setEnd('') }}>
-                      <option value="">Chọn giờ</option>
-                      {starts.map((minute) => <option key={minute} value={minute}>{timeLabel(minute)}</option>)}
-                    </select>
-                    {fieldMessage('startMinute')}
-                  </label>
-                  <label className={styles.formField}>
-                    Giờ kết thúc
-                    <select value={end} disabled={!ends.length} onChange={(event) => setEnd(event.target.value)}>
-                      <option value="">Chọn giờ</option>
-                      {ends.map((minute) => <option key={minute} value={minute}>{timeLabel(minute)}</option>)}
-                    </select>
-                    {fieldMessage('endMinute')}
-                  </label>
-                </div>
-              </>
+            {gridSchedule?.time_headers.length === 0 && <p role="status">Ngày này địa điểm không mở cửa.</p>}
+            {gridSchedule?.time_headers.length > 0 && (
+              <div className={styles.formField}>
+                <span>Khung giờ · bấm ô trống để chọn, bấm ô liền kề cùng sân để kéo dài</span>
+                <ScheduleGrid schedule={gridSchedule} selected={gridSelected} allowBooking={!busy} onSlot={pickSlot} />
+                <span aria-live="polite">
+                  {range
+                    ? <>Đã chọn <strong>{courtName} · {timeLabel(range.startMinute)}–{timeLabel(range.endMinute)}</strong> · {money.format(rangePrice)}</>
+                    : 'Chưa chọn khung giờ.'}
+                </span>
+                {fieldMessage('courtId')}
+                {fieldMessage('startMinute')}
+                {fieldMessage('endMinute')}
+              </div>
             )}
             {error && <p className={styles.errorMessage} role="alert">{error}</p>}
             <div className={styles.modalActions}>
               <button className={styles.secondaryButton} type="button" onClick={onClose} disabled={busy}>Đóng</button>
-              <button className={styles.primaryButton} type="submit" disabled={busy || !starts.length}>
+              <button className={styles.primaryButton} type="submit" disabled={busy || !courts?.length}>
                 {busy ? 'Đang giữ chỗ…' : 'Giữ chỗ 5 phút'}
               </button>
             </div>

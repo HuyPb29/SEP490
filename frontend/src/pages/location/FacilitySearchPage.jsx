@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { PublicHeader } from '../../components/layout/PublicLayout';
+import PublicFooter from '../../components/layout/PublicFooter';
 import { today } from '../../utils/formatters';
 import LocationMap from '../../components/map/LocationMap';
 import { useFacilitySearch } from '../../hooks/useFacilitySearch';
 import { useGeolocation } from '../../hooks/useGeolocation';
+import { useAuth } from '../../hooks/useAuth';
 import { distanceKm } from '../../utils/distance';
 import styles from './FacilitySearchPage.module.css';
 
@@ -12,6 +14,8 @@ const MIN_PLAY_DATE = today();
 
 export default function FacilitySearchPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isOwner = String(user?.role_code || user?.role || '').toLowerCase() === 'owner';
   const [keyword, setKeyword] = useState('');
   const [playDate, setPlayDate] = useState(MIN_PLAY_DATE);
   const [sortBy, setSortBy] = useState('nearest'); // 'nearest' | 'rating'
@@ -20,7 +24,11 @@ export default function FacilitySearchPage() {
   const { facilities, loading, loadError, fetchFacilities } = useFacilitySearch();
   const { position, locating, locationError, requestLocation } = useGeolocation();
 
-  useEffect(() => { void fetchFacilities(''); }, [fetchFacilities]);
+  // Tìm ngay khi gõ, chờ 250 ms sau phím cuối để không gọi API mỗi phím; ô trống thì tải tất cả ngay
+  useEffect(() => {
+    const timer = setTimeout(() => { void fetchFacilities(keyword); }, keyword.trim() ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [keyword, fetchFacilities]);
 
   const handleSearchSubmit = (event) => {
     event.preventDefault();
@@ -99,6 +107,11 @@ export default function FacilitySearchPage() {
               🔍 Tìm sân
             </button>
           </form>
+          {(!user || isOwner) && (
+            <Link to="/register-service" className={styles.registerServiceLink}>
+              {isOwner ? 'Đăng ký thêm địa điểm' : 'Đăng ký sân cho chủ địa điểm'}
+            </Link>
+          )}
         </div>
       </section>
 
@@ -138,7 +151,7 @@ export default function FacilitySearchPage() {
 
         <div className={styles.contentGrid}>
           <div className={styles.cardsGrid}>
-            {loading ? (
+            {loading && facilities.length === 0 ? (
               <p>Đang tải danh sách địa điểm...</p>
             ) : loadError ? (
               <p>Không tải được danh sách địa điểm. Vui lòng thử lại.</p>
@@ -204,6 +217,7 @@ export default function FacilitySearchPage() {
           </aside>
         </div>
       </main>
+      <PublicFooter />
     </div>
   );
 }

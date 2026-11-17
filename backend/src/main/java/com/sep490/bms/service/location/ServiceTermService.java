@@ -56,7 +56,8 @@ public class ServiceTermService {
     /** UC06 - Admin ghi nhận kỳ hạn mới (thường dùng để gia hạn nối tiếp kỳ cũ). */
     @Transactional
     public ServiceTermDto create(UserPrincipal admin, Long locationId, CreateServiceTermRequest request) {
-        Location location = requireLocation(locationId);
+        Location location = locationRepository.findByIdForUpdate(locationId)
+                .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
         LocalDate startDate = request.getStartDate();
         LocalDate endDate = request.getEndDate();
         if (startDate == null || endDate == null) {

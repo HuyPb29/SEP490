@@ -116,13 +116,13 @@ export default function AdminFacilitiesPage() {
   // --------------------------------------------------- UC05: duyệt / từ chối đơn đăng ký
 
   const handleApprove = async (request) => {
-    if (!window.confirm(`Approve "${request.locationName}"? Courts and default opening hours (06:00–24:00) will be created.`)) return
+    if (!window.confirm(`Duyệt "${request.locationName}"? Owner sẽ tự cấu hình giờ mở cửa và bảng giá.`)) return
     setSaving(true)
     try {
       await approveServiceRegistration(request.id)
       await loadAll()
       setActionError('')
-      setStatusMessage(`Approved "${request.locationName}". Courts and default opening hours were created.`)
+      setStatusMessage(`Đã duyệt "${request.locationName}". Owner có thể cấu hình giờ mở cửa và bảng giá.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -383,6 +383,7 @@ export default function AdminFacilitiesPage() {
               <span role="columnheader">Trạng thái</span>
               <span role="columnheader">Kỳ hạn dịch vụ</span>
               <span role="columnheader">Số sân</span>
+              <span role="columnheader">Số booking</span>
               <span role="columnheader">Hành động</span>
             </div>
             {filteredFacilities.map((facility) => {
@@ -408,6 +409,7 @@ export default function AdminFacilitiesPage() {
                     )}
                   </div>
                   <span className={styles.numberCell} role="cell">{facility.courtCount ?? 0}</span>
+                  <span className={styles.numberCell} role="cell">{facility.bookingCount ?? 0}</span>
                   <div className={styles.facilityActions} role="cell">
                     <button className={styles.extendButton} type="button" onClick={() => openExtendModal(facility)} disabled={saving}>
                       Gia hạn

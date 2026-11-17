@@ -34,13 +34,16 @@ public class ScheduleController {
      * UC13 – Xem lịch sân (lịch theo ngày của cả địa điểm: mỗi hàng một sân, mỗi cột một slot).
      * Công khai cho Guest. date dạng yyyy-MM-dd, không gửi thì lấy hôm nay.
      * bookingId (tùy chọn): booking Player đang đổi lịch (UC21, UC22); buổi trong gói được xem tới hết thời hạn gói (BR31).
+     * forPackage (tùy chọn): Player chọn buổi cho gói đặt nhiều buổi (UC15), xem được tới hết 3 tháng (BR27, D162).
      */
     @GetMapping("/api/locations/{id}/schedules")
     public ResponseEntity<ApiResponse<ScheduleResponse>> getLocationsByIdSchedules(
             @PathVariable("id") Long id,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) Long bookingId,
+            @RequestParam(defaultValue = "false") boolean forPackage,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.ok(ApiResponse.success(scheduleService.schedule(id, date, currentUser, bookingId)));
+        return ResponseEntity.ok(ApiResponse.success(
+                scheduleService.schedule(id, date, currentUser, bookingId, forPackage)));
     }
 }

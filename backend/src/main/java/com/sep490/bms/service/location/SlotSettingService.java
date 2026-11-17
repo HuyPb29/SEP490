@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sep490.bms.dto.location.SlotSettingDto;
+import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.dto.location.UpdateSlotSettingRequest;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.Court;
@@ -32,7 +33,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class SlotSettingService {
 
-    private static final int STEP_MINUTES = 30;
+    private static final int STEP_MINUTES = MinuteTime.SLOT_MINUTES;
     private static final String STATUS_ACTIVE = "ACTIVE";
 
     private final LocationSlotSettingRepository locationSlotSettingRepository;
@@ -55,7 +56,9 @@ public class SlotSettingService {
         Location location = locationManagementService.ownedLocation(user, court.getLocationId());
         requireActiveLocation(location);
 
-        int slotMinutes = requireMultipleOfStep(request.getSlotMinutes(), "Độ dài slot");
+        if (!Integer.valueOf(STEP_MINUTES).equals(request.getSlotMinutes())) {
+            throw new AppException("Độ dài slot phải là 30 phút");
+        }
         int bufferMinutes = requireMultipleOfStep(request.getBufferMinutes(), "Thời gian nghỉ giữa hai slot");
         Integer maxSlots = request.getMaxSlotsPerBooking();
         if (maxSlots == null) {
@@ -64,7 +67,7 @@ public class SlotSettingService {
 
         LocationSlotSetting setting = locationSlotSettingRepository.findById(location.getId())
                 .orElseGet(() -> LocationSlotSetting.builder().locationId(location.getId()).build());
-        setting.setSlotMinutes((short) slotMinutes);
+        setting.setSlotMinutes((short) STEP_MINUTES);
         setting.setBufferMinutes((short) bufferMinutes);
         setting.setMaxSlotsPerBooking(maxSlots.shortValue());
         setting.setUpdatedAt(LocalDateTime.now());

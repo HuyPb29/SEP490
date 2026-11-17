@@ -88,6 +88,12 @@ public class NotificationService {
                         recipientId, type, refType, refId)) {
             return false;
         }
+        notify(recipientId, type, title, content, refType, refId);
+        return true;
+    }
+
+    @Transactional
+    public void notify(Long recipientId, String type, String title, String content, String refType, Long refId) {
         notificationRepository.save(Notification.builder()
                 .recipientId(recipientId)
                 .type(type)
@@ -97,7 +103,6 @@ public class NotificationService {
                 .refId(refId)
                 .read(false)
                 .build());
-        return true;
     }
 
     private int clampSize(int size) {
