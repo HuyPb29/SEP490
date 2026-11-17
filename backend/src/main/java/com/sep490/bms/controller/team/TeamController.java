@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.dto.team.CreateTeamRequest;
 import com.sep490.bms.dto.team.TeamResponse;
+import com.sep490.bms.dto.team.UpdateTeamRequest;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.team.TeamService;
 
@@ -28,9 +30,11 @@ import lombok.RequiredArgsConstructor;
  * Feature: F7 – Đội và kèo
  * Owner: Hoàng
  * UC: UC27 – Quản lý đội
+ * Chỉ Player xem và thao tác với đội (D78, FR94).
  */
 @RestController
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('PLAYER')")
 public class TeamController {
 
     private final TeamService teamService;
@@ -38,8 +42,20 @@ public class TeamController {
     @GetMapping("/api/teams")
     public ResponseEntity<ApiResponse<List<TeamResponse>>> getTeams(
             @AuthenticationPrincipal UserPrincipal currentUser,
-            @RequestParam(required = false) String search) {
-        return ResponseEntity.ok(ApiResponse.success(teamService.getTeams(currentUser.getId(), search)));
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String skillLevel) {
+        return ResponseEntity.ok(ApiResponse.success(teamService.getTeams(currentUser.getId(), search, skillLevel)));
+    }
+
+    /** FR91: chủ đội đổi trình độ của đội. */
+    @PatchMapping("/api/teams/{id}")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ResponseEntity<ApiResponse<TeamResponse>> patchTeamsById(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @PathVariable("id") Long id,
+            @Valid @RequestBody UpdateTeamRequest request) {
+        TeamResponse team = teamService.updateSkillLevel(currentUser.getId(), id, request.getSkillLevel());
+        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật trình độ của đội", team));
     }
 
     @GetMapping("/api/teams/{id}")
