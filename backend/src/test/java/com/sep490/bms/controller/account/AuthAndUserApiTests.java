@@ -226,6 +226,21 @@ class AuthAndUserApiTests {
                 .andExpect(jsonPath("$.data.fullName").value("Nguyễn Văn Updated"))
                 .andExpect(jsonPath("$.data.skillLevel").value("Trung bình"));
 
+        for (String invalid : java.util.List.of("", "Tự do")) {
+            mockMvc.perform(patch("/api/users/me")
+                            .header("Authorization", "Bearer " + playerToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(UpdateProfileRequest.builder().skillLevel(invalid).build())))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors.skillLevel").exists());
+        }
+        mockMvc.perform(patch("/api/users/me")
+                        .header("Authorization", "Bearer " + playerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(UpdateProfileRequest.builder().fullName("Nguyễn Văn An").build())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.skillLevel").value("Trung bình"));
+
         // Setup Owner & Admin accounts for testing Staff and Admin endpoints
         Account owner = fixtureAccount("owner_" + uniqueSuffix, Role.OWNER);
         String ownerToken = jwtTokenProvider.generateToken(owner);

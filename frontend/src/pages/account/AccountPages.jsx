@@ -13,6 +13,7 @@ const loadStaff = (signal) => api.get('/owner/staff-members', { signal }).then((
 
 const roles = { PLAYER: 'Người chơi', STAFF: 'Nhân viên', OWNER: 'Chủ sân', ADMIN: 'Quản trị viên' };
 const accountStatuses = { ACTIVE: 'Hoạt động', LOCKED: 'Đã khóa', DISABLED: 'Đã vô hiệu hóa' };
+const skillLevels = ['Mới chơi', 'Trung bình', 'Khá', 'Nâng cao'];
 
 function AccountDetails({ account }) {
   const facts = [
@@ -77,17 +78,9 @@ function Profile() {
                 {
                   name: 'skillLevel',
                   label: 'Trình độ chơi',
-                  initial: profile.data.skillLevel || '',
-                  options: [
-                    ...new Set([
-                      '',
-                      'Mới chơi',
-                      'Trung bình',
-                      'Khá',
-                      'Nâng cao',
-                      profile.data.skillLevel || '',
-                    ]),
-                  ],
+                  initial: skillLevels.includes(profile.data.skillLevel) ? profile.data.skillLevel : '',
+                  options: ['', ...skillLevels],
+                  required: true,
                 },
               ]}
               submit={(form) => api.patch('/users/me', form)}
