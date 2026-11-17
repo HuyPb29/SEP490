@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -12,11 +13,16 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
 import com.sep490.bms.dto.location.LocationSummaryResponse;
+import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.location.OpeningHour;
+import com.sep490.bms.entity.location.PriceRule;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.feedback.ReviewRepository;
+import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.repository.location.OpeningHourRepository;
+import com.sep490.bms.repository.location.PriceRuleRepository;
 import com.sep490.bms.service.location.LocationQueryService;
 
 /**
@@ -26,7 +32,11 @@ class LocationQueryServiceTests {
 
     private final LocationRepository locations = mock(LocationRepository.class);
     private final OpeningHourRepository openingHours = mock(OpeningHourRepository.class);
-    private final LocationQueryService service = new LocationQueryService(locations, openingHours);
+    private final CourtRepository courts = mock(CourtRepository.class);
+    private final PriceRuleRepository priceRules = mock(PriceRuleRepository.class);
+    private final ReviewRepository reviews = mock(ReviewRepository.class);
+    private final LocationQueryService service =
+            new LocationQueryService(locations, openingHours, courts, priceRules, reviews);
 
     // Hồ Gươm (21.0285, 105.8542); Linh Đàm cách ~8 km, Long Biên cách ~3 km
     private final Location linhDam = location(1L, "Sân Linh Đàm", "20.966100", "105.828900");
@@ -51,6 +61,42 @@ class LocationQueryServiceTests {
         assertThat(result).extracting(LocationSummaryResponse::getId).containsExactly(2L, 1L);
         assertThat(result.get(0).getDistanceKm()).isBetween(2.0, 4.0);
         assertThat(result.get(1).getDistanceKm()).isBetween(6.0, 9.0);
+    }
+
+    @Test
+    void summaryHasActiveCourtCountMinHourlyPriceAndRating() {
+        when(locations.searchActive(null)).thenReturn(List.of(linhDam, longBien));
+        when(courts.findAllByLocationIdInOrderByNameAsc(List.of(1L, 2L))).thenReturn(List.of(
+                court(11L, 1L, true), court(12L, 1L, true), court(13L, 1L, false)));
+        when(priceRules.findValidOn(anyCollection(), any(LocalDate.class))).thenReturn(List.of(
+                price(11L, "60000"), price(12L, "45000")));
+        when(reviews.sumVisibleRatingsByLocation(List.of(1L, 2L)))
+                .thenReturn(List.<Object[]>of(new Object[] {1L, 14L, 3L}));
+
+        List<LocationSummaryResponse> result = service.search(null, null, null);
+
+        LocationSummaryResponse withData = result.get(0);
+        assertThat(withData.getActiveCourtCount()).isEqualTo(2);
+        assertThat(withData.getMinPricePerHour()).isEqualByComparingTo("90000");
+        assertThat(withData.getAverageRating()).isEqualTo(4.7);
+        assertThat(withData.getReviewCount()).isEqualTo(3);
+
+        LocationSummaryResponse empty = result.get(1);
+        assertThat(empty.getActiveCourtCount()).isZero();
+        assertThat(empty.getMinPricePerHour()).isNull();
+        assertThat(empty.getAverageRating()).isNull();
+        assertThat(empty.getReviewCount()).isZero();
+    }
+
+    @Test
+    void inactiveCourtsAreNotPriced() {
+        when(locations.searchActive(null)).thenReturn(List.of(linhDam));
+        when(courts.findAllByLocationIdInOrderByNameAsc(List.of(1L))).thenReturn(List.of(court(13L, 1L, false)));
+
+        List<LocationSummaryResponse> result = service.search(null, null, null);
+
+        verifyNoInteractions(priceRules);
+        assertThat(result.get(0).getMinPricePerHour()).isNull();
     }
 
     @Test
@@ -96,6 +142,15 @@ class LocationQueryServiceTests {
         assertThatThrownBy(() -> service.detail(9L))
                 .isInstanceOf(AppException.class)
                 .satisfies(e -> assertThat(((AppException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    private static Court court(Long id, Long locationId, boolean active) {
+        return Court.builder().id(id).locationId(locationId).name("Sân " + id).active(active).build();
+    }
+
+    private static PriceRule price(Long courtId, String pricePerSlot) {
+        return PriceRule.builder().courtId(courtId).applyDays("1111111").startMinute(360).endMinute(1320)
+                .pricePerSlot(new BigDecimal(pricePerSlot)).validFrom(LocalDate.of(2026, 1, 1)).build();
     }
 
     private static Location location(Long id, String name, String lat, String lng) {

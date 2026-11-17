@@ -2,8 +2,10 @@ package com.sep490.bms.service.location;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -18,10 +20,15 @@ import com.sep490.bms.common.MinuteTime;
 import com.sep490.bms.dto.location.LocationDetailResponse;
 import com.sep490.bms.dto.location.LocationSummaryResponse;
 import com.sep490.bms.dto.location.OpeningHourItem;
+import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.location.Location;
+import com.sep490.bms.entity.location.PriceRule;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.feedback.ReviewRepository;
+import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.repository.location.OpeningHourRepository;
+import com.sep490.bms.repository.location.PriceRuleRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,6 +45,9 @@ public class LocationQueryService {
 
     private final LocationRepository locationRepository;
     private final OpeningHourRepository openingHourRepository;
+    private final CourtRepository courtRepository;
+    private final PriceRuleRepository priceRuleRepository;
+    private final ReviewRepository reviewRepository;
 
     /**
      * UC11: tìm theo tên hoặc địa chỉ (FR27). Có vị trí người dùng thì tính km và xếp gần → xa (FR29),
@@ -48,8 +58,10 @@ public class LocationQueryService {
         boolean hasPosition = validatePosition(lat, lng);
         String pattern = StringUtils.hasText(q) ? "%" + escapeLike(q.trim()) + "%" : null;
 
-        List<LocationSummaryResponse> result = locationRepository.searchActive(pattern).stream()
-                .map(l -> toSummary(l, hasPosition ? distanceKm(lat, lng, l) : null))
+        List<Location> locations = locationRepository.searchActive(pattern);
+        ListingStats stats = listingStats(locations.stream().map(Location::getId).toList());
+        List<LocationSummaryResponse> result = locations.stream()
+                .map(l -> toSummary(l, hasPosition ? distanceKm(lat, lng, l) : null, stats))
                 .toList();
         if (!hasPosition) {
             return result;
@@ -134,7 +146,39 @@ public class LocationQueryService {
         return keyword.replace("[", "[[]").replace("%", "[%]").replace("_", "[_]");
     }
 
-    private LocationSummaryResponse toSummary(Location l, Double distanceKm) {
+    /** Số sân, giá thấp nhất và đánh giá của các địa điểm trong danh sách; ba truy vấn cho cả trang, không N+1. */
+    private ListingStats listingStats(List<Long> locationIds) {
+        if (locationIds.isEmpty()) {
+            return new ListingStats(Map.of(), Map.of(), Map.of(), Map.of());
+        }
+        Map<Long, Long> courtLocation = courtRepository.findAllByLocationIdInOrderByNameAsc(locationIds).stream()
+                .filter(Court::isActive)
+                .collect(Collectors.toMap(Court::getId, Court::getLocationId));
+        Map<Long, Integer> courtCounts = courtLocation.values().stream()
+                .collect(Collectors.toMap(Function.identity(), id -> 1, Integer::sum));
+
+        Map<Long, BigDecimal> minSlotPrices = new HashMap<>();
+        if (!courtLocation.isEmpty()) {
+            for (PriceRule rule : priceRuleRepository.findValidOn(courtLocation.keySet(), LocalDate.now())) {
+                minSlotPrices.merge(courtLocation.get(rule.getCourtId()), rule.getPricePerSlot(), BigDecimal::min);
+            }
+        }
+
+        Map<Long, Long> ratingSums = new HashMap<>();
+        Map<Long, Long> reviewCounts = new HashMap<>();
+        for (Object[] row : reviewRepository.sumVisibleRatingsByLocation(locationIds)) {
+            Long locationId = ((Number) row[0]).longValue();
+            ratingSums.put(locationId, ((Number) row[1]).longValue());
+            reviewCounts.put(locationId, ((Number) row[2]).longValue());
+        }
+        return new ListingStats(courtCounts, minSlotPrices, ratingSums, reviewCounts);
+    }
+
+    private LocationSummaryResponse toSummary(Location l, Double distanceKm, ListingStats stats) {
+        BigDecimal minSlotPrice = stats.minSlotPrices().get(l.getId());
+        long reviewCount = stats.reviewCounts().getOrDefault(l.getId(), 0L);
+        Double averageRating = reviewCount == 0 ? null
+                : Math.round(stats.ratingSums().get(l.getId()) * 10.0 / reviewCount) / 10.0;
         return LocationSummaryResponse.builder()
                 .id(l.getId())
                 .name(l.getName())
@@ -142,6 +186,15 @@ public class LocationQueryService {
                 .latitude(l.getLatitude())
                 .longitude(l.getLongitude())
                 .distanceKm(distanceKm)
+                .activeCourtCount(stats.courtCounts().getOrDefault(l.getId(), 0))
+                .minPricePerHour(minSlotPrice == null ? null
+                        : minSlotPrice.multiply(BigDecimal.valueOf(60 / MinuteTime.SLOT_MINUTES)))
+                .averageRating(averageRating)
+                .reviewCount(reviewCount)
                 .build();
+    }
+
+    private record ListingStats(Map<Long, Integer> courtCounts, Map<Long, BigDecimal> minSlotPrices,
+            Map<Long, Long> ratingSums, Map<Long, Long> reviewCounts) {
     }
 }

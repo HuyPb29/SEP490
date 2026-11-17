@@ -36,6 +36,14 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             + " GROUP BY r.rating")
     List<Object[]> countVisibleByRating(@Param("locationId") Long locationId);
 
+    /**
+     * Tổng sao và số đánh giá công khai của nhiều địa điểm trong một truy vấn, cho danh sách tìm địa điểm (UC11).
+     * Mỗi dòng là [locationId, tổng sao, số đánh giá]; địa điểm chưa có đánh giá thì không có dòng.
+     */
+    @Query("SELECT r.locationId, SUM(r.rating), COUNT(r) FROM Review r"
+            + " WHERE r.locationId IN :locationIds AND r.hidden = false GROUP BY r.locationId")
+    List<Object[]> sumVisibleRatingsByLocation(@Param("locationIds") Collection<Long> locationIds);
+
     @Query("SELECT r FROM Review r WHERE (:locationId IS NULL OR r.locationId = :locationId)"
             + " AND (:rating IS NULL OR r.rating = :rating)"
             + " AND (:hidden IS NULL OR r.hidden = :hidden)")
