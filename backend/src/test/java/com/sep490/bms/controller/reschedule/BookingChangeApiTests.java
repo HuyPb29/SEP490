@@ -170,7 +170,8 @@ class BookingChangeApiTests {
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build(); tx=new TransactionTemplate(manager);
         owner=account(Role.OWNER);player=account(Role.PLAYER);other=account(Role.PLAYER);
         location=locations.saveAndFlush(Location.builder().ownerId(owner.getId()).name("Booking change test").address("Test")
-                .contactPhone("0987654321").latitude(BigDecimal.ONE).longitude(BigDecimal.ONE).build());
+                .contactPhone("0987654321").latitude(BigDecimal.ONE).longitude(BigDecimal.ONE)
+                .bankName("Test Bank").bankAccountNo("123456").bankAccountHolder("Owner").qrImagePath("test-qr.png").build());
         tx.executeWithoutResult(s->{
             Court c=Court.builder().locationId(location.getId()).name("Test court").active(true).build();em.persist(c);em.flush();court=c.getId();
             for(int day=1;day<=7;day++) em.persist(OpeningHour.builder().locationId(location.getId()).dayOfWeek(day).openMinute(0).closeMinute(1440).build());
