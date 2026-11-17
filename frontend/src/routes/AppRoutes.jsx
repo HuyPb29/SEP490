@@ -188,7 +188,7 @@ export default function AppRoutes() {
         <Route path="/matches" element={<Navigate to="/open-matches" replace />} />
         <Route path="/my-vouchers" element={<Navigate to="/my-rewards" replace />} />
         <Route path="/complaints" element={<Navigate to="/my-complaints" replace />} />
-        <Route path="/change-password" element={<Navigate to="/account#change-password" replace />} />
+        <Route path="/change-password" element={<Navigate to="/account/password" replace />} />
         <Route path="/owner/courts" element={<Navigate to="/owner/courts-pricing" replace />} />
         <Route path="/admin/accounts" element={<Navigate to="/admin/workspace" replace />} />
         <Route path="/teams" element={<RequireRole roles={['player']}><TeamsPage /></RequireRole>} />
@@ -204,7 +204,23 @@ export default function AppRoutes() {
           path="/account"
           element={
             <RequireRole roles={['player', 'owner']}>
-              <AccountPage />
+              <AccountPage section="profile" />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/account/password"
+          element={
+            <RequireRole roles={['player', 'owner']}>
+              <AccountPage section="password" />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/account/notifications"
+          element={
+            <RequireRole roles={['player', 'owner']}>
+              <AccountPage section="notifications" />
             </RequireRole>
           }
         />
