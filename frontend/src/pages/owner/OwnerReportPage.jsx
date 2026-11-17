@@ -9,16 +9,23 @@ import styles from './OwnerReportPage.module.css'
 const percent = (value) => (Number(value) * 100).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + '%'
 const count = (value) => Number(value).toLocaleString('vi-VN')
 const column = (key, label, format = count) => ({ key, label, format })
+const text = (value) => (value === null || value === undefined || value === '' ? '—' : String(value))
 const day = column('date', 'Ngày', String)
 const court = column('courtName', 'Sân', String)
 
 const reports = [
   {
+    // FR117, BR37: doanh thu theo ngày xác nhận trừ khoản hoàn theo ngày hoàn; khoản giảm hiển thị riêng,
+    // không tính vào doanh thu; có bảng chi tiết khoản hoàn kèm kỳ thanh toán gốc.
     id: 'revenue', name: 'Doanh thu',
     summary: [column('totalRevenue', 'Tổng thu', money), column('totalRefunds', 'Tiền đã hoàn', money),
-      column('netRevenue', 'Doanh thu ròng', money), column('paymentCount', 'Lượt thanh toán'), column('refundCount', 'Lượt hoàn')],
+      column('netRevenue', 'Doanh thu ròng', money), column('voucherDiscount', 'Giảm bằng voucher', money),
+      column('pointDiscount', 'Giảm bằng điểm', money), column('paymentCount', 'Lượt thanh toán'), column('refundCount', 'Lượt hoàn')],
     tables: [['daily', 'Theo ngày', [day, column('revenue', 'Tổng thu', money),
-      column('refunds', 'Hoàn tiền', money), column('net', 'Doanh thu ròng', money)]]],
+      column('refunds', 'Hoàn tiền', money), column('net', 'Doanh thu ròng', money)]],
+    ['refundDetails', 'Chi tiết khoản hoàn', [column('refundDate', 'Ngày hoàn', String), column('bookingCode', 'Booking', text),
+      column('customerName', 'Khách hàng', text), column('amount', 'Số tiền hoàn', money),
+      column('originalPaymentDate', 'Kỳ thanh toán gốc', text), column('reason', 'Lý do', text)]]],
   },
   {
     id: 'booking', name: 'Đặt sân',
@@ -62,7 +69,8 @@ function ReportTable({ title, rows = [], columns }) {
     {!rows.length ? <p>Chưa có dữ liệu trong khoảng ngày đã chọn.</p> : <div className="overflow-x-auto">
       <table className="w-full min-w-max text-left text-sm">
         <thead><tr>{columns.map((field) => <th key={field.key} className="px-3 py-2" scope="col">{field.label}</th>)}</tr></thead>
-        <tbody>{rows.map((row) => <tr className="border-t border-slate-200" key={row.date ?? row.courtId ?? row.voucherId ?? row.status}>
+        <tbody>{rows.map((row, index) => <tr className="border-t border-slate-200"
+          key={row.date ?? row.courtId ?? row.voucherId ?? row.status ?? 'row-' + index}>
           {columns.map((field) => <td key={field.key} className="px-3 py-2">
             {row[field.key] == null ? '—' : field.format(row[field.key])}
           </td>)}
