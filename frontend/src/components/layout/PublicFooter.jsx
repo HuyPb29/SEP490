@@ -15,7 +15,7 @@ const PLAYER_LINKS = [
   ['/teams', 'Đội của tôi'],
   ['/my-rewards', 'Voucher & Điểm'],
   ['/my-complaints', 'Khiếu nại'],
-  ['/account', 'Tài khoản'],
+  ['/account', 'Hồ sơ của tôi'],
 ];
 
 const GUEST_LINKS = [
