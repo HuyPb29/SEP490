@@ -16,7 +16,6 @@ function getPublicMenuItems(roleCode) {
       ['/teams', 'Đội của tôi'],
       ['/my-rewards', 'Voucher & Điểm'],
       ['/my-complaints', 'Khiếu nại'],
-      ['/account', 'Tài khoản'],
     ];
   }
   if (roleCode === 'staff') {
