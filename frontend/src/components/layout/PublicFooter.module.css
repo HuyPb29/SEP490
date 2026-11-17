@@ -1,6 +1,7 @@
 .footer {
   margin-top: auto;
-  background: #142f26;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: #03140d;
   color: #d7e6dd;
   font-family: var(--font-sans);
 }
@@ -60,10 +61,8 @@
 
 .columnTitle {
   margin: 0 0 var(--space-3);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: #ffffff;
 }
 

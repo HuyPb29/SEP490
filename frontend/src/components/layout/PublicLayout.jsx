@@ -42,7 +42,7 @@ function getPublicMenuItems(roleCode) {
     ];
   }
   return [
-    ['/', 'Tìm địa điểm'],
+    ['/', 'Trang chủ'],
     ['/open-matches', 'Kèo mở'],
     ['/register-service', 'Đăng ký sân'],
   ];
