@@ -25,7 +25,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public class VoucherController {
     private final VoucherService service;
     @GetMapping("/api/locations/{id}/vouchers") @SecurityRequirements
-    @Operation(summary="Voucher công khai còn hiệu lực", description="Ẩn SPECIFIED/DRAFT/DISABLED; không giữ lượt, kiểm điều kiện cá nhân bằng check")
+    @Operation(summary="Voucher công khai còn hiệu lực", description="Chỉ gồm voucher công khai còn phát hành; không giữ lượt, kiểm điều kiện cá nhân bằng check")
     public ApiResponse<PageResponse<VoucherResponse>> publicList(@PathVariable Long id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
         return ApiResponse.success(service.publicList(id,page,size));
     }
@@ -39,11 +39,6 @@ public class VoucherController {
     public ApiResponse<PageResponse<VoucherResponse>> ownerList(@AuthenticationPrincipal UserPrincipal user,@RequestParam(required=false) VoucherStatus status,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
         return ApiResponse.success(service.ownerList(user,status,page,size));
     }
-    @GetMapping("/api/admin/vouchers") @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary="Admin lọc voucher theo facility/trạng thái")
-    public ApiResponse<PageResponse<VoucherResponse>> adminList(@AuthenticationPrincipal UserPrincipal user,@RequestParam(required=false) Long locationId,@RequestParam(required=false) VoucherStatus status,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
-        return ApiResponse.success(service.adminList(user,locationId,status,page,size));
-    }
     @PostMapping("/api/owner/vouchers") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Tạo campaign DRAFT",description="Source CAMPAIGN; location lấy từ scope; code unique trong facility")
     public ResponseEntity<ApiResponse<VoucherResponse>> create(@AuthenticationPrincipal UserPrincipal user,@Valid @RequestBody VoucherWriteRequest request) {
@@ -55,11 +50,14 @@ public class VoucherController {
         return ApiResponse.success(service.update(user,id,request));
     }
     @PostMapping("/api/owner/vouchers/{id}/publish") @PreAuthorize("hasRole('OWNER')")
-    @Operation(summary="Publish campaign; gọi lặp an toàn",description="Không publish lại DISABLED")
+    @Operation(summary="Phát hành campaign; gọi lặp an toàn", description="Voucher đã dừng hoặc đã vô hiệu hóa không được phát hành lại")
     public ApiResponse<VoucherResponse> publish(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id) { return ApiResponse.success(service.publish(user,id)); }
-    @PostMapping("/api/admin/vouchers/{id}/disable") @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary="Chỉ Admin vô hiệu voucher; gọi lặp an toàn")
-    public ApiResponse<VoucherResponse> disable(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id) { return ApiResponse.success(service.disable(user,id)); }
+    @PostMapping("/api/owner/vouchers/{id}/stop") @PreAuthorize("hasRole('OWNER')")
+    @Operation(summary="Owner dừng voucher đã phát hành tại địa điểm của mình",
+            description="Chặn dùng mã và cấp mới. Các voucher cá nhân đã cấp và mức giảm trên booking đã áp được giữ lại.")
+    public ApiResponse<VoucherResponse> stop(@AuthenticationPrincipal UserPrincipal user, @PathVariable Long id) {
+        return ApiResponse.success(service.stop(user, id));
+    }
     @PostMapping("/api/owner/vouchers/{id}/grants") @PreAuthorize("hasRole('OWNER')")
     @Operation(summary="Cấp campaign SPECIFIED đã publish cho tối đa100 Player",description="Mỗi request cấp lượt mới; retry sẽ cấp thêm lượt")
     public ResponseEntity<ApiResponse<List<PersonalVoucherResponse>>> grant(@AuthenticationPrincipal UserPrincipal user,@PathVariable Long id,@Valid @RequestBody VoucherGrantRequest request) {

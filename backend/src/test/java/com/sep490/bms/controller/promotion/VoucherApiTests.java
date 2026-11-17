@@ -120,16 +120,31 @@ class VoucherApiTests {
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(new VoucherUpdateRequest(0,write("SAVE"+suffix,VoucherTargetGroup.ALL_PLAYERS)))))
                 .andExpect(status().isConflict());
         mvc.perform(get("/api/locations/"+location.getId()+"/vouchers")).andExpect(jsonPath("$.data.totalElements").value(1));
-        mvc.perform(post("/api/admin/vouchers/"+id+"/disable").header("Authorization",token(owner))).andExpect(status().isForbidden());
+        mvc.perform(get("/api/admin/vouchers").header("Authorization",token(admin))).andExpect(status().isNotFound());
+        mvc.perform(post("/api/admin/vouchers/"+id+"/disable").header("Authorization",token(admin))).andExpect(status().isNotFound());
+        mvc.perform(post("/api/owner/vouchers/"+id+"/stop").header("Authorization",token(admin))).andExpect(status().isForbidden());
         mvc.perform(post("/api/owner/vouchers/"+id+"/publish").header("Authorization",token(player))).andExpect(status().isForbidden());
         // Valid location header cannot authorize a voucher belonging to another facility.
         Voucher foreign=voucher(VoucherTargetGroup.ALL_PLAYERS);
         Location second=locations.saveAndFlush(Location.builder().ownerId(owner.getId()).name("Other").address("Other")
                 .contactPhone("0987654321").latitude(BigDecimal.ONE).longitude(BigDecimal.ONE).build());
-        try { mvc.perform(post("/api/owner/vouchers/"+foreign.getId()+"/publish").header("Authorization",token(owner)).header("X-Location-Id",second.getId())).andExpect(status().isForbidden()); }
+        try { mvc.perform(post("/api/owner/vouchers/"+foreign.getId()+"/stop").header("Authorization",token(owner)).header("X-Location-Id",second.getId())).andExpect(status().isForbidden()); }
         finally { locations.deleteById(second.getId()); }
-        mvc.perform(post("/api/admin/vouchers/"+id+"/disable").header("Authorization",token(admin))).andExpect(status().isOk());
+        var selection = new VoucherSelection("SAVE"+suffix, null);
+        Booking existing = booking(player);
+        tx.executeWithoutResult(s -> service.consumeForBooking(existing.getId(), selection));
+        for (int attempt=0; attempt<2; attempt++) {
+            mvc.perform(post("/api/owner/vouchers/"+id+"/stop").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("STOPPED"));
+        }
+        mvc.perform(post("/api/owner/vouchers/"+id+"/publish").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+                .andExpect(status().isConflict());
         mvc.perform(get("/api/locations/"+location.getId()+"/vouchers")).andExpect(jsonPath("$.data.content[?(@.id == "+id+")]").isEmpty());
+        assertThatThrownBy(() -> service.check(UserPrincipal.create(other),
+                new VoucherCheckRequest(location.getId(), BigDecimal.valueOf(1000), selection)))
+                .isInstanceOf(AppException.class).hasMessageContaining("không khả dụng");
+        assertThat(tx.execute(s -> em.find(Booking.class, existing.getId())).getVoucherDiscount()).isEqualByComparingTo("100");
+        assertThat(tx.execute(s -> service.consumeForBooking(existing.getId(), selection)).getDiscountAmount()).isEqualByComparingTo("100");
     }
     @Test void personalGrantIsPrivateAndCannotBeStolen() throws Exception {
         Voucher v=voucher(VoucherTargetGroup.SPECIFIED);
@@ -144,6 +159,37 @@ class VoucherApiTests {
         mvc.perform(post("/api/vouchers/check").header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.discountAmount").value(100));
         assertThat(vouchers.findById(v.getId()).orElseThrow().getUsedCount()).isZero();
+    }
+    @Test void stoppedVoucherKeepsExistingPersonalGrantUntilExpiry() throws Exception {
+        Voucher v = voucher(VoucherTargetGroup.SPECIFIED);
+        VoucherGrant g = grants.saveAndFlush(VoucherGrant.builder().voucherId(v.getId()).playerId(player.getId())
+                .expiresAt(LocalDateTime.now().plusDays(1)).build());
+        var selection = new VoucherSelection(null, g.getId());
+        var request = new VoucherCheckRequest(location.getId(), BigDecimal.valueOf(1000), selection);
+
+        mvc.perform(post("/api/owner/vouchers/"+v.getId()+"/stop").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/owner/vouchers/"+v.getId()+"/grants").header("Authorization",token(owner)).header("X-Location-Id",location.getId())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"playerIds\":["+player.getId()+"]}"))
+                .andExpect(status().isConflict());
+        boolean batchGranted = tx.execute(s -> service.grantForBatchOffer(v.getId(), player.getId(), "Batch test"));
+        assertThat(batchGranted).isFalse();
+        assertThatThrownBy(() -> service.check(UserPrincipal.create(other), request))
+                .isInstanceOf(AppException.class).hasMessageContaining("cá nhân không khả dụng");
+        assertThat(service.check(UserPrincipal.create(player), request).discountAmount()).isEqualByComparingTo("100");
+
+        Booking booking = booking(player);
+        tx.executeWithoutResult(s -> {
+            service.consumeForBooking(booking.getId(), selection);
+            em.find(Booking.class, booking.getId()).setStatus(BookingStatus.CANCELLED_BY_FACILITY);
+            service.restoreForFailedBooking(booking.getId());
+        });
+        assertThat(service.check(UserPrincipal.create(player), request).discountAmount()).isEqualByComparingTo("100");
+        g = grants.findById(g.getId()).orElseThrow();
+        g.setExpiresAt(LocalDateTime.now().minusMinutes(1));
+        grants.saveAndFlush(g);
+        assertThatThrownBy(() -> service.check(UserPrincipal.create(player), request))
+                .isInstanceOf(AppException.class).hasMessageContaining("cá nhân không khả dụng");
     }
     @Test void consumeRollbackIdempotencyAndRestoreGrant() {
         Voucher v=voucher(VoucherTargetGroup.SPECIFIED); Booking b=booking(player);

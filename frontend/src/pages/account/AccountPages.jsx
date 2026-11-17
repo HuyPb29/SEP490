@@ -374,30 +374,13 @@ function Accounts() {
   );
 }
 
-function AdminSections({ vouchers }) {
-  const [tab, setTab] = useState('accounts');
-  return (
-    <>
-      <div className="cw-tabs" role="group" aria-label="Khu vực quản trị">
-        <button type="button" aria-pressed={tab === 'accounts'} onClick={() => setTab('accounts')}>
-          Tài khoản và nhật ký
-        </button>
-        <button type="button" aria-pressed={tab === 'vouchers'} onClick={() => setTab('vouchers')}>
-          Kiểm duyệt voucher
-        </button>
-      </div>
-      {tab === 'accounts' ? <Accounts /> : vouchers}
-    </>
-  );
-}
-
-export function AdminWorkspace({ children }) {
+export function AdminWorkspace() {
   return (
     <WorkspaceLayout title="Quản trị hệ thống" role="admin">
       <Link to="/admin/facilities" className="underline">
         Quản lý địa điểm
       </Link>
-      <AdminSections vouchers={children} />
+      <Accounts />
     </WorkspaceLayout>
   );
 }

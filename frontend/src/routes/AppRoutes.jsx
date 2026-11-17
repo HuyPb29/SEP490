@@ -1,5 +1,4 @@
 import NavigationPage from '../pages/NavigationPage';
-import WorkspaceLayout from '../components/layout/WorkspaceLayout';
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -19,7 +18,7 @@ import MaintenanceRequestsPage from '../pages/operation/MaintenanceRequestsPage'
 import OwnerCourtsPricingPage from '../pages/owner/OwnerCourtsPricingPage';
 import OwnerFacilitySettingsPage from '../pages/owner/OwnerFacilitySettingsPage';
 import OwnerOpeningHoursPage from '../pages/owner/OwnerOpeningHoursPage';
-import { AdminVouchers, PersonalRewardsPage } from '../pages/promotion/PromotionPages';
+import { PersonalRewardsPage } from '../pages/promotion/PromotionPages';
 import StaffConfirmPaymentPage from '../pages/staff/StaffConfirmPaymentPage';
 import StaffDashboardPage from '../pages/staff/StaffDashboardPage';
 import StaffSchedulePage from '../pages/staff/StaffSchedulePage';
@@ -204,9 +203,6 @@ export default function AppRoutes() {
         <Route path="/admin/accounts" element={<Navigate to="/admin/workspace" replace />} />
         <Route path="/teams" element={<RequireRole roles={['player']}><TeamsPage /></RequireRole>} />
         <Route path="/my-reschedules" element={<RequireRole roles={['player']}><NavigationPage kind="reschedules" /></RequireRole>} />
-        <Route path="/admin/vouchers" element={<RequireRole roles={['admin']}>
-          <WorkspaceLayout title="Kiểm duyệt voucher" role="admin"><AdminVouchers /></WorkspaceLayout>
-        </RequireRole>} />
         <Route path="/admin/reviews" element={<RequireRole roles={['admin']}><NavigationPage kind="reviews" /></RequireRole>} />
         <Route path="/login" element={<AuthPage />} />
 
@@ -231,9 +227,7 @@ export default function AppRoutes() {
           path="/admin/workspace"
           element={
             <RequireRole roles={['admin']}>
-              <AdminWorkspace>
-                <AdminVouchers />
-              </AdminWorkspace>
+              <AdminWorkspace />
             </RequireRole>
           }
         />
