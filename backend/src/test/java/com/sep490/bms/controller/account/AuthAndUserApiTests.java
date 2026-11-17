@@ -419,14 +419,22 @@ class AuthAndUserApiTests {
         Account applicant = fixtureAccount("member_" + suffix, Role.PLAYER);
         String captainToken = jwtTokenProvider.generateToken(captain);
         String applicantToken = jwtTokenProvider.generateToken(applicant);
-        var created = mockMvc.perform(post("/api/teams").header("Authorization", "Bearer " + captainToken)
+        // FR91 (D165): tạo đội phải chọn trình độ của đội.
+        mockMvc.perform(post("/api/teams").header("Authorization", "Bearer " + captainToken)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Team " + suffix + "\"}"))
-                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.memberCount").value(1)).andReturn();
+                .andExpect(status().isBadRequest());
+        var created = mockMvc.perform(post("/api/teams").header("Authorization", "Bearer " + captainToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Team " + suffix + "\",\"skillLevel\":\"Khá\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.memberCount").value(1))
+                .andExpect(jsonPath("$.data.skillLevel").value("Khá")).andReturn();
         long teamId = objectMapper.readTree(created.getResponse().getContentAsString()).at("/data/id").asLong();
+        // FR92: hồ sơ người xin chưa có trình độ thì phải chọn khi gửi yêu cầu.
         var joined = mockMvc.perform(post("/api/teams/" + teamId + "/join-requests")
                 .header("Authorization", "Bearer " + applicantToken).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"phoneConsent\":true}"))
-                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("PENDING")).andReturn();
+                .content("{\"phoneConsent\":true,\"skillLevel\":\"Trung bình\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.skillLevel").value("Trung bình")).andReturn();
         long requestId = objectMapper.readTree(joined.getResponse().getContentAsString()).at("/data/id").asLong();
         mockMvc.perform(post("/api/team-join-requests/" + requestId + "/approve")
                 .header("Authorization", "Bearer " + applicantToken)).andExpect(status().isForbidden());
