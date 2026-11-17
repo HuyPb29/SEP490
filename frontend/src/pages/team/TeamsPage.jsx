@@ -4,6 +4,7 @@ import {
   approveTeamJoinRequest,
   cancelTeamJoinRequest,
   createTeam,
+  getMySkillLevel,
   getMyTeams,
   getTeamJoinRequests,
   getTeamMembers,
@@ -12,9 +13,16 @@ import {
   rejectTeamJoinRequest,
   removeTeamMember,
   sendTeamJoinRequest,
+  updateTeamSkillLevel,
 } from '../../api/teamApi'
+import { isSkillLevel, skillOptions } from '../../utils/skillLevels'
 import WorkspaceLayout, { ConfirmDialog, EmptyState, Feedback, Field, Modal, Section, StatusPill } from '../WorkspaceLayout'
 import { useResource } from '../workspaceSupport'
+
+/** Nhãn trình độ của đội (FR94); đội tạo trước D165 có thể chưa có. */
+function skillText(team) {
+  return team.skillLevel ? 'Trình độ ' + team.skillLevel : 'Chưa chọn trình độ'
+}
 
 /**
  * Trang đội của Player (UC26, UC27).
@@ -109,9 +117,10 @@ function TeamDetails({ team, refreshAll }) {
   return <div ref={container} style={{ marginTop: 12 }}>
     <Section title={'Thành viên đội ' + team.name} resource={members}>
       <p className="cw-muted">
-        Đội trưởng: {team.captainName} · {team.memberCount}/{team.maxMembers ?? 20} thành viên
+        Đội trưởng: {team.captainName} · {team.memberCount}/{team.maxMembers ?? 20} thành viên · {skillText(team)}
         {team.captain ? ' · Bạn là đội trưởng, chỉ bạn thấy số điện thoại của thành viên.' : ''}
       </p>
+      {team.captain && <TeamSkillForm team={team} onSaved={refreshAll} />}
       {action.error && <Feedback tone="error">{action.error}</Feedback>}
       {members.data?.length > 0 && <ul className="cw-records">
         {members.data.map((member) => <li key={member.id} className="cw-record">
@@ -144,23 +153,55 @@ function TeamDetails({ team, refreshAll }) {
   </div>
 }
 
+/** FR91: chủ đội đổi trình độ của đội. */
+function TeamSkillForm({ team, onSaved }) {
+  const [skill, setSkill] = useState(team.skillLevel || '')
+  const [notice, setNotice] = useState('')
+  const action = useAction(() => { setNotice('Đã cập nhật trình độ của đội.'); onSaved() })
+  const changed = skill && skill !== team.skillLevel
+
+  return <form className="cw-form" onSubmit={(event) => {
+    event.preventDefault()
+    setNotice('')
+    if (changed) action.run(() => updateTeamSkillLevel(team.id, skill))
+  }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'end' }}>
+      <div style={{ flex: '0 1 240px' }}>
+        <Field label="Trình độ của đội" options={skillOptions(team.skillLevel ? '' : 'Chọn trình độ')}
+          value={skill} onChange={(event) => { setSkill(event.target.value); action.clearError(); setNotice('') }} />
+      </div>
+      <button type="submit" className="cw-secondary" style={{ minHeight: 44 }} disabled={!changed || action.busy}>
+        {action.busy ? 'Đang lưu…' : 'Lưu trình độ'}
+      </button>
+    </div>
+    {action.error && <Feedback tone="error">{action.error}</Feedback>}
+    {notice && <Feedback tone="success">{notice}</Feedback>}
+  </form>
+}
+
 function CreateTeamModal({ onClose, onCreated }) {
   const titleId = useId()
   const [name, setName] = useState('')
-  const [error, setError] = useState('')
+  const [skill, setSkill] = useState('')
+  const [errors, setErrors] = useState({})
   const [busy, setBusy] = useState(false)
 
   async function submit(event) {
     event.preventDefault()
-    const trimmed = name.trim()
-    if (!trimmed) { setError('Tên đội không được để trống.'); return }
+    // DR27: bỏ khoảng trắng thừa, 3–30 ký tự; DR33: trình độ bắt buộc khi tạo đội.
+    const trimmed = name.trim().replace(/\s+/g, ' ')
+    const found = {}
+    if (!trimmed) found.name = 'Tên đội không được để trống.'
+    else if (trimmed.length < 3 || trimmed.length > 30) found.name = 'Tên đội phải từ 3 đến 30 ký tự.'
+    if (!isSkillLevel(skill)) found.skill = 'Vui lòng chọn trình độ của đội.'
+    setErrors(found)
+    if (Object.keys(found).length) return
     setBusy(true)
-    setError('')
     try {
-      const team = await createTeam(trimmed)
+      const team = await createTeam(trimmed, skill)
       onCreated(team)
     } catch (cause) {
-      setError(apiErrorMessage(cause, 'Không tạo được đội.'))
+      setErrors({ name: apiErrorMessage(cause, 'Không tạo được đội.') })
     } finally {
       setBusy(false)
     }
@@ -169,9 +210,12 @@ function CreateTeamModal({ onClose, onCreated }) {
   return <Modal labelledBy={titleId} onDismiss={onClose} busy={busy}>
     <form className="cw-modal-content" onSubmit={submit}>
       <h2 id={titleId}>Tạo đội mới</h2>
-      <p className="cw-muted">Bạn sẽ là đội trưởng. Tên đội không trùng với đội đã có, tối đa 30 ký tự.</p>
-      <Field label="Tên đội" value={name} maxLength={30} required autoFocus error={error || undefined}
-        onChange={(event) => { setName(event.target.value); setError('') }} />
+      <p className="cw-muted">Bạn sẽ là đội trưởng. Tên đội 3–30 ký tự, không trùng với đội đã có.</p>
+      <Field label="Tên đội" value={name} maxLength={30} required autoFocus error={errors.name}
+        onChange={(event) => { setName(event.target.value); setErrors({}) }} />
+      <Field label="Trình độ của đội" options={skillOptions('Chọn trình độ')} value={skill} required
+        error={errors.skill} hint="Người xin vào đội và người xem kèo của đội sẽ thấy trình độ này."
+        onChange={(event) => { setSkill(event.target.value); setErrors({}) }} />
       <div className="cw-modal-actions">
         <button type="button" className="cw-secondary" onClick={onClose} disabled={busy}>Hủy</button>
         <button type="submit" className="action" disabled={busy}>{busy ? 'Đang tạo…' : 'Tạo đội'}</button>
@@ -199,7 +243,7 @@ function MyTeams({ revision, refreshAll }) {
             <div style={rowHead}>
               <div>
                 <div className="cw-record-title">{team.name}</div>
-                <small>{team.memberCount}/{team.maxMembers ?? 20} thành viên · {team.captain ? 'Bạn là đội trưởng' : 'Đội trưởng ' + team.captainName}</small>
+                <small>{team.memberCount}/{team.maxMembers ?? 20} thành viên · {skillText(team)} · {team.captain ? 'Bạn là đội trưởng' : 'Đội trưởng ' + team.captainName}</small>
               </div>
               {team.captain && <StatusPill tone="positive">Đội trưởng</StatusPill>}
               <button type="button" className="cw-secondary" onClick={() => setSelectedId(selected ? null : team.id)}>
@@ -224,13 +268,19 @@ function JoinTeamModal({ team, onClose, onSent }) {
   const [consent, setConsent] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // FR92: hồ sơ chưa có trình độ thì chọn ngay ở đây, backend lưu vào hồ sơ.
+  const loadSkill = useCallback((signal) => getMySkillLevel(signal), [])
+  const profile = useResource(loadSkill)
+  const needsSkill = profile.data !== undefined && !isSkillLevel(profile.data)
+  const [skill, setSkill] = useState('')
 
   async function submit() {
+    if (needsSkill && !isSkillLevel(skill)) { setError('Hồ sơ của bạn chưa có trình độ chơi, vui lòng chọn trình độ.'); return }
     if (!consent) { setError('Vui lòng đồng ý chia sẻ số điện thoại với đội trưởng để gửi yêu cầu.'); return }
     setBusy(true)
     setError('')
     try {
-      await sendTeamJoinRequest(team.id, true)
+      await sendTeamJoinRequest(team.id, true, needsSkill ? skill : undefined)
       onSent()
     } catch (cause) {
       setError(apiErrorMessage(cause, 'Không gửi được yêu cầu.'))
@@ -242,7 +292,12 @@ function JoinTeamModal({ team, onClose, onSent }) {
   return <Modal labelledBy={titleId} onDismiss={onClose} busy={busy}>
     <div className="cw-modal-content">
       <h2 id={titleId}>Xin vào đội {team.name}</h2>
-      <p className="cw-muted">Đội trưởng {team.captainName} sẽ xét duyệt. Mỗi đội chỉ nhận một yêu cầu đang chờ của bạn.</p>
+      <p className="cw-muted">
+        Đội trưởng {team.captainName} sẽ xét duyệt · {skillText(team)}. Mỗi đội chỉ nhận một yêu cầu đang chờ của bạn.
+      </p>
+      {needsSkill && <Field label="Trình độ chơi của bạn" options={skillOptions('Chọn trình độ')} value={skill} required
+        hint="Hồ sơ của bạn chưa có trình độ. Trình độ bạn chọn sẽ được lưu vào hồ sơ."
+        onChange={(event) => { setSkill(event.target.value); setError('') }} />}
       <label style={{ display: 'flex', gap: 8, alignItems: 'start' }}>
         <input type="checkbox" checked={consent} onChange={(event) => { setConsent(event.target.checked); setError('') }} />
         <span>Tôi đồng ý chia sẻ số điện thoại với đội trưởng</span>
@@ -250,7 +305,7 @@ function JoinTeamModal({ team, onClose, onSent }) {
       {error && <Feedback tone="error">{error}</Feedback>}
       <div className="cw-modal-actions">
         <button type="button" className="cw-secondary" onClick={onClose} disabled={busy}>Hủy</button>
-        <button type="button" className="action" onClick={submit} disabled={busy}>{busy ? 'Đang gửi…' : 'Gửi yêu cầu'}</button>
+        <button type="button" className="action" onClick={submit} disabled={busy || profile.loading}>{busy ? 'Đang gửi…' : 'Gửi yêu cầu'}</button>
       </div>
     </div>
   </Modal>
@@ -259,8 +314,10 @@ function JoinTeamModal({ team, onClose, onSent }) {
 function OtherTeams({ revision, refreshAll }) {
   const [search, setSearch] = useState('')
   const [applied, setApplied] = useState('')
-  const load = useCallback(async (signal) => (await getTeams(applied, signal)).filter((team) => !team.member), [applied])
-  const teams = useResource(load, revision + ':' + applied)
+  const [skill, setSkill] = useState('')
+  const load = useCallback(async (signal) =>
+    (await getTeams(applied, skill, signal)).filter((team) => !team.member), [applied, skill])
+  const teams = useResource(load, revision + ':' + applied + ':' + skill)
   const [joining, setJoining] = useState(null)
   const [notice, setNotice] = useState('')
   const action = useAction(refreshAll)
@@ -271,6 +328,10 @@ function OtherTeams({ revision, refreshAll }) {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'end' }}>
           <div style={{ flex: '1 1 240px' }}>
             <Field label="Tìm đội theo tên" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nhập tên đội" />
+          </div>
+          <div style={{ flex: '0 1 200px' }}>
+            <Field label="Trình độ" options={skillOptions('Mọi trình độ')} value={skill}
+              onChange={(event) => setSkill(event.target.value)} />
           </div>
           <button type="submit" className="cw-secondary" style={{ minHeight: 44 }}>Tìm</button>
         </div>
@@ -283,7 +344,7 @@ function OtherTeams({ revision, refreshAll }) {
           return <li key={team.id} className="cw-record">
             <div>
               <div className="cw-record-title">{team.name}</div>
-              <small>Đội trưởng {team.captainName} · {team.memberCount}/{team.maxMembers ?? 20} thành viên</small>
+              <small>Đội trưởng {team.captainName} · {team.memberCount}/{team.maxMembers ?? 20} thành viên · {skillText(team)}</small>
             </div>
             {team.myJoinStatus === 'PENDING' ? <>
               <StatusPill tone="pending">Đang chờ duyệt</StatusPill>
@@ -294,7 +355,7 @@ function OtherTeams({ revision, refreshAll }) {
           </li>
         })}
       </ul>}
-      {teams.data?.length === 0 && <EmptyState>{applied ? 'Không có đội nào khớp tên "' + applied + '".' : 'Chưa có đội nào khác.'}</EmptyState>}
+      {teams.data?.length === 0 && <EmptyState>{applied || skill ? 'Không có đội nào khớp điều kiện tìm.' : 'Chưa có đội nào khác.'}</EmptyState>}
     </Section>
     {joining && <JoinTeamModal team={joining} onClose={() => setJoining(null)}
       onSent={() => { setNotice('Đã gửi yêu cầu vào đội "' + joining.name + '". Chờ đội trưởng duyệt.'); setJoining(null); refreshAll() }} />}
