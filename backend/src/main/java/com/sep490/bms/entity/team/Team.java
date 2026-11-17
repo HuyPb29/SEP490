@@ -36,6 +36,9 @@ public class Team {
 
     @Column(name = "captain_id", nullable = false)
     private Long captainId;
+    /** Trình độ của đội do chủ đội chọn (FR91, DR33); đội tạo trước D165 có thể chưa có. */
+    @Column(name = "skill_level", length = 30)
+    private String skillLevel;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

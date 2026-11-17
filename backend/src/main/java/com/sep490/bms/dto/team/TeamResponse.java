@@ -22,6 +22,8 @@ public class TeamResponse {
     private String name;
     private Long captainId;
     private String captainName;
+    /** Trình độ của đội (FR94, DR33); null với đội tạo trước D165 chưa được chủ đội chọn. */
+    private String skillLevel;
     private long memberCount;
     private boolean member;
     private boolean captain;
