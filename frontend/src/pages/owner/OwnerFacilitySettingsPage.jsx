@@ -23,6 +23,7 @@ const LIMITS = {
   pointEarningRate: { min: 1000, max: 100000 },
   pointRedemptionValue: { min: 1, max: 100000 },
 }
+const STATUS_LABELS = { ACTIVE: 'Đang hoạt động', LOCKED: 'Đã khóa' }
 const DEFAULT_MAP_CENTER = { latitude: 21.028511, longitude: 105.854444 }
 
 /** Form luôn giữ dạng chuỗi để người dùng xoá trắng được, lúc gửi mới đổi kiểu. */
@@ -217,25 +218,25 @@ export default function OwnerFacilitySettingsPage() {
   }
 
   const validate = () => {
-    if (!form.name.trim()) return 'Facility name is required.'
-    if (form.name.trim().length > LIMITS.name) return `Facility name is limited to ${LIMITS.name} characters.`
-    if (!form.address.trim()) return 'Address is required.'
-    if (form.address.trim().length > LIMITS.address) return `Address is limited to ${LIMITS.address} characters.`
+    if (!form.name.trim()) return 'Tên địa điểm không được để trống.'
+    if (form.name.trim().length > LIMITS.name) return `Tên địa điểm tối đa ${LIMITS.name} ký tự.`
+    if (!form.address.trim()) return 'Địa chỉ không được để trống.'
+    if (form.address.trim().length > LIMITS.address) return `Địa chỉ tối đa ${LIMITS.address} ký tự.`
     if (form.contactPhone.trim() && !PHONE_PATTERN.test(form.contactPhone.trim())) {
-      return 'Contact phone must be 10 digits and start with 0.'
+      return 'Số điện thoại liên hệ phải gồm 10 chữ số, bắt đầu bằng 0.'
     }
 
     const numericChecks = [
-      ['advanceBookingDays', 'Advance booking days', LIMITS.advanceBookingDays],
-      ['pointEarningRate', 'Point earning rate', LIMITS.pointEarningRate],
+      ['advanceBookingDays', 'Số ngày đặt trước tối đa', LIMITS.advanceBookingDays],
+      ['pointEarningRate', 'Tỷ lệ tích điểm', LIMITS.pointEarningRate],
     ]
     for (const [field, label, range] of numericChecks) {
       const raw = form[field].trim()
       if (!raw) continue
       const value = Number(raw)
-      if (!Number.isFinite(value)) return `${label} must be a number.`
+      if (!Number.isFinite(value)) return `${label} phải là số.`
       if (value < range.min || value > range.max) {
-        return `${label} must be between ${range.min} and ${range.max}.`
+        return `${label} phải trong khoảng ${range.min.toLocaleString('vi-VN')} đến ${range.max.toLocaleString('vi-VN')}.`
       }
     }
     return ''
@@ -277,7 +278,7 @@ export default function OwnerFacilitySettingsPage() {
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (locked) {
-      setError('This facility is locked, so the backend rejects every update.')
+      setError('Địa điểm đang bị khóa nên không lưu được thay đổi.')
       return
     }
     const pointValue = Number(form.pointRedemptionValue)
@@ -293,7 +294,7 @@ export default function OwnerFacilitySettingsPage() {
     }
     const payload = buildPayload()
     if (Object.keys(payload).length === 0) {
-      setMessage('Nothing changed.')
+      setMessage('Chưa có thay đổi nào.')
       setError('')
       return
     }
@@ -309,7 +310,7 @@ export default function OwnerFacilitySettingsPage() {
       setForm(toForm(updated))
       setOriginal(toForm(updated))
       setError('')
-      setMessage('Facility profile saved.')
+      setMessage('Đã lưu hồ sơ địa điểm.')
     } catch (err) {
       const fieldError = err.response?.data?.errors?.pointRedemptionValue
       if (fieldError) setPointValueError(fieldError)
@@ -324,7 +325,7 @@ export default function OwnerFacilitySettingsPage() {
     setForm(original)
     setError('')
     setPointValueError('')
-    setMessage('Reverted to the saved values.')
+    setMessage('Đã trả về các giá trị đã lưu.')
   }
 
 
@@ -349,14 +350,14 @@ export default function OwnerFacilitySettingsPage() {
           <section className={styles.card}>
             <div className={styles.cardHeader}>
               <div>
-                <h2 className={styles.cardTitle}>Profile</h2>
-                <p className={styles.cardHint}>Shown to players on the facility search and detail pages.</p>
+                <h2 className={styles.cardTitle}>Thông tin địa điểm</h2>
+                <p className={styles.cardHint}>Hiển thị cho người chơi ở trang tìm địa điểm và trang chi tiết địa điểm.</p>
               </div>
             </div>
 
             <div className={styles.fieldGrid}>
               <label className={`${styles.field} ${styles.fieldWide}`}>
-                <span>Facility name *</span>
+                <span>Tên địa điểm *</span>
                 <input
                   type="text"
                   maxLength={LIMITS.name}
@@ -367,7 +368,7 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={`${styles.field} ${styles.fieldWide}`}>
-                <span>Address *</span>
+                <span>Địa chỉ *</span>
                 <input
                   type="text"
                   maxLength={LIMITS.address}
@@ -378,7 +379,7 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={styles.field}>
-                <span>Contact phone</span>
+                <span>Số điện thoại liên hệ</span>
                 <input
                   type="tel"
                   inputMode="numeric"
@@ -421,14 +422,14 @@ export default function OwnerFacilitySettingsPage() {
           <section className={styles.card}>
             <div className={styles.cardHeader}>
               <div>
-                <h2 className={styles.cardTitle}>Booking rules</h2>
-                <p className={styles.cardHint}>Applied to every court of this facility.</p>
+                <h2 className={styles.cardTitle}>Quy định đặt sân và tích điểm</h2>
+                <p className={styles.cardHint}>Áp dụng cho mọi sân của địa điểm này.</p>
               </div>
             </div>
 
             <div className={`${styles.fieldGrid} ${styles.fieldGridNarrow}`}>
               <label className={styles.field}>
-                <span>Advance booking days</span>
+                <span>Số ngày đặt trước tối đa</span>
                 <input
                   type="number"
                   min={LIMITS.advanceBookingDays.min}
@@ -440,7 +441,7 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={styles.field}>
-                <span>Point earning rate</span>
+                <span>Tỷ lệ tích điểm (số đồng để được 1 điểm)</span>
                 <input
                   type="number"
                   min={LIMITS.pointEarningRate.min}
@@ -466,21 +467,21 @@ export default function OwnerFacilitySettingsPage() {
             </div>
 
             <p className={styles.note}>
-              Advance booking days: 1–365. Point earning rate: 1,000–100,000 VND per point.
+              Số ngày đặt trước tối đa: 1–365 ngày. Tỷ lệ tích điểm: 1.000–100.000 đồng được 1 điểm.
             </p>
           </section>
 
           <section className={styles.card}>
             <div className={styles.cardHeader}>
               <div>
-                <h2 className={styles.cardTitle}>Payment &amp; QR</h2>
-                <p className={styles.cardHint}>Used by players to transfer the deposit and by staff to confirm it.</p>
+                <h2 className={styles.cardTitle}>Thông tin nhận chuyển khoản</h2>
+                <p className={styles.cardHint}>Người chơi chuyển khoản theo thông tin này; nhân viên đối chiếu để xác nhận thanh toán.</p>
               </div>
             </div>
 
             <div className={styles.fieldGrid}>
               <label className={styles.field}>
-                <span>Bank name</span>
+                <span>Ngân hàng</span>
                 <input
                   type="text"
                   maxLength={LIMITS.bankName}
@@ -491,7 +492,7 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={styles.field}>
-                <span>Account number</span>
+                <span>Số tài khoản</span>
                 <input
                   type="text"
                   maxLength={LIMITS.bankAccountNo}
@@ -501,7 +502,7 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={styles.field}>
-                <span>Account holder</span>
+                <span>Tên chủ tài khoản</span>
                 <input
                   type="text"
                   maxLength={LIMITS.bankAccountHolder}
@@ -546,13 +547,13 @@ export default function OwnerFacilitySettingsPage() {
 
           <div className={styles.actions}>
             <button className={styles.primaryButton} type="submit" disabled={saving || locked || !dirty}>
-              {saving ? 'Saving…' : dirty ? 'Save changes' : 'No changes'}
+              {saving ? 'Đang lưu…' : dirty ? 'Lưu thay đổi' : 'Chưa có thay đổi'}
             </button>
             <button className={styles.ghostButton} type="button" onClick={handleReset} disabled={!dirty || saving}>
-              Reset
+              Hoàn tác
             </button>
             <span className={styles.dirtyHint}>
-              {dirty ? 'Unsaved changes' : 'All changes saved'}
+              {dirty ? 'Có thay đổi chưa lưu' : 'Đã lưu mọi thay đổi'}
             </span>
           </div>
         </form>
@@ -560,38 +561,38 @@ export default function OwnerFacilitySettingsPage() {
         <section className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
-              <h2 className={styles.cardTitle}>Read-only information</h2>
-              <p className={styles.cardHint}>Managed by the admin, not editable here.</p>
+              <h2 className={styles.cardTitle}>Thông tin do Admin quản lý</h2>
+              <p className={styles.cardHint}>Chỉ xem, không sửa ở đây.</p>
             </div>
           </div>
 
           <dl className={styles.metaGrid}>
             <div>
-              <dt>Status</dt>
+              <dt>Tình trạng</dt>
               <dd>
                 <span className={`${styles.badge} ${locked ? styles.badgeLocked : styles.badgeActive}`}>
-                  {selectedLocation?.status ?? '—'}
+                  {STATUS_LABELS[selectedLocation?.status] ?? selectedLocation?.status ?? '—'}
                 </span>
               </dd>
             </div>
             <div>
-              <dt>Service term ends</dt>
+              <dt>Hết hạn sử dụng dịch vụ</dt>
               <dd>{selectedLocation?.serviceTermEndDate ? formatDateTime(selectedLocation.serviceTermEndDate) : '—'}</dd>
             </div>
             <div>
-              <dt>Courts</dt>
+              <dt>Số sân</dt>
               <dd>{selectedLocation?.courts?.length ?? 0}</dd>
             </div>
             <div>
-              <dt>Locked at</dt>
+              <dt>Thời điểm khóa</dt>
               <dd>{formatDateTime(selectedLocation?.lockedAt)}</dd>
             </div>
             <div>
-              <dt>Created</dt>
+              <dt>Ngày tạo</dt>
               <dd>{formatDateTime(selectedLocation?.createdAt)}</dd>
             </div>
             <div>
-              <dt>Last update</dt>
+              <dt>Cập nhật lần cuối</dt>
               <dd>{formatDateTime(selectedLocation?.updatedAt)}</dd>
             </div>
           </dl>
