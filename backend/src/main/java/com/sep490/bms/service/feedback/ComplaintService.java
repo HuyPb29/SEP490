@@ -75,6 +75,8 @@ public class ComplaintService {
 
     private static final int MAX_PAGE_SIZE = 50;
     private static final BigDecimal LATE_PAYMENT_VOUCHER_VALUE = BigDecimal.valueOf(10_000);
+    /** P23: thời hạn gửi khiếu nại, tính từ giờ kết thúc của booking (BR49). */
+    private static final java.time.Duration COMPLAINT_WINDOW = java.time.Duration.ofHours(24);
     private static final Set<String> PLAYER_TYPES = Set.of("PAYMENT_ISSUE", "COURT_SERVICE", "OTHER", Complaint.TYPE_LATE_PAYMENT_CONFIRMATION);
 
     private final ComplaintRepository complaintRepository;
@@ -129,6 +131,7 @@ public class ComplaintService {
         if(!PLAYER_TYPES.contains(type) || Complaint.TYPE_LATE_PAYMENT_CONFIRMATION.equals(type)) throw new AppException("Loại khiếu nại không hợp lệ");
         if(request.getPaymentId()!=null && !booking.getId().equals(findPayment(request.getPaymentId()).getBookingId()))
             throw new AppException("Thanh toán không thuộc booking");
+        requireWithinComplaintWindow(booking);
         Complaint complaint=complaintRepository.saveAndFlush(Complaint.builder().locationId(booking.getLocationId())
                 .bookingId(booking.getId()).paymentId(request.getPaymentId()).createdBy(staff.getId())
                 .complaintType(type).content(request.getContent().trim()).build());
@@ -147,6 +150,10 @@ public class ComplaintService {
             throw new AppException("Bạn chỉ được khiếu nại booking của chính mình", HttpStatus.FORBIDDEN);
         }
         boolean latePayment = Complaint.TYPE_LATE_PAYMENT_CONFIRMATION.equals(type);
+        // Khiếu nại chậm xác nhận gửi khi giao dịch còn đang chờ Staff (BR58) nên không xét hạn P23.
+        if (!latePayment) {
+            requireWithinComplaintWindow(booking);
+        }
         if (latePayment && request.getPaymentId() == null) {
             throw new AppException("Khiếu nại xác nhận thanh toán trễ phải gắn với khoản thanh toán");
         }
@@ -162,7 +169,7 @@ public class ComplaintService {
             }
         }
         if (latePayment && complaintRepository.existsByPaymentIdAndComplaintType(request.getPaymentId(), type)) {
-            throw new AppException("Khoản thanh toán này đã có khiếu nại xác nhận trễ", HttpStatus.CONFLICT);
+            throw new AppException("Bạn đã gửi khiếu nại chậm xác nhận cho giao dịch này.", HttpStatus.CONFLICT); // MSG90
         }
         return Complaint.builder()
                 .locationId(booking.getLocationId())
@@ -187,6 +194,14 @@ public class ComplaintService {
         Payment payment = findPayment(paymentId);
         return belongsToBooking(payment, booking) && waitedLongEnough(payment, LocalDateTime.now())
                 && !complaintRepository.existsByPaymentIdAndComplaintType(paymentId, Complaint.TYPE_LATE_PAYMENT_CONFIRMATION);
+    }
+
+    /** BR49, P23 (cố định): khiếu nại phải gửi trong 24 giờ tính từ giờ kết thúc của booking. */
+    private void requireWithinComplaintWindow(Booking booking) {
+        LocalDateTime end = booking.getPlayDate().atStartOfDay().plusMinutes(booking.getEndMinute());
+        if (LocalDateTime.now().isAfter(end.plus(COMPLAINT_WINDOW))) {
+            throw new AppException("Đã quá thời hạn gửi khiếu nại cho booking này."); // MSG84
+        }
     }
 
     private boolean belongsToBooking(Payment payment, Booking booking) {

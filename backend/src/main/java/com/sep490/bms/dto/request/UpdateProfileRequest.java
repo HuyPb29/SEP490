@@ -13,6 +13,7 @@ public class UpdateProfileRequest {
     @Size(min = 2, max = 50)
     @Pattern(regexp = ValidationRules.NAME, message = "Họ tên chỉ được chứa chữ và khoảng trắng")
     private String fullName;
-    @Size(max = 30)
+    @Pattern(regexp = "Mới chơi|Trung bình|Khá|Nâng cao",
+            message = "Chọn một trong bốn mức trình độ chơi theo DR33")
     private String skillLevel;
 }

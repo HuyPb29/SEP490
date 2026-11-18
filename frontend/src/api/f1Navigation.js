@@ -6,7 +6,7 @@ const routesByRole = {
   staff: ['/staff/dashboard', '/staff/schedule', '/staff/confirm-payments', '/staff/complaints', '/maintenance'],
   owner: ['/register-service', '/account', '/change-password', '/owner/courts', '/owner/reconciliations', '/owner/workspace', '/owner/reports', '/owner/courts-pricing',
     '/owner/opening-hours', '/owner/facility-settings', '/staff/confirm-payments', '/maintenance'],
-  admin: ['/admin/workspace', '/admin/accounts', '/admin/facilities', '/admin/reviews', '/admin/vouchers'],
+  admin: ['/admin/workspace', '/admin/accounts', '/admin/facilities', '/admin/reviews'],
 }
 
 export function canResumePath(value, role) {

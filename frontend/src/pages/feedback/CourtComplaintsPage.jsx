@@ -18,20 +18,34 @@ const loadStaffCases = (signal) => getAllPages(staffPath, { signal })
 const loadOwnerCases = (signal) => getAllPages(ownerPath, { signal })
 const loadPlayerCases = (signal) => getAllPages('/me/complaints', { signal })
 
+/** Booking tại quầy đã có hiệu lực mới có cái để khiếu nại; đang giữ chỗ hoặc hết hạn thì chưa phát sinh giao dịch. */
+const WALK_IN_COMPLAINABLE = ['CONFIRMED', 'IN_USE', 'COMPLETED', 'CANCELLED_BY_FACILITY', 'CANCELLED_BY_PLAYER']
+const walkInStatusLabels = {
+  CONFIRMED: 'Đã xác nhận', IN_USE: 'Đang sử dụng', COMPLETED: 'Hoàn thành',
+  CANCELLED_BY_FACILITY: 'Sân hủy', CANCELLED_BY_PLAYER: 'Khách hủy',
+}
+/** FR110, FR111: Staff chọn loại khiếu nại như Player; khiếu nại chậm xác nhận chỉ Player gửi (BR58). */
+const walkInTypes = [['COURT_SERVICE', 'Dịch vụ sân'], ['PAYMENT_ISSUE', 'Vấn đề thanh toán'], ['OTHER', 'Khác']]
+
+/** UC33 #2, FR111: khách tại quầy khiếu nại trực tiếp thì Staff tạo khiếu nại thay khách (trong 24 giờ, BR49). */
 function WalkInComplaintForm({ refresh }) {
   const [date, setDate] = useState(today)
-  const loadWalkIns = useCallback((signal) => date
-    ? getAllPages('/staff/bookings', { signal, params: { date, status: 'CANCELLED_BY_FACILITY' } })
-    : Promise.resolve([]), [date])
+  const loadWalkIns = useCallback(async (signal) => date
+    ? (await getAllPages('/staff/bookings', { signal, params: { date } }))
+      .filter((item) => WALK_IN_COMPLAINABLE.includes(item.status))
+    : [], [date])
   const bookings = useResource(loadWalkIns, date)
-  return <Section title="Lập khiếu nại cho khách tại quầy bị sân hủy" resource={bookings}>
+  return <Section title="Lập khiếu nại thay khách tại quầy" resource={bookings}>
+    <p className="cw-muted">Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của booking. Staff kiểm tra rồi chuyển chủ sân quyết định.</p>
     <Field label="Ngày đặt sân" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-    {bookings.data?.length === 0 && <p>Không có booking tại quầy bị sân hủy trong ngày này.</p>}
+    {bookings.data?.length === 0 && <p>Không có booking tại quầy trong ngày này.</p>}
     {bookings.data?.length > 0 && <ActionForm key={date} label="Lập khiếu nại" after={refresh}
-      action={(form) => api.post(staffPath, { ...form, bookingId: Number(form.bookingId), complaintType: 'COURT_SERVICE' })}>
-      <Field label="Booking bị sân hủy" name="bookingId" required options={[
-        ['', 'Chọn booking'], ...bookings.data.map((item) => [item.id, item.bookingCode + ' · ' + item.customerName + ' · ' + item.startTime]),
+      action={(form) => api.post(staffPath, { ...form, bookingId: Number(form.bookingId) })}>
+      <Field label="Booking tại quầy" name="bookingId" required options={[
+        ['', 'Chọn booking'], ...bookings.data.map((item) => [item.id, item.bookingCode + ' · ' + item.customerName + ' · '
+          + item.startTime + ' · ' + (walkInStatusLabels[item.status] ?? item.status)]),
       ]} />
+      <Field label="Loại khiếu nại" name="complaintType" required options={walkInTypes} />
       <Field label="Nội dung khách phản ánh" name="content" required maxLength={1000} />
     </ActionForm>}
   </Section>
@@ -207,6 +221,9 @@ function PlayerComplaintForm({ bookingId, paymentId, refresh }) {
   return <Section title="Gửi khiếu nại" resource={booking}>
     {item && <>
       <p>{item.bookingCode} · {item.playDate}</p>
+      <p className="cw-muted">
+        Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của booking. Nhân viên sân kiểm tra rồi chuyển chủ sân quyết định.
+      </p>
       <ActionForm label="Gửi khiếu nại" after={() => { eligibility.reload(); refresh() }} action={(form) => api.post('/complaints', {
         ...form, bookingId: item.id ?? Number(bookingId),
         paymentId: form.complaintType === 'LATE_PAYMENT_CONFIRMATION' ? targetPaymentId : null,

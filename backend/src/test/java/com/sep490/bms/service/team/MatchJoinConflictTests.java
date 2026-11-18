@@ -106,6 +106,8 @@ class MatchJoinConflictTests {
         when(joins.save(any())).thenReturn(saved);
         Account account = mock(Account.class);
         when(account.getId()).thenReturn(7L);
+        when(account.getSkillLevel()).thenReturn("Khá");
+        when(accounts.findById(7L)).thenReturn(Optional.of(account));
         when(accounts.findAllById(any())).thenReturn(List.of(account));
 
         var response = service.createJoinRequest(7L, 1L, consent());

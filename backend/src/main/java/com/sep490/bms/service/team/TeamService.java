@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.sep490.bms.common.SkillLevels;
 import com.sep490.bms.dto.team.CreateTeamRequest;
 import com.sep490.bms.dto.team.JoinRequestCreateRequest;
 import com.sep490.bms.dto.team.JoinRequestResponse;
@@ -37,8 +38,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class TeamService {
 
-    /** Số thành viên tối đa của một đội (DR12). */
+    /** Số thành viên tối đa của một đội (BR23, P15). */
     private static final int MAX_TEAM_MEMBERS = 20;
+    /** Độ dài tên đội (DR27). */
+    private static final int MIN_TEAM_NAME = 3;
+    private static final int MAX_TEAM_NAME = 30;
 
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
@@ -49,15 +53,20 @@ public class TeamService {
 
     @Transactional
     public TeamResponse createTeam(Long userId, CreateTeamRequest request) {
-        String name = request.getName().trim();
+        // DR27: bỏ khoảng trắng thừa, 3–30 ký tự, không trùng (không phân biệt hoa thường).
+        String name = request.getName() == null ? "" : request.getName().trim().replaceAll("\\s+", " ");
         if (name.isEmpty()) {
             throw new AppException("Tên đội không được để trống");
         }
+        if (name.length() < MIN_TEAM_NAME || name.length() > MAX_TEAM_NAME) {
+            throw new AppException("Tên đội phải từ " + MIN_TEAM_NAME + " đến " + MAX_TEAM_NAME + " ký tự");
+        }
+        String skillLevel = SkillLevels.require(request.getSkillLevel(), "Trình độ của đội");
         if (teamRepository.existsByNameIgnoreCase(name)) {
             throw new AppException("Tên đội đã tồn tại, vui lòng chọn tên khác", HttpStatus.CONFLICT);
         }
 
-        Team team = teamRepository.save(Team.builder().name(name).captainId(userId).build());
+        Team team = teamRepository.save(Team.builder().name(name).captainId(userId).skillLevel(skillLevel).build());
         teamMemberRepository.save(TeamMember.builder()
                 .teamId(team.getId())
                 .playerId(userId)
@@ -68,8 +77,26 @@ public class TeamService {
 
     @Transactional(readOnly = true)
     public List<TeamResponse> getTeams(Long userId, String search) {
+        return getTeams(userId, search, null);
+    }
+
+    /** FR94: tìm đội theo tên và lọc theo trình độ của đội (bỏ trống thì không lọc). */
+    @Transactional(readOnly = true)
+    public List<TeamResponse> getTeams(Long userId, String search, String skillLevel) {
         String keyword = StringUtils.hasText(search) ? search.trim() : null;
-        return teamRepository.search(keyword).stream().map(t -> toTeamResponse(t, userId)).toList();
+        String skill = StringUtils.hasText(skillLevel) ? SkillLevels.require(skillLevel, "Trình độ lọc") : null;
+        return teamRepository.search(keyword).stream()
+                .filter(t -> skill == null || skill.equals(t.getSkillLevel()))
+                .map(t -> toTeamResponse(t, userId)).toList();
+    }
+
+    /** FR91: chủ đội đổi trình độ của đội. */
+    @Transactional
+    public TeamResponse updateSkillLevel(Long userId, Long teamId, String skillLevel) {
+        Team team = findTeam(teamId);
+        requireCaptain(team, userId);
+        team.setSkillLevel(SkillLevels.require(skillLevel, "Trình độ của đội"));
+        return toTeamResponse(teamRepository.save(team), userId);
     }
 
     @Transactional(readOnly = true)
@@ -160,6 +187,7 @@ public class TeamService {
         if (teamJoinRequestRepository.existsByTeamIdAndPlayerIdAndStatus(teamId, userId, JoinRequestStatus.PENDING)) {
             throw new AppException("Bạn đã gửi yêu cầu vào đội này và đang chờ duyệt", HttpStatus.CONFLICT);
         }
+        ensureSkillLevel(userId, request.getSkillLevel());
 
         TeamJoinRequest saved = teamJoinRequestRepository.save(TeamJoinRequest.builder()
                 .teamId(teamId)
@@ -215,6 +243,23 @@ public class TeamService {
     }
 
     // ---------------------------------------------------------------- Helper
+
+    /**
+     * FR92, DR33: hồ sơ chưa có trình độ (hoặc giá trị cũ ngoài 4 mức) thì người xin phải chọn khi gửi yêu cầu;
+     * trình độ đó được lưu vào hồ sơ (FR06). Hồ sơ đã có trình độ hợp lệ thì giữ nguyên.
+     */
+    private void ensureSkillLevel(Long userId, String requested) {
+        Account account = accountRepository.findById(userId)
+                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản", HttpStatus.NOT_FOUND));
+        if (SkillLevels.isValid(account.getSkillLevel())) {
+            return;
+        }
+        if (!StringUtils.hasText(requested)) {
+            throw new AppException("Hồ sơ của bạn chưa có trình độ chơi, vui lòng chọn trình độ trước khi gửi yêu cầu");
+        }
+        account.setSkillLevel(SkillLevels.require(requested, "Trình độ chơi"));
+        accountRepository.save(account);
+    }
 
     private JoinRequestResponse decide(TeamJoinRequest request, JoinRequestStatus status) {
         request.setStatus(status);
@@ -281,6 +326,7 @@ public class TeamService {
                 .name(team.getName())
                 .captainId(team.getCaptainId())
                 .captainName(captainName)
+                .skillLevel(team.getSkillLevel())
                 .memberCount(teamMemberRepository.countByTeamIdAndStatus(team.getId(), TeamMemberStatus.ACTIVE))
                 .maxMembers(MAX_TEAM_MEMBERS)
                 .member(member)
@@ -300,7 +346,8 @@ public class TeamService {
                     .targetId(r.getTeamId())
                     .playerId(r.getPlayerId())
                     .fullName(a.getFullName())
-                    .phone(a.getPhone())
+                    // FR93, BR57: chủ đội xét yêu cầu theo họ tên và trình độ; số điện thoại chỉ thấy khi đã là thành viên.
+                    .phone(r.getStatus() == JoinRequestStatus.APPROVED ? a.getPhone() : null)
                     .skillLevel(a.getSkillLevel())
                     .status(r.getStatus().name())
                     .createdAt(r.getCreatedAt())

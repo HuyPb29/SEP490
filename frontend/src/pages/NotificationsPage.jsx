@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import api, { getAllPages } from '../api'
 import { getSavedUser } from '../api/session'
 import { cancelMatchApi, keepMatchAfterRescheduleApi } from '../api/bookingApi'
@@ -28,7 +28,7 @@ function MatchDecision({ id }) {
   </div>
 }
 
-function Inbox() {
+export function Inbox({ title = 'Hộp thư' }) {
   const inbox = useResource(loadNotifications)
   const { setSelectedVenue } = useAuth()
   const [items, count] = inbox.data ?? []
@@ -36,7 +36,7 @@ function Inbox() {
   const visible = items?.filter((item) => !unreadOnly || !item.read)
   const role = getSavedUser()?.role_code
   const isPlayer = role === 'player'
-  return <Section title={count ? 'Hộp thư · ' + (count.unread ?? 0) + ' chưa đọc' : 'Hộp thư'} resource={inbox}>
+  return <Section title={count ? title + ' · ' + (count.unread ?? 0) + ' chưa đọc' : title} resource={inbox}>
     {items?.some((item) => !item.read) && <ActionForm label="Đánh dấu đã đọc tất cả"
       action={() => api.patch('/notifications/read-all')} after={inbox.reload} />}
     <div className="cw-tabs" role="group" aria-label="Lọc thông báo">
@@ -75,5 +75,7 @@ function Inbox() {
 }
 
 export default function NotificationsPage() {
+  // Player và Owner xem thông báo trong trang tài khoản (cùng thanh điều hướng với hồ sơ, đổi mật khẩu).
+  if (['player', 'owner'].includes(getSavedUser()?.role_code)) return <Navigate to="/account/notifications" replace />
   return <WorkspaceLayout title="Thông báo"><Inbox /></WorkspaceLayout>
 }

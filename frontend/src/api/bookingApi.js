@@ -37,7 +37,7 @@ export function voucherGrantState({ voucher, grantStatus, expiresAt }, now = new
   const day = venueDate.format(now);
   const expiry = expiresAt && Date.parse(/Z$|[+-]\d{2}:\d{2}$/.test(expiresAt) ? expiresAt : expiresAt + '+07:00');
   if (voucher.status === 'EXPIRED' || (voucher.validTo && voucher.validTo < day) || (expiry && expiry <= now.getTime())) return 'EXPIRED';
-  if ((voucher.status && voucher.status !== 'PUBLISHED') || (voucher.validFrom && voucher.validFrom > day)) return 'UNAVAILABLE';
+  if ((voucher.status && !['PUBLISHED', 'STOPPED'].includes(voucher.status)) || (voucher.validFrom && voucher.validFrom > day)) return 'UNAVAILABLE';
   return 'AVAILABLE';
 }
 

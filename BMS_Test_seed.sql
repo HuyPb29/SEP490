@@ -33,7 +33,7 @@ INSERT INTO account (id, username, email, phone, password_hash, full_name, role,
   (10, N'pham.dung', N'dung.pham@gmail.com', N'0912000010', N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Phạm Tiến Dũng', N'PLAYER', N'Khá', NULL, N'ACTIVE'),
   (11, N'hoang.em', N'em.hoang@gmail.com', N'0912000011', N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Hoàng Thị Em', N'PLAYER', N'Trung bình', NULL, N'ACTIVE'),
   (12, N'vu.phuc', N'phuc.vu@gmail.com', N'0912000012', N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Vũ Hồng Phúc', N'PLAYER', N'Mới chơi', NULL, N'ACTIVE'),
-  (13, N'dang.giang', N'giang.dang@gmail.com', N'0912000013', N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Đặng Minh Giang', N'PLAYER', N'Giỏi', NULL, N'ACTIVE'),
+  (13, N'dang.giang', N'giang.dang@gmail.com', N'0912000013', N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Đặng Minh Giang', N'PLAYER', N'Nâng cao', NULL, N'ACTIVE'),
   (14, N'bui.hieu', N'hieu.bui@gmail.com', N'0912000014', N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Bùi Trung Hiếu', N'PLAYER', N'Trung bình', NULL, N'ACTIVE'),
   (15, N'locked.user', N'locked.user@gmail.com', N'0912000015', N'$2b$10$u9WZ/qRUXCNyBRnw5ekb0O4HHYqMt6z2GDYrWOTZmKjXpYjkHDrSe', N'Tài khoản bị khóa', N'PLAYER', NULL, NULL, N'LOCKED');
 SET IDENTITY_INSERT account OFF;
@@ -150,9 +150,9 @@ SET IDENTITY_INSERT batch_offer OFF;
 
 -- team (2)
 SET IDENTITY_INSERT team ON;
-INSERT INTO team (id, name, captain_id) VALUES
-  (1, N'Thunder Smash', 7),
-  (2, N'Phoenix BC', 11);
+INSERT INTO team (id, name, captain_id, skill_level) VALUES
+  (1, N'Thunder Smash', 7, N'Khá'),
+  (2, N'Phoenix BC', 11, N'Trung bình');
 SET IDENTITY_INSERT team OFF;
 
 -- booking_package (1)

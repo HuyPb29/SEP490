@@ -29,7 +29,6 @@ export default function ServiceRegistrationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState('');
   const [submitError, setSubmitError] = useState('');
-  const [coordinatePair, setCoordinatePair] = useState('');
   const [locationError, setLocationError] = useState('');
   const [locating, setLocating] = useState(false);
 
@@ -77,23 +76,13 @@ export default function ServiceRegistrationPage() {
       latitude: Number(latitude.toFixed(6)),
       longitude: Number(longitude.toFixed(6)),
     }));
-    setFieldErrors(({ latitude: _latitude, longitude: _longitude, ...rest }) => rest);
+    setFieldErrors(({ location: _location, ...rest }) => rest);
     setLocationError('');
-  };
-
-  const applyCoordinatePair = () => {
-    const match = coordinatePair.trim().match(/^([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)$/);
-    if (!match || Math.abs(Number(match[1])) > 90 || Math.abs(Number(match[2])) > 180) {
-      setLocationError('Dán tọa độ theo dạng vĩ độ, kinh độ. Ví dụ: 21.028511, 105.854444.');
-      return;
-    }
-    fillCoordinates(Number(match[1]), Number(match[2]));
-    setCoordinatePair('');
   };
 
   const handleGetCurrentLocation = () => {
     if (!window.isSecureContext || !navigator.geolocation) {
-      setLocationError('Không thể dùng định vị ở trình duyệt này. Bạn có thể dán tọa độ từ Google Maps.');
+      setLocationError('Không thể dùng định vị ở trình duyệt này. Hãy bấm vào bản đồ để đặt ghim.');
       return;
     }
     setLocationError('');
@@ -105,11 +94,11 @@ export default function ServiceRegistrationPage() {
       },
       (error) => {
         const messages = {
-          1: 'Quyền vị trí đang bị chặn. Hãy cho phép vị trí trong cài đặt trang hoặc dán tọa độ từ Google Maps.',
-          2: 'Thiết bị không xác định được vị trí. Bạn có thể dán tọa độ từ Google Maps.',
-          3: 'Đã hết thời gian lấy vị trí. Hãy thử lại hoặc dán tọa độ từ Google Maps.',
+          1: 'Quyền vị trí đang bị chặn. Hãy cho phép vị trí trong cài đặt trang hoặc bấm vào bản đồ để đặt ghim.',
+          2: 'Thiết bị không xác định được vị trí. Hãy bấm vào bản đồ để đặt ghim.',
+          3: 'Đã hết thời gian lấy vị trí. Hãy thử lại hoặc bấm vào bản đồ để đặt ghim.',
         };
-        setLocationError(messages[error.code] ?? 'Không lấy được vị trí. Bạn có thể dán tọa độ từ Google Maps.');
+        setLocationError(messages[error.code] ?? 'Không lấy được vị trí. Hãy bấm vào bản đồ để đặt ghim.');
         setLocating(false);
       },
       { timeout: 10000 }
@@ -131,18 +120,9 @@ export default function ServiceRegistrationPage() {
       errors.address = 'Địa chỉ tối đa 255 ký tự.';
     }
 
-    const lat = Number(formData.latitude);
-    if (formData.latitude === '' || isNaN(lat)) {
-      errors.latitude = 'Vĩ độ không được để trống.';
-    } else if (lat < -90 || lat > 90) {
-      errors.latitude = 'Vĩ độ phải nằm trong khoảng từ -90 đến 90.';
-    }
-
-    const lng = Number(formData.longitude);
-    if (formData.longitude === '' || isNaN(lng)) {
-      errors.longitude = 'Kinh độ không được để trống.';
-    } else if (lng < -180 || lng > 180) {
-      errors.longitude = 'Kinh độ phải nằm trong khoảng từ -180 đến 180.';
+    // DR19: vị trí bắt buộc, chọn bằng điểm ghim trên bản đồ (kinh độ, vĩ độ do bản đồ điền, không nhập tay).
+    if (formData.latitude === '' || formData.longitude === '') {
+      errors.location = 'Hãy chọn vị trí địa điểm trên bản đồ.';
     }
 
     const courts = Number(formData.courtCount);
@@ -318,42 +298,34 @@ export default function ServiceRegistrationPage() {
                 )}
                 <p className={styles.helperText}>Hệ thống sẽ tự động khởi tạo các sân này khi được duyệt.</p>
               </div>
+            </div>
 
-              <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="latitude">
-                  <span>Vĩ độ (Latitude) <span className={styles.requiredMark}>*</span></span>
-                </label>
-                <input
-                  id="latitude"
-                  type="number"
-                  step="any"
-                  className={`${styles.input} ${fieldErrors.latitude ? styles.inputError : ''}`}
-                  value={formData.latitude}
-                  onChange={(e) => handleChange('latitude', e.target.value)}
-                  disabled={!canSubmit || isSubmitting}
-                />
-                {fieldErrors.latitude && (
-                  <p className={styles.errorText} role="alert">{fieldErrors.latitude}</p>
-                )}
-              </div>
-
-              <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="longitude">
-                  <span>Kinh độ (Longitude) <span className={styles.requiredMark}>*</span></span>
-                </label>
-                <input
-                  id="longitude"
-                  type="number"
-                  step="any"
-                  className={`${styles.input} ${fieldErrors.longitude ? styles.inputError : ''}`}
-                  value={formData.longitude}
-                  onChange={(e) => handleChange('longitude', e.target.value)}
-                  disabled={!canSubmit || isSubmitting}
-                />
-                {fieldErrors.longitude && (
-                  <p className={styles.errorText} role="alert">{fieldErrors.longitude}</p>
-                )}
-              </div>
+            <div className={styles.formGroup}>
+              <span className={styles.label}>
+                <span>Vị trí địa điểm trên bản đồ <span className={styles.requiredMark}>*</span></span>
+              </span>
+              <p className={styles.helperText}>
+                Bấm vào bản đồ để đặt ghim tại sân của bạn, kéo ghim để chỉnh cho đúng. Có thể kéo, phóng to bản đồ để tìm.
+              </p>
+              {canSubmit && (
+                <div className="mt-2 max-w-md">
+                  <LocationMap
+                    initialCenter={{ latitude: 21.028511, longitude: 105.854444 }}
+                    venues={formData.latitude === '' || formData.longitude === '' ? [] :
+                      [{ facility_id: 'registration', latitude: formData.latitude, longitude: formData.longitude }]}
+                    onPick={fillCoordinates}
+                    pickDisabled={isSubmitting || locating}
+                  />
+                </div>
+              )}
+              <p className={styles.helperText} aria-live="polite">
+                {formData.latitude === '' || formData.longitude === ''
+                  ? 'Chưa chọn vị trí.'
+                  : `Đã chọn vị trí: ${formData.latitude}, ${formData.longitude}`}
+              </p>
+              {fieldErrors.location && (
+                <p className={styles.errorText} role="alert">{fieldErrors.location}</p>
+              )}
             </div>
 
             <div className={styles.coordActionRow}>
@@ -363,35 +335,10 @@ export default function ServiceRegistrationPage() {
                 onClick={handleGetCurrentLocation}
                 disabled={!canSubmit || isSubmitting || locating}
               >
-                {locating ? 'Đang lấy vị trí…' : 'Lấy tọa độ GPS hiện tại'}
+                {locating ? 'Đang lấy vị trí…' : 'Đặt ghim tại vị trí hiện tại (GPS)'}
               </button>
             </div>
-            <div className={styles.formGroup}>
-              <label className={styles.label} htmlFor="coordinatePair">Tọa độ từ Google Maps</label>
-              <div className={styles.coordActionRow}>
-                <input id="coordinatePair" className={styles.input} value={coordinatePair}
-                  onChange={(event) => setCoordinatePair(event.target.value)}
-                  placeholder="Vĩ độ, kinh độ" disabled={!canSubmit || isSubmitting || locating} />
-                <button type="button" className={styles.secondaryBtn} onClick={applyCoordinatePair}
-                  disabled={!canSubmit || isSubmitting || locating || !coordinatePair.trim()}>
-                  Điền tọa độ
-                </button>
-              </div>
-              {locationError && <p className={styles.errorText} role="alert">{locationError}</p>}
-            </div>
-
-            {canSubmit && (
-              <div className="mt-4 max-w-md">
-                <p>Chọn điểm ghim trên bản đồ hoặc nhập tọa độ bên trên.</p>
-                <LocationMap
-                  initialCenter={{ latitude: 21.028511, longitude: 105.854444 }}
-                  venues={formData.latitude === '' || formData.longitude === '' ? [] :
-                    [{ facility_id: 'registration', latitude: formData.latitude, longitude: formData.longitude }]}
-                  onPick={fillCoordinates}
-                  pickDisabled={isSubmitting || locating}
-                />
-              </div>
-            )}
+            {locationError && <p className={styles.errorText} role="alert">{locationError}</p>}
 
             {!isOwner && <><hr style={{ margin: '24px 0', border: 'none', borderTop: '1px solid var(--color-border)' }} />
 
