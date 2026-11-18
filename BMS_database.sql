@@ -53,6 +53,7 @@ CREATE TABLE account (
     CONSTRAINT ck_account_email CHECK (role NOT IN ('PLAYER','OWNER') OR email IS NOT NULL),
     CONSTRAINT ck_account_phone CHECK (role NOT IN ('PLAYER','OWNER') OR phone IS NOT NULL),
     CONSTRAINT ck_account_phone_digits CHECK (phone IS NULL OR (LEN(phone) = 10 AND phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
+    CONSTRAINT ck_account_skill_level CHECK (skill_level IS NULL OR skill_level IN (N'Mới chơi', N'Trung bình', N'Khá', N'Nâng cao')),
     CONSTRAINT ck_account_username CHECK (LEN(username) BETWEEN 6 AND 32 AND username COLLATE Latin1_General_BIN LIKE '[a-z]%' AND username COLLATE Latin1_General_BIN NOT LIKE '%[^a-z0-9._]%')
 );
 CREATE UNIQUE INDEX ux_account_email ON account (email) WHERE email IS NOT NULL;
@@ -667,9 +668,11 @@ CREATE TABLE team (
     id BIGINT IDENTITY(1,1) NOT NULL,
     name NVARCHAR(30) NOT NULL,
     captain_id BIGINT NOT NULL,
+    skill_level NVARCHAR(30) NULL,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_team_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_team PRIMARY KEY (id),
-    CONSTRAINT uq_team_name UNIQUE (name)
+    CONSTRAINT uq_team_name UNIQUE (name),
+    CONSTRAINT ck_team_skill_level CHECK (skill_level IS NULL OR skill_level IN (N'Mới chơi', N'Trung bình', N'Khá', N'Nâng cao'))
 );
 
 -- team_member: Thành viên của đội (FR95, FR96); tối đa 20 (DR12).

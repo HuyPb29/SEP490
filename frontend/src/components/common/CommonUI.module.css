@@ -519,4 +519,9 @@
     flex-direction: column;
     align-items: stretch;
   }
+
+  /* Cột dọc: flex-basis 240px sẽ thành chiều cao, để lại khoảng trống lớn dưới tiêu đề. */
+  .headerTitles {
+    flex-basis: auto;
+  }
 }

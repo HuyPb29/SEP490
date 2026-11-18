@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.sep490.bms.common.PageResponse;
+import com.sep490.bms.common.SkillLevels;
 import com.sep490.bms.dto.team.CreateMatchRequest;
 import com.sep490.bms.dto.team.JoinRequestCreateRequest;
 import com.sep490.bms.dto.team.JoinRequestResponse;
@@ -325,6 +326,7 @@ public class MatchService {
                     "Bạn đang chờ duyệt một kèo khác trùng giờ. Hãy rút yêu cầu đó trước khi xin vào kèo này",
                     HttpStatus.CONFLICT);
         }
+        ensureSkillLevel(userId, request.getSkillLevel());
 
         MatchJoinRequest saved = matchJoinRequestRepository.save(MatchJoinRequest.builder()
                 .matchId(matchId)
@@ -391,6 +393,23 @@ public class MatchService {
     }
 
     // ---------------------------------------------------------------- Helper
+
+    /**
+     * FR99, DR33: như FR92 — hồ sơ chưa có trình độ hợp lệ thì người xin phải chọn khi gửi yêu cầu,
+     * trình độ được lưu vào hồ sơ (FR06).
+     */
+    private void ensureSkillLevel(Long userId, String requested) {
+        Account account = accountRepository.findById(userId)
+                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản", HttpStatus.NOT_FOUND));
+        if (SkillLevels.isValid(account.getSkillLevel())) {
+            return;
+        }
+        if (!StringUtils.hasText(requested)) {
+            throw new AppException("Hồ sơ của bạn chưa có trình độ chơi, vui lòng chọn trình độ trước khi gửi yêu cầu");
+        }
+        account.setSkillLevel(SkillLevels.require(requested, "Trình độ chơi"));
+        accountRepository.save(account);
+    }
 
     /**
      * Chuyển kèo sang trạng thái kết thúc, hủy các yêu cầu còn chờ (FR102) và gửi MSG76.
@@ -527,7 +546,8 @@ public class MatchService {
                     .targetId(r.getMatchId())
                     .playerId(r.getPlayerId())
                     .fullName(a.getFullName())
-                    .phone(a.getPhone())
+                    // FR103, BR57: chủ kèo chỉ xem số điện thoại của Player đã được duyệt vào kèo.
+                    .phone(r.getStatus() == JoinRequestStatus.APPROVED ? a.getPhone() : null)
                     .skillLevel(a.getSkillLevel())
                     .status(r.getStatus().name())
                     .createdAt(r.getCreatedAt())

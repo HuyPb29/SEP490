@@ -153,12 +153,12 @@ export function UserMenu({ user: userProp }) {
               </Link>
             )}
             {canAccessAccountPage && (
-              <Link to="/change-password" role="menuitem" className={styles.dropdownItem} onClick={() => setOpen(false)}>
+              <Link to="/account/password" role="menuitem" className={styles.dropdownItem} onClick={() => setOpen(false)}>
                 Đổi mật khẩu
               </Link>
             )}
             <Link
-              to="/notifications"
+              to={canAccessAccountPage ? '/account/notifications' : '/notifications'}
               role="menuitem"
               className={styles.dropdownItem}
               onClick={() => setOpen(false)}

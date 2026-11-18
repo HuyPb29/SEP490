@@ -1,0 +1,146 @@
+/* Trang tài khoản Player/Owner: thanh điều hướng trái + nội dung (hồ sơ, đổi mật khẩu, thông báo). */
+
+.accountShell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.accountNav {
+  position: sticky;
+  top: calc(var(--header-height) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--cw-border, var(--color-border));
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: var(--cw-shadow, none);
+}
+
+.accountNavLink {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border-left: 3px solid transparent;
+  color: var(--cw-text, var(--color-text));
+  font-size: 0.9rem;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.accountNavLink:hover {
+  background: var(--cw-soft, var(--color-primary-soft));
+  color: var(--cw-primary, var(--color-primary));
+}
+
+.accountNavLinkActive {
+  border-left-color: var(--cw-primary, var(--color-primary));
+  background: var(--cw-soft, var(--color-primary-soft));
+  color: var(--cw-primary, var(--color-primary));
+  font-weight: 750;
+}
+
+.accountContent {
+  min-width: 0;
+}
+
+/* Hồ sơ */
+
+.profileHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+
+.avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--cw-primary, var(--color-primary));
+  color: #ffffff;
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+.profileName {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.profileName strong {
+  font-size: 1.15rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.profileName span {
+  font-size: 0.85rem;
+  color: var(--cw-muted, var(--color-text-muted));
+  overflow-wrap: anywhere;
+}
+
+/* Hộp thoại sửa thông tin */
+
+.dialogFields {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.dialogHint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--cw-muted, var(--color-text-muted));
+}
+
+@media (max-width: 860px) {
+  .accountShell {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .accountNav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .accountNavLink {
+    flex-shrink: 0;
+    border-left: 0;
+    border-bottom: 3px solid transparent;
+    border-radius: 10px 10px 4px 4px;
+    white-space: nowrap;
+  }
+
+  .accountNavLinkActive {
+    border-bottom-color: var(--cw-primary, var(--color-primary));
+  }
+}
+
+@media (max-width: 520px) {
+  .profileHead {
+    flex-wrap: wrap;
+  }
+
+  .profileHead > button {
+    width: 100%;
+  }
+}

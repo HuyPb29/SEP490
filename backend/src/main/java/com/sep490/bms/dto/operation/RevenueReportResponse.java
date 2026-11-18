@@ -41,6 +41,24 @@ public class RevenueReportResponse {
     private long paymentCount;
     private long refundCount;
     private List<DayItem> daily;
+    /** FR117, BR37: chi tiết từng khoản hoàn trong kỳ (trừ theo ngày hoàn), kèm kỳ thanh toán gốc. */
+    private List<RefundItem> refundDetails;
+
+    @Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+    @Schema(name = "RevenueReportRefundItem")
+    public static class RefundItem {
+        private LocalDate refundDate;
+        private String bookingCode;
+        private String customerName;
+        private BigDecimal amount;
+        /** Ngày thanh toán gốc của booking được hoàn (kỳ thanh toán gốc). */
+        private LocalDate originalPaymentDate;
+        private String reason;
+    }
 
     @Getter
 @Setter

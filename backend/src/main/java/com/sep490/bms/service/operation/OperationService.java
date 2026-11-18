@@ -346,6 +346,16 @@ public class OperationService {
                 .paymentCount(paymentCount)
                 .refundCount(refundCount)
                 .daily(daily)
+                .refundDetails(queryRepository.findRefunds(locationId, from, to).stream()
+                        .map(r -> RevenueReportResponse.RefundItem.builder()
+                                .refundDate(r.getRefundDate())
+                                .bookingCode(r.getBookingCode())
+                                .customerName(r.getCustomerName())
+                                .amount(r.getAmount())
+                                .originalPaymentDate(r.getOriginalPaymentDate())
+                                .reason(r.getReason())
+                                .build())
+                        .toList())
                 .build();
     }
 

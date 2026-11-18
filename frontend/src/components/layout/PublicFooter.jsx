@@ -2,8 +2,10 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import styles from './PublicFooter.module.css';
 
-const EXPLORE_LINKS = [
-  ['/', 'Tìm địa điểm'],
+const YEAR = new Date().getFullYear();
+
+const PRODUCT_LINKS = [
+  ['/', 'Tìm sân'],
   ['/open-matches', 'Kèo mở'],
   ['/register-service', 'Đăng ký sân'],
 ];
@@ -13,7 +15,7 @@ const PLAYER_LINKS = [
   ['/teams', 'Đội của tôi'],
   ['/my-rewards', 'Voucher & Điểm'],
   ['/my-complaints', 'Khiếu nại'],
-  ['/account', 'Tài khoản'],
+  ['/account', 'Hồ sơ của tôi'],
 ];
 
 const GUEST_LINKS = [
@@ -42,7 +44,6 @@ export default function PublicFooter() {
   const { user } = useAuth();
   const roleCode = String(user?.role_code || user?.role || '').toLowerCase();
   const isPlayer = roleCode === 'player';
-  const year = new Date().getFullYear();
 
   return (
     <footer className={styles.footer}>
@@ -55,17 +56,17 @@ export default function PublicFooter() {
             <span>Courtly</span>
           </Link>
           <p className={styles.tagline}>
-            Đặt sân, ghép kèo và quản lý lịch chơi cầu lông trong cùng một tài khoản.
+            Nền tảng đặt sân cầu lông nhanh chóng, minh bạch và tiện lợi dành cho mọi người chơi.
           </p>
         </div>
 
-        <FooterColumn title="Khám phá" links={EXPLORE_LINKS} />
+        <FooterColumn title="Sản phẩm" links={PRODUCT_LINKS} />
         {!user && <FooterColumn title="Tài khoản" links={GUEST_LINKS} />}
         {isPlayer && <FooterColumn title="Cá nhân" links={PLAYER_LINKS} />}
       </div>
 
       <div className={styles.bottomBar}>
-        <p>© {year} Courtly. Đồ án tốt nghiệp SEP490.</p>
+        <p>© {YEAR} Courtly. Đặt sân nhanh – Chơi vui hơn.</p>
       </div>
     </footer>
   );

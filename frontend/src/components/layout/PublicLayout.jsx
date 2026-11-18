@@ -16,7 +16,6 @@ function getPublicMenuItems(roleCode) {
       ['/teams', 'Đội của tôi'],
       ['/my-rewards', 'Voucher & Điểm'],
       ['/my-complaints', 'Khiếu nại'],
-      ['/account', 'Tài khoản'],
     ];
   }
   if (roleCode === 'staff') {
@@ -42,7 +41,7 @@ function getPublicMenuItems(roleCode) {
     ];
   }
   return [
-    ['/', 'Tìm địa điểm'],
+    ['/', 'Trang chủ'],
     ['/open-matches', 'Kèo mở'],
     ['/register-service', 'Đăng ký sân'],
   ];
