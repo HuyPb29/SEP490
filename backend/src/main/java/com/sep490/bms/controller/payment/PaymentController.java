@@ -23,6 +23,7 @@ import com.sep490.bms.dto.payment.PaymentInstructionResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
 import com.sep490.bms.dto.payment.RejectPaymentRequest;
 import com.sep490.bms.dto.payment.ResubmitRequest;
+import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.payment.PaymentService;
@@ -230,8 +231,7 @@ public class PaymentController {
             @Valid @RequestBody(required = false) ConfirmPaymentRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
         PaymentResponse result = paymentService.confirm(currentUser, id, request);
-        return ResponseEntity.ok(ApiResponse.success(
-                "Đã xác nhận thanh toán booking " + result.getBookingCode() + ".", result));
+        return ResponseEntity.ok(ApiResponse.success(confirmedMessage(result), result));
     }
 
     /**
@@ -265,6 +265,18 @@ public class PaymentController {
                 ? "Player đã hết lượt gửi lại chứng từ; giao dịch bị từ chối."
                 : "Đã yêu cầu Player bổ sung.";
         return ResponseEntity.ok(ApiResponse.success(message, result));
+    }
+
+    /**
+     * Câu báo sau khi xác nhận. Booking lẻ có mã booking; gói và đơn đặt lẻ nhiều dải không có mã booking riêng
+     * nên dùng mã PK + số gói, giống màn Staff đang hiện.
+     */
+    private static String confirmedMessage(PaymentResponse result) {
+        if (result.getBookingCode() != null) {
+            return "Đã xác nhận thanh toán booking " + result.getBookingCode() + ".";
+        }
+        String kind = result.getPackageType() == PackageType.DAY ? "đơn đặt lẻ" : "gói";
+        return "Đã xác nhận thanh toán " + kind + " PK" + result.getPackageId() + ".";
     }
 
 }

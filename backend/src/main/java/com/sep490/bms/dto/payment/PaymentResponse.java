@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.booking.BookingPackage;
+import com.sep490.bms.entity.enums.PackageType;
 import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.entity.payment.Payment;
 
@@ -29,6 +30,8 @@ public class PaymentResponse {
     private Long bookingId;
     private String bookingCode;
     private Long packageId;
+    /** Chỉ có khi là thanh toán của gói: DAY = đơn đặt lẻ nhiều dải (D164), còn lại là gói đặt nhiều buổi. */
+    private PackageType packageType;
     private BigDecimal amountDue;
     /** Số tiền Staff ghi nhận khi xác nhận; trống khi chưa xác nhận. */
     private BigDecimal receivedAmount;
@@ -54,6 +57,7 @@ public class PaymentResponse {
     public static PaymentResponse from(Payment payment, BookingPackage pkg) {
         return common(payment)
                 .packageId(pkg.getId())
+                .packageType(pkg.getPackageType())
                 .build();
     }
 
