@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -36,23 +36,33 @@ function FitToVenues({ positions }) {
   return null
 }
 
-/** Chế độ chọn: bấm vào bản đồ để đặt ghim; ghim đổi từ bên ngoài (GPS, dán tọa độ) thì đưa bản đồ tới đó. */
-function PickHandler({ pin, onPick, disabled }) {
+const pinKey = (lat, lng) => `${Number(lat.toFixed(6))},${Number(lng.toFixed(6))}`
+
+/**
+ * Chế độ chọn: bấm vào bản đồ để đặt ghim. Ghim do người dùng bấm hoặc kéo thì giữ nguyên khung nhìn;
+ * ghim đặt từ bên ngoài (dữ liệu đã lưu tải về, GPS) thì đưa bản đồ tới ghim và phóng to.
+ */
+function PickHandler({ pin, onPick, disabled, userPickRef }) {
   const map = useMapEvents({
     click(event) {
+      if (disabled) return
       // wrap(): bản đồ lặp theo chiều ngang, đưa kinh độ về khoảng -180..180 trước khi lưu.
-      if (!disabled) { const { lat, lng } = event.latlng.wrap(); onPick(lat, lng) }
+      const { lat, lng } = event.latlng.wrap()
+      userPickRef.current = pinKey(lat, lng)
+      onPick(lat, lng)
     },
   })
-  const key = pin ? pin.join(',') : ''
+  const key = pin ? pinKey(pin[0], pin[1]) : ''
   useEffect(() => {
-    if (pin && !map.getBounds().contains(pin)) map.setView(pin, Math.max(map.getZoom(), PIN_ZOOM))
+    if (!pin || key === userPickRef.current) return
+    map.setView(pin, Math.max(map.getZoom(), PIN_ZOOM))
   }, [map, key]) // eslint-disable-line react-hooks/exhaustive-deps
   return null
 }
 
 export default function LocationMap({ venues, onSelect, onPick, initialCenter, pickDisabled = false }) {
   const [selectedId, setSelectedId] = useState(null)
+  const userPickRef = useRef('')
   const points = useMemo(() => venues.filter(validPoint), [venues])
   const positions = useMemo(() => points.map((venue) => [Number(venue.latitude), Number(venue.longitude)]), [points])
   const selected = points.find((venue) => venue.facility_id === selectedId)
@@ -72,9 +82,13 @@ export default function LocationMap({ venues, onSelect, onPick, initialCenter, p
       <TileLayer url={tileUrl} attribution={attribution} />
       {picking
         ? <>
-          <PickHandler pin={pin} onPick={onPick} disabled={pickDisabled} />
+          <PickHandler pin={pin} onPick={onPick} disabled={pickDisabled} userPickRef={userPickRef} />
           {pin && <Marker position={pin} icon={pinIcon} draggable={!pickDisabled} title="Vị trí địa điểm" alt="Vị trí địa điểm"
-            eventHandlers={{ dragend: (event) => { const { lat, lng } = event.target.getLatLng().wrap(); onPick(lat, lng) } }} />}
+            eventHandlers={{ dragend: (event) => {
+              const { lat, lng } = event.target.getLatLng().wrap()
+              userPickRef.current = pinKey(lat, lng)
+              onPick(lat, lng)
+            } }} />}
         </>
         : <>
           <FitToVenues positions={positions} />
