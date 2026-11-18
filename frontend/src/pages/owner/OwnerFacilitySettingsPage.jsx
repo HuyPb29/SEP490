@@ -8,6 +8,7 @@ import {
   uploadOwnerLocationQr,
 } from '../../api/locationApi'
 import ManagementLayout from '../../components/layout/ManagementLayout'
+import LocationMap from '../../components/map/LocationMap'
 import styles from './OwnerFacilitySettingsPage.module.css'
 
 /** Khớp ràng buộc trong UpdateLocationRequest để báo lỗi ngay, khỏi gọi API. */
@@ -21,9 +22,8 @@ const LIMITS = {
   advanceBookingDays: { min: 1, max: 365 },
   pointEarningRate: { min: 1000, max: 100000 },
   pointRedemptionValue: { min: 1, max: 100000 },
-  latitude: { min: -90, max: 90 },
-  longitude: { min: -180, max: 180 },
 }
+const DEFAULT_MAP_CENTER = { latitude: 21.028511, longitude: 105.854444 }
 
 /** Form luôn giữ dạng chuỗi để người dùng xoá trắng được, lúc gửi mới đổi kiểu. */
 function toForm(location) {
@@ -73,6 +73,8 @@ export default function OwnerFacilitySettingsPage() {
   const [qrError, setQrError] = useState('')
   const [qrSavedLocationId, setQrSavedLocationId] = useState(null)
   const [uploadingQr, setUploadingQr] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [locationError, setLocationError] = useState('')
 
   const selectedLocation = useMemo(
     () => locations.find((location) => location.id === selectedLocationId) ?? null,
@@ -181,6 +183,39 @@ export default function OwnerFacilitySettingsPage() {
     setMessage('')
   }
 
+  /** FR17: vị trí chỉ chọn bằng ghim trên bản đồ hoặc GPS, không nhập tay kinh độ, vĩ độ. */
+  const pickLocation = (latitude, longitude) => {
+    setForm((current) => ({
+      ...current,
+      latitude: String(Number(latitude.toFixed(6))),
+      longitude: String(Number(longitude.toFixed(6))),
+    }))
+    setLocationError('')
+    setMessage('')
+  }
+
+  const handleUseCurrentLocation = () => {
+    if (!window.isSecureContext || !navigator.geolocation) {
+      setLocationError('Không thể dùng định vị ở trình duyệt này. Hãy bấm vào bản đồ để đặt ghim.')
+      return
+    }
+    setLocationError('')
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        pickLocation(coords.latitude, coords.longitude)
+        setLocating(false)
+      },
+      (geoError) => {
+        setLocationError(geoError.code === 1
+          ? 'Quyền vị trí đang bị chặn. Hãy cho phép vị trí trong cài đặt trang hoặc bấm vào bản đồ để đặt ghim.'
+          : 'Không lấy được vị trí. Hãy bấm vào bản đồ để đặt ghim.')
+        setLocating(false)
+      },
+      { timeout: 10000 },
+    )
+  }
+
   const validate = () => {
     if (!form.name.trim()) return 'Facility name is required.'
     if (form.name.trim().length > LIMITS.name) return `Facility name is limited to ${LIMITS.name} characters.`
@@ -191,8 +226,6 @@ export default function OwnerFacilitySettingsPage() {
     }
 
     const numericChecks = [
-      ['latitude', 'Latitude', LIMITS.latitude],
-      ['longitude', 'Longitude', LIMITS.longitude],
       ['advanceBookingDays', 'Advance booking days', LIMITS.advanceBookingDays],
       ['pointEarningRate', 'Point earning rate', LIMITS.pointEarningRate],
     ]
@@ -355,31 +388,33 @@ export default function OwnerFacilitySettingsPage() {
                 />
               </label>
 
-              <label className={styles.field}>
-                <span>Latitude</span>
-                <input
-                  type="number"
-                  step="0.000001"
-                  min={LIMITS.latitude.min}
-                  max={LIMITS.latitude.max}
-                  placeholder="10.801"
-                  value={form.latitude}
-                  onChange={updateField('latitude')}
-                />
-              </label>
-
-              <label className={styles.field}>
-                <span>Longitude</span>
-                <input
-                  type="number"
-                  step="0.000001"
-                  min={LIMITS.longitude.min}
-                  max={LIMITS.longitude.max}
-                  placeholder="106.652"
-                  value={form.longitude}
-                  onChange={updateField('longitude')}
-                />
-              </label>
+              <div className={`${styles.field} ${styles.fieldWide}`}>
+                <span>Vị trí trên bản đồ</span>
+                <p className={styles.cardHint}>
+                  Bấm vào bản đồ để đặt ghim tại sân, kéo ghim để chỉnh cho đúng. Có thể kéo, phóng to bản đồ để tìm.
+                </p>
+                <div style={{ maxWidth: 420 }}>
+                  <LocationMap
+                    initialCenter={DEFAULT_MAP_CENTER}
+                    venues={form.latitude === '' || form.longitude === '' ? [] :
+                      [{ facility_id: 'current', latitude: form.latitude, longitude: form.longitude }]}
+                    onPick={pickLocation}
+                    pickDisabled={locked || saving || locating || !selectedLocationId}
+                  />
+                </div>
+                <p className={styles.cardHint} aria-live="polite">
+                  {form.latitude === '' || form.longitude === ''
+                    ? 'Chưa chọn vị trí.'
+                    : `Đã chọn vị trí: ${form.latitude}, ${form.longitude}`}
+                </p>
+                <div>
+                  <button type="button" className={styles.ghostButton} onClick={handleUseCurrentLocation}
+                    disabled={locked || saving || locating || !selectedLocationId}>
+                    {locating ? 'Đang lấy vị trí…' : 'Đặt ghim tại vị trí hiện tại (GPS)'}
+                  </button>
+                </div>
+                {locationError && <p className={styles.alertError} role="alert">{locationError}</p>}
+              </div>
             </div>
           </section>
 
