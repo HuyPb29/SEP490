@@ -1,77 +1,89 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import L from 'leaflet'
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
 
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+// Ảnh bản đồ mặc định lấy từ OpenStreetMap (miễn phí, không cần API key).
+// Muốn đổi nguồn ảnh thì đặt VITE_LOCATION_MAP_TILE_URL và VITE_LOCATION_MAP_ATTRIBUTION.
+const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
+const PIN_ZOOM = 16
 
-function mercator(lat, lng) {
-  const sin = Math.sin(clamp(lat, -85, 85) * Math.PI / 180)
-  return { x: (lng + 180) / 360, y: .5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI) }
+// Dùng divIcon thay ảnh marker mặc định của Leaflet (ảnh mặc định bị lỗi đường dẫn khi build bằng Vite).
+const pinIcon = L.divIcon({
+  className: '',
+  html: '<span style="display:block;width:22px;height:22px;border-radius:50% 50% 50% 0;background:#065f46;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);transform:rotate(-45deg)"></span>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 22],
+})
+
+function validPoint(venue) {
+  const lat = Number(venue?.latitude)
+  const lng = Number(venue?.longitude)
+  return venue?.latitude != null && venue?.longitude != null && venue.latitude !== '' && venue.longitude !== '' &&
+    Number.isFinite(lat) && Math.abs(lat) <= 90 && Number.isFinite(lng) && Math.abs(lng) <= 180
 }
 
-function mapView(venues, fixedZoom) {
-  const points = venues.map((venue) => mercator(Number(venue.latitude), Number(venue.longitude)))
-  const xs = points.map((point) => point.x)
-  const ys = points.map((point) => point.y)
-  const width = Math.max(...xs) - Math.min(...xs)
-  const height = Math.max(...ys) - Math.min(...ys)
-  const zoom = fixedZoom ?? clamp(Math.floor(Math.log2(.6 / Math.max(width, height, .00001))), 1, 16)
-  const tiles = 2 ** zoom
-  const centerX = (Math.max(...xs) + Math.min(...xs)) / 2 * tiles
-  const centerY = (Math.max(...ys) + Math.min(...ys)) / 2 * tiles
-  return { zoom, tiles, left: centerX - 1, top: centerY - 1 }
+/** Chế độ xem: căn bản đồ cho vừa mọi địa điểm mỗi khi danh sách thay đổi. */
+function FitToVenues({ positions }) {
+  const map = useMap()
+  const key = positions.map((position) => position.join(',')).join(';')
+  useEffect(() => {
+    if (!positions.length) return
+    if (positions.length === 1) map.setView(positions[0], PIN_ZOOM)
+    else map.fitBounds(positions, { padding: [24, 24], maxZoom: PIN_ZOOM })
+  }, [map, key]) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
+}
+
+/** Chế độ chọn: bấm vào bản đồ để đặt ghim; ghim đổi từ bên ngoài (GPS, dán tọa độ) thì đưa bản đồ tới đó. */
+function PickHandler({ pin, onPick, disabled }) {
+  const map = useMapEvents({
+    click(event) {
+      // wrap(): bản đồ lặp theo chiều ngang, đưa kinh độ về khoảng -180..180 trước khi lưu.
+      if (!disabled) { const { lat, lng } = event.latlng.wrap(); onPick(lat, lng) }
+    },
+  })
+  const key = pin ? pin.join(',') : ''
+  useEffect(() => {
+    if (pin && !map.getBounds().contains(pin)) map.setView(pin, Math.max(map.getZoom(), PIN_ZOOM))
+  }, [map, key]) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
 }
 
 export default function LocationMap({ venues, onSelect, onPick, initialCenter, pickDisabled = false }) {
-  const [pin, setPin] = useState(null)
-  const [pickerZoom, setPickerZoom] = useState(11)
-  const points = venues.filter((venue) => venue.latitude != null && venue.longitude != null &&
-    Number.isFinite(Number(venue.latitude)) && Math.abs(Number(venue.latitude)) <= 90 &&
-    Number.isFinite(Number(venue.longitude)) && Math.abs(Number(venue.longitude)) <= 180)
-  const selected = points.find((venue) => venue.facility_id === pin)
-  const center = points.length ? points : initialCenter ? [initialCenter] : []
-  if (!center.length) return <p>Chưa có địa điểm có tọa độ để hiển thị.</p>
+  const [selectedId, setSelectedId] = useState(null)
+  const points = useMemo(() => venues.filter(validPoint), [venues])
+  const positions = useMemo(() => points.map((venue) => [Number(venue.latitude), Number(venue.longitude)]), [points])
+  const selected = points.find((venue) => venue.facility_id === selectedId)
+  const picking = Boolean(onPick)
 
-  const { zoom, tiles, left, top } = mapView(center, initialCenter ? pickerZoom : undefined)
+  if (!picking && !positions.length) return <p>Chưa có địa điểm có tọa độ để hiển thị.</p>
+
   const configuredTemplate = import.meta.env.VITE_LOCATION_MAP_TILE_URL
-  const template = configuredTemplate || (initialCenter ? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png' : '')
-  function pickPoint(event) {
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const x = left + (event.clientX - bounds.left) / bounds.width * 2
-    const y = top + (event.clientY - bounds.top) / bounds.height * 2
-    const longitude = ((x / tiles * 360 % 360) + 360) % 360 - 180
-    const latitude = Math.atan(Math.sinh(Math.PI * (1 - 2 * y / tiles))) * 180 / Math.PI
-    onPick(Number(latitude.toFixed(6)), Number(longitude.toFixed(6)))
-  }
-  const mapTiles = Array.from({ length: 9 }, (_, index) => {
-    const x = Math.floor(left) + index % 3
-    const y = Math.floor(top) + Math.floor(index / 3)
-    return { x, y, url: template?.replace('{z}', zoom).replace('{x}', (x + tiles) % tiles).replace('{y}', y) }
-  })
+  const tileUrl = configuredTemplate || OSM_TILE_URL
+  const attribution = configuredTemplate ? (import.meta.env.VITE_LOCATION_MAP_ATTRIBUTION || '') : OSM_ATTRIBUTION
+  const start = positions[0] ?? [Number(initialCenter?.latitude ?? 21.028511), Number(initialCenter?.longitude ?? 105.854444)]
+  const pin = picking ? positions[0] ?? null : null
+
   return <section aria-label="Bản đồ địa điểm" className="relative">
-    <div className="relative aspect-square overflow-hidden rounded-xl bg-emerald-50">
-      {template && mapTiles.filter(({ y }) => y >= 0 && y < tiles).map(({ x, y, url }) =>
-        <img key={x + ':' + y} src={url} alt="" draggable="false"
-          className="pointer-events-none absolute !max-w-none" style={{ width: '50%', height: '50%', left: (x - left) * 50 + '%', top: (y - top) * 50 + '%' }} />)}
-      {onPick && !pickDisabled && <div className="absolute inset-0 cursor-crosshair" onClick={pickPoint} />}
-      {points.map((venue) => {
-        const point = mercator(Number(venue.latitude), Number(venue.longitude))
-        if (onPick) return <span key={venue.facility_id} aria-hidden="true"
-          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-800 px-2 py-1 text-white shadow"
-          style={{ left: (point.x * tiles - left) * 50 + '%', top: (point.y * tiles - top) * 50 + '%' }}>●</span>
-        return <button key={venue.facility_id} type="button" aria-label={'Ghim ' + venue.facility_name}
-          aria-pressed={selected?.facility_id === venue.facility_id}
-          className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-800 px-2 py-1 text-white shadow"
-          style={{ left: (point.x * tiles - left) * 50 + '%', top: (point.y * tiles - top) * 50 + '%' }}
-          onClick={() => setPin(venue.facility_id)}>●</button>
-      })}
-    </div>
-    {initialCenter && <div className="absolute left-2 top-2 flex gap-1">
-      <button type="button" className="rounded bg-white px-2" aria-label="Thu nhỏ bản đồ"
-        disabled={pickerZoom <= 4 || pickDisabled} onClick={() => setPickerZoom((value) => value - 1)}>−</button>
-      <button type="button" className="rounded bg-white px-2" aria-label="Phóng to bản đồ"
-        disabled={pickerZoom >= 18 || pickDisabled} onClick={() => setPickerZoom((value) => value + 1)}>+</button>
-    </div>}
-    {template && <small>{configuredTemplate ? import.meta.env.VITE_LOCATION_MAP_ATTRIBUTION
-      : <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>}</small>}
+    <MapContainer center={start} zoom={positions.length ? PIN_ZOOM : 12} scrollWheelZoom
+      style={{ width: '100%', aspectRatio: '1 / 1', borderRadius: 12, cursor: picking && !pickDisabled ? 'crosshair' : undefined }}>
+      <TileLayer url={tileUrl} attribution={attribution} />
+      {picking
+        ? <>
+          <PickHandler pin={pin} onPick={onPick} disabled={pickDisabled} />
+          {pin && <Marker position={pin} icon={pinIcon} draggable={!pickDisabled} title="Vị trí địa điểm" alt="Vị trí địa điểm"
+            eventHandlers={{ dragend: (event) => { const { lat, lng } = event.target.getLatLng().wrap(); onPick(lat, lng) } }} />}
+        </>
+        : <>
+          <FitToVenues positions={positions} />
+          {points.map((venue, index) =>
+            <Marker key={venue.facility_id} position={positions[index]} icon={pinIcon}
+              title={'Ghim ' + (venue.facility_name ?? '')} alt={'Ghim ' + (venue.facility_name ?? '')}
+              eventHandlers={{ click: () => setSelectedId(venue.facility_id) }} />)}
+        </>}
+    </MapContainer>
     {selected && <div className="mt-2 rounded-lg border border-emerald-200 p-3">
       <strong>{selected.facility_name}</strong>
       <p>{selected.address}</p>
