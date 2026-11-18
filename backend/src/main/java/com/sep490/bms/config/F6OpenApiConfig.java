@@ -30,7 +30,7 @@ public class F6OpenApiConfig {
             org.springdoc.core.customizers.OpenApiCustomizer locationHeader) {
         return GroupedOpenApi.builder().group("f6-vouchers")
                 .pathsToMatch("/api/locations/*/vouchers","/api/me/vouchers","/api/owner/vouchers","/api/owner/vouchers/**",
-                        "/api/admin/vouchers","/api/admin/vouchers/**","/api/vouchers/check")
+                        "/api/vouchers/check")
                 .addOpenApiCustomizer(locationHeader)
                 .addOpenApiCustomizer(api -> api.getInfo().setDescription("UC24. Kiểm tra voucher lúc xem trước và kiểm tra lại khi xác nhận. "
                         + "Lượt dùng, ngân sách và điểm chỉ được trừ trong giao dịch tạo booking hoặc gói."))

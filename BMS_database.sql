@@ -523,7 +523,7 @@ CREATE TABLE voucher (
     CONSTRAINT ck_voucher_code CHECK ((target_group = 'SPECIFIED' AND code IS NULL) OR (target_group <> 'SPECIFIED' AND code IS NOT NULL)),
     CONSTRAINT ck_voucher_type CHECK (discount_type IN ('PERCENT','AMOUNT')),
     CONSTRAINT ck_voucher_value CHECK (discount_value > 0 AND (discount_type <> 'PERCENT' OR discount_value BETWEEN 1 AND 99)),
-    CONSTRAINT ck_voucher_status CHECK (status IN ('DRAFT','PUBLISHED','DISABLED')),
+    CONSTRAINT ck_voucher_status CHECK (status IN ('DRAFT','PUBLISHED','DISABLED','EXPIRED','STOPPED')),
     CONSTRAINT ck_voucher_uses CHECK (max_total_uses IS NULL OR used_count <= max_total_uses),
     CONSTRAINT ck_voucher_budget CHECK (budget IS NULL OR budget_used <= budget)
 );

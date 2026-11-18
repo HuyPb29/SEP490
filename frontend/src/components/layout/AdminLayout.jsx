@@ -8,7 +8,6 @@ import { UserMenu } from './UserMenu';
 const ADMIN_MENU = [
   { to: '/admin/workspace', label: 'Quản lý tài khoản', end: true },
   { to: '/admin/facilities', label: 'Quản lý địa điểm' },
-  { to: '/admin/vouchers', label: 'Kiểm duyệt voucher' },
   { to: '/admin/reviews', label: 'Kiểm duyệt đánh giá' },
 ];
 
