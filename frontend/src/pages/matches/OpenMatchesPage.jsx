@@ -48,10 +48,11 @@ export default function OpenMatchesPage() {
   const { isAuthenticated, role } = useAuth();
   const isPlayer = isAuthenticated && role === 'player';
 
-  const [selectedDate, setSelectedDate] = useState(todayIso);
+  // Bỏ trống = mọi ngày từ hôm nay trở đi (backend chỉ trả kèo OPEN chưa qua ngày chơi).
+  const [selectedDate, setSelectedDate] = useState('');
   const [timeSlot, setTimeSlot] = useState('all');
   const [selectedLocation, setSelectedLocation] = useState('');
-  const [appliedFilters, setAppliedFilters] = useState(() => ({ date: todayIso(), timeSlot: 'all', locationId: '' }));
+  const [appliedFilters, setAppliedFilters] = useState(() => ({ date: '', timeSlot: 'all', locationId: '' }));
   // FR104: lọc kèo theo địa điểm; danh sách địa điểm đang hoạt động lấy từ UC11.
   const [locations, setLocations] = useState([]);
 
@@ -290,8 +291,14 @@ export default function OpenMatchesPage() {
             <input
               type="date"
               value={selectedDate}
+              min={todayIso()}
               onChange={(event) => setSelectedDate(event.target.value)}
             />
+            {selectedDate && (
+              <button type="button" className={styles.clearDateButton} onClick={() => setSelectedDate('')}>
+                Mọi ngày
+              </button>
+            )}
           </label>
           <label className={styles.filterField}>
             <span>Khung giờ</span>
@@ -343,7 +350,9 @@ export default function OpenMatchesPage() {
               </article>
             ))}
             {!loadingMatches && !matchesError && matches.length === 0 && (
-              <div className={styles.emptyState}>Không có kèo phù hợp với địa điểm, ngày và khung giờ đã chọn.</div>
+              <div className={styles.emptyState}>{appliedFilters.date || appliedFilters.locationId || appliedFilters.timeSlot !== 'all'
+                  ? 'Không có kèo phù hợp với địa điểm, ngày và khung giờ đã chọn.'
+                  : 'Hiện chưa có kèo nào đang tìm người chơi.'}</div>
             )}
           </section>
 
