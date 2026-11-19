@@ -69,7 +69,8 @@ class BookingQueryServiceTests {
     private final BookingQueryService service =
             new BookingQueryService(bookings, packages, mock(com.sep490.bms.repository.booking.BookingSlotRepository.class),
                     courts, teams, locations, bookingService, payments, reviews,
-                    mock(com.sep490.bms.service.reschedule.RescheduleService.class));
+                    mock(com.sep490.bms.service.reschedule.RescheduleService.class),
+                    mock(com.sep490.bms.repository.reschedule.RescheduleHistoryQuery.class));
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 

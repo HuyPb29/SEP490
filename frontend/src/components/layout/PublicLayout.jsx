@@ -11,7 +11,6 @@ function getPublicMenuItems(roleCode) {
     return [
       ['/', 'Tìm địa điểm'],
       ['/my-bookings', 'Booking của tôi'],
-      ['/my-reschedules', 'Lịch sử đổi lịch'],
       ['/open-matches', 'Kèo'],
       ['/teams', 'Đội của tôi'],
       ['/my-rewards', 'Voucher & Điểm'],
