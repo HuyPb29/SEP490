@@ -64,6 +64,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/logout").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/service-registrations").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/service-registrations/payment-info",
+                    "/api/service-registrations/payment-info/qr").permitAll()
                 .requestMatchers("/swagger-ui", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
                 .requestMatchers("/api/health", "/actuator/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/locations", "/api/locations/*", "/api/locations/*/courts",
