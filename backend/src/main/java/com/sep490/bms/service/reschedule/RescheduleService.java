@@ -6,13 +6,16 @@ import java.util.*;
 import com.sep490.bms.dto.booking.RescheduleEligibility;
 import com.sep490.bms.dto.request.*;
 import com.sep490.bms.entity.account.Role;
+import com.sep490.bms.entity.account.AccountStatus;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.*;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.location.Court;
+import com.sep490.bms.entity.notification.Notification;
 import com.sep490.bms.entity.payment.*;
 import com.sep490.bms.entity.reschedule.*;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.security.*;
 import com.sep490.bms.service.booking.*;
 import com.sep490.bms.service.integration.FileStorageService;
@@ -42,6 +45,7 @@ public class RescheduleService {
     private final LoyaltyPointService points;
     private final FileStorageService storage;
     private final MatchService matches;
+    private final AccountRepository accounts;
     // SRS parameter table P02/P03/P04/P05/P25: fixed values, no Owner settings.
     private final int cutoffHours=6;
     private final int cutoffPercent=50;
@@ -188,6 +192,8 @@ public class RescheduleService {
             throw new AppException("Hãy chọn xử lý booking bị ảnh hưởng", HttpStatus.CONFLICT);
         if (slot == null || slot.courtId() == null || slot.date() == null || !slot.isValidSlot()
                 || slot.startMinute()<0 || slot.endMinute()>1440) throw new AppException("Slot không hợp lệ");
+        if (free && slot.endMinute() - slot.startMinute() > b.getEndMinute() - b.getStartMinute())
+            throw blocked("DURATION_EXCEEDED", "đổi miễn phí chỉ áp dụng cho khung bằng hoặc ngắn hơn lịch gốc.", HttpStatus.BAD_REQUEST);
         Court c = support.lock(Court.class,slot.courtId());
         Location l = em.find(Location.class,b.getLocationId());
         if (!c.getLocationId().equals(b.getLocationId()) || !c.isActive() || !"ACTIVE".equals(l.getStatus()))
@@ -243,6 +249,13 @@ public class RescheduleService {
         if(!r.isFree()) b.setRescheduleCount(b.getRescheduleCount()+1);
         b.setUpdatedAt(LocalDateTime.now()); r.setStatus(RescheduleStatus.APPROVED); r.setDecidedAt(LocalDateTime.now());
         support.notify(b.getPlayerId(),"RESCHEDULE_RESULT","Đổi lịch thành công cho "+b.getBookingCode(),b.getId());
+        Location location = em.find(Location.class, b.getLocationId());
+        Court court = em.find(Court.class, b.getCourtId());
+        notifyVenue(location, "VENUE_RESCHEDULE_APPROVED", "Đổi lịch thành công",
+                "Booking " + b.getBookingCode() + " tại " + location.getName()
+                        + " đã chuyển sang " + court.getName() + ", " + b.getPlayDate()
+                        + " lúc " + support.start(b).toLocalTime() + ".",
+                "BOOKING", b.getId());
         em.flush(); // MatchService reads the new slot through JDBC in the same transaction.
         matches.onBookingRescheduled(b.getId());
     }
@@ -250,7 +263,8 @@ public class RescheduleService {
         r.setStatus(status); r.setDecidedAt(LocalDateTime.now()); support.release(b.getId(),r.getId());
         for(Payment p:em.createQuery("select p from Payment p where p.rescheduleRequestId=:id",Payment.class).setParameter("id",r.getId()).getResultList())
             if(p.getStatus()!=PaymentStatus.CONFIRMED) { p.setStatus(PaymentStatus.REJECTED); p.setRejectReason("Yêu cầu đổi lịch "+status); }
-        support.notify(b.getPlayerId(),"RESCHEDULE_RESULT","Yêu cầu đổi lịch "+status+"; giữ lịch cũ",b.getId());
+        String result = status == RescheduleStatus.EXPIRED ? "đã hết hạn" : "bị từ chối";
+        support.notify(b.getPlayerId(), "RESCHEDULE_RESULT", "Yêu cầu đổi lịch " + result + ". Lịch cũ vẫn được giữ.", b.getId());
     }
     private boolean expire(RescheduleRequest r,Booking b) {
         LocalDateTime now=LocalDateTime.now();
@@ -310,7 +324,9 @@ public class RescheduleService {
         Payment p=Payment.builder().locationId(locked.getLocationId()).rescheduleRequestId(id).amountDue(r.getExtraAmount())
                 .submittedAt(LocalDateTime.now()).build(); em.persist(p);em.flush();
         em.persist(PaymentProof.builder().paymentId(p.getId()).imagePath(storage.storeImage(proof,"payment-proofs")).build());
-        r.setStatus(RescheduleStatus.AWAITING_CONFIRMATION); return r;
+        r.setStatus(RescheduleStatus.AWAITING_CONFIRMATION);
+        notifyProofSubmitted(locked, false);
+        return r;
     }
     public RescheduleRequest requestResubmission(UserPrincipal u,Long paymentId,com.sep490.bms.dto.payment.ResubmitRequest input) {
         Payment observed=em.find(Payment.class,paymentId);
@@ -344,7 +360,30 @@ public class RescheduleService {
             throw new AppException("Chưa được yêu cầu bổ sung",HttpStatus.CONFLICT);
         if(proof==null || proof.isEmpty()) throw new AppException("Cần ảnh chứng từ bổ sung (MSG106)");
         em.persist(PaymentProof.builder().paymentId(p.getId()).imagePath(storage.storeImage(proof,"payment-proofs")).build());
-        p.resubmitted(LocalDateTime.now()); return r;
+        p.resubmitted(LocalDateTime.now());
+        notifyProofSubmitted(b, true);
+        return r;
+    }
+
+    private void notifyProofSubmitted(Booking booking, boolean resubmitted) {
+        Location location = em.find(Location.class, booking.getLocationId());
+        String action = resubmitted ? "đã gửi lại" : "đã gửi";
+        notifyVenue(location, "RESCHEDULE_PROOF_SUBMITTED", "Phụ thu đổi lịch chờ xác nhận",
+                "Người chơi " + action + " chứng từ cho booking " + booking.getBookingCode()
+                        + " tại " + location.getName() + ".",
+                "LOCATION", location.getId());
+    }
+
+    private void notifyVenue(Location location, String type, String title, String content, String refType, Long refId) {
+        List<Long> recipients = new ArrayList<>();
+        recipients.add(location.getOwnerId());
+        accounts.findByRoleAndLocationId(Role.STAFF, location.getId()).stream()
+                .filter(account -> account.getStatus() == AccountStatus.ACTIVE)
+                .forEach(account -> recipients.add(account.getId()));
+        for (Long recipient : recipients) {
+            em.persist(Notification.builder().recipientId(recipient).type(type).title(title)
+                    .content(content).refType(refType).refId(refId).build());
+        }
     }
     /** UC21 reschedule-payment endpoints delegate here; booking payments use Minh's PaymentService. */
     public RescheduleRequest decidePayment(UserPrincipal u,Long paymentId,boolean confirm,ReschedulePaymentDecision input) {

@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.core.io.Resource;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,7 @@ import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.integration.FileStorageService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -42,8 +45,31 @@ public class LocationManagementService {
     private static final String STATUS_ACTIVE = "ACTIVE";
 
     private final LocationRepository locationRepository;
+    private final PriceCoverageService priceCoverage;
     private final CourtRepository courtRepository;
     private final ServiceTermRepository serviceTermRepository;
+    private final FileStorageService files;
+
+    @Transactional
+    public String uploadQr(UserPrincipal user, Long id, MultipartFile image) {
+        Location location = lockOwnedLocation(user, id);
+        if (!STATUS_ACTIVE.equals(location.getStatus())) {
+            throw new AppException("Địa điểm đang bị khóa", HttpStatus.FORBIDDEN);
+        }
+        String path = files.storeImage(image, "location-qr");
+        location.setQrImagePath(path);
+        location.setUpdatedAt(LocalDateTime.now());
+        return path;
+    }
+
+    @Transactional(readOnly = true)
+    public Resource loadQr(UserPrincipal user, Long id) {
+        String path = ownedLocation(user, id).getQrImagePath();
+        if (path == null || path.isBlank()) {
+            throw new AppException("Địa điểm chưa có ảnh QR", HttpStatus.NOT_FOUND);
+        }
+        return files.load(path);
+    }
 
     /** UC07 - Owner xem các địa điểm mình sở hữu, gồm cả địa điểm đang bị khoá. */
     @Transactional(readOnly = true)
@@ -66,7 +92,7 @@ public class LocationManagementService {
     /** UC07 - Owner cập nhật thông tin địa điểm của mình. */
     @Transactional
     public LocationDetailDto updateOwned(UserPrincipal user, Long id, UpdateLocationRequest request) {
-        Location location = ownedLocation(user, id);
+        Location location = lockOwnedLocation(user, id);
         if (!STATUS_ACTIVE.equals(location.getStatus())) {
             throw new AppException("Địa điểm đang bị khoá, không thể cập nhật", HttpStatus.FORBIDDEN);
         }
@@ -99,10 +125,17 @@ public class LocationManagementService {
             location.setQrImagePath(trimToNull(request.getQrImagePath()));
         }
         if (request.getAdvanceBookingDays() != null) {
+            boolean extendsWindow = request.getAdvanceBookingDays() > location.getAdvanceBookingDays();
             location.setAdvanceBookingDays(request.getAdvanceBookingDays());
+            if (extendsWindow) {
+                priceCoverage.requireActiveCourtCoverage(location);
+            }
         }
         if (request.getPointEarningRate() != null) {
             location.setPointEarningRate(request.getPointEarningRate());
+        }
+        if (request.getPointRedemptionValue() != null) {
+            location.setPointRedemptionValue(request.getPointRedemptionValue());
         }
         location.setUpdatedAt(LocalDateTime.now());
 
@@ -160,7 +193,16 @@ public class LocationManagementService {
     /** Địa điểm theo id, đồng thời kiểm tra địa điểm thuộc Owner đang đăng nhập. */
     public Location ownedLocation(UserPrincipal user, Long id) {
         requireOwner(user);
-        Location location = requireLocation(id);
+        return requireOwnership(user, requireLocation(id));
+    }
+
+    Location lockOwnedLocation(UserPrincipal user, Long id) {
+        return requireOwnership(user, locationRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND)));
+    }
+
+    Location requireOwnership(UserPrincipal user, Location location) {
+        requireOwner(user);
         if (!user.getId().equals(location.getOwnerId())) {
             throw new AppException("Địa điểm không thuộc Owner", HttpStatus.FORBIDDEN);
         }

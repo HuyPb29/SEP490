@@ -18,6 +18,7 @@ import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.location.PriceRule;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.location.PriceRuleRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.security.UserPrincipal;
 
 import lombok.RequiredArgsConstructor;
@@ -40,6 +41,8 @@ public class PriceRuleService {
     private static final String END_LABEL = "Giờ kết thúc";
 
     private final PriceRuleRepository priceRuleRepository;
+    private final LocationRepository locations;
+    private final PriceCoverageService priceCoverage;
     private final CourtManagementService courtManagementService;
     private final LocationManagementService locationManagementService;
 
@@ -56,8 +59,9 @@ public class PriceRuleService {
     /** UC09 - Owner thêm một dòng giá cho sân. */
     @Transactional
     public PriceRuleDto create(UserPrincipal user, Long courtId, CreatePriceRuleRequest request) {
+        Location location = locationManagementService.requireOwnership(user, locations.findByCourtIdForUpdate(courtId)
+                .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND)));
         Court court = courtManagementService.requireCourt(courtId);
-        Location location = locationManagementService.ownedLocation(user, court.getLocationId());
         requireActiveLocation(location);
 
         String mask = ApplyDays.toMask(request.getDays());
@@ -80,15 +84,15 @@ public class PriceRuleService {
                 .validFrom(validFrom)
                 .validTo(validTo)
                 .build();
-        return PriceRuleDto.fromEntity(priceRuleRepository.save(entity), court.getName());
+        return saveAndCheckCoverage(location, court, entity);
     }
 
     /** UC09 - Owner sửa một dòng giá. Trường null nghĩa là giữ nguyên. */
     @Transactional
     public PriceRuleDto update(UserPrincipal user, Long priceRuleId, UpdatePriceRuleRequest request) {
+        Location location = requireRuleLocationForUpdate(user, priceRuleId);
         PriceRule entity = requireRule(priceRuleId);
         Court court = courtManagementService.requireCourt(entity.getCourtId());
-        Location location = locationManagementService.ownedLocation(user, court.getLocationId());
         requireActiveLocation(location);
 
         String mask = request.getDays() == null ? entity.getApplyDays() : ApplyDays.toMask(request.getDays());
@@ -118,20 +122,36 @@ public class PriceRuleService {
         entity.setPricePerSlot(price);
         entity.setValidFrom(validFrom);
         entity.setValidTo(validTo);
-        return PriceRuleDto.fromEntity(priceRuleRepository.save(entity), court.getName());
+        return saveAndCheckCoverage(location, court, entity);
     }
 
     /** UC09 - Owner xoá một dòng giá. booking không tham chiếu price_rule nên xoá cứng được. */
     @Transactional
     public void delete(UserPrincipal user, Long priceRuleId) {
+        Location location = requireRuleLocationForUpdate(user, priceRuleId);
         PriceRule entity = requireRule(priceRuleId);
         Court court = courtManagementService.requireCourt(entity.getCourtId());
-        Location location = locationManagementService.ownedLocation(user, court.getLocationId());
         requireActiveLocation(location);
         priceRuleRepository.delete(entity);
+        if (court.isActive()) {
+            priceCoverage.requireCourtCoverage(location, court);
+        }
     }
 
     // --------------------------------------------------------------- helpers
+
+    private Location requireRuleLocationForUpdate(UserPrincipal user, Long priceRuleId) {
+        return locationManagementService.requireOwnership(user, locations.findByPriceRuleIdForUpdate(priceRuleId)
+                .orElseThrow(() -> new AppException("Không tìm thấy quy tắc giá", HttpStatus.NOT_FOUND)));
+    }
+
+    private PriceRuleDto saveAndCheckCoverage(Location location, Court court, PriceRule entity) {
+        PriceRule saved = priceRuleRepository.save(entity);
+        if (court.isActive()) {
+            priceCoverage.requireCourtCoverage(location, court);
+        }
+        return PriceRuleDto.fromEntity(saved, court.getName());
+    }
 
     private List<PriceRule> rulesOf(Long courtId) {
         return priceRuleRepository.findAllByCourtIdOrderByStartMinuteAsc(courtId);
@@ -206,7 +226,7 @@ public class PriceRuleService {
             if (!dateRangesOverlap(validFrom, validTo, other.getValidFrom(), other.getValidTo())) {
                 continue;
             }
-            throw new AppException("Bảng giá bị trùng với quy tắc #" + other.getId() + " ("
+            throw new AppException("MSG17: Bảng giá bị trùng với quy tắc #" + other.getId() + " ("
                     + String.join(", ", ApplyDays.toLabels(other.getApplyDays())) + ", "
                     + OpeningTime.toTime(other.getStartMinute()) + "–"
                     + OpeningTime.toTime(other.getEndMinute()) + ")", HttpStatus.CONFLICT);

@@ -54,7 +54,7 @@ function EditProfileDialog({ account, onClose, onSaved }) {
   const isPlayer = account.role === 'PLAYER';
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
-  const skillOptions = [...new Set(['', ...SKILL_LEVELS, account.skillLevel || ''])];
+  const skillOptions = ['', ...SKILL_LEVELS];
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -65,7 +65,8 @@ function EditProfileDialog({ account, onClose, onSaved }) {
     if (nameError) return;
 
     const payload = { fullName: normalizeName(values.fullName) };
-    if (isPlayer) payload.skillLevel = values.skillLevel;
+    // Chỉ gửi khi đã chọn: backend chỉ nhận 4 mức (DR33), để trống thì giữ nguyên trình độ đang có.
+    if (isPlayer && values.skillLevel) payload.skillLevel = values.skillLevel;
     setBusy(true);
     try {
       const response = await api.patch('/users/me', payload);
@@ -101,7 +102,7 @@ function EditProfileDialog({ account, onClose, onSaved }) {
           </FormField>
           {isPlayer && (
             <FormField htmlFor={skillId} label="Trình độ chơi">
-              <Select id={skillId} name="skillLevel" defaultValue={account.skillLevel || ''}>
+              <Select id={skillId} name="skillLevel" defaultValue={SKILL_LEVELS.includes(account.skillLevel) ? account.skillLevel : ''}>
                 {skillOptions.map((option) => (
                   <option key={option} value={option}>{option || 'Chưa chọn'}</option>
                 ))}
@@ -475,30 +476,13 @@ function Accounts() {
   );
 }
 
-function AdminSections({ vouchers }) {
-  const [tab, setTab] = useState('accounts');
-  return (
-    <>
-      <div className="cw-tabs" role="group" aria-label="Khu vực quản trị">
-        <button type="button" aria-pressed={tab === 'accounts'} onClick={() => setTab('accounts')}>
-          Tài khoản và nhật ký
-        </button>
-        <button type="button" aria-pressed={tab === 'vouchers'} onClick={() => setTab('vouchers')}>
-          Kiểm duyệt voucher
-        </button>
-      </div>
-      {tab === 'accounts' ? <Accounts /> : vouchers}
-    </>
-  );
-}
-
-export function AdminWorkspace({ children }) {
+export function AdminWorkspace() {
   return (
     <WorkspaceLayout title="Quản trị hệ thống" role="admin">
       <Link to="/admin/facilities" className="underline">
         Quản lý địa điểm
       </Link>
-      <AdminSections vouchers={children} />
+      <Accounts />
     </WorkspaceLayout>
   );
 }

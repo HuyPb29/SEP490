@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import api, { getAllPages } from '../../api'
 import { voucherGrantState } from '../../api/bookingApi'
+import { searchFacilities } from '../../api/facilityApi'
 import WorkspaceLayout, { ActionForm, EmptyState, Feedback, Field, Section, StatusPill } from '../WorkspaceLayout'
 import { money, today, useResource } from '../workspaceSupport'
 import PointGrantForm from './PointGrantForm'
@@ -10,18 +11,27 @@ const loadPersonalVouchers = (signal) => getAllPages('/me/vouchers', { signal })
 const loadBalances = (signal) => getAllPages('/me/loyalty-balances', { signal })
 const loadCampaigns = (signal) => getAllPages('/owner/vouchers', { signal })
 const loadBatchOffers = (signal) => api.get('/owner/batch-offers', { signal }).then((response) => response.data.data)
-const loadAdminVouchers = (signal) => getAllPages('/admin/vouchers', { signal })
+const loadPublicLocations = async (signal) => (await searchFacilities({ signal })).data.items
 const optionalNumber = (value) => value === '' || value == null ? null : Number(value)
+const locationName = (locations, id) =>
+  locations?.find((item) => item.id === id)?.name ?? 'Địa điểm không khả dụng'
 
-const voucherStatus = { PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', EXPIRED: 'Hết hạn', DISABLED: 'Đã vô hiệu hóa' }
+const voucherStatus = { PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', EXPIRED: 'Hết hạn', DISABLED: 'Đã vô hiệu hóa', STOPPED: 'Đã dừng' }
 const grantLabels = { AVAILABLE: 'Có thể sử dụng', USED: 'Đã sử dụng', EXPIRED: 'Hết hạn', UNAVAILABLE: 'Chưa khả dụng' }
 const pointTypes = { EARN: 'Tích điểm', REDEEM: 'Dùng điểm', RETURN: 'Hoàn điểm', REVOKE: 'Thu hồi điểm', ADJUST: 'Điều chỉnh' }
 
 function VoucherDescription({ voucher, showCampaign = true }) {
+  const discount = voucher.discountType === 'PERCENT' ? voucher.discountValue + '%' : money(voucher.discountValue)
+  const minimum = voucher.minOrderAmount > 0 ? 'Đơn tối thiểu ' + money(voucher.minOrderAmount) : 'Không yêu cầu giá trị đơn tối thiểu'
+  if (!showCampaign) return <>
+    <h3 className="cw-record-title">{voucher.name}</h3>
+    <p><strong>Giảm {discount}</strong> · {minimum}</p>
+    {voucher.code && <code>{voucher.code}</code>}
+  </>
   return <div className="cw-voucher-heading">
     <div><p className="cw-record-title">{voucher.name}</p>{voucher.code && <code>{voucher.code}</code>}</div>
-    <strong>{voucher.discountType === 'PERCENT' ? voucher.discountValue + '%' : money(voucher.discountValue)}</strong>
-    {showCampaign && voucher.status && <StatusPill tone={voucher.status === 'PUBLISHED' ? 'positive' : 'neutral'}>
+    <strong>{discount}</strong>
+    {voucher.status && <StatusPill tone={voucher.status === 'PUBLISHED' ? 'positive' : 'neutral'}>
       {voucherStatus[voucher.status] ?? voucher.status}
     </StatusPill>}
   </div>
@@ -33,32 +43,34 @@ function PersonalRewards() {
   const [location, setLocation] = useState('')
   const [tab, setTab] = useState('vouchers')
   const [voucherFilter, setVoucherFilter] = useState('all')
+  const [voucherLocation, setVoucherLocation] = useState('')
   const loadHistory = useCallback((signal) => getAllPages('/me/loyalty-transactions', {
     signal, params: { locationId: location || undefined },
   }), [location])
   const history = useResource(loadHistory, location)
-  const locationNames = useResource(useCallback(async (signal) => {
-    const { data } = await api.get('/locations', { signal, params: { size: 50 } })
-    return data.data.content
-  }, []))
-  const name = (id) => locationNames.data?.find((item) => item.id === id)?.name || 'Địa điểm #' + id
+  const locations = useResource(loadPublicLocations)
+  const name = (id) => locationName(locations.data, id)
+  const locationByBalance = new Map(balances.data?.map((item) => [item.id, item.locationId]))
 
   const [now] = useState(() => new Date())
+  const voucherLocationIds = [...new Set(vouchers.data?.map(({ voucher }) => voucher.locationId))]
   const visibleVouchers = vouchers.data?.map((entry) => ({ ...entry, state: voucherGrantState(entry, now) }))
     .filter((entry) => voucherFilter === 'all' || entry.state === voucherFilter)
+    .filter((entry) => !voucherLocation || String(entry.voucher.locationId) === voucherLocation)
   return <>
     <div className="cw-tabs" role="group" aria-label="Ví ưu đãi">
       <button type="button" aria-pressed={tab === 'vouchers'} onClick={() => setTab('vouchers')}>Voucher</button>
       <button type="button" aria-pressed={tab === 'points'} onClick={() => setTab('points')}>Điểm và lịch sử</button>
     </div>
     {tab === 'vouchers' ? <Section title="Voucher của tôi" resource={vouchers}>
+      <Field label="Địa điểm" value={voucherLocation} onChange={(event) => setVoucherLocation(event.target.value)}
+        options={[[ '', 'Tất cả địa điểm' ], ...voucherLocationIds.map((id) => [id, name(id)])]} />
       <Field label="Trạng thái" value={voucherFilter} onChange={(event) => setVoucherFilter(event.target.value)}
         options={[[ 'all', 'Tất cả' ], ...Object.entries(grantLabels)]} />
       {visibleVouchers?.length === 0 && <EmptyState>Không có voucher trong mục này.</EmptyState>}
       <div className="cw-columns">{visibleVouchers?.map((entry) => <article key={entry.grantId} className="cw-voucher">
         <VoucherDescription voucher={entry.voucher} showCampaign={false} />
         <p>{name(entry.voucher.locationId)}</p>
-        {entry.voucher.minOrderAmount > 0 && <small className="cw-muted">Đơn từ {money(entry.voucher.minOrderAmount)}</small>}
         <div className="cw-voucher-meta"><span>Hạn dùng {entry.expiresAt?.slice(0, 10) || entry.voucher.validTo || '—'}</span>
           <StatusPill tone={entry.state === 'AVAILABLE' ? 'positive' : 'neutral'}>
             {grantLabels[entry.state] ?? entry.state}
@@ -68,8 +80,11 @@ function PersonalRewards() {
       <Section title="Số dư theo địa điểm" resource={balances}>
         {balances.data?.length === 0 && <EmptyState>Bạn chưa tích điểm ở địa điểm nào.</EmptyState>}
         <ul className="cw-records">{balances.data?.map((item) => <li className="cw-record" key={item.id}>
-          <div><p className="cw-record-title">{name(item.locationId)}</p><small>Chi tiêu tích lũy {money(item.totalPaid)}</small></div>
-          <StatusPill tone="positive">{item.pointBalance} điểm</StatusPill>
+          <div>
+            <p className="cw-record-title">{name(item.locationId)}</p>
+            <small>Chi tiêu tích lũy {money(item.totalPaid)}</small>
+          </div>
+          <strong>Số dư {item.pointBalance} điểm</strong>
         </li>)}</ul>
       </Section>
       <Section title="Lịch sử điểm" resource={history}>
@@ -77,11 +92,11 @@ function PersonalRewards() {
           options={[[ '', 'Tất cả' ], ...(balances.data ?? []).map((item) => [item.locationId, name(item.locationId)])]} />
         {history.data?.length === 0 && <EmptyState>Chưa có giao dịch điểm.</EmptyState>}
         <ul className="cw-records">{history.data?.map((item) => <li className="cw-record" key={item.id}>
-          <div><p className="cw-record-title">{pointTypes[item.type] ?? item.type} · {name(item.locationId)}</p>
+          <div><p className="cw-record-title">{pointTypes[item.type] ?? item.type} · {name(locationByBalance.get(item.balanceId))}</p>
             <small>{item.createdAt?.replace('T', ' ')}{item.reason && ' · ' + item.reason}
               {item.bookingId && ' · Booking #' + item.bookingId}{item.packageId && ' · Gói #' + item.packageId}
               {item.earningRate && ' · ' + money(item.earningRate) + '/điểm'}</small></div>
-          <div><strong>{item.points > 0 ? '+' : ''}{item.points} điểm</strong><small className="block">Số dư {item.balanceAfter}</small></div>
+          <div><strong>{item.points > 0 ? '+' : ''}{item.points} điểm</strong><small className="block">Số dư sau giao dịch {item.balanceAfter} điểm</small></div>
         </li>)}</ul>
       </Section>
     </>}
@@ -98,7 +113,7 @@ function VoucherForm({ voucher, refresh }) {
   const [startDate, setStartDate] = useState(voucher?.validFrom ?? today())
   const campaignPath = '/owner/vouchers'
   return <ActionForm label={voucher ? 'Lưu voucher' : 'Tạo bản nháp'} after={refresh}
-    successMessage="Đã lưu thay đổi. (MSG03)" action={(form) => {
+    successMessage="Đã lưu thay đổi." action={(form) => {
     const payload = {
       ...form, code: form.code?.trim().toUpperCase() || null, discountValue: Number(form.discountValue),
       minOrderAmount: Number(form.minOrderAmount), grantValidDays: optionalNumber(form.grantValidDays),
@@ -147,6 +162,10 @@ function Campaigns({ campaigns }) {
         <VoucherForm key={item.version} voucher={item} refresh={campaigns.reload} />}
       {item.source === 'CAMPAIGN' && item.status === 'DRAFT' && <ActionForm label="Phát hành"
         action={() => api.post('/owner/vouchers/' + item.id + '/publish')} after={campaigns.reload} />}
+      {item.status === 'PUBLISHED' && <ActionForm label="Dừng voucher" tone="danger"
+        confirmation="Dừng mã và ngừng cấp mới voucher này? Voucher đã cấp vẫn sử dụng được trong thời hạn."
+        successMessage="Đã dừng voucher."
+        action={() => api.post('/owner/vouchers/' + item.id + '/stop')} after={campaigns.reload} />}
       {item.source === 'CAMPAIGN' && item.targetGroup === 'SPECIFIED' && item.status === 'PUBLISHED' &&
         <ActionForm label="Cấp voucher" action={(form) => api.post('/owner/vouchers/' + item.id + '/grants', {
           playerIds: [...new Set(form.playerIds.trim().split(/[\s,]+/).map(Number))],
@@ -224,7 +243,7 @@ function Milestones({ locationId }) {
   const afterSave = () => { setSaved(true); milestones.reload() }
   const beforeSave = () => setSaved(false)
   return <Section title="Mốc chi tiêu nhận voucher" resource={milestones}>
-    {saved && <Feedback tone="success">Đã lưu thay đổi. (MSG03)</Feedback>}
+    {saved && <Feedback tone="success">Đã lưu thay đổi.</Feedback>}
     <details><summary>Thêm mốc chi tiêu</summary><MilestoneForm save={save} beforeSave={beforeSave} afterSave={afterSave} /></details>
     {milestones.data?.length === 0 && <EmptyState>Chưa thiết lập mốc chi tiêu.</EmptyState>}
     {milestones.data?.map((item) => <details key={item.id} className="space-y-2 border-t py-3">
@@ -240,36 +259,19 @@ export function OwnerPromotions({ location, refreshLocation }) {
     <Campaigns campaigns={campaigns} />
     <BatchOffers vouchers={campaigns.data ?? []} />
     <Section title="Điểm thưởng">
-      <ActionForm label="Lưu tỷ lệ tích điểm" action={(form) => api.patch('/owner/locations/' + location.id, {
+      <ActionForm key={location.id} label="Lưu cấu hình điểm" action={(form) => api.patch('/owner/locations/' + location.id, {
         pointEarningRate: Number(form.pointEarningRate),
-      })} after={refreshLocation}>
-        <Field label="VND để tích 1 điểm" name="pointEarningRate" type="number" min={1000} max={100000} defaultValue={location.pointEarningRate ?? 10000} required />
+        pointRedemptionValue: Number(form.pointRedemptionValue),
+      })} after={refreshLocation} preserve>
+        {(errors) => <>
+          <Field label="VND để tích 1 điểm" name="pointEarningRate" type="number" min={1000} max={100000}
+            defaultValue={location.pointEarningRate ?? 10000} required error={errors.pointEarningRate} />
+          <Field label="Số đồng giảm khi dùng 1 điểm" name="pointRedemptionValue" type="number" min={1} max={100000} step={1}
+            defaultValue={location.pointRedemptionValue ?? 500} required error={errors.pointRedemptionValue} />
+        </>}
       </ActionForm>
     </Section>
     <PointGrantForm locationId={location.id} />
     <Milestones locationId={location.id} />
   </>
-}
-
-export function AdminVouchers() {
-  const vouchers = useResource(loadAdminVouchers)
-  const [query, setQuery] = useState('')
-  const [status, setStatus] = useState('')
-  const search = query.trim().toLocaleLowerCase('vi-VN')
-  const visible = vouchers.data?.filter((item) => (!status || item.status === status) && (!search ||
-    [item.name, item.code, item.locationId].some((value) => String(value ?? '').toLocaleLowerCase('vi-VN').includes(search))))
-  return <Section title="Kiểm duyệt voucher" resource={vouchers}>
-    <div className="cw-columns">
-      <Field label="Tìm voucher" type="search" placeholder="Tên, mã hoặc ID địa điểm" value={query} onChange={(event) => setQuery(event.target.value)} />
-      <Field label="Trạng thái" options={[[ '', 'Tất cả' ], ...Object.entries(voucherStatus)]}
-        value={status} onChange={(event) => setStatus(event.target.value)} />
-    </div>
-    {visible?.length === 0 && <EmptyState>{vouchers.data?.length ? 'Không có voucher phù hợp.' : 'Chưa có voucher.'}</EmptyState>}
-    {visible?.map((item) => <article className="cw-voucher" key={item.id}>
-      <VoucherDescription voucher={item} />
-      <p>Địa điểm #{item.locationId} · {item.targetGroup} · {item.validFrom || '—'} đến {item.validTo || '—'}</p>
-      {item.status === 'PUBLISHED' && <ActionForm label="Vô hiệu hóa voucher" tone="danger" confirmation="Vô hiệu hóa voucher này?"
-        action={() => api.post('/admin/vouchers/' + item.id + '/disable')} after={vouchers.reload} />}
-    </article>)}
-  </Section>
 }

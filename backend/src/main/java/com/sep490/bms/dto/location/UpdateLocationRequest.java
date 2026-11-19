@@ -62,4 +62,8 @@ public class UpdateLocationRequest {
     @Min(value = 1000, message = "Tỷ lệ tích điểm tối thiểu là 1000")
     @Max(value = 100000, message = "Tỷ lệ tích điểm tối đa là 100000")
     private Integer pointEarningRate;
+
+    @Min(value = 1, message = "Giá trị dùng điểm tối thiểu là 1 đồng")
+    @Max(value = 100000, message = "Giá trị dùng điểm tối đa là 100.000 đồng")
+    private Integer pointRedemptionValue;
 }

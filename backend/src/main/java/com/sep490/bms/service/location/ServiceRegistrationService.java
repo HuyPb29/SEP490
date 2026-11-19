@@ -4,11 +4,14 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,30 +19,31 @@ import com.sep490.bms.dto.location.CreateServiceRegistrationRequest;
 import com.sep490.bms.dto.location.RejectServiceRegistrationRequest;
 import com.sep490.bms.dto.location.ServiceRegistrationDto;
 import com.sep490.bms.entity.account.Account;
+import com.sep490.bms.entity.account.AccountStatus;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.enums.ApprovalStatus;
 import com.sep490.bms.entity.location.Court;
-import com.sep490.bms.entity.location.OpeningHour;
 import com.sep490.bms.entity.location.ServiceRegistration;
 import com.sep490.bms.entity.location.ServiceTerm;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.repository.location.CourtRepository;
-import com.sep490.bms.repository.location.OpeningHourRepository;
 import com.sep490.bms.repository.location.ServiceRegistrationRepository;
 import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.security.UserPrincipal;
+import com.sep490.bms.service.account.OtpLockService;
+import com.sep490.bms.service.notification.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 
 /**
  * Feature: F2 - Quản lý địa điểm
  * Owner: Minh Anh
- * UC05 - Đăng ký sử dụng dịch vụ (FR13).
+ * UC05 và UC06 - Đăng ký và duyệt sử dụng dịch vụ (FR10, FR11).
  *
- * Luồng: Owner gửi đơn (PENDING) -> Admin duyệt thì hệ thống mới tạo địa điểm thật,
+ * Guest hoặc Owner gửi đơn (PENDING). Khi Admin duyệt, hệ thống tạo địa điểm,
  * sinh đủ số sân mà đơn khai báo ("Sân 1".."Sân N") và mở một kỳ hạn sử dụng dịch vụ 12 tháng;
  * Admin từ chối thì bắt buộc ghi lý do.
  * Đơn đã xử lý không được xử lý lại (tránh tạo trùng địa điểm).
@@ -57,45 +61,57 @@ public class ServiceRegistrationService {
      */
     private static final int MAX_COURT_COUNT = 50;
 
-    /** Giờ mở cửa mặc định của địa điểm mới: 06:00 – 24:00, owner chỉnh lại sau bằng UC08. */
-    private static final int DEFAULT_OPEN_MINUTE = 6 * 60;
-    private static final int DEFAULT_CLOSE_MINUTE = 24 * 60;
-    private static final int DAYS_IN_WEEK = 7;
-
     private final ServiceRegistrationRepository serviceRegistrationRepository;
     private final ServiceTermRepository serviceTermRepository;
     private final LocationRepository locationRepository;
     private final CourtRepository courtRepository;
-    private final OpeningHourRepository openingHourRepository;
     private final AccountRepository accountRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final NotificationService notifications;
+    private final OtpLockService contactLocks;
 
-    /** UC05 - Owner gửi đơn đăng ký địa điểm mới. */
+    /** UC05 - Guest đăng ký dịch vụ hoặc Owner đăng ký thêm địa điểm. */
     @Transactional
     public ServiceRegistrationDto submit(UserPrincipal user, CreateServiceRegistrationRequest request) {
-        if (user == null) {
-            throw new AppException("Chưa đăng nhập", HttpStatus.UNAUTHORIZED);
-        }
-        if (user.getRole() != Role.OWNER) {
+        if (user != null && user.getRole() != Role.OWNER) {
             throw new AppException("Chỉ Owner mới được đăng ký sử dụng dịch vụ", HttpStatus.FORBIDDEN);
         }
 
         int courtCount = validateCourtCount(request.getCourtCount());
+        Account owner = user == null ? null : accountRepository.findById(user.getId())
+                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản Owner", HttpStatus.UNAUTHORIZED));
+        String contactName = owner == null
+                ? requireText(request.getContactName(), "Tên người liên hệ", 50) : owner.getFullName();
+        String contactPhone = owner == null
+                ? requireText(request.getContactPhone(), "Số điện thoại liên hệ", 10) : owner.getPhone();
+        String contactEmail = owner == null
+                ? requireText(request.getContactEmail(), "Email liên hệ", 100).toLowerCase(Locale.ROOT) : owner.getEmail();
+        if (owner == null) {
+            lockContact(contactEmail, contactPhone);
+            requireAvailableContact(contactEmail, contactPhone);
+            requireNoPendingGuestRegistration(contactEmail, contactPhone);
+        }
 
         ServiceRegistration entity = ServiceRegistration.builder()
-                .requesterId(user.getId())
+                .requesterId(owner == null ? null : owner.getId())
                 .locationName(requireText(request.getLocationName(), "Tên địa điểm", 100))
                 .address(requireText(request.getAddress(), "Địa chỉ", 255))
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .courtCount(courtCount)
-                .contactName(trimToNull(request.getContactName()))
-                .contactPhone(trimToNull(request.getContactPhone()))
-                .contactEmail(trimToNull(request.getContactEmail()))
+                .contactName(contactName)
+                .contactPhone(contactPhone)
+                .contactEmail(contactEmail)
                 .status(ApprovalStatus.PENDING)
                 .build();
 
-        return ServiceRegistrationDto.fromEntity(
-                serviceRegistrationRepository.save(entity), principalName(user));
+        ServiceRegistration saved = serviceRegistrationRepository.save(entity);
+        for (Account admin : accountRepository.findByRoleAndStatus(Role.ADMIN, AccountStatus.ACTIVE)) {
+            notifications.notifyOnce(admin.getId(), "SERVICE_REGISTRATION_SUBMITTED", "Có đơn đăng ký dịch vụ mới",
+                    "Địa điểm " + saved.getLocationName() + " đang chờ xét duyệt.",
+                    "SERVICE_REGISTRATION", saved.getId());
+        }
+        return ServiceRegistrationDto.fromEntity(saved, contactName);
     }
 
     /** UC05 - Owner xem các đơn mình đã gửi, lọc tuỳ chọn theo trạng thái. */
@@ -126,20 +142,19 @@ public class ServiceRegistrationService {
      * UC05 - Admin duyệt đơn: tạo địa điểm thật cho owner gửi đơn, sinh đủ số sân mà đơn
      * đã khai báo và mở kỳ hạn dịch vụ 12 tháng.
      *
-     * Số sân sinh ra đặt tên mặc định "Sân 1".."Sân N" và bật hoạt động ngay, để Owner
-     * đăng nhập là bán được sân; Owner đổi tên/mô tả sau bằng UC07.
+     * Các sân mặc định ở trạng thái tạm ngưng để Owner thiết lập giá trước khi bật.
      */
     @Transactional
     public ServiceRegistrationDto approve(UserPrincipal admin, Long registrationId) {
         ServiceRegistration entity = requirePending(registrationId);
 
-        if (entity.getRequesterId() == null) {
-            throw new AppException("Đơn không có người đăng ký nên không thể tạo địa điểm");
-        }
         if (isBlank(entity.getContactPhone())) {
             throw new AppException("Đơn thiếu số điện thoại liên hệ, không thể duyệt");
         }
         int courtCount = validateCourtCount(entity.getCourtCount());
+        if (entity.getRequesterId() == null) {
+            entity.setRequesterId(createOwner(entity).getId());
+        }
 
         LocalDateTime now = LocalDateTime.now();
         Location location = locationRepository.save(Location.builder()
@@ -154,7 +169,6 @@ public class ServiceRegistrationService {
                 .build());
 
         courtRepository.saveAll(defaultCourts(location.getId(), courtCount));
-        openingHourRepository.saveAll(defaultOpeningHours(location.getId()));
 
         LocalDate startDate = LocalDate.now();
         serviceTermRepository.save(ServiceTerm.builder()
@@ -192,35 +206,64 @@ public class ServiceRegistrationService {
 
     // --------------------------------------------------------------- helpers
 
-    /** Sinh danh sách sân mặc định cho địa điểm mới: "Sân 1".."Sân N", bật hoạt động. */
+    private Account createOwner(ServiceRegistration registration) {
+        String email = requireText(registration.getContactEmail(), "Email liên hệ", 100).toLowerCase(Locale.ROOT);
+        lockContact(email, registration.getContactPhone());
+        requireAvailableContact(email, registration.getContactPhone());
+        // The Owner sets their first password through the existing email OTP reset flow.
+        try {
+            return accountRepository.saveAndFlush(Account.builder()
+                    .username("owner." + UUID.randomUUID().toString().replace("-", "").substring(0, 26))
+                    .email(email)
+                    .phone(registration.getContactPhone())
+                    .fullName(registration.getContactName())
+                    .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
+                    .role(Role.OWNER)
+                    .status(AccountStatus.ACTIVE)
+                    .build());
+        } catch (DataIntegrityViolationException ex) {
+            throw new AppException("Không thể tạo tài khoản Owner. Kiểm tra email và số điện thoại của đơn.",
+                    HttpStatus.CONFLICT);
+        }
+    }
+
+    private void lockContact(String email, String phone) {
+        contactLocks.acquire(email);
+        contactLocks.acquire("phone:" + phone);
+    }
+
+    private void requireNoPendingGuestRegistration(String email, String phone) {
+        if (serviceRegistrationRepository.existsByRequesterIdIsNullAndStatusAndContactEmailIgnoreCase(
+                ApprovalStatus.PENDING, email)) {
+            throw new AppException("Email đã có đơn đăng ký dịch vụ đang chờ duyệt.", HttpStatus.CONFLICT);
+        }
+        if (serviceRegistrationRepository.existsByRequesterIdIsNullAndStatusAndContactPhone(
+                ApprovalStatus.PENDING, phone)) {
+            throw new AppException("Số điện thoại đã có đơn đăng ký dịch vụ đang chờ duyệt.", HttpStatus.CONFLICT);
+        }
+    }
+
+    private void requireAvailableContact(String email, String phone) {
+        if (accountRepository.existsByEmail(email)) {
+            throw new AppException("Email đã có tài khoản. Hãy đăng nhập bằng tài khoản Owner để gửi đơn. (MSG103)",
+                    HttpStatus.CONFLICT);
+        }
+        if (accountRepository.existsByPhone(phone)) {
+            throw new AppException("Số điện thoại đã được sử dụng cho một tài khoản khác.", HttpStatus.CONFLICT);
+        }
+    }
+
+    /** Sinh danh sách sân mặc định cho địa điểm mới: "Sân 1".."Sân N". */
     private List<Court> defaultCourts(Long locationId, int courtCount) {
         List<Court> courts = new ArrayList<>(courtCount);
         for (int index = 1; index <= courtCount; index++) {
             courts.add(Court.builder()
                     .locationId(locationId)
                     .name("Sân " + index)
-                    .active(true)
+                    .active(false)
                     .build());
         }
         return courts;
-    }
-
-    /**
-     * Giờ mở cửa mặc định 06:00 – 24:00 cho cả 7 ngày, để địa điểm vừa duyệt là bán được ngay.
-     * Đây chỉ là giá trị khởi tạo: mỗi địa điểm tự chỉnh lại giờ riêng bằng UC08
-     * (PUT /api/owner/locations/{id}/opening-hours), kể cả đóng cửa ngày nào đó.
-     */
-    private List<OpeningHour> defaultOpeningHours(Long locationId) {
-        List<OpeningHour> hours = new ArrayList<>(DAYS_IN_WEEK);
-        for (int day = 1; day <= DAYS_IN_WEEK; day++) {
-            hours.add(OpeningHour.builder()
-                    .locationId(locationId)
-                    .dayOfWeek(day)
-                    .openMinute(DEFAULT_OPEN_MINUTE)
-                    .closeMinute(DEFAULT_CLOSE_MINUTE)
-                    .build());
-        }
-        return hours;
     }
 
     /** Số sân phải trong khoảng 1..MAX_COURT_COUNT (ck_sreg_courts chỉ chặn điều kiện lớn hơn 0). */
@@ -242,7 +285,7 @@ public class ServiceRegistrationService {
         if (registrationId == null || registrationId <= 0) {
             throw new AppException("Mã đơn đăng ký không hợp lệ");
         }
-        ServiceRegistration entity = serviceRegistrationRepository.findById(registrationId)
+        ServiceRegistration entity = serviceRegistrationRepository.findByIdForUpdate(registrationId)
                 .orElseThrow(() -> new AppException("Không tìm thấy đơn đăng ký", HttpStatus.NOT_FOUND));
         if (entity.getStatus() != ApprovalStatus.PENDING) {
             throw new AppException("Đơn đăng ký đã được xử lý (" + entity.getStatus() + ")", HttpStatus.CONFLICT);
@@ -253,7 +296,8 @@ public class ServiceRegistrationService {
     private List<ServiceRegistrationDto> toDtos(List<ServiceRegistration> items) {
         Map<Long, String> names = requesterNames(items);
         return items.stream()
-                .map(item -> ServiceRegistrationDto.fromEntity(item, names.get(item.getRequesterId())))
+                .map(item -> ServiceRegistrationDto.fromEntity(item, item.getRequesterId() == null
+                        ? item.getContactName() : names.get(item.getRequesterId())))
                 .toList();
     }
 
@@ -284,13 +328,6 @@ public class ServiceRegistrationService {
         return isBlank(account.getFullName()) ? account.getUsername() : account.getFullName();
     }
 
-    private String principalName(UserPrincipal user) {
-        if (user == null) {
-            return null;
-        }
-        return isBlank(user.getFullName()) ? user.getUsername() : user.getFullName();
-    }
-
     /** Lọc theo trạng thái: bỏ trống = tất cả, sai giá trị = 400. */
     private ApprovalStatus parseStatus(String status) {
         if (isBlank(status)) {
@@ -318,8 +355,4 @@ public class ServiceRegistrationService {
         return value == null || value.isBlank();
     }
 
-    private String trimToNull(String value) {
-        String trimmed = value == null ? null : value.trim();
-        return trimmed == null || trimmed.isEmpty() ? null : trimmed;
-    }
 }

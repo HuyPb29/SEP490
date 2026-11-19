@@ -141,6 +141,7 @@ CREATE TABLE location (
     qr_image_path VARCHAR(255) NULL,
     advance_booking_days SMALLINT NOT NULL CONSTRAINT df_location_advance_booking_days DEFAULT 30,
     point_earning_rate INT NOT NULL CONSTRAINT df_location_point_earning_rate DEFAULT 10000,
+    point_redemption_value INT NOT NULL CONSTRAINT df_location_point_redemption_value DEFAULT 500,
     status VARCHAR(10) NOT NULL CONSTRAINT df_location_status DEFAULT 'ACTIVE',
     locked_at DATETIME2(0) NULL,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_location_created_at DEFAULT SYSDATETIME(),
@@ -149,7 +150,8 @@ CREATE TABLE location (
     CONSTRAINT ck_location_status CHECK (status IN ('ACTIVE','LOCKED')),
     CONSTRAINT ck_location_phone_digits CHECK (contact_phone IS NULL OR (LEN(contact_phone) = 10 AND contact_phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
     CONSTRAINT ck_location_advance CHECK (advance_booking_days > 0),
-    CONSTRAINT ck_location_rate CHECK (point_earning_rate BETWEEN 1000 AND 100000)
+    CONSTRAINT ck_location_rate CHECK (point_earning_rate BETWEEN 1000 AND 100000),
+    CONSTRAINT ck_location_point_redemption_value CHECK (point_redemption_value BETWEEN 1 AND 100000)
 );
 CREATE INDEX ix_location_owner ON location (owner_id);
 
@@ -260,6 +262,7 @@ CREATE TABLE booking_package (
     voucher_discount DECIMAL(12,0) NOT NULL CONSTRAINT df_booking_package_voucher_discount DEFAULT 0,
     points_used INT NOT NULL CONSTRAINT df_booking_package_points_used DEFAULT 0,
     point_discount DECIMAL(12,0) NOT NULL CONSTRAINT df_booking_package_point_discount DEFAULT 0,
+    point_earning_rate_snapshot INT NULL,
     final_amount DECIMAL(12,0) NOT NULL,
     status VARCHAR(30) NOT NULL CONSTRAINT df_booking_package_status DEFAULT 'HOLDING',
     hold_expires_at DATETIME2(0) NULL,
@@ -297,6 +300,7 @@ CREATE TABLE booking (
     voucher_discount DECIMAL(12,0) NOT NULL CONSTRAINT df_booking_voucher_discount DEFAULT 0,
     points_used INT NOT NULL CONSTRAINT df_booking_points_used DEFAULT 0,
     point_discount DECIMAL(12,0) NOT NULL CONSTRAINT df_booking_point_discount DEFAULT 0,
+    point_earning_rate_snapshot INT NULL,
     final_amount DECIMAL(12,0) NOT NULL,
     status VARCHAR(30) NOT NULL CONSTRAINT df_booking_status DEFAULT 'HOLDING',
     hold_expires_at DATETIME2(0) NULL,
@@ -520,7 +524,7 @@ CREATE TABLE voucher (
     CONSTRAINT ck_voucher_code CHECK ((target_group = 'SPECIFIED' AND code IS NULL) OR (target_group <> 'SPECIFIED' AND code IS NOT NULL)),
     CONSTRAINT ck_voucher_type CHECK (discount_type IN ('PERCENT','AMOUNT')),
     CONSTRAINT ck_voucher_value CHECK (discount_value > 0 AND (discount_type <> 'PERCENT' OR discount_value BETWEEN 1 AND 99)),
-    CONSTRAINT ck_voucher_status CHECK (status IN ('DRAFT','PUBLISHED','DISABLED')),
+    CONSTRAINT ck_voucher_status CHECK (status IN ('DRAFT','PUBLISHED','DISABLED','EXPIRED','STOPPED')),
     CONSTRAINT ck_voucher_uses CHECK (max_total_uses IS NULL OR used_count <= max_total_uses),
     CONSTRAINT ck_voucher_budget CHECK (budget IS NULL OR budget_used <= budget)
 );

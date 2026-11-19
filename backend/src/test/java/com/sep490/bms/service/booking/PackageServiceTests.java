@@ -104,7 +104,7 @@ class PackageServiceTests {
     private final List<Booking> savedBookings = new ArrayList<>();
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
-    private final Location location = Location.builder().id(LOCATION).name("Cầu lông A").build();
+    private final Location location = Location.builder().id(LOCATION).name("Cầu lông A").bankName("Test Bank").bankAccountNo("123456").bankAccountHolder("Owner").qrImagePath("test-qr.png").build();
     private final Court court = Court.builder().id(COURT).locationId(LOCATION).name("Sân 1").build();
 
     private final Court court2 = Court.builder().id(12L).locationId(LOCATION).name("Sân 2").build();

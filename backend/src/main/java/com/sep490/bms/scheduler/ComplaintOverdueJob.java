@@ -24,8 +24,7 @@ import lombok.extern.slf4j.Slf4j;
  * Feature: UC37 - Automated tasks and notifications (time-based automatic updates)
  * Job P33: khiếu nại chờ Owner quá 3 giờ tính trong giờ mở cửa thì báo gấp Owner (MSG111).
  *
- * Mốc tính là lúc khiếu nại đến tay Owner (forwarded_at); dữ liệu cũ chưa có cột này
- * thì lấy created_at. Mỗi khiếu nại chỉ báo một lần (notifyOnce theo recipient + type + ref).
+ * P33 tính từ lúc gửi khiếu nại. Mỗi khiếu nại chỉ báo một lần.
  */
 @Component
 @RequiredArgsConstructor
@@ -42,12 +41,11 @@ public class ComplaintOverdueJob {
     @Transactional
     public void warnOverdueComplaints() {
         LocalDateTime now = LocalDateTime.now();
-        List<Complaint> pending = complaintRepository.findByStatus(ComplaintStatus.PENDING_OWNER);
+        List<Complaint> pending = complaintRepository.findByStatusIn(
+                List.of(ComplaintStatus.SUBMITTED, ComplaintStatus.PENDING_OWNER));
         int warned = 0;
         for (Complaint complaint : pending) {
-            LocalDateTime since = complaint.getForwardedAt() != null
-                    ? complaint.getForwardedAt() : complaint.getCreatedAt();
-            if (!availability.exceededOpeningTime(complaint.getLocationId(), since, now,
+            if (!availability.exceededOpeningTime(complaint.getLocationId(), complaint.getCreatedAt(), now,
                     Complaint.OWNER_RESOLUTION_WAIT)) {
                 continue;
             }

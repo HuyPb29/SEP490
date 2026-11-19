@@ -3,6 +3,7 @@ package com.sep490.bms.dto.booking;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.PackageType;
@@ -31,10 +32,14 @@ public class PackageListItem {
     private LocalDate startDate;
     private LocalDate endDate;
     private long sessionCount;
+    private List<DaySession> daySessions;
     private BigDecimal finalAmount;
     /** Trạng thái thanh toán của gói; Đang giữ chỗ đã quá hạn hiện là Hết hạn (BR03). */
     private BookingStatus status;
     /** Chỉ có khi đang giữ chỗ: mốc để đếm ngược (FR52). */
     private LocalDateTime holdExpiresAt;
     private LocalDateTime createdAt;
+
+    public record DaySession(Long id, String courtName, LocalDate playDate, String startTime, String endTime,
+            BookingStatus status) {}
 }

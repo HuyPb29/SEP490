@@ -103,7 +103,7 @@ class LocationQueryServiceTests {
     void keywordIsTrimmedAndLikeWildcardsAreEscaped() {
         service.search("  50%_sân[1] ", null, null);
 
-        verify(locations).searchActive("%50[%][_]sân[[]1]%");
+        verify(locations).searchActive("50[%][_]sân[[]1]%");
     }
 
     @Test

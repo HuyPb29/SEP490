@@ -58,6 +58,31 @@ export const errorMessage = (error) =>
   error?.message ||
   'Không thể hoàn thành thao tác. Vui lòng thử lại.';
 
+const technicalCode = '(?:MSG|BR|DR|FR|NFR|UC|P)\\d+';
+const standaloneCode = new RegExp(`^${technicalCode}$`);
+const technicalSuffix = new RegExp(`\\s*\\(\\s*${technicalCode}(?:\\s*[,/]\\s*${technicalCode})*\\s*\\)`, 'g');
+
+export function uiMessage(value) {
+  if (typeof value !== 'string') return value;
+  const message = value.replace(technicalSuffix, '').trim();
+  return standaloneCode.test(message) ? 'Không thể hoàn thành thao tác. Vui lòng kiểm tra lại.' : message;
+}
+
+const notificationStatusLabels = {
+  CONFIRMED: 'đã xác nhận',
+  REJECTED: 'bị từ chối',
+  EXPIRED: 'đã hết hạn',
+  HOLDING: 'đang giữ chỗ',
+  APPROVED: 'đã duyệt',
+  AWAITING_CONFIRMATION: 'đang chờ xác nhận',
+  RESUBMIT_REQUESTED: 'cần gửi lại chứng từ',
+};
+
+export function notificationMessage(value) {
+  return uiMessage(value)?.replace(/\b(?:CONFIRMED|REJECTED|EXPIRED|HOLDING|APPROVED|AWAITING_CONFIRMATION|RESUBMIT_REQUESTED)\b/g,
+    (status) => notificationStatusLabels[status]);
+}
+
 export function formatSlotTime(min) {
   if (min === null || min === undefined || Number.isNaN(Number(min))) return '--:--';
   const total = Number(min);

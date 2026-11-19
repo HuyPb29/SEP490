@@ -21,6 +21,18 @@ public interface BookingSlotRepository extends JpaRepository<BookingSlot, Long> 
     /** Slot đang được giữ hoặc đã đặt (is_active = 1) của các sân trong một ngày. */
     List<BookingSlot> findByCourtIdInAndSlotDateAndActiveTrue(Collection<Long> courtIds, LocalDate slotDate);
 
+    interface OriginalSlotCount {
+        Long getBookingId();
+        long getSlotCount();
+    }
+
+    @Query("""
+            SELECT s.bookingId AS bookingId, COUNT(s) AS slotCount FROM BookingSlot s
+            WHERE s.bookingId IN :bookingIds AND s.rescheduleRequestId IS NULL
+            GROUP BY s.bookingId
+            """)
+    List<OriginalSlotCount> countOriginalSlots(@Param("bookingIds") Collection<Long> bookingIds);
+
     /**
      * Nhả mọi slot booking đang giữ (is_active = 0) để người khác đặt được: unique ux_slot_active
      * chỉ áp cho slot còn hiệu lực. Dòng slot vẫn giữ lại làm lịch sử, kèm giá lúc đặt.

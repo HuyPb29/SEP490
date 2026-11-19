@@ -43,11 +43,14 @@ import org.springframework.web.context.WebApplicationContext;
 @SpringBootTest(properties="app.booking-change.jobs-enabled=false")
 class BookingChangeApiTests {
     @Test void extraPaymentSupportsResubmissionAndPlayerCanReadItsProof() throws Exception {
+        Account staff = createStaff(AccountStatus.ACTIVE);
+        Account disabledStaff = createStaff(AccountStatus.DISABLED);
         Long id=create(660);
         mvc.perform(post("/api/reschedule-requests/" + id + "/payments").header("Authorization", token(player)))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.success").value(false));
         assertThat(jdbc.queryForObject("select count(*) from payment where reschedule_request_id=?", Integer.class, id)).isZero();
         mvc.perform(paymentProof(id)).andExpect(status().isOk());
+        assertProofRecipients(owner.getId(), staff.getId());
         Long payment=jdbc.queryForObject("select id from payment where reschedule_request_id=?",Long.class,id);
         mvc.perform(post("/api/staff/reschedule-payments/"+payment+"/request-resubmission").header("Authorization",token(owner))
                 .header("X-Location-Id",location.getId()).contentType(MediaType.APPLICATION_JSON)
@@ -69,13 +72,61 @@ class BookingChangeApiTests {
         var proof=new org.springframework.mock.web.MockMultipartFile("proof","receipt.png","image/png",new byte[]{1,2});
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/reschedule-payments/"+payment+"/resubmit")
                 .file(proof).header("Authorization",token(player))).andExpect(status().isOk());
+        assertProofRecipients(owner.getId(), owner.getId(), staff.getId(), staff.getId());
         Long proofId=jdbc.queryForObject("select max(id) from payment_proof where payment_id=?",Long.class,payment);
         String image="/api/payments/"+payment+"/proofs/"+proofId+"/image";
         mvc.perform(get(image).header("Authorization",token(player))).andExpect(status().isOk());
         mvc.perform(get(image).header("Authorization",token(other))).andExpect(status().isForbidden());
         mvc.perform(post("/api/staff/reschedule-payments/"+payment+"/confirm").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("APPROVED"));
+        assertThat(jdbc.queryForList(
+                "select recipient_id from notification where type='VENUE_RESCHEDULE_APPROVED' and ref_type='BOOKING' and ref_id=?",
+                Long.class, booking.getId()))
+                .containsExactlyInAnyOrder(owner.getId(), staff.getId())
+                .doesNotContain(disabledStaff.getId());
     }
+
+    private Account createStaff(AccountStatus status) {
+        Account staff = accounts.saveAndFlush(Account.builder()
+                .username("staff" + UUID.randomUUID().toString().substring(0, 8))
+                .fullName("Staff Test").passwordHash("test-unused").role(Role.STAFF)
+                .locationId(location.getId()).status(status).build());
+        staffIds.add(staff.getId());
+        return staff;
+    }
+
+    private void assertProofRecipients(Long... recipients) {
+        assertThat(jdbc.queryForList(
+                "select recipient_id from notification where type='RESCHEDULE_PROOF_SUBMITTED' and ref_type='LOCATION' and ref_id=?",
+                Long.class, location.getId())).containsExactlyInAnyOrder(recipients);
+    }
+    @Test
+    void longerRescheduleChargesFullPriceDifferenceAndAppliesAfterConfirmation() throws Exception {
+        String path="/api/bookings/"+booking.getId()+"/reschedule-requests";
+        mvc.perform(post(path+"/preview").header("Authorization",token(player))
+                .contentType(MediaType.APPLICATION_JSON).content(slot(690)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.newListAmount").value(180000))
+                .andExpect(jsonPath("$.data.extraAmount").value(80000));
+        Long requestId = create(690);
+        LocalDate targetDate = LocalDate.now().plusDays(3);
+        assertThat(active(booking.getPlayDate())).isEqualTo(2);
+        assertThat(active(targetDate)).isEqualTo(3);
+        mvc.perform(paymentProof(requestId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("AWAITING_CONFIRMATION"));
+        Long paymentId = jdbc.queryForObject("select id from payment where reschedule_request_id=?", Long.class, requestId);
+        assertThat(jdbc.queryForObject("select amount_due from payment where id=?", BigDecimal.class, paymentId))
+                .isEqualByComparingTo("80000");
+        assertThat(active(booking.getPlayDate())).isEqualTo(2);
+        mvc.perform(post("/api/staff/reschedule-payments/" + paymentId + "/confirm")
+                .header("Authorization", token(owner)).header("X-Location-Id", location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("APPROVED"));
+        assertThat(active(booking.getPlayDate())).isZero();
+        assertThat(active(targetDate)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("select end_minute from booking where id=?", Integer.class, booking.getId()))
+                .isEqualTo(690);
+    }
+
     @Test
     void onlyBookingPlayerCanReadRescheduleDeadline() throws Exception {
         String path = "/api/bookings/" + booking.getId() + "/reschedule-deadline";
@@ -110,6 +161,7 @@ class BookingChangeApiTests {
     MockMvc mvc; TransactionTemplate tx;
     Account owner,player,other; Location location; Long court; Booking booking;
     final List<Long> accountIds=new ArrayList<>();
+    final List<Long> staffIds = new ArrayList<>();
 
     @BeforeEach void setup() throws Exception {
         try(var c=Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
@@ -118,7 +170,8 @@ class BookingChangeApiTests {
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build(); tx=new TransactionTemplate(manager);
         owner=account(Role.OWNER);player=account(Role.PLAYER);other=account(Role.PLAYER);
         location=locations.saveAndFlush(Location.builder().ownerId(owner.getId()).name("Booking change test").address("Test")
-                .contactPhone("0987654321").latitude(BigDecimal.ONE).longitude(BigDecimal.ONE).build());
+                .contactPhone("0987654321").latitude(BigDecimal.ONE).longitude(BigDecimal.ONE)
+                .bankName("Test Bank").bankAccountNo("123456").bankAccountHolder("Owner").qrImagePath("test-qr.png").build());
         tx.executeWithoutResult(s->{
             Court c=Court.builder().locationId(location.getId()).name("Test court").active(true).build();em.persist(c);em.flush();court=c.getId();
             for(int day=1;day<=7;day++) em.persist(OpeningHour.builder().locationId(location.getId()).dayOfWeek(day).openMinute(0).closeMinute(1440).build());
@@ -170,6 +223,11 @@ class BookingChangeApiTests {
         if(location!=null) {
             Long id=location.getId();
             jdbc.update("delete from notification where recipient_id in (?,?,?)",owner.getId(),player.getId(),other.getId());
+            for (Long staffId : staffIds) {
+                jdbc.update("delete from notification where recipient_id=?", staffId);
+                accounts.deleteById(staffId);
+            }
+            staffIds.clear();
             jdbc.update("delete from refund_request where location_id=?",id);
             jdbc.update("delete from match_join_request where match_id in (select m.id from [match] m join booking b on b.id=m.booking_id where b.location_id=?)",id);
             jdbc.update("delete from [match] where booking_id in (select id from booking where location_id=?)",id);
@@ -190,6 +248,41 @@ class BookingChangeApiTests {
         }
         for(Long id:accountIds) accounts.deleteById(id);accountIds.clear();
     }
+    @Test void cancellingUnpaidDayOrderReleasesEverySlotAndReturnsPoints() throws Exception {
+        jdbc.update("insert into player_location_balance (player_id, location_id, point_balance, total_paid) values (?, ?, 10, 0)",
+                player.getId(), location.getId());
+        LocalDate date = LocalDate.now().plusDays(3);
+        var order = new com.sep490.bms.dto.booking.BookingOrderRequest(date, List.of(
+                new com.sep490.bms.dto.booking.BookingOrderRequest.Range(court, 600, 630),
+                new com.sep490.bms.dto.booking.BookingOrderRequest.Range(court, 660, 720)), null, null, 2, null, null);
+        var created = mvc.perform(post("/api/booking-orders").header("Authorization", token(player))
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(order)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.sessions[0].bookedHalfHours").value(1))
+                .andExpect(jsonPath("$.data.sessions[1].bookedHalfHours").value(2))
+                .andReturn();
+        long orderId = json.readTree(created.getResponse().getContentAsString()).at("/data/id").asLong();
+        mvc.perform(get("/api/me/booking-packages").header("Authorization", token(player)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].daySessions[0].courtName").value("Test court"))
+                .andExpect(jsonPath("$.data.content[0].daySessions[1].endTime").value("12:00"));
+        String cancel = "/api/booking-orders/" + orderId + "/cancel";
+        mvc.perform(post(cancel).header("Authorization", token(other))).andExpect(status().isForbidden());
+        mvc.perform(post(cancel).header("Authorization", token(player))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(2));
+        assertThat(jdbc.queryForList("select status from booking where package_id=?", String.class, orderId))
+                .containsExactly("CANCELLED_BY_PLAYER", "CANCELLED_BY_PLAYER");
+        assertThat(jdbc.queryForObject("""
+                select count(*) from booking_slot s join booking b on b.id=s.booking_id
+                where b.package_id=? and s.is_active=1
+                """, Integer.class, orderId)).isZero();
+        assertThat(jdbc.queryForObject("select point_balance from player_location_balance where location_id=?",
+                Integer.class, location.getId())).isEqualTo(10);
+        assertThat(jdbc.queryForObject("select count(*) from point_transaction where package_id=? and type='RETURN'",
+                Integer.class, orderId)).isEqualTo(1);
+        mvc.perform(post(cancel).header("Authorization", token(player))).andExpect(status().isConflict());
+    }
+
     @Test void previewUsesStoredListPriceAndDoesNotHoldSlots() throws Exception {
         mvc.perform(post("/api/bookings/"+booking.getId()+"/reschedule-requests/preview").header("Authorization",token(player))
                 .contentType(MediaType.APPLICATION_JSON).content(slot(660))).andExpect(status().isOk())
@@ -312,6 +405,9 @@ class BookingChangeApiTests {
     }
     @Test void freeMoveBypassesCountWithoutChargingMore() throws Exception {
         Long id=mark();jdbc.update("update booking set reschedule_count=1 where id=?",booking.getId());
+        mvc.perform(post("/api/affected-bookings/"+id+"/submit-choice").header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"choice\":\"RESCHEDULE\",\"slot\":"+slot(690)+"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.reason").value("DURATION_EXCEEDED"));
         mvc.perform(post("/api/affected-bookings/"+id+"/submit-choice").header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"choice\":\"RESCHEDULE\",\"slot\":"+slot(660)+"}")).andExpect(status().isOk());
         assertThat(bookingStatus()).isEqualTo("CONFIRMED");assertThat(active(booking.getPlayDate())).isZero();

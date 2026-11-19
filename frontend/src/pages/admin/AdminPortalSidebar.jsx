@@ -4,7 +4,6 @@ import styles from './AdminLocationsPage.module.css'
 const NAV_ITEMS = [
   { label: 'Locations', to: '/admin/locations' },
   { label: 'Accounts', to: '/admin/accounts' },
-  { label: 'Violating Vouchers', to: '/admin/violating-vouchers' },
   { label: 'Violating Reviews', to: '/admin/violating-reviews' },
 ]
 

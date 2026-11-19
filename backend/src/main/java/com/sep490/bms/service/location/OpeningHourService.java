@@ -42,6 +42,7 @@ public class OpeningHourService {
 
     private final OpeningHourRepository openingHourRepository;
     private final LocationManagementService locationManagementService;
+    private final PriceCoverageService priceCoverage;
     private final com.sep490.bms.service.reschedule.CancellationService cancellations;
 
     /** UC08 - Xem giờ mở cửa của địa điểm. Luôn trả đủ 7 ngày. */
@@ -54,7 +55,7 @@ public class OpeningHourService {
     /** UC08 - Thay thế toàn bộ giờ mở cửa của địa điểm. */
     @Transactional
     public List<OpeningHourDto> replace(UserPrincipal user, Long locationId, UpdateOpeningHoursRequest request) {
-        Location location = locationManagementService.ownedLocation(user, locationId);
+        Location location = locationManagementService.lockOwnedLocation(user, locationId);
         if (!STATUS_ACTIVE.equals(location.getStatus())) {
             throw new AppException("Địa điểm đang bị khoá, không thể cập nhật giờ mở cửa", HttpStatus.FORBIDDEN);
         }
@@ -95,6 +96,7 @@ public class OpeningHourService {
             openingHourRepository.deleteAll(removed);
         }
         openingHourRepository.saveAll(toSave);
+        priceCoverage.requireActiveCourtCoverage(location);
         cancellations.hoursChanged(location.getId(), user.getId());
 
         return buildWeek(hoursOf(location.getId()));

@@ -154,6 +154,7 @@ public class PackageService {
         Court court = courtRepository.findByIdAndActiveTrue(request.courtId())
                 .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
         Location location = locationQueryService.findActive(court.getLocationId());
+        BookingService.requireOnlinePaymentDetails(location);
         bookingService.requireOwnTeam(player.getId(), request.teamId());
         boolean order = isOrder(request);
         if (order) {
@@ -185,6 +186,7 @@ public class PackageService {
                 .voucherDiscount(quote.voucherDiscount())
                 .pointsUsed(quote.pointsUsed())
                 .pointDiscount(quote.pointDiscount())
+                .pointRedemptionValue(location.getPointRedemptionValue())
                 .finalAmount(quote.finalAmount())
                 .batchOffer(offer)
                 .build();
@@ -227,6 +229,7 @@ public class PackageService {
         Court court = courtRepository.findByIdAndActiveTrue(request.courtId())
                 .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
         Location location = locationQueryService.findActive(court.getLocationId());
+        BookingService.requireOnlinePaymentDetails(location);
         bookingService.requireOwnTeam(player.getId(), request.teamId());
         LocalDate today = now.toLocalDate();
         boolean order = isOrder(request);
@@ -253,6 +256,7 @@ public class PackageService {
         // Lưu với giá niêm yết; consumeForPackage, redeemForPackage tự ghi số giảm và finalAmount vào gói.
         BookingPackage pkg = bookingPackageRepository.save(BookingPackage.builder()
                 .locationId(location.getId())
+                .pointEarningRateSnapshot(location.getPointEarningRate())
                 .playerId(player.getId())
                 .packageType(request.packageType())
                 .startDate(sessions.get(0).date())
@@ -273,6 +277,7 @@ public class PackageService {
                     .playerId(player.getId())
                     .teamId(request.teamId())
                     .packageId(pkg.getId())
+                    .pointEarningRateSnapshot(pkg.getPointEarningRateSnapshot())
                     .playDate(session.session().date())
                     .startMinute(session.session().startMinute())
                     .endMinute(session.session().endMinute())
@@ -421,6 +426,9 @@ public class PackageService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleFailed(BookingPackage pkg, BookingStatus status) {
+        if (status == BookingStatus.CANCELLED_BY_PLAYER && pkg.getStatus() != BookingStatus.HOLDING) {
+            throw new AppException("Chỉ được bỏ giữ chỗ khi đơn chưa gửi chứng từ", HttpStatus.CONFLICT);
+        }
         pkg.setStatus(status);
         bookingPackageRepository.saveAndFlush(pkg);
         for (Booking session : sessionsOf(pkg.getId())) {
@@ -586,6 +594,8 @@ public class PackageService {
                         .playDate(b.getPlayDate())
                         .startTime(MinuteTime.format(b.getStartMinute()))
                         .endTime(MinuteTime.format(b.getEndMinute()))
+                        .listAmount(b.getListAmount())
+                        .bookedHalfHours((long) (b.getEndMinute() - b.getStartMinute()) / MinuteTime.SLOT_MINUTES)
                         .finalAmount(b.getFinalAmount())
                         .status(b.getStatus())
                         .holdExpiresAt(b.getHoldExpiresAt())
@@ -680,8 +690,12 @@ public class PackageService {
      * D162, BR27, MSG115: mọi buổi của gói nằm trong 3 tháng kể từ hôm nay (tính cả hôm nay, như cách đếm của BR27), khớp với
      * lịch 3 tháng Owner/Staff xem được (D140). Hôm nay 07/11 thì buổi xa nhất là 06/02 năm sau.
      */
+    public static LocalDate lastBookablePackageDate(LocalDate today) {
+        return today.plusMonths(MAX_MONTHS).minusDays(1);
+    }
+
     private static void requireWithinBookingWindow(LocalDate lastDate, LocalDate today) {
-        LocalDate latest = today.plusMonths(MAX_MONTHS).minusDays(1);
+        LocalDate latest = lastBookablePackageDate(today);
         if (lastDate.isAfter(latest)) {
             throw new AppException("Chỉ đặt được các buổi trong vòng 3 tháng kể từ hôm nay, muộn nhất ngày "
                     + latest.format(DATE) + ". (MSG115)");
@@ -807,7 +821,7 @@ public class PackageService {
 
     /**
      * BR28: chia phần giảm của cả gói cho từng buổi theo tỷ lệ giá niêm yết của buổi; mỗi buổi làm tròn xuống,
-     * phần lẻ dồn vào buổi cuối. Voucher chia theo đồng, điểm chia theo điểm (1 điểm = 500 đồng, P10) để số điểm
+     * phần lẻ dồn vào buổi cuối. Voucher chia theo đồng, điểm chia theo số điểm đã dùng để số điểm
      * trả lại khi sân hủy một buổi khớp với số tiền đã giảm. Buổi nào không còn tiền phải trả thì không chia được.
      */
     static List<Priced> allocate(List<Priced> sessions, BigDecimal voucherDiscount, int points, BigDecimal pointDiscount) {

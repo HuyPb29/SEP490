@@ -3,9 +3,11 @@ import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import styles from './BookingSummaryPage.module.css';
-import { formatVnd } from '../../utils/formatters';
-import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, pointInputError } from '../../utils/checkoutPoints';
+import { formatVnd, uiMessage } from '../../utils/formatters';
+import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, defaultPointRedemptionValue, pointInputError } from '../../utils/checkoutPoints';
 import { CheckoutProgress, ConfirmDialog, Feedback } from '../../components/common/WorkspacePrimitives';
+import CheckoutVoucherPicker from '../../components/booking/CheckoutVoucherPicker';
+import { useCheckoutVoucherSelection } from '../../hooks/useCheckoutVouchers';
 import { PublicHeader } from '../../components/layout/PublicLayout';
 import PublicFooter from '../../components/layout/PublicFooter';
 
@@ -55,8 +57,6 @@ export default function BookingSummaryPage() {
   const {
     getMyPointsAtFacility,
     getMyOwnedTeams,
-    getCheckoutVouchers,
-    applyVoucherApi,
     previewBookingApi,
     createBookingApi,
     createDayOrderApi,
@@ -108,14 +108,6 @@ export default function BookingSummaryPage() {
   // State Ghi chú cho chủ sân (DR20: tối đa 200 ký tự)
   const [guestNote, setGuestNote] = useState('');
 
-  // Sửa lại thành chuỗi rỗng và null
-  const [voucherInput, setVoucherInput] = useState('');
-  const [checkoutVouchers, setCheckoutVouchers] = useState({ publicVouchers: [], grants: [] });
-  const [selectedGrant, setSelectedGrant] = useState(null);
-  const [appliedVoucher, setAppliedVoucher] = useState(null);
-  const [voucherError, setVoucherError] = useState('');
-  const [voucherLoading, setVoucherLoading] = useState(false);
-
   // State Điểm thưởng tại cơ sở (FR89, P10, P11, P13, BR15, BR41)
   const [availablePoints, setAvailablePoints] = useState(0);
   const [pointsInput, setPointsInput] = useState('');
@@ -140,21 +132,21 @@ export default function BookingSummaryPage() {
       .catch((error) => {
         if (active()) setPointsError(error.response?.data?.message || 'Không tải được số dư điểm.');
       });
-    getCheckoutVouchers(bookingContext.facility.facility_id)
-      .then((vouchers) => { if (active()) setCheckoutVouchers(vouchers); })
-      .catch(() => { if (active()) setVoucherError('Không tải được danh sách voucher. Bạn vẫn có thể nhập mã.'); });
     return () => controller.abort();
-  }, [bookingContext, isOrder, isPlayer, selection, previewDayOrderApi, previewBookingApi, getMyOwnedTeams, getMyPointsAtFacility, getCheckoutVouchers]);
+  }, [bookingContext, isOrder, isPlayer, selection, previewDayOrderApi, previewBookingApi, getMyOwnedTeams, getMyPointsAtFacility]);
 
   const listPrice = Number(quote?.listAmount ?? 0);
+  const voucher = useCheckoutVoucherSelection(quote?.locationId, quote?.conflictSessions ? 0 : listPrice);
+  const { applied: appliedVoucher, checking: voucherLoading } = voucher;
+  const pointValue = quote?.pointRedemptionValue || defaultPointRedemptionValue;
   const voucherDiscount = Number(appliedVoucher?.discountAmount ?? 0);
   const remainingAfterVoucher = listPrice - voucherDiscount;
-  const pointsAllowed = checkoutPointLimit(remainingAfterVoucher, availablePoints);
+  const pointsAllowed = checkoutPointLimit(remainingAfterVoucher, availablePoints, pointValue);
   const requestedPoints = Number(pointsInput);
-  const pointValidation = pointInputError(requestedPoints, availablePoints, pointsAllowed);
+  const pointValidation = pointInputError(requestedPoints, availablePoints, pointsAllowed, pointValue);
   const validPoints = !pointValidation;
   const pointsUsed = validPoints ? requestedPoints : 0;
-  const pointsDiscount = pointsUsed * 500;
+  const pointsDiscount = pointsUsed * pointValue;
   const pricingSummary = { listPrice, voucherDiscount, remainingAfterVoucher, pointsUsed, pointsDiscount,
     finalAmount: remainingAfterVoucher - pointsDiscount };
   const slotSummary = {
@@ -186,43 +178,10 @@ export default function BookingSummaryPage() {
 
   const validNote = guestNote.length <= 200;
 
-  // Xử lý Áp dụng hoặc Bỏ mã Voucher
-  const handleVoucherAction = async () => {
-    setVoucherError('');
-    setPointSubmitError('');
-
-    // Nếu đang có mã được áp dụng -> bấm nút sẽ Bỏ mã
-    if (appliedVoucher) {
-      setAppliedVoucher(null);
-      return;
-    }
-
-    if (!voucherInput.trim() && !selectedGrant) {
-      setVoucherError('Vui lòng nhập mã giảm giá hoặc chọn voucher cá nhân. (MSG01)');
-      return;
-    }
-
-    setVoucherLoading(true);
-    try {
-      const code = voucherInput.trim().toUpperCase();
-      const selection = selectedGrant ? { grantId: selectedGrant } : { code };
-      const checked = await applyVoucherApi({ locationId: quote.locationId, orderAmount: quote.listAmount, selection });
-      setAppliedVoucher({ ...checked, selection, label: selectedGrant
-        ? checkoutVouchers.grants.find((grant) => grant.grantId === selectedGrant)?.voucher.name : code });
-    } catch (err) {
-      const message = err.response?.data?.message;
-      const reason = message && message !== 'No message available' ? message : 'Vui lòng kiểm tra lại.';
-      setVoucherError(checkoutRewardErrorField(reason) === 'voucher' ? reason : `Mã giảm giá không dùng được: ${reason} (MSG34)`);
-    } finally {
-      setVoucherLoading(false);
-    }
-  };
-
   const [confirmPoints, setConfirmPoints] = useState(false);
   const handleConfirmBooking = async () => {
     if (!quote || quote.conflictSessions || submitting || voucherLoading || !validPoints || !validNote) return;
     setSubmitError('');
-    setVoucherError('');
     setPointSubmitError('');
     setSubmitting(true);
     try {
@@ -243,7 +202,7 @@ export default function BookingSummaryPage() {
       }
       if (Number(checked.listAmount) !== listPrice || Number(checked.voucherDiscount) !== voucherDiscount ||
           Number(checked.pointDiscount) !== pointsDiscount || Number(checked.finalAmount) !== pricingSummary.finalAmount) {
-        setAppliedVoucher(null);
+        voucher.onRemove();
         setQuote(checked);
         setPointsInput('');
         setSubmitError('Giá hoặc ưu đãi đã thay đổi. Vui lòng kiểm tra lại trước khi xác nhận.');
@@ -266,9 +225,10 @@ export default function BookingSummaryPage() {
       }
       const field = checkoutRewardErrorField(message);
       if (field === 'voucher') {
-        setAppliedVoucher(null);
-        setVoucherError(message);
-      } else if (field === 'points') setPointSubmitError(message);
+        const detail = message.includes('MSG108') ? message : message.replace(/\s*\(MSG34\)$/, '') + ' (MSG108)';
+        voucher.invalidate(detail);
+      }
+      else if (field === 'points') setPointSubmitError(message);
       else setSubmitError(message || 'Không thể xác nhận đặt sân. Vui lòng thử lại.');
     } finally {
       setSubmitting(false);
@@ -290,7 +250,7 @@ export default function BookingSummaryPage() {
       {confirmPoints && <ConfirmDialog title="Xác nhận dùng điểm" onCancel={() => setConfirmPoints(false)} onConfirm={() => {
         setConfirmPoints(false);
         handleConfirmBooking();
-      }}>Dùng {pointsUsed} điểm để giảm {formatVnd(pointsDiscount)}? Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy booking. (MSG39)</ConfirmDialog>}
+      }}>Dùng {pointsUsed} điểm để giảm {formatVnd(pointsDiscount)}? Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy lịch.</ConfirmDialog>}
 
       <main className={styles.mainContainer}>
         {/* Nút quay lại lịch sân */}
@@ -391,7 +351,7 @@ export default function BookingSummaryPage() {
                   value={guestNote}
                   onChange={(e) => setGuestNote(e.target.value)}
                 />
-                {!validNote && <p role="alert" className={styles.errorText}>Ghi chú không được vượt quá 200 ký tự (MSG109).</p>}
+                {!validNote && <p role="alert" className={styles.errorText}>Ghi chú không được vượt quá 200 ký tự.</p>}
               </div>
             </section>
 
@@ -400,67 +360,15 @@ export default function BookingSummaryPage() {
             <section className={styles.card}>
               <h2 className={styles.cardTitle}>Voucher và điểm thưởng</h2>
 
-              <label className={styles.noteLabel} htmlFor="voucher-code">Mã voucher</label>
-              <div className={styles.voucherRow}>
-                <input
-                  id="voucher-code"
-                  type="text"
-                  className={styles.voucherInput}
-                  value={voucherInput}
-                  list="public-vouchers"
-                  maxLength={20}
-                  disabled={Boolean(appliedVoucher) || voucherLoading || submitting}
-                  onChange={(e) => {
-                    setVoucherInput(e.target.value.toUpperCase());
-                    setSelectedGrant(null);
-                    setVoucherError('');
-                  }}
-                  placeholder="Nhập mã giảm giá"
-                />
-                <datalist id="public-vouchers">
-                  {checkoutVouchers.publicVouchers.map((voucher) =>
-                    <option key={voucher.id} value={voucher.code}>{voucher.name}</option>)}
-                </datalist>
-                <button
-                  type="button"
-                  className={styles.voucherBtn}
-                  onClick={handleVoucherAction}
-                  disabled={voucherLoading || submitting}
-                >
-                  {appliedVoucher ? 'Bỏ mã' : voucherLoading ? 'Đang kiểm tra...' : 'Áp dụng'}
-                </button>
-              </div>
-
-              {checkoutVouchers.grants.length > 0 && <div className={styles.noteGroup}>
-                <label className={styles.noteLabel} htmlFor="voucher-grant">Voucher cá nhân</label>
-                <select id="voucher-grant" className={styles.voucherInput} value={selectedGrant ?? ''}
-                  disabled={Boolean(appliedVoucher) || voucherLoading || submitting}
-                  onChange={(event) => {
-                    setSelectedGrant(Number(event.target.value) || null);
-                    setVoucherInput('');
-                    setVoucherError('');
-                  }}>
-                  <option value="">Chọn voucher cá nhân</option>
-                  {checkoutVouchers.grants.map(({ grantId, voucher }) =>
-                    <option key={grantId} value={grantId}>{voucher.name} · {voucher.code}</option>)}
-                </select>
-              </div>}
-
-              {voucherError && <p className={styles.errorText} role="alert">{voucherError}</p>}
+              <CheckoutVoucherPicker {...voucher} disabled={submitting || Boolean(quote.conflictSessions)} />
 
               {pointsError && <p role="alert" className={styles.errorText}>{pointsError}</p>}
-
-              {appliedVoucher && (
-                <div className={styles.voucherSuccessBanner}>
-                  Đã áp dụng {appliedVoucher.label}: giảm {formatVnd(appliedVoucher.discountAmount)} (MSG36)
-                </div>
-              )}
 
               <div className={styles.pointsRow}>
                 <div className={styles.pointsInfo}>
                   <strong className={styles.pointsTitle}>Dùng điểm thưởng</strong>
                   <span className={styles.pointsSub}>
-                    Bạn đang có {availablePoints} điểm tại địa điểm này (1 điểm = 500 VND).{' '}
+                    Bạn đang có {availablePoints} điểm tại địa điểm này (1 điểm = {formatVnd(pointValue)}).{' '}
                     Tối đa {checkoutPointPercent}% {appliedVoucher ? 'số tiền còn lại sau voucher' : 'giá niêm yết'}.
                   </span>
                 </div>
@@ -471,7 +379,7 @@ export default function BookingSummaryPage() {
                   aria-describedby={pointValidation || pointSubmitError ? 'checkout-point-error' : undefined}
                   onChange={(event) => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
                 {(pointValidation || pointSubmitError) && <p id="checkout-point-error" role="alert" className={styles.errorText}>
-                  {pointValidation || pointSubmitError}
+                  {uiMessage(pointValidation || pointSubmitError)}
                 </p>}
               </div>
             </section>
@@ -530,7 +438,7 @@ export default function BookingSummaryPage() {
                   gap: '8px'
                 }}>
                   <span>⚠️</span>
-                  <span>{submitError}</span>
+                  <span>{uiMessage(submitError)}</span>
                 </div>
               )}
 
@@ -544,7 +452,7 @@ export default function BookingSummaryPage() {
               </button>
 
               <p className={styles.holdNotice}>
-                Trang thanh toán sẽ hiển thị mã QR chuyển khoản và giữ chỗ trong 10 phút để bạn gửi chứng từ (BR03).
+                Trang thanh toán sẽ hiển thị mã QR chuyển khoản và giữ chỗ trong 10 phút để bạn gửi chứng từ.
               </p>
 
             </div>

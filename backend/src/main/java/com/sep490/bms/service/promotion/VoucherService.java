@@ -82,11 +82,8 @@ public class VoucherService {
     public PageResponse<VoucherResponse> ownerList(UserPrincipal user, VoucherStatus status,int page,int size) {
         return list(ownerLocation(user),status,page,size);
     }
-    public PageResponse<VoucherResponse> adminList(UserPrincipal user, Long location,VoucherStatus status,int page,int size) {
-        role(user,Role.ADMIN); return list(location,status,page,size);
-    }
     private PageResponse<VoucherResponse> list(Long location,VoucherStatus status,int page,int size) {
-        Specification<Voucher> spec=(r,q,c) -> c.and(location==null ? c.conjunction():c.equal(r.get("locationId"),location),
+        Specification<Voucher> spec=(r,q,c) -> c.and(c.equal(r.get("locationId"),location),
                 status==null ? c.conjunction():c.equal(r.get("status"),status));
         return PageResponse.from(vouchers.findAll(spec,page(page,size)).map(VoucherResponse::from));
     }
@@ -128,17 +125,21 @@ public class VoucherService {
     @Transactional
     public VoucherResponse publish(UserPrincipal user,Long id) {
         Voucher v=owned(user,id);
-        if(v.getStatus()==VoucherStatus.DISABLED || v.getSource()!=VoucherSource.CAMPAIGN)
-            throw new AppException("Voucher không thể publish",HttpStatus.CONFLICT);
+        if (v.getStatus() == VoucherStatus.DISABLED || v.getStatus() == VoucherStatus.STOPPED
+                || v.getSource() != VoucherSource.CAMPAIGN)
+            throw new AppException("Voucher không thể phát hành", HttpStatus.CONFLICT);
         if(v.getValidFrom()==null || v.getValidTo()==null || v.getValidTo().isBefore(LocalDate.now()))
             throw new AppException("Ngày hiệu lực voucher không hợp lệ");
         v.setStatus(VoucherStatus.PUBLISHED); return VoucherResponse.from(vouchers.saveAndFlush(v));
     }
     @Transactional
-    public VoucherResponse disable(UserPrincipal user,Long id) {
-        role(user,Role.ADMIN); Voucher v=locked(id);
-        if(v.getStatus()!=VoucherStatus.PUBLISHED) throw new AppException("Chỉ vô hiệu voucher đã phát hành",HttpStatus.CONFLICT);
-        v.setStatus(VoucherStatus.DISABLED); v.setDisabledBy(user.getId());
+    public VoucherResponse stop(UserPrincipal user, Long id) {
+        Voucher v = owned(user, id);
+        if (v.getStatus() == VoucherStatus.STOPPED) return VoucherResponse.from(v);
+        if (v.getStatus() != VoucherStatus.PUBLISHED)
+            throw new AppException("Chỉ dừng được voucher đã phát hành", HttpStatus.CONFLICT);
+        v.setStatus(VoucherStatus.STOPPED);
+        v.setDisabledBy(user.getId());
         return VoucherResponse.from(vouchers.saveAndFlush(v));
     }
     @Transactional
@@ -183,7 +184,10 @@ public class VoucherService {
     }
     private VoucherCheckResponse evaluate(Voucher v,Long player,Long location,BigDecimal amount,VoucherSelection selection) {
         activeLocation(location);
-        if(!location.equals(v.getLocationId()) || v.getStatus()!=VoucherStatus.PUBLISHED) throw new AppException("Voucher không khả dụng");
+        boolean stoppedPersonalVoucher = v.getStatus() == VoucherStatus.STOPPED
+                && v.getTargetGroup() == VoucherTargetGroup.SPECIFIED && selection.grantId() != null;
+        if (!location.equals(v.getLocationId()) || (v.getStatus() != VoucherStatus.PUBLISHED && !stoppedPersonalVoucher))
+            throw new AppException("Voucher không khả dụng");
         LocalDateTime now=LocalDateTime.now();
         if(v.getValidFrom()!=null && now.toLocalDate().isBefore(v.getValidFrom()) || v.getValidTo()!=null && now.toLocalDate().isAfter(v.getValidTo()))
             throw new AppException("Voucher ngoài thời hạn sử dụng");
@@ -260,7 +264,8 @@ public class VoucherService {
     @Transactional(propagation=Propagation.MANDATORY)
     public void restoreForFailedPackage(Long packageId) {
         var pkg=em.find(com.sep490.bms.entity.booking.BookingPackage.class,packageId,LockModeType.PESSIMISTIC_WRITE);
-        if(pkg==null || !List.of(BookingStatus.EXPIRED,BookingStatus.PAYMENT_REJECTED,BookingStatus.CANCELLED_BY_FACILITY).contains(pkg.getStatus())) throw new AppException("Gói chưa thất bại");
+        if(pkg==null || !List.of(BookingStatus.EXPIRED,BookingStatus.PAYMENT_REJECTED,BookingStatus.CANCELLED_BY_FACILITY,
+                BookingStatus.CANCELLED_BY_PLAYER).contains(pkg.getStatus())) throw new AppException("Gói chưa thất bại");
         usages.findByPackageId(packageId).ifPresent(this::restoreUsage);
     }
     @Transactional(propagation=Propagation.MANDATORY)
@@ -295,6 +300,7 @@ public class VoucherService {
     @Transactional(propagation=Propagation.MANDATORY)
     public boolean grantForBatchOffer(Long voucherId,Long playerId,String note) {
         Voucher v=locked(voucherId);
+        em.refresh(v, LockModeType.PESSIMISTIC_WRITE);
         LocalDateTime now=LocalDateTime.now();
         if(v.getStatus()!=VoucherStatus.PUBLISHED || v.getTargetGroup()!=VoucherTargetGroup.SPECIFIED
                 || v.getValidTo()!=null && v.getValidTo().isBefore(now.toLocalDate())) return false;

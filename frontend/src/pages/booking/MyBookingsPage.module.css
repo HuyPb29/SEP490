@@ -380,6 +380,14 @@
   color: #0f172a;
 }
 
+.rescheduleWarning {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #854d0e;
+}
+
 .quoteBox {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -476,6 +484,13 @@
 }
 
 .bookingChild { margin-inline-start: clamp(10px, 3vw, 32px); border-inline-start: 3px solid #78a98d; }
+
+.orderRanges { padding-inline-start: 1.25rem; margin-block: 0.4rem; font-size: 0.875rem; list-style: disc; }
+.sessionPriceTable { overflow-x: auto; }
+.sessionPriceTable table { width: 100%; border-collapse: collapse; text-align: left; }
+.sessionPriceTable caption { text-align: left; font-weight: 700; margin-block: 0.75rem 0.4rem; }
+.sessionPriceTable th, .sessionPriceTable td { padding: 0.5rem; border-bottom: 1px solid var(--cw-line, #e2e8f0); }
+.sessionPriceTable td { white-space: nowrap; }
 
 /* UC21/UC22: Modal đổi lịch dùng bảng lịch sân nên cần rộng hơn modal thường */
 dialog.rescheduleModal { max-width: min(1080px, calc(100% - 28px)); }

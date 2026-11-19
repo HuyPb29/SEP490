@@ -7,6 +7,7 @@ public enum VoucherStatus {
     DRAFT,
     PUBLISHED,
     DISABLED,
+    STOPPED,
     /**
      * Voucher đã quá valid_to. Do job UC37 tự chuyển từ PUBLISHED sang, không phải
      * người dùng đặt. Vẫn sửa được ngày hiệu lực để gia hạn; khi ngày mới còn hiệu lực

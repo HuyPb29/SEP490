@@ -14,6 +14,7 @@ import com.sep490.bms.entity.reschedule.*;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.security.*;
 import com.sep490.bms.service.booking.SlotAvailabilityService;
+import com.sep490.bms.service.booking.PackageService;
 import com.sep490.bms.service.promotion.*;
 import jakarta.persistence.*;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class CancellationService {
     private final LoyaltyPointService points;
     private final VoucherService vouchers;
     private final SlotAvailabilityService availability;
+    private final PackageService packages;
 
     public Booking cancel(UserPrincipal u,Long id) {
         Booking observed = em.find(Booking.class, id);
@@ -59,6 +61,10 @@ public class CancellationService {
         if(pkg==null || pkg.getPackageType()!=PackageType.DAY) throw new AppException("Không tìm thấy đơn đặt lẻ",HttpStatus.NOT_FOUND);
         if(u==null || u.getRole()!=Role.PLAYER || !u.getId().equals(pkg.getPlayerId()))
             throw new AppException("Không có quyền với đơn đặt lẻ",HttpStatus.FORBIDDEN);
+        if (pkg.getStatus() == BookingStatus.HOLDING) {
+            packages.settleFailed(pkg, BookingStatus.CANCELLED_BY_PLAYER);
+            return packages.sessionsOf(packageId);
+        }
         List<Booking> toCancel=new ArrayList<>();
         for(Long bookingId:em.createQuery("select b.id from Booking b where b.packageId=:p order by b.playDate,b.startMinute,b.id",Long.class)
                 .setParameter("p",packageId).getResultList()) {

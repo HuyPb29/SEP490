@@ -1,13 +1,14 @@
 export const checkoutPointPercent = 50;
+export const defaultPointRedemptionValue = 500;
 
-export function checkoutPointLimit(afterVoucher, balance) {
+export function checkoutPointLimit(afterVoucher, balance, pointValue) {
   const discountLimit = afterVoucher * checkoutPointPercent / 100;
-  return Math.max(0, Math.min(balance, Math.floor(discountLimit / 500)));
+  return Math.max(0, Math.min(balance, Math.floor(discountLimit / pointValue)));
 }
 
-export function pointInputError(points, balance, limit) {
+export function pointInputError(points, balance, limit, pointValue) {
   if (points === 0) return '';
-  if (!Number.isInteger(points) || points < 2 || points > balance) {
+  if (!Number.isInteger(points) || points * pointValue < 1000 || points > balance) {
     return 'Mỗi lần dùng điểm phải giảm ít nhất 1.000 đồng và không vượt số dư. (MSG37)';
   }
   return points > limit ? `Bạn được dùng tối đa ${limit} điểm cho khoản thanh toán này. (MSG38)` : '';

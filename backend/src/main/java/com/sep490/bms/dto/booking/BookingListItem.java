@@ -31,6 +31,8 @@ public class BookingListItem {
     /** Giờ dạng HH:mm, ví dụ "18:00"; 24 giờ là "24:00". */
     private String startTime;
     private String endTime;
+    private BigDecimal listAmount;
+    private Long bookedHalfHours;
     private BigDecimal finalAmount;
     /** Đang giữ chỗ đã quá hạn hiện là Hết hạn, dù job UC37 chưa kịp đổi trạng thái (BR03). */
     private BookingStatus status;

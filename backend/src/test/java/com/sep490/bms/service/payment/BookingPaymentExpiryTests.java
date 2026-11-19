@@ -24,6 +24,7 @@ import org.mockito.InOrder;
 
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.BookingStatus;
 import com.sep490.bms.entity.enums.PaymentStatus;
 import com.sep490.bms.entity.notification.Notification;
@@ -57,9 +58,10 @@ class BookingPaymentExpiryTests {
     private final VoucherService vouchers = mock(VoucherService.class);
     private final LoyaltyPointService points = mock(LoyaltyPointService.class);
     private final NotificationRepository notifications = mock(NotificationRepository.class);
+    private final PackageService packages = mock(PackageService.class);
     private final PaymentService service = new PaymentService(payments, mock(PaymentProofRepository.class), bookings,
             locations, mock(FileStorageService.class), mock(LocationAccessService.class), vouchers, points,
-            notifications, mock(PackageService.class), mock(RescheduleRequestRepository.class));
+            notifications, packages, mock(RescheduleRequestRepository.class));
 
     private Booking booking;
     private Payment payment;
@@ -109,6 +111,26 @@ class BookingPaymentExpiryTests {
         assertThat(notificationsSent()).extracting(Notification::getRecipientId).containsExactly(PLAYER, OWNER);
         assertThat(notificationsSent().get(1).getContent()).isEqualTo("Booking BK000030 đã hết giờ chơi mà chưa được "
                 + "xác nhận thanh toán; hệ thống đã chuyển sang Bị từ chối thanh toán.");
+    }
+
+    @Test
+    void packageExpiryNotifiesOwnerOnceAtFirstSessionEnd() {
+        long packageId = 60L;
+        payment.setBookingId(null);
+        payment.setPackageId(packageId);
+        BookingPackage pkg = BookingPackage.builder().id(packageId).locationId(LOCATION).playerId(PLAYER)
+                .startDate(PLAY_END.toLocalDate()).endDate(PLAY_END.toLocalDate().plusWeeks(1))
+                .status(BookingStatus.AWAITING_CONFIRMATION).build();
+        when(packages.lockForPayment(packageId)).thenReturn(pkg);
+        when(packages.firstSessionEnd(packageId)).thenReturn(PLAY_END);
+
+        assertThat(service.expirePackagePayment(PAYMENT, PLAY_END.minusSeconds(1))).isFalse();
+        verifyNoInteractions(notifications);
+        assertThat(service.expirePackagePayment(PAYMENT, PLAY_END)).isTrue();
+        assertThat(service.expirePackagePayment(PAYMENT, PLAY_END.plusMinutes(1))).isFalse();
+
+        assertThat(notificationsSent()).extracting(Notification::getRecipientId).containsExactly(PLAYER, OWNER);
+        assertThat(notificationsSent().get(1).getType()).isEqualTo("PAYMENT_EXPIRED_AT_PLAY_END");
     }
 
     @Test

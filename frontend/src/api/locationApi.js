@@ -44,6 +44,13 @@ export async function getOwnerLocations() {
   return data?.data ?? []
 }
 
+export async function uploadOwnerLocationQr(locationId, image) {
+  const body = new FormData()
+  body.append('image', image)
+  const { data } = await api.post(`/owner/locations/${locationId}/qr`, body, ownerConfig(locationId))
+  return data.data
+}
+
 /** POST /api/owner/locations/{id}/courts */
 export async function createCourt(locationId, payload) {
   const { data } = await api.post(`/owner/locations/${locationId}/courts`, payload, ownerConfig(locationId))
@@ -185,10 +192,10 @@ export async function getStaffCourts() {
  *  - STAFF: GET /api/staff/maintenance-requests (địa điểm ghim theo tài khoản)
  *  - OWNER: GET /api/owner/maintenance-requests (địa điểm theo X-Location-Id)
  */
-export async function getMaintenanceRequests(role, status) {
+export async function getMaintenanceRequests(role, status, locationId) {
   const params = status ? { status } : undefined
   const path = role === 'OWNER' ? '/owner/maintenance-requests' : '/staff/maintenance-requests'
-  const config = role === 'OWNER' ? ownerConfig(undefined, { params }) : { params }
+  const config = role === 'OWNER' ? ownerConfig(locationId, { params }) : { params }
   const { data } = await api.get(path, config)
   return data?.data ?? []
 }
@@ -206,14 +213,14 @@ export async function cancelMaintenanceRequest(requestId, reason) {
 }
 
 /** POST /api/owner/maintenance-requests/{id}/approve — không có body. */
-export async function approveMaintenanceRequest(requestId) {
-  const { data } = await api.post(`/owner/maintenance-requests/${requestId}/approve`, null, ownerConfig())
+export async function approveMaintenanceRequest(requestId, locationId) {
+  const { data } = await api.post(`/owner/maintenance-requests/${requestId}/approve`, null, ownerConfig(locationId))
   return data?.data
 }
 
 /** POST /api/owner/maintenance-requests/{id}/reject — body {reason}. */
-export async function rejectMaintenanceRequest(requestId, reason) {
-  const { data } = await api.post(`/owner/maintenance-requests/${requestId}/reject`, { reason }, ownerConfig())
+export async function rejectMaintenanceRequest(requestId, reason, locationId) {
+  const { data } = await api.post(`/owner/maintenance-requests/${requestId}/reject`, { reason }, ownerConfig(locationId))
   return data?.data
 }
 

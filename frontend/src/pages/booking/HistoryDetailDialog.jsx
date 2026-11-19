@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import api, { apiErrorMessage } from '../../api'
 import { affectedBookingActions, blocksNormalBookingActions, bookingStatusLabels, bookingStartsAfter, bookingTimestamp, canPayHistoryEntry, canRescheduleBooking, getHistoryDetail } from '../../api/bookingHistory'
 import { createMatch } from '../../api/matchApi'
-import { formatVnd } from '../../utils/formatters'
+import { formatVnd, uiMessage } from '../../utils/formatters'
 import styles from './MyBookingsPage.module.css'
 
 /** D60: tối đa 8 người tính cả chủ kèo — chủ kèo khai số đang có và số cần thêm. */
@@ -49,7 +49,7 @@ function CreateMatchForm({ bookingId, onCreated }) {
         {numberField('Số người đã có (kể cả bạn)', currentPlayers, setCurrentPlayers)}
         {numberField('Số người cần thêm', neededPlayers, setNeededPlayers)}
       </div>
-      {error && <p className="mt-2 text-sm text-red-600" role="alert">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-600" role="alert">{uiMessage(error)}</p>}
       <button type="button" disabled={saving} onClick={submit}
         className="mt-3 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
         {saving ? 'Đang mở kèo…' : 'Mở kèo'}
@@ -59,6 +59,11 @@ function CreateMatchForm({ bookingId, onCreated }) {
 }
 
 const currency = { format: formatVnd }
+
+const minuteOfDay = (time) => {
+  const [hours, minutes] = (time ?? '').split(':').map(Number)
+  return hours * 60 + minutes
+}
 
 function DetailRow({ label, children }) {
   if (children == null || children === '') return null
@@ -127,6 +132,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
     resubmit_deadline: requestOpen ? payment.resubmitDeadline ?? detail.resubmitDeadline : null,
     reschedule: detail.reschedule, booking_date: detail.playDate ?? item.booking_date,
     start_time: detail.startTime ?? item.start_time,
+    end_time: detail.endTime ?? item.end_time,
     court_name: detail.courtName ?? item.court_name,
     time_range: detail.startTime ? `${detail.startTime} – ${detail.endTime}` : item.time_range,
   }
@@ -172,7 +178,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
             {currentStatus === 'holding' && <DetailRow label="Thời gian giữ chỗ còn lại">
               {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
             </DetailRow>}
-            {status === 'resubmit_requested' && <DetailRow label="Lý do gửi lại chứng từ">{detail.resubmitReason}</DetailRow>}
+            {status === 'resubmit_requested' && <DetailRow label="Lý do gửi lại chứng từ">{uiMessage(detail.resubmitReason)}</DetailRow>}
             {status === 'resubmit_requested' && detail.resubmitDeadline && <DetailRow label="Hạn gửi lại chứng từ">
               {new Date(bookingTimestamp(detail.resubmitDeadline)).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
             </DetailRow>}
@@ -180,11 +186,25 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
               {payment.resubmitsLeft > 0 ? 'Còn ' + payment.resubmitsLeft + ' lượt' : 'Yêu cầu bổ sung cuối đang mở'}
             </DetailRow>}
           </dl>
-          {detail.sessions?.length > 0 && <ul>
-            {detail.sessions.map((session) => <li key={session.id}>
-              {session.courtName} · {session.playDate} ({session.startTime} – {session.endTime})
-            </li>)}
-          </ul>}
+          {detail.sessions?.length > 0 && <div className={styles.sessionPriceTable}>
+            <table>
+              <caption>Chi tiết từng buổi</caption>
+              <thead><tr><th scope="col">Ngày chơi</th><th scope="col">Sân và khung giờ</th>
+                <th scope="col">Thời lượng</th><th scope="col">Đơn giá bình quân lúc đặt</th>
+                <th scope="col">Thành tiền sau ưu đãi</th></tr></thead>
+              <tbody>{detail.sessions.map((session) => {
+                const duration = minuteOfDay(session.endTime) - minuteOfDay(session.startTime)
+                return <tr key={session.id}>
+                  <td>{session.playDate}</td>
+                  <td>{session.courtName} · {session.startTime} – {session.endTime}</td>
+                  <td>{duration > 0 ? duration + ' phút' : '—'}</td>
+                  <td>{session.bookedHalfHours > 0 && session.listAmount != null
+                    ? currency.format(session.listAmount * 2 / session.bookedHalfHours) + '/giờ' : '—'}</td>
+                  <td>{session.finalAmount == null ? '—' : currency.format(session.finalAmount)}</td>
+                </tr>
+              })}</tbody>
+            </table>
+          </div>}
         </div>
       )}
       {canCreateMatch && matchFormOpen && (
@@ -204,7 +224,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
         {showReschedule && <button type="button" className={styles.outlineActionBtn} onClick={() => onReschedule(target)}>
           {detail.reschedule.pendingRequestId ? 'Xem phụ thu đổi lịch' : 'Đổi lịch'}
         </button>}
-        {!error && currentStatus === 'confirmed' && canCancel(target) && <button type="button"
+        {target && !error && canCancel(target) && <button type="button"
           className={styles.outlineActionBtn} onClick={() => onCancelBooking(target)}>
           {target.single_order ? 'Hủy đơn' : 'Hủy lịch'}
         </button>}

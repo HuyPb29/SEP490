@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { fetchProtectedImage } from '../../api'
 import {
   apiErrorMessage,
   getOwnerLocations, getStoredLocationId,
   storeLocationId,
   updateOwnerLocation,
+  uploadOwnerLocationQr,
 } from '../../api/locationApi'
 import ManagementLayout from '../../components/layout/ManagementLayout'
+import LocationMap from '../../components/map/LocationMap'
 import styles from './OwnerFacilitySettingsPage.module.css'
 
 /** Khớp ràng buộc trong UpdateLocationRequest để báo lỗi ngay, khỏi gọi API. */
@@ -16,12 +19,12 @@ const LIMITS = {
   bankName: 100,
   bankAccountNo: 30,
   bankAccountHolder: 100,
-  qrImagePath: 255,
   advanceBookingDays: { min: 1, max: 365 },
   pointEarningRate: { min: 1000, max: 100000 },
-  latitude: { min: -90, max: 90 },
-  longitude: { min: -180, max: 180 },
+  pointRedemptionValue: { min: 1, max: 100000 },
 }
+const STATUS_LABELS = { ACTIVE: 'Đang hoạt động', LOCKED: 'Đã khóa' }
+const DEFAULT_MAP_CENTER = { latitude: 21.028511, longitude: 105.854444 }
 
 /** Form luôn giữ dạng chuỗi để người dùng xoá trắng được, lúc gửi mới đổi kiểu. */
 function toForm(location) {
@@ -39,10 +42,10 @@ function toForm(location) {
       location?.pointEarningRate === null || location?.pointEarningRate === undefined
         ? ''
         : String(location.pointEarningRate),
+    pointRedemptionValue: String(location?.pointRedemptionValue ?? 500),
     bankName: location?.bankName ?? '',
     bankAccountNo: location?.bankAccountNo ?? '',
     bankAccountHolder: location?.bankAccountHolder ?? '',
-    qrImagePath: location?.qrImagePath ?? '',
   }
 }
 
@@ -66,12 +69,65 @@ export default function OwnerFacilitySettingsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [pointValueError, setPointValueError] = useState('')
+  const [qrPreview, setQrPreview] = useState('')
+  const [qrError, setQrError] = useState('')
+  const [qrSavedLocationId, setQrSavedLocationId] = useState(null)
+  const [uploadingQr, setUploadingQr] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [locationError, setLocationError] = useState('')
 
   const selectedLocation = useMemo(
     () => locations.find((location) => location.id === selectedLocationId) ?? null,
     [locations, selectedLocationId],
   )
   const locked = selectedLocation?.status === 'LOCKED'
+  const qrPath = selectedLocation?.qrImagePath
+  useEffect(() => {
+    let active = true
+    let objectUrl
+    setQrPreview('')
+    setQrError('')
+    if (qrPath && !locked) {
+      fetchProtectedImage(`/api/owner/locations/${selectedLocationId}/qr`)
+        .then((url) => {
+          objectUrl = url
+          if (active) setQrPreview(url)
+          else URL.revokeObjectURL(url)
+        })
+        .catch(() => {
+          if (active) setQrError('Không tải được ảnh QR đã lưu.')
+        })
+    }
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [selectedLocationId, qrPath, locked])
+
+  const handleQrUpload = async (event) => {
+    const input = event.currentTarget
+    const image = input.files?.[0]
+    input.value = ''
+    if (!image || !selectedLocationId || locked || uploadingQr) return
+    setQrError('')
+    setQrSavedLocationId(null)
+    if (!['image/jpeg', 'image/png'].includes(image.type) || image.size > 5 * 1024 * 1024) {
+      setQrError('Chọn ảnh JPG hoặc PNG tối đa 5 MB.')
+      return
+    }
+    setUploadingQr(true)
+    try {
+      const path = await uploadOwnerLocationQr(selectedLocationId, image)
+      setLocations((rows) => rows.map((row) =>
+        row.id === selectedLocationId ? { ...row, qrImagePath: path } : row))
+      setQrSavedLocationId(selectedLocationId)
+    } catch (err) {
+      setQrError(apiErrorMessage(err))
+    } finally {
+      setUploadingQr(false)
+    }
+  }
   const dirty = useMemo(
     () => Object.keys(form).some((key) => form[key] !== original[key]),
     [form, original],
@@ -108,46 +164,79 @@ export default function OwnerFacilitySettingsPage() {
     }
   }, [loadLocations])
 
-  const handleFacilityChange = (event) => {
-    const nextId = Number(event.target.value)
-    if (!Number.isFinite(nextId)) return
+  const handleFacilityChange = (value) => {
+    const nextId = Number(value)
+    if (!Number.isInteger(nextId) || nextId <= 0) return
     const next = locations.find((location) => location.id === nextId) ?? null
     setSelectedLocationId(nextId)
     storeLocationId(nextId)
     setForm(toForm(next))
     setOriginal(toForm(next))
     setError('')
+    setPointValueError('')
     setMessage('')
   }
 
   const updateField = (field) => (event) => {
     const value = event.target.value
     setForm((current) => ({ ...current, [field]: value }))
+    if (field === 'pointRedemptionValue') setPointValueError('')
     setMessage('')
   }
 
+  /** FR17: vị trí chỉ chọn bằng ghim trên bản đồ hoặc GPS, không nhập tay kinh độ, vĩ độ. */
+  const pickLocation = (latitude, longitude) => {
+    setForm((current) => ({
+      ...current,
+      latitude: String(Number(latitude.toFixed(6))),
+      longitude: String(Number(longitude.toFixed(6))),
+    }))
+    setLocationError('')
+    setMessage('')
+  }
+
+  const handleUseCurrentLocation = () => {
+    if (!window.isSecureContext || !navigator.geolocation) {
+      setLocationError('Không thể dùng định vị ở trình duyệt này. Hãy bấm vào bản đồ để đặt ghim.')
+      return
+    }
+    setLocationError('')
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        pickLocation(coords.latitude, coords.longitude)
+        setLocating(false)
+      },
+      (geoError) => {
+        setLocationError(geoError.code === 1
+          ? 'Quyền vị trí đang bị chặn. Hãy cho phép vị trí trong cài đặt trang hoặc bấm vào bản đồ để đặt ghim.'
+          : 'Không lấy được vị trí. Hãy bấm vào bản đồ để đặt ghim.')
+        setLocating(false)
+      },
+      { timeout: 10000 },
+    )
+  }
+
   const validate = () => {
-    if (!form.name.trim()) return 'Facility name is required.'
-    if (form.name.trim().length > LIMITS.name) return `Facility name is limited to ${LIMITS.name} characters.`
-    if (!form.address.trim()) return 'Address is required.'
-    if (form.address.trim().length > LIMITS.address) return `Address is limited to ${LIMITS.address} characters.`
+    if (!form.name.trim()) return 'Tên địa điểm không được để trống.'
+    if (form.name.trim().length > LIMITS.name) return `Tên địa điểm tối đa ${LIMITS.name} ký tự.`
+    if (!form.address.trim()) return 'Địa chỉ không được để trống.'
+    if (form.address.trim().length > LIMITS.address) return `Địa chỉ tối đa ${LIMITS.address} ký tự.`
     if (form.contactPhone.trim() && !PHONE_PATTERN.test(form.contactPhone.trim())) {
-      return 'Contact phone must be 10 digits and start with 0.'
+      return 'Số điện thoại liên hệ phải gồm 10 chữ số, bắt đầu bằng 0.'
     }
 
     const numericChecks = [
-      ['latitude', 'Latitude', LIMITS.latitude],
-      ['longitude', 'Longitude', LIMITS.longitude],
-      ['advanceBookingDays', 'Advance booking days', LIMITS.advanceBookingDays],
-      ['pointEarningRate', 'Point earning rate', LIMITS.pointEarningRate],
+      ['advanceBookingDays', 'Số ngày đặt trước tối đa', LIMITS.advanceBookingDays],
+      ['pointEarningRate', 'Tỷ lệ tích điểm', LIMITS.pointEarningRate],
     ]
     for (const [field, label, range] of numericChecks) {
       const raw = form[field].trim()
       if (!raw) continue
       const value = Number(raw)
-      if (!Number.isFinite(value)) return `${label} must be a number.`
+      if (!Number.isFinite(value)) return `${label} phải là số.`
       if (value < range.min || value > range.max) {
-        return `${label} must be between ${range.min} and ${range.max}.`
+        return `${label} phải trong khoảng ${range.min.toLocaleString('vi-VN')} đến ${range.max.toLocaleString('vi-VN')}.`
       }
     }
     return ''
@@ -174,20 +263,27 @@ export default function OwnerFacilitySettingsPage() {
     if (form.pointEarningRate !== original.pointEarningRate && form.pointEarningRate.trim()) {
       payload.pointEarningRate = Number(form.pointEarningRate)
     }
+    if (form.pointRedemptionValue !== original.pointRedemptionValue) {
+      payload.pointRedemptionValue = Number(form.pointRedemptionValue)
+    }
     // Nhóm ngân hàng gửi chuỗi rỗng để xoá được giá trị cũ.
     if (form.bankName !== original.bankName) payload.bankName = form.bankName.trim()
     if (form.bankAccountNo !== original.bankAccountNo) payload.bankAccountNo = form.bankAccountNo.trim()
     if (form.bankAccountHolder !== original.bankAccountHolder) {
       payload.bankAccountHolder = form.bankAccountHolder.trim()
     }
-    if (form.qrImagePath !== original.qrImagePath) payload.qrImagePath = form.qrImagePath.trim()
     return payload
   }
 
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (locked) {
-      setError('This facility is locked, so the backend rejects every update.')
+      setError('Địa điểm đang bị khóa nên không lưu được thay đổi.')
+      return
+    }
+    const pointValue = Number(form.pointRedemptionValue)
+    if (!Number.isInteger(pointValue) || pointValue < LIMITS.pointRedemptionValue.min || pointValue > LIMITS.pointRedemptionValue.max) {
+      setPointValueError('Nhập số tiền nguyên từ 1 đến 100.000 đồng. (MSG02)')
       return
     }
     const validation = validate()
@@ -198,7 +294,7 @@ export default function OwnerFacilitySettingsPage() {
     }
     const payload = buildPayload()
     if (Object.keys(payload).length === 0) {
-      setMessage('Nothing changed.')
+      setMessage('Chưa có thay đổi nào.')
       setError('')
       return
     }
@@ -214,9 +310,11 @@ export default function OwnerFacilitySettingsPage() {
       setForm(toForm(updated))
       setOriginal(toForm(updated))
       setError('')
-      setMessage('Facility profile saved.')
+      setMessage('Đã lưu hồ sơ địa điểm.')
     } catch (err) {
-      setError(apiErrorMessage(err))
+      const fieldError = err.response?.data?.errors?.pointRedemptionValue
+      if (fieldError) setPointValueError(fieldError)
+      else setError(apiErrorMessage(err))
       setMessage('')
     } finally {
       setSaving(false)
@@ -226,10 +324,10 @@ export default function OwnerFacilitySettingsPage() {
   const handleReset = () => {
     setForm(original)
     setError('')
-    setMessage('Reverted to the saved values.')
+    setPointValueError('')
+    setMessage('Đã trả về các giá trị đã lưu.')
   }
 
-  const qrPreview = form.qrImagePath.trim()
 
   return (
     <ManagementLayout
@@ -252,14 +350,14 @@ export default function OwnerFacilitySettingsPage() {
           <section className={styles.card}>
             <div className={styles.cardHeader}>
               <div>
-                <h2 className={styles.cardTitle}>Profile</h2>
-                <p className={styles.cardHint}>Shown to players on the facility search and detail pages.</p>
+                <h2 className={styles.cardTitle}>Thông tin địa điểm</h2>
+                <p className={styles.cardHint}>Hiển thị cho người chơi ở trang tìm địa điểm và trang chi tiết địa điểm.</p>
               </div>
             </div>
 
             <div className={styles.fieldGrid}>
               <label className={`${styles.field} ${styles.fieldWide}`}>
-                <span>Facility name *</span>
+                <span>Tên địa điểm *</span>
                 <input
                   type="text"
                   maxLength={LIMITS.name}
@@ -270,7 +368,7 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={`${styles.field} ${styles.fieldWide}`}>
-                <span>Address *</span>
+                <span>Địa chỉ *</span>
                 <input
                   type="text"
                   maxLength={LIMITS.address}
@@ -281,7 +379,7 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={styles.field}>
-                <span>Contact phone</span>
+                <span>Số điện thoại liên hệ</span>
                 <input
                   type="tel"
                   inputMode="numeric"
@@ -291,45 +389,47 @@ export default function OwnerFacilitySettingsPage() {
                 />
               </label>
 
-              <label className={styles.field}>
-                <span>Latitude</span>
-                <input
-                  type="number"
-                  step="0.000001"
-                  min={LIMITS.latitude.min}
-                  max={LIMITS.latitude.max}
-                  placeholder="10.801"
-                  value={form.latitude}
-                  onChange={updateField('latitude')}
-                />
-              </label>
-
-              <label className={styles.field}>
-                <span>Longitude</span>
-                <input
-                  type="number"
-                  step="0.000001"
-                  min={LIMITS.longitude.min}
-                  max={LIMITS.longitude.max}
-                  placeholder="106.652"
-                  value={form.longitude}
-                  onChange={updateField('longitude')}
-                />
-              </label>
+              <div className={`${styles.field} ${styles.fieldWide}`}>
+                <span>Vị trí trên bản đồ</span>
+                <p className={styles.cardHint}>
+                  Bấm vào bản đồ để đặt ghim tại sân, kéo ghim để chỉnh cho đúng. Có thể kéo, phóng to bản đồ để tìm.
+                </p>
+                <div style={{ maxWidth: 420 }}>
+                  <LocationMap
+                    initialCenter={DEFAULT_MAP_CENTER}
+                    venues={form.latitude === '' || form.longitude === '' ? [] :
+                      [{ facility_id: 'current', latitude: form.latitude, longitude: form.longitude }]}
+                    onPick={pickLocation}
+                    pickDisabled={locked || saving || locating || !selectedLocationId}
+                  />
+                </div>
+                <p className={styles.cardHint} aria-live="polite">
+                  {form.latitude === '' || form.longitude === ''
+                    ? 'Chưa chọn vị trí.'
+                    : `Đã chọn vị trí: ${form.latitude}, ${form.longitude}`}
+                </p>
+                <div>
+                  <button type="button" className={styles.ghostButton} onClick={handleUseCurrentLocation}
+                    disabled={locked || saving || locating || !selectedLocationId}>
+                    {locating ? 'Đang lấy vị trí…' : 'Đặt ghim tại vị trí hiện tại (GPS)'}
+                  </button>
+                </div>
+                {locationError && <p className={styles.alertError} role="alert">{locationError}</p>}
+              </div>
             </div>
           </section>
 
           <section className={styles.card}>
             <div className={styles.cardHeader}>
               <div>
-                <h2 className={styles.cardTitle}>Booking rules</h2>
-                <p className={styles.cardHint}>Applied to every court of this facility.</p>
+                <h2 className={styles.cardTitle}>Quy định đặt sân và tích điểm</h2>
+                <p className={styles.cardHint}>Áp dụng cho mọi sân của địa điểm này.</p>
               </div>
             </div>
 
             <div className={`${styles.fieldGrid} ${styles.fieldGridNarrow}`}>
               <label className={styles.field}>
-                <span>Advance booking days</span>
+                <span>Số ngày đặt trước tối đa</span>
                 <input
                   type="number"
                   min={LIMITS.advanceBookingDays.min}
@@ -341,7 +441,7 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={styles.field}>
-                <span>Point earning rate</span>
+                <span>Tỷ lệ tích điểm (số đồng để được 1 điểm)</span>
                 <input
                   type="number"
                   min={LIMITS.pointEarningRate.min}
@@ -352,24 +452,36 @@ export default function OwnerFacilitySettingsPage() {
                   onChange={updateField('pointEarningRate')}
                 />
               </label>
+              <label className={styles.field}>
+                <span>Số đồng giảm khi dùng 1 điểm</span>
+                <input type="number" min={LIMITS.pointRedemptionValue.min} max={LIMITS.pointRedemptionValue.max}
+                  step={1} required value={form.pointRedemptionValue} onChange={updateField('pointRedemptionValue')}
+                  aria-invalid={Boolean(pointValueError)} aria-describedby={pointValueError ? 'point-value-error' : undefined}
+                  onInvalid={(event) => {
+                    event.preventDefault()
+                    setPointValueError(event.target.validity.valueMissing ? 'Vui lòng nhập giá trị dùng điểm. (MSG01)'
+                      : 'Nhập số tiền nguyên từ 1 đến 100.000 đồng. (MSG02)')
+                  }} />
+                {pointValueError && <small id="point-value-error" className="cw-field-error" role="alert">{pointValueError}</small>}
+              </label>
             </div>
 
             <p className={styles.note}>
-              Advance booking days: 1–365. Point earning rate: 1,000–100,000 VND per point.
+              Số ngày đặt trước tối đa: 1–365 ngày. Tỷ lệ tích điểm: 1.000–100.000 đồng được 1 điểm.
             </p>
           </section>
 
           <section className={styles.card}>
             <div className={styles.cardHeader}>
               <div>
-                <h2 className={styles.cardTitle}>Payment &amp; QR</h2>
-                <p className={styles.cardHint}>Used by players to transfer the deposit and by staff to confirm it.</p>
+                <h2 className={styles.cardTitle}>Thông tin nhận chuyển khoản</h2>
+                <p className={styles.cardHint}>Người chơi chuyển khoản theo thông tin này; nhân viên đối chiếu để xác nhận thanh toán.</p>
               </div>
             </div>
 
             <div className={styles.fieldGrid}>
               <label className={styles.field}>
-                <span>Bank name</span>
+                <span>Ngân hàng</span>
                 <input
                   type="text"
                   maxLength={LIMITS.bankName}
@@ -380,7 +492,7 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={styles.field}>
-                <span>Account number</span>
+                <span>Số tài khoản</span>
                 <input
                   type="text"
                   maxLength={LIMITS.bankAccountNo}
@@ -390,7 +502,7 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={styles.field}>
-                <span>Account holder</span>
+                <span>Tên chủ tài khoản</span>
                 <input
                   type="text"
                   maxLength={LIMITS.bankAccountHolder}
@@ -400,28 +512,32 @@ export default function OwnerFacilitySettingsPage() {
               </label>
 
               <label className={`${styles.field} ${styles.fieldWide}`}>
-                <span>QR image path</span>
+                <span>Ảnh QR chuyển khoản (JPG/PNG, tối đa 5 MB)</span>
                 <input
-                  type="text"
-                  maxLength={LIMITS.qrImagePath}
-                  placeholder="/uploads/qr/location-1.png"
-                  value={form.qrImagePath}
-                  onChange={updateField('qrImagePath')}
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  onChange={handleQrUpload}
+                  disabled={uploadingQr || saving || locked || !selectedLocationId}
                 />
               </label>
             </div>
 
+            {uploadingQr && <p role="status">Đang tải ảnh QR…</p>}
+            {qrSavedLocationId === selectedLocationId && qrSavedLocationId !== null && !qrError &&
+              <p className={styles.alertOk} role="status">Ảnh QR đã được lưu.</p>}
+            {qrError && <p className={styles.alertError} role="alert">{qrError}</p>}
             {qrPreview && (
               <div className={styles.qrBox}>
                 <img
                   src={qrPreview}
-                  alt="Facility payment QR"
+                  alt="Mã QR chuyển khoản của địa điểm"
                   className={styles.qrImage}
-                  onError={(event) => {
-                    event.currentTarget.style.display = 'none'
+                  onError={() => {
+                    setQrPreview('')
+                    setQrError('Ảnh QR đã lưu nhưng không hiển thị được. Hãy chọn lại ảnh JPG hoặc PNG.')
                   }}
                 />
-                <span className={styles.qrHint}>Preview — hidden if the path does not resolve.</span>
+                <span className={styles.qrHint}>Ảnh QR đã lưu</span>
               </div>
             )}
           </section>
@@ -431,13 +547,13 @@ export default function OwnerFacilitySettingsPage() {
 
           <div className={styles.actions}>
             <button className={styles.primaryButton} type="submit" disabled={saving || locked || !dirty}>
-              {saving ? 'Saving…' : dirty ? 'Save changes' : 'No changes'}
+              {saving ? 'Đang lưu…' : dirty ? 'Lưu thay đổi' : 'Chưa có thay đổi'}
             </button>
             <button className={styles.ghostButton} type="button" onClick={handleReset} disabled={!dirty || saving}>
-              Reset
+              Hoàn tác
             </button>
             <span className={styles.dirtyHint}>
-              {dirty ? 'Unsaved changes' : 'All changes saved'}
+              {dirty ? 'Có thay đổi chưa lưu' : 'Đã lưu mọi thay đổi'}
             </span>
           </div>
         </form>
@@ -445,38 +561,38 @@ export default function OwnerFacilitySettingsPage() {
         <section className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
-              <h2 className={styles.cardTitle}>Read-only information</h2>
-              <p className={styles.cardHint}>Managed by the admin, not editable here.</p>
+              <h2 className={styles.cardTitle}>Thông tin do Admin quản lý</h2>
+              <p className={styles.cardHint}>Chỉ xem, không sửa ở đây.</p>
             </div>
           </div>
 
           <dl className={styles.metaGrid}>
             <div>
-              <dt>Status</dt>
+              <dt>Tình trạng</dt>
               <dd>
                 <span className={`${styles.badge} ${locked ? styles.badgeLocked : styles.badgeActive}`}>
-                  {selectedLocation?.status ?? '—'}
+                  {STATUS_LABELS[selectedLocation?.status] ?? selectedLocation?.status ?? '—'}
                 </span>
               </dd>
             </div>
             <div>
-              <dt>Service term ends</dt>
+              <dt>Hết hạn sử dụng dịch vụ</dt>
               <dd>{selectedLocation?.serviceTermEndDate ? formatDateTime(selectedLocation.serviceTermEndDate) : '—'}</dd>
             </div>
             <div>
-              <dt>Courts</dt>
+              <dt>Số sân</dt>
               <dd>{selectedLocation?.courts?.length ?? 0}</dd>
             </div>
             <div>
-              <dt>Locked at</dt>
+              <dt>Thời điểm khóa</dt>
               <dd>{formatDateTime(selectedLocation?.lockedAt)}</dd>
             </div>
             <div>
-              <dt>Created</dt>
+              <dt>Ngày tạo</dt>
               <dd>{formatDateTime(selectedLocation?.createdAt)}</dd>
             </div>
             <div>
-              <dt>Last update</dt>
+              <dt>Cập nhật lần cuối</dt>
               <dd>{formatDateTime(selectedLocation?.updatedAt)}</dd>
             </div>
           </dl>

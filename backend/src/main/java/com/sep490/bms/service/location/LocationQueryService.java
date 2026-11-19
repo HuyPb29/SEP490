@@ -50,15 +50,15 @@ public class LocationQueryService {
     private final ReviewRepository reviewRepository;
 
     /**
-     * UC11: tìm theo tên hoặc địa chỉ (FR27). Có vị trí người dùng thì tính km và xếp gần → xa (FR29),
-     * không thì xếp theo tên. Vị trí chỉ dùng để tính, không lưu.
+     * UC11: tìm theo đầu từ trong tên hoặc địa chỉ (FR27), khớp tên xếp trước. Có vị trí người dùng thì
+     * tính km và xếp gần → xa (FR29). Vị trí chỉ dùng để tính, không lưu.
      */
     @Transactional(readOnly = true)
     public List<LocationSummaryResponse> search(String q, Double lat, Double lng) {
         boolean hasPosition = validatePosition(lat, lng);
-        String pattern = StringUtils.hasText(q) ? "%" + escapeLike(q.trim()) + "%" : null;
+        String prefix = StringUtils.hasText(q) ? escapeLike(q.trim()) + "%" : null;
 
-        List<Location> locations = locationRepository.searchActive(pattern);
+        List<Location> locations = locationRepository.searchActive(prefix);
         ListingStats stats = listingStats(locations.stream().map(Location::getId).toList());
         List<LocationSummaryResponse> result = locations.stream()
                 .map(l -> toSummary(l, hasPosition ? distanceKm(lat, lng, l) : null, stats))

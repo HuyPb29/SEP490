@@ -85,16 +85,17 @@ export default function MaintenanceRequestsPage() {
   const selectedLocation =
     locations.find((location) => String(location.id) === String(selectedLocationId)) || null;
   const courts = isOwner ? (selectedLocation?.courts ?? []) : staffCourts;
+  const ownerLocationId = isOwner ? selectedLocation?.id : undefined;
 
   const loadRequests = useCallback(async (status = statusFilter) => {
-    if (!isOwner && !isStaff) {
+    if ((!isOwner && !isStaff) || (isOwner && !ownerLocationId)) {
       setRequests([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const list = await getMaintenanceRequests(isOwner ? 'OWNER' : 'STAFF', status || null);
+      const list = await getMaintenanceRequests(isOwner ? 'OWNER' : 'STAFF', status || null, ownerLocationId);
       setRequests(list);
       setActionError('');
     } catch (err) {
@@ -102,7 +103,7 @@ export default function MaintenanceRequestsPage() {
     } finally {
       setLoading(false);
     }
-  }, [isOwner, isStaff, statusFilter]);
+  }, [isOwner, isStaff, statusFilter, ownerLocationId]);
 
   useEffect(() => {
     let active = true;
@@ -112,6 +113,7 @@ export default function MaintenanceRequestsPage() {
           const list = await getOwnerLocations();
           if (!active) return;
           setLocations(list);
+          if (list.length === 0) setLoading(false);
           setSelectedLocationId((currentId) => {
             const exists = list.some((location) => String(location.id) === String(currentId));
             const nextId = exists ? currentId : list[0]?.id ?? null;
@@ -140,8 +142,9 @@ export default function MaintenanceRequestsPage() {
 
   useEffect(() => {
     let active = true;
-    if (!isOwner && !isStaff) return undefined;
-    getMaintenanceRequests(isOwner ? 'OWNER' : 'STAFF', statusFilter || null)
+    if ((!isOwner && !isStaff) || (isOwner && !ownerLocationId)) return undefined;
+    setLoading(true);
+    getMaintenanceRequests(isOwner ? 'OWNER' : 'STAFF', statusFilter || null, ownerLocationId)
       .then((list) => {
         if (!active) return;
         setRequests(list);
@@ -156,7 +159,7 @@ export default function MaintenanceRequestsPage() {
     return () => {
       active = false;
     };
-  }, [isOwner, isStaff, statusFilter]);
+  }, [isOwner, isStaff, statusFilter, ownerLocationId]);
 
   const handleCreateSubmit = async (event) => {
     event.preventDefault();
@@ -202,7 +205,7 @@ export default function MaintenanceRequestsPage() {
     setActionError('');
     setStatusMessage('');
     try {
-      await approveMaintenanceRequest(id);
+      await approveMaintenanceRequest(id, ownerLocationId);
       await loadRequests(statusFilter);
       setStatusMessage('Đã duyệt yêu cầu bảo trì.');
     } catch (err) {
@@ -237,7 +240,7 @@ export default function MaintenanceRequestsPage() {
 
     setSaving(true);
     try {
-      await rejectMaintenanceRequest(rejectTarget.id, rejectReason.trim());
+      await rejectMaintenanceRequest(rejectTarget.id, rejectReason.trim(), ownerLocationId);
       setRejectTarget(null);
       setRejectReason('');
       await loadRequests(statusFilter);
@@ -274,9 +277,13 @@ export default function MaintenanceRequestsPage() {
       locations={locations}
       locationId={selectedLocationId}
       onLocationChange={(nextId) => {
+        if (String(nextId) === String(selectedLocationId)) return;
         setSelectedLocationId(nextId);
         storeLocationId(nextId);
-        setLoading(true);
+        setRequests([]);
+        setRejectTarget(null);
+        setRejectReason('');
+        setLoading(Boolean(nextId));
         setActionError('');
         setStatusMessage('');
       }}
