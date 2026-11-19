@@ -194,6 +194,7 @@ export default function MaintenanceRequestsPage() {
       await loadRequests(statusFilter);
       setStatusMessage('Đã gửi yêu cầu bảo trì thành công.');
     } catch (err) {
+      if (err.response?.status === 409) await loadRequests(statusFilter);
       setActionError(apiErrorMessage(err));
     } finally {
       setSaving(false);
@@ -209,6 +210,7 @@ export default function MaintenanceRequestsPage() {
       await loadRequests(statusFilter);
       setStatusMessage('Đã duyệt yêu cầu bảo trì.');
     } catch (err) {
+      if (err.response?.status === 409) await loadRequests(statusFilter);
       setActionError(apiErrorMessage(err));
     } finally {
       setSaving(false);
@@ -224,6 +226,7 @@ export default function MaintenanceRequestsPage() {
       await loadRequests(statusFilter);
       setStatusMessage('Đã rút yêu cầu bảo trì.');
     } catch (err) {
+      if (err.response?.status === 409) await loadRequests(statusFilter);
       setActionError(apiErrorMessage(err));
     } finally {
       setSaving(false);
@@ -247,6 +250,11 @@ export default function MaintenanceRequestsPage() {
       setActionError('');
       setStatusMessage('Đã từ chối yêu cầu bảo trì.');
     } catch (err) {
+      if (err.response?.status === 409) {
+        setRejectTarget(null);
+        setRejectReason('');
+        await loadRequests(statusFilter);
+      }
       setActionError(apiErrorMessage(err));
     } finally {
       setSaving(false);
