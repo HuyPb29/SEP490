@@ -65,6 +65,12 @@ function serverTimestamp(value) {
 const formatDeadline = (value) => new Date(serverTimestamp(value))
   .toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
+/** UC21: "Sân A · 2026-11-20 · 17:30–19:00" cho slot cũ (from) hoặc slot mới (to) của một lần đổi lịch. */
+const describeSlot = (change, side) => [
+  change[side + 'CourtName'], change[side + 'Date'],
+  change[side + 'StartTime'] + '–' + change[side + 'EndTime'],
+].filter(Boolean).join(' · ');
+
 export default function MyBookingsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -813,6 +819,19 @@ export default function MyBookingsPage() {
                         {item.booking_code} · {item.time_range}
                         {item.booker_label ? ` · ${item.booker_label}` : ''}
                       </p>
+                      {item.reschedule_changes?.length > 0 && (
+                        <ul className={styles.changeList} aria-label="Lịch đã đổi">
+                          {item.reschedule_changes.map((change, index) => (
+                            <li key={change.bookingId + ':' + index}>
+                              <span className={styles.changeTag}>Đã đổi lịch</span>
+                              {item.booking_type === 'package' && <span>Buổi {change.bookingCode}:</span>}
+                              {change.fromDate && <span className={styles.changeFrom}>{describeSlot(change, 'from')}</span>}
+                              {change.fromDate && <span className={styles.changeArrow} aria-label="sang">→</span>}
+                              <strong>{describeSlot(change, 'to')}</strong>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       {item.day_sessions?.length > 0 && (
                         <ul className={styles.orderRanges}>
                           {item.day_sessions.map((session) => (
