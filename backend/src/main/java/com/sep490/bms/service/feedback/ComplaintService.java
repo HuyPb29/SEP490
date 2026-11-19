@@ -66,7 +66,8 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * F8 – UC33 Gửi và xử lý khiếu nại.
- * Luồng: Player gửi (SUBMITTED) → Staff ghi chú và chuyển (PENDING_OWNER) → Owner xử lý (RESOLVED/REJECTED).
+ * Luồng: Player gửi thẳng tới Owner (PENDING_OWNER) → Owner xử lý (RESOLVED/REJECTED).
+ * Khiếu nại Staff lập thay khách tại quầy vẫn đi qua SUBMITTED → Staff chuyển (PENDING_OWNER).
  * Khiếu nại LATE_PAYMENT_CONFIRMATION (BR49) đi cùng luồng, bắt buộc có paymentId.
  */
 @Service
@@ -112,10 +113,8 @@ public class ComplaintService {
             return toResponses(List.of(complaint)).get(0);
         }
 
-        String title = "Có khiếu nại mới từ người chơi";
-        for (Account staff : accountRepository.findByRoleAndLocationId(Role.STAFF, complaint.getLocationId())) {
-            notify(staff.getId(), "COMPLAINT_SUBMITTED", title, truncate(complaint.getContent(), 500), complaint);
-        }
+        // Khiếu nại của Player đến thẳng Owner, không chờ Staff chuyển.
+        notifyOwner(complaint, "Có khiếu nại mới từ người chơi");
         return toResponses(List.of(complaint)).get(0);
     }
 
@@ -178,9 +177,9 @@ public class ComplaintService {
                 .playerId(user.getId())
                 .createdBy(user.getId())
                 .complaintType(type)
-                .status(latePayment ? ComplaintStatus.PENDING_OWNER : ComplaintStatus.SUBMITTED)
-                // Khiếu nại chậm xác nhận đến thẳng Owner (D86) nên mốc P33 tính từ lúc tạo.
-                .forwardedAt(latePayment ? LocalDateTime.now() : null)
+                // Mọi khiếu nại của Player đến thẳng Owner nên mốc P33 tính từ lúc tạo.
+                .status(ComplaintStatus.PENDING_OWNER)
+                .forwardedAt(LocalDateTime.now())
                 .content(request.getContent().trim())
                 .build();
     }
