@@ -45,6 +45,8 @@ public class PaymentResponse {
     private LocalDateTime submittedAt;
     private LocalDateTime confirmedAt;
     private String receiptNo;
+    /** D174: giao dịch chờ quá 15 phút đã chuyển cho chủ sân; Staff không xử lý được nữa. */
+    private boolean transferredToOwner;
 
     public static PaymentResponse from(Payment payment, Booking booking) {
         return common(payment)

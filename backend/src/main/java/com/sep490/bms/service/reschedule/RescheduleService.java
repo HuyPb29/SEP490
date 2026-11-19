@@ -46,6 +46,7 @@ public class RescheduleService {
     private final FileStorageService storage;
     private final MatchService matches;
     private final AccountRepository accounts;
+    private final com.sep490.bms.service.payment.PaymentTransferPolicy transferPolicy;
     // SRS parameter table P02/P03/P04/P05/P25: fixed values, no Owner settings.
     private final int cutoffHours=6;
     private final int cutoffPercent=50;
@@ -337,6 +338,7 @@ public class RescheduleService {
         if(expire(r,b)) return r;
         if(r.getStatus()!=RescheduleStatus.AWAITING_CONFIRMATION || p.getStatus()!=PaymentStatus.AWAITING_CONFIRMATION)
             throw new AppException("Thanh toán không chờ xác nhận",HttpStatus.CONFLICT);
+        transferPolicy.requireStaffMayDecide(u,p,LocalDateTime.now()); // D174
         if(input.playerAtFault() && p.noResubmitLeft()) { finish(r,b,RescheduleStatus.REJECTED); return r; }
         if (input.receivedAmount() != null) {
             if (!p.acceptsPartialAmount(input.receivedAmount())) {
@@ -396,6 +398,7 @@ public class RescheduleService {
         if(expire(r,b)) return r;
         if(r.getStatus()!=RescheduleStatus.AWAITING_CONFIRMATION || p.getStatus()!=PaymentStatus.AWAITING_CONFIRMATION)
             throw new AppException("Thanh toán đã được xử lý",HttpStatus.CONFLICT);
+        transferPolicy.requireStaffMayDecide(u,p,LocalDateTime.now()); // D174
         if(confirm) {
             support.confirmed(b);
             Court target=support.lock(Court.class,r.getNewCourtId());

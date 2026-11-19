@@ -55,6 +55,7 @@ import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
 import com.sep490.bms.service.booking.PackageService;
+import com.sep490.bms.service.booking.SlotAvailabilityService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
@@ -83,8 +84,10 @@ class PaymentConfirmationTests {
     private final LoyaltyPointService points = mock(LoyaltyPointService.class);
     private final NotificationRepository notifications = mock(NotificationRepository.class);
     private final PackageService packages = mock(PackageService.class);
+    private final SlotAvailabilityService availability = mock(SlotAvailabilityService.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings,
-            mock(LocationQueryService.class), files, access, vouchers, points, notifications, packages, mock(RescheduleRequestRepository.class));
+            mock(LocationQueryService.class), files, access, vouchers, points, notifications, packages, mock(RescheduleRequestRepository.class),
+            new PaymentTransferPolicy(availability));
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
     private final UserPrincipal owner = UserPrincipal.builder().id(OWNER).role(Role.OWNER).build();
@@ -175,6 +178,37 @@ class PaymentConfirmationTests {
         assertThat(result.getNote()).isEqualTo("Cho mượn 2 vợt");
         assertThat(result.getProofs()).extracting(PaymentDetailResponse.Proof::getImageUrl)
                 .containsExactly("/api/payments/50/proofs/81/image", "/api/payments/50/proofs/80/image");
+    }
+
+    // ---------- D174: quá 15 phút chưa xác nhận thì chuyển cho chủ sân ----------
+
+    @Test
+    void staffCannotDecideAfterTransferToOwnerButOwnerCan() {
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), eq(NOW), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("MSG118")
+                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+        assertThatThrownBy(() -> service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Ảnh mờ", true, null), NOW))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("MSG118");
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.AWAITING_CONFIRMATION);
+
+        PaymentResponse result = service.confirm(owner, PAYMENT, null, NOW);
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+    }
+
+    @Test
+    void pendingListFlagsPaymentsTransferredToOwner() {
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+        when(payments.findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
+                LOCATION, PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<>(List.of(payment), PageRequest.of(0, 20), 1));
+        when(bookings.getByIds(anyCollection())).thenReturn(Map.of(BOOKING, booking));
+
+        assertThat(service.listPending(staff, 0, 20).getContent()).singleElement()
+                .satisfies(item -> assertThat(item.isTransferredToOwner()).isTrue());
     }
 
     @Test

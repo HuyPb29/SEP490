@@ -88,6 +88,7 @@ public class PaymentService {
     private final NotificationRepository notificationRepository;
     private final PackageService packageService;
     private final RescheduleRequestRepository rescheduleRequests;
+    private final PaymentTransferPolicy transferPolicy;
 
     /** UC18 #1, FR55: số tiền, tài khoản nhận, mã QR và giờ hết giữ chỗ. Không thay đổi gì. */
     @Transactional(readOnly = true)
@@ -381,9 +382,10 @@ public class PaymentService {
                 result.stream().map(Payment::getBookingId).filter(Objects::nonNull).toList());
         Map<Long, BookingPackage> packages = packageService.getByIds(
                 result.stream().map(Payment::getPackageId).filter(Objects::nonNull).toList());
-        return PageResponse.from(result.map(payment -> payment.getPackageId() != null
+        LocalDateTime now = LocalDateTime.now();
+        return PageResponse.from(result.map(payment -> withTransfer(payment.getPackageId() != null
                 ? PaymentResponse.from(payment, packages.get(payment.getPackageId()))
-                : PaymentResponse.from(payment, bookings.get(payment.getBookingId()))));
+                : PaymentResponse.from(payment, bookings.get(payment.getBookingId())), payment, now)));
     }
 
     /**
@@ -410,7 +412,7 @@ public class PaymentService {
         BookingService.Customer customer = bookingService.getCustomer(booking);
 
         return PaymentDetailResponse.builder()
-                .payment(PaymentResponse.from(payment, booking))
+                .payment(withTransfer(PaymentResponse.from(payment, booking), payment, LocalDateTime.now()))
                 .courtName(bookingService.getCourtName(booking))
                 .playDate(booking.getPlayDate())
                 .startTime(MinuteTime.format(booking.getStartMinute()))
@@ -428,7 +430,7 @@ public class PaymentService {
         List<Booking> sessions = packageService.sessionsOf(pkg.getId());
         BookingService.Customer customer = bookingService.getCustomer(sessions.get(0));
         return PaymentDetailResponse.builder()
-                .payment(PaymentResponse.from(payment, pkg))
+                .payment(withTransfer(PaymentResponse.from(payment, pkg), payment, LocalDateTime.now()))
                 .customerName(customer.name())
                 .customerPhone(customer.phone())
                 .note(sessions.isEmpty() ? null : sessions.get(0).getNote())
@@ -483,6 +485,7 @@ public class PaymentService {
     PaymentResponse confirm(UserPrincipal user, Long paymentId, ConfirmPaymentRequest request, LocalDateTime now) {
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
+        transferPolicy.requireStaffMayDecide(user, payment, now);
         BigDecimal received = request == null || request.receivedAmount() == null
                 ? payment.getAmountDue() : request.receivedAmount();
         if (received.compareTo(payment.getAmountDue()) < 0) {
@@ -526,6 +529,7 @@ public class PaymentService {
     PaymentResponse requestResubmission(UserPrincipal user, Long paymentId, ResubmitRequest request, LocalDateTime now) {
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
+        transferPolicy.requireStaffMayDecide(user, payment, now);
         if (payment.getPackageId() != null) {
             return requestPackageResubmission(payment, request, now);
         }
@@ -559,6 +563,7 @@ public class PaymentService {
     public PaymentResponse reject(UserPrincipal user, Long paymentId, RejectPaymentRequest request) {
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
+        transferPolicy.requireStaffMayDecide(user, payment, LocalDateTime.now());
         if (payment.getPackageId() != null) {
             BookingPackage pkg = lockPackageOf(payment);
             rejectLockedPackage(payment, pkg, request.reason().trim());
@@ -736,6 +741,12 @@ public class PaymentService {
      * Khóa dòng payment rồi mới kiểm tra (FR56): hai người cùng bấm thì người sau chờ, rồi thấy giao dịch
      * đã được xử lý (MSG54). Giao dịch của địa điểm khác trả 403 (NFR07).
      */
+    /** D174: đánh dấu giao dịch đã chuyển cho chủ sân để màn Staff khóa các nút xử lý. */
+    private PaymentResponse withTransfer(PaymentResponse response, Payment payment, LocalDateTime now) {
+        response.setTransferredToOwner(transferPolicy.transferredToOwner(payment, now));
+        return response;
+    }
+
     private Payment lockInLocation(Location location, Long paymentId) {
         Payment payment = paymentRepository.findByIdForUpdate(paymentId).orElseThrow(PaymentService::paymentNotFound);
         requireSameLocation(payment, location);

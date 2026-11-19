@@ -29,7 +29,7 @@ class PaymentProofAccessTests {
     final FileStorageService files=mock(FileStorageService.class);
     final RescheduleRequestRepository requests=mock(RescheduleRequestRepository.class);
     final PaymentService service=new PaymentService(payments,proofs,bookings,mock(LocationQueryService.class),files,
-            mock(LocationAccessService.class),mock(VoucherService.class),mock(LoyaltyPointService.class),mock(NotificationRepository.class),mock(PackageService.class),requests);
+            mock(LocationAccessService.class),mock(VoucherService.class),mock(LoyaltyPointService.class),mock(NotificationRepository.class),mock(PackageService.class),requests,mock(PaymentTransferPolicy.class));
     final UserPrincipal player=UserPrincipal.builder().id(7L).role(Role.PLAYER).build();
     void setup() {
         when(payments.findById(1L)).thenReturn(Optional.of(Payment.builder().id(1L).rescheduleRequestId(2L).build()));

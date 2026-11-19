@@ -75,7 +75,7 @@ class PaymentServiceTests {
     private final PackageService packages = mock(PackageService.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings, locations, files,
             mock(LocationAccessService.class), mock(VoucherService.class), mock(LoyaltyPointService.class),
-            mock(NotificationRepository.class), packages, mock(RescheduleRequestRepository.class));
+            mock(NotificationRepository.class), packages, mock(RescheduleRequestRepository.class), mock(PaymentTransferPolicy.class));
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
     private final MockMultipartFile proof = new MockMultipartFile("proof", "ck.jpg", "image/jpeg", new byte[] { 1, 2 });
