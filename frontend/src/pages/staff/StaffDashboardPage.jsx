@@ -545,6 +545,7 @@ export default function StaffDashboardPage() {
                       <small>
                         {booking.bookingCode}
                         {booking.customerName ? ` · ${booking.customerName}` : ''}
+                        {booking.customerPhone ? ` · ${booking.customerPhone}` : ''}
                       </small>
                     </span>
                     <span className={styles.transactionAmount}>
