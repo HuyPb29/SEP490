@@ -35,6 +35,9 @@ export function notificationDestination(item, userRole) {
   if (refType === 'TEAM') return '/teams';
   if (refType === 'VOUCHER') return role === 'owner' ? '/owner/workspace?tab=rewards' : '/my-rewards';
   if (refType === 'SERVICE_TERM') return role === 'admin' ? '/admin/facilities' : '/owner/workspace';
+  if (type.startsWith('COURT_EXPANSION_')) {
+    return role === 'admin' ? '/admin/facilities#court-expansions' : '/owner/courts-pricing#court-expansion';
+  }
   if (refType === 'LOCATION') {
     if (role === 'admin') return '/admin/facilities';
     if (role === 'owner') return '/owner/facility-settings';

@@ -117,7 +117,8 @@ public class ScheduleService {
             throw new AppException("Chỉ xem được lịch sân từ hôm nay đến ngày " + maxDate);
         }
 
-        List<Court> courts = courtQueryService.activeCourts(locationId);
+        List<Court> courts = courtQueryService.activeCourts(locationId).stream()
+                .filter(c -> slotAvailabilityService.courtAvailableOn(c, day)).toList();
         List<Long> courtIds = courts.stream().map(Court::getId).toList();
         List<BookingSlot> slots = bookingSlotRepository.findByCourtIdInAndSlotDateAndActiveTrue(courtIds, day);
         Map<Long, Booking> bookings = loadBookings(slots);

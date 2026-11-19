@@ -40,6 +40,15 @@ public class SlotAvailabilityService {
     private final OpeningExceptionRepository openingExceptionRepository;
     private final BookingSlotRepository bookingSlotRepository;
     private final MaintenanceRepository maintenanceRepository;
+    private final com.sep490.bms.repository.location.CourtRepository courtRepository;
+    private final com.sep490.bms.repository.location.ServiceTermRepository serviceTerms;
+
+    /** Sau kỳ hạn mua thêm, chỉ nhận lịch thuộc kỳ gia hạn đã được Admin ghi nhận. */
+    public boolean courtAvailableOn(com.sep490.bms.entity.location.Court court, LocalDate date) {
+        if (court.getAvailableFrom() != null && date.isBefore(court.getAvailableFrom())) return false;
+        return court.getAvailableUntil() == null || !date.isAfter(court.getAvailableUntil())
+                || serviceTerms.existsByLocationIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(court.getLocationId(), date, date);
+    }
 
     /** Vì sao một khoảng slot không đặt được: ngoài giờ mở cửa, đã có người giữ/đặt, trùng bảo trì. */
     public enum SlotProblem {
@@ -152,6 +161,10 @@ public class SlotAvailabilityService {
     @Transactional(readOnly = true)
     public Optional<SlotProblem> findProblem(Long locationId, Long courtId, LocalDate date,
             int startMinute, int endMinute) {
+        var court = courtRepository.findById(courtId).orElse(null);
+        if (court != null && !courtAvailableOn(court, date)) {
+            return Optional.of(SlotProblem.CLOSED);
+        }
         Optional<OpeningWindow> window = openingWindow(locationId, date);
         if (window.isEmpty() || !window.get().covers(startMinute, endMinute)) {
             return Optional.of(SlotProblem.CLOSED);

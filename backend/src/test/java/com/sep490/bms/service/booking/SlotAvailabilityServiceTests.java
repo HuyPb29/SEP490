@@ -36,8 +36,31 @@ class SlotAvailabilityServiceTests {
     private final OpeningExceptionRepository exceptions = mock(OpeningExceptionRepository.class);
     private final BookingSlotRepository slots = mock(BookingSlotRepository.class);
     private final MaintenanceRepository maintenance = mock(MaintenanceRepository.class);
+    private final com.sep490.bms.repository.location.CourtRepository courts = mock(com.sep490.bms.repository.location.CourtRepository.class);
+    private final com.sep490.bms.repository.location.ServiceTermRepository terms = mock(com.sep490.bms.repository.location.ServiceTermRepository.class);
     private final SlotAvailabilityService service =
-            new SlotAvailabilityService(hours, exceptions, slots, maintenance);
+            new SlotAvailabilityService(hours, exceptions, slots, maintenance,
+                    courts, terms);
+
+    @Test
+    void newlyPurchasedCourtCannotBeBookedBeforeItsEffectiveDate() {
+        when(courts.findById(COURT)).thenReturn(Optional.of(com.sep490.bms.entity.location.Court.builder()
+                .id(COURT).availableFrom(DATE.plusDays(1)).build()));
+        assertThat(service.findProblem(LOCATION, COURT, DATE, 600, 630)).contains(SlotProblem.CLOSED);
+        assertThat(service.findProblem(LOCATION, COURT, DATE.plusDays(1), 600, 630)).isEmpty();
+    }
+
+    @Test
+    void purchasedCourtExpiresWithContractButHonorsRecordedRenewals() {
+        var court = com.sep490.bms.entity.location.Court.builder().id(COURT).locationId(LOCATION)
+                .availableFrom(DATE.minusDays(10)).availableUntil(DATE).build();
+        when(courts.findById(COURT)).thenReturn(Optional.of(court));
+        assertThat(service.findProblem(LOCATION, COURT, DATE, 600, 630)).isEmpty();
+        assertThat(service.findProblem(LOCATION, COURT, DATE.plusDays(1), 600, 630)).contains(SlotProblem.CLOSED);
+        when(terms.existsByLocationIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(LOCATION, DATE.plusDays(1), DATE.plusDays(1)))
+                .thenReturn(true);
+        assertThat(service.findProblem(LOCATION, COURT, DATE.plusDays(1), 600, 630)).isEmpty();
+    }
 
     @BeforeEach
     void openFrom6To22() {

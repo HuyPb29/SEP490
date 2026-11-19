@@ -16,6 +16,7 @@ import {
   uploadOperatorQr,
 } from '../../api/locationApi'
 import AdminLayout from '../../components/layout/AdminLayout'
+import AdminCourtExpansions from './AdminCourtExpansions'
 import { formatVnd } from '../location/serviceRegistrationTerms'
 import styles from './AdminFacilitiesPage.module.css'
 
@@ -412,6 +413,7 @@ export default function AdminFacilitiesPage() {
           onClick={loadAll}
           disabled={loading}
         >
+      <AdminCourtExpansions />
           {loading ? 'Đang tải…' : 'Làm mới'}
         </button>
       }

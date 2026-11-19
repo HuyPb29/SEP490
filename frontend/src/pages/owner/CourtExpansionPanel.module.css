@@ -1,0 +1,37 @@
+dialog.dialog {
+  width: min(94vw, 860px);
+  max-height: 90dvh;
+  padding: 24px;
+  text-align: left;
+}
+
+.header, .fileDetails, .footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.header { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0; }
+.subtitle { color: #64748b; font-size: 13px; margin: 4px 0; }
+.close { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; background: #f1f5f9; font-size: 26px; line-height: 1; }
+.close:hover { background: #e2e8f0; }
+.upload { margin-top: 8px; }
+.chooseFile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 180px; margin-top: 10px; border: 2px dashed #94a3b8; border-radius: 14px; background: #f8fafc; color: #334155; padding: 24px; cursor: pointer; }
+.chooseFile:hover { border-color: #047857; background: #ecfdf5; }
+.chooseFile > span:last-child { font-size: 13px; color: #64748b; }
+.uploadIcon { font-size: 32px; color: #047857; }
+.preview { display: block; width: 100%; margin-top: 10px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 14px; background: #f8fafc; cursor: zoom-in; }
+.preview img { display: block; width: 100%; height: 240px; object-fit: contain; }
+.preview span { display: block; margin-top: 8px; color: #047857; font-size: 13px; }
+.fileDetails { margin-top: 10px; font-size: 13px; }
+.fileDetails > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileDetails > div { display: flex; gap: 16px; flex-shrink: 0; }
+.fileDetails button { text-decoration: underline; color: #047857; }
+.fileDetails button:last-child { color: #b91c1c; }
+.footer { justify-content: flex-end; padding-top: 16px; margin-top: 16px; border-top: 1px solid #e2e8f0; }
+.footer button, .imageClose { padding: 8px 16px; border: 1px solid #cbd5e1; border-radius: 8px; }
+dialog.imageDialog { width: min(96vw, 1100px); max-height: 94dvh; }
+.imageClose { display: block; margin: 8px 0 16px auto; }
+.fullImage { display: block; max-width: 100%; height: auto; margin: auto; }
+.dialog button:focus-visible, .imageDialog button:focus-visible { outline: 3px solid #10b981; outline-offset: 3px; }
+.dialog button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 600px) {
+  dialog.dialog { padding: 16px; }
+  .fileDetails { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .fileDetails > span { max-width: 100%; }
+}
