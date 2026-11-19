@@ -198,6 +198,9 @@ class ServiceRegistrationServiceTests {
         ServiceRegistration pending = pendingGuest(2, 1);
         pending.setRequesterId(5L);
         when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(pending));
+        // approve khóa dòng tài khoản Owner trước khi kiểm tra trùng địa điểm (commit 25d27eb).
+        when(accounts.findByIdForUpdate(5L)).thenReturn(Optional.of(
+                Account.builder().id(5L).role(Role.OWNER).status(AccountStatus.ACTIVE).build()));
 
         service.approve(admin, 50L);
 
