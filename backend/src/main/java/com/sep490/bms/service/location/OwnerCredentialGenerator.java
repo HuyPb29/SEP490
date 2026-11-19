@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
  * Feature: F2 - Quản lý địa điểm
  * FR11, BR59: khi Admin duyệt đơn của Guest, hệ thống sinh tên đăng nhập và mật khẩu đầu tiên của Owner.
  *
- * Tên đăng nhập "owner" + 6 chữ số (11 ký tự): đúng DR22 (4–20 ký tự, chữ thường, bắt đầu bằng chữ)
- * và cũng lọt quy tắc 6–32 ký tự đang dùng ở ValidationRules.USERNAME. Trùng thì ServiceRegistrationService sinh lại.
+ * Tên đăng nhập "owner" + 6 chữ số (11 ký tự): đúng DR22 (6–32 ký tự, chữ thường, bắt đầu bằng chữ; D172)
+ * và ValidationRules.USERNAME. Trùng thì ServiceRegistrationService sinh lại.
  * Mật khẩu 10 ký tự chữ và số, luôn có ít nhất một chữ cái và một chữ số, không khoảng trắng (DR23).
  * Bỏ các ký tự dễ đọc nhầm (0/O, 1/l/I) vì chủ sân gõ lại mật khẩu từ email.
  */
