@@ -31,7 +31,7 @@ public interface BookingPackageRepository extends JpaRepository<BookingPackage, 
     @Query("SELECT p FROM BookingPackage p WHERE p.id = :id")
     Optional<BookingPackage> findByIdForUpdate(@Param("id") Long id);
 
-    /** UC37: gói còn Đang giữ chỗ nhưng đã quá 15 phút (P27). */
+    /** UC37: gói còn Đang giữ chỗ nhưng đã quá 10 phút (P27). */
     List<BookingPackage> findAllByStatusAndHoldExpiresAtBefore(BookingStatus status, LocalDateTime moment);
 
     /** Số gói đang chờ thanh toán của Player, mỗi gói tính là một (BR35, D87). Cùng điều kiện với booking lẻ. */

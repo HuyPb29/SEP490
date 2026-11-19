@@ -35,15 +35,13 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * Đặt sân tại quầy (UC16, BR43): Staff tạo booking cho khách liên hệ trực tiếp với sân, nhập tên và số điện
- * thoại khách; không có đội, voucher, điểm. Slot được giữ 5 phút (BR43, P34), ngắn hơn đặt online (10 phút,
- * D164); Staff thấy tiền đã về (BR33) thì xác nhận. Staff chỉ làm việc ở địa điểm của mình (NFR07, BR60).
+ * thoại khách; không có đội, voucher, điểm. Slot được giữ 10 phút như đặt online (BR43, P34,
+ * D170); Staff thấy tiền đã về (BR33) thì xác nhận. Staff chỉ làm việc ở địa điểm của mình (NFR07, BR60).
  */
 @Service
 @RequiredArgsConstructor
 public class WalkInBookingService {
 
-    /** Thời gian giữ chỗ của booking tại quầy (BR43, P34): cố định 5 phút. */
-    static final int HOLD_MINUTES = 5;
     private static final int MAX_PAGE_SIZE = 100;
 
     private final LocationAccessService locationAccessService;
@@ -57,7 +55,7 @@ public class WalkInBookingService {
 
     /**
      * UC16 #1–2, FR47, FR48: kiểm tra slot như đặt sân lẻ (giới hạn đặt trước BR02, giờ mở cửa, bảo trì,
-     * trùng lịch), rồi tạo booking Đang giữ chỗ và lưu từng slot 30 phút. Giữ chỗ 5 phút tính từ lúc tạo.
+     * trùng lịch), rồi tạo booking Đang giữ chỗ và lưu từng slot 30 phút. Giữ chỗ 10 phút tính từ lúc tạo.
      * Không đếm BR35: giới hạn đó chỉ áp cho Player.
      */
     @Transactional
@@ -78,7 +76,7 @@ public class WalkInBookingService {
         Map<Integer, BigDecimal> prices = priceCalculator.rangePrices(
                 court.getId(), request.date(), request.startMinute(), request.endMinute());
         BigDecimal amount = prices.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-        // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 5 phút.
+        // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 10 phút.
         LocalDateTime createdAt = now.truncatedTo(ChronoUnit.SECONDS);
 
         // Không có ưu đãi nên số phải trả = giá niêm yết (BR43). Database chặn thêm bằng ck_booking_walkin.
@@ -96,7 +94,7 @@ public class WalkInBookingService {
                 .listAmount(amount)
                 .finalAmount(amount)
                 .status(BookingStatus.HOLDING)
-                .holdExpiresAt(createdAt.plusMinutes(HOLD_MINUTES))
+                .holdExpiresAt(createdAt.plusMinutes(BookingService.HOLD_MINUTES))
                 .createdAt(createdAt)
                 .build());
         bookingService.saveSlots(booking, BookingService.toSlots(prices));
@@ -106,7 +104,7 @@ public class WalkInBookingService {
     /**
      * UC16 #3, FR48, BR43: Staff kiểm tra tiền đã về (BR33) rồi bấm Xác nhận. Booking sang Đã xác nhận và
      * có một payment Đã xác nhận kèm biên nhận, để đối soát cuối ngày cộng được khoản này (UC20, BR37).
-     * Phải xác nhận trước khi hết 5 phút giữ chỗ; hết hạn thì slot được nhả (UC16 #4, FR49).
+     * Phải xác nhận trước khi hết 10 phút giữ chỗ; hết hạn thì slot được nhả (UC16 #4, FR49).
      */
     @Transactional
     public WalkInBookingItem confirm(UserPrincipal staff, Long bookingId) {
@@ -157,7 +155,7 @@ public class WalkInBookingService {
                 payments.get(booking.getId()), now)));
     }
 
-    /** Chỉ xác nhận được booking đang giữ chỗ và còn hạn. Quá 5 phút thì coi như hết hạn dù job UC37 chưa chạy. */
+    /** Chỉ xác nhận được booking đang giữ chỗ và còn hạn. Quá 10 phút thì coi như hết hạn dù job UC37 chưa chạy. */
     private static void requireHoldingNotExpired(Booking booking, LocalDateTime now) {
         switch (booking.getStatus()) {
             case HOLDING -> {

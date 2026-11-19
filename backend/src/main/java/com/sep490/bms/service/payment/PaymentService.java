@@ -172,7 +172,7 @@ public class PaymentService {
 
     // ===================== UC18 cho gói đặt nhiều buổi (UC15 #7, FR43, BR26) =====================
 
-    /** UC18 #1, UC15 #7: số tiền của cả gói, tài khoản nhận, mã QR và giờ hết giữ chỗ (15 phút, P27). */
+    /** UC18 #1, UC15 #7: số tiền của cả gói, tài khoản nhận, mã QR và giờ hết giữ chỗ (10 phút, P27). */
     @Transactional(readOnly = true)
     public PaymentInstructionResponse getPackageInstructions(UserPrincipal player, Long packageId) {
         return getPackageInstructions(player, packageId, LocalDateTime.now());
@@ -895,7 +895,7 @@ public class PaymentService {
     }
 
     /**
-     * Báo đã thanh toán gói lần đầu: gói phải đang giữ chỗ và còn hạn 15 phút (P27). Đã báo rồi thì 409 (FR54).
+     * Báo đã thanh toán gói lần đầu: gói phải đang giữ chỗ và còn hạn 10 phút (P27). Đã báo rồi thì 409 (FR54).
      */
     private static void requireNotReportedYet(BookingStatus status, LocalDateTime holdExpiresAt, LocalDateTime now) {
         switch (status) {

@@ -550,7 +550,7 @@ class PackageServiceTests {
         assertThat(belowAfterVoucher.getBatchOffer().isReached()).isFalse();
     }
 
-    // ===================== 12.5: tạo gói, giữ chỗ 15 phút =====================
+    // ===================== 12.5: tạo gói, giữ chỗ 10 phút =====================
 
     /** Ba buổi tự chọn: 120.000 (sân 1), 160.000 (sân 2), 60.000 (sân 1). */
     private PackageRequest threeSessions(String code, Integer pointsToUse) {
@@ -561,7 +561,7 @@ class PackageServiceTests {
     }
 
     @Test
-    void createSavesHoldingPackageAndSessionsHeldFifteenMinutes() {
+    void createSavesHoldingPackageAndSessionsHeldTenMinutes() {
         LocalDateTime now = LocalDateTime.of(2026, 11, 7, 9, 0, 15, 700_000_000);
 
         PackageDetailResponse result = service.create(player, threeSessions(null, null), now);
@@ -572,7 +572,7 @@ class PackageServiceTests {
         assertThat(savedPackage.getStatus()).isEqualTo(BookingStatus.HOLDING);
         assertThat(savedPackage.getPackageType()).isEqualTo(PackageType.CUSTOM);
         assertThat(savedPackage.getCreatedAt()).isEqualTo(LocalDateTime.of(2026, 11, 7, 9, 0, 15));
-        assertThat(savedPackage.getHoldExpiresAt()).isEqualTo(LocalDateTime.of(2026, 11, 7, 9, 15, 15));
+        assertThat(savedPackage.getHoldExpiresAt()).isEqualTo(LocalDateTime.of(2026, 11, 7, 9, 10, 15));
         assertThat(savedPackage.getStartDate()).isEqualTo(DEC_1);
         assertThat(savedPackage.getEndDate()).isEqualTo(LocalDate.of(2026, 12, 3));
         assertThat(savedPackage.getListAmount()).isEqualByComparingTo("340000");

@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * UC37, BR53: gói đặt nhiều buổi còn Đang giữ chỗ quá 15 phút (P27) thì hết hạn, nhả slot, trả voucher và điểm.
+ * UC37, BR53: gói đặt nhiều buổi còn Đang giữ chỗ quá 10 phút (P27) thì hết hạn, nhả slot, trả voucher và điểm.
  * BookingHoldExpiryJob chỉ xử lý booking lẻ (bỏ qua buổi trong gói), vì gói hết hạn theo cả gói.
  * Dùng chung lịch chạy với BookingHoldExpiryJob. Mỗi gói một giao dịch: một gói lỗi không làm hỏng các gói khác.
  */
