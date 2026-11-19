@@ -1,0 +1,7 @@
+/*
+ * leaflet.css 1.9.4 đặt mix-blend-mode: plus-lighter cho ảnh bản đồ. Trên một số máy Chrome/Edge
+ * (tùy GPU, driver), ảnh đã tải xong vẫn không vẽ ra, bản đồ chỉ còn nền xám. Trả về normal để ảnh luôn hiện.
+ */
+.leaflet-container img.leaflet-tile {
+  mix-blend-mode: normal;
+}
