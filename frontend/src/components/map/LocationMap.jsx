@@ -4,10 +4,10 @@ import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-lea
 import 'leaflet/dist/leaflet.css'
 import './LocationMap.css'
 
-// Ảnh bản đồ mặc định lấy từ OpenStreetMap (miễn phí, không cần API key).
+// Ảnh bản đồ mặc định lấy từ Esri World Street Map, không cần API key.
 // Muốn đổi nguồn ảnh thì đặt VITE_LOCATION_MAP_TILE_URL và VITE_LOCATION_MAP_ATTRIBUTION.
-const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
+const DEFAULT_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+const DEFAULT_ATTRIBUTION = 'Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), Esri Korea, Esri (Thailand), NGCC, &copy; OpenStreetMap contributors và cộng đồng GIS'
 const PIN_ZOOM = 16
 
 // Dùng divIcon thay ảnh marker mặc định của Leaflet (ảnh mặc định bị lỗi đường dẫn khi build bằng Vite).
@@ -72,8 +72,8 @@ export default function LocationMap({ venues, onSelect, onPick, initialCenter, p
   if (!picking && !positions.length) return <p>Chưa có địa điểm có tọa độ để hiển thị.</p>
 
   const configuredTemplate = import.meta.env.VITE_LOCATION_MAP_TILE_URL
-  const tileUrl = configuredTemplate || OSM_TILE_URL
-  const attribution = configuredTemplate ? (import.meta.env.VITE_LOCATION_MAP_ATTRIBUTION || '') : OSM_ATTRIBUTION
+  const tileUrl = configuredTemplate || DEFAULT_TILE_URL
+  const attribution = configuredTemplate ? (import.meta.env.VITE_LOCATION_MAP_ATTRIBUTION || '') : DEFAULT_ATTRIBUTION
   const start = positions[0] ?? [Number(initialCenter?.latitude ?? 21.028511), Number(initialCenter?.longitude ?? 105.854444)]
   const pin = picking ? positions[0] ?? null : null
 

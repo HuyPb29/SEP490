@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import courtPhoto from '../../assets/badminton-court.jpg';
 import { PublicHeader } from '../../components/layout/PublicLayout';
 import PublicFooter from '../../components/layout/PublicFooter';
-import LocationMap from '../../components/map/LocationMap';
+import GoogleVenueMap from '../../components/map/GoogleVenueMap';
 import { useAuth } from '../../hooks/useAuth';
 import { useFacilitySearch } from '../../hooks/useFacilitySearch';
 import { useGeolocation } from '../../hooks/useGeolocation';
@@ -352,7 +352,7 @@ export default function FacilitySearchPage() {
 
           <div className={styles.nearbyCard}>
             <div className={styles.nearbyMap}>
-              <LocationMap venues={nearby} onSelect={handleSelectFacility} />
+              <GoogleVenueMap venues={nearby} onSelect={handleSelectFacility} />
             </div>
             <ol className={styles.nearbyList}>
               {nearby.map((venue, index) => (

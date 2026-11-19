@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   apiErrorMessage,
   createBatchOffer,
-  createCourt,
   createPriceRule,
   deleteBatchOffer,
   deletePriceRule,
@@ -18,6 +17,7 @@ import {
   updatePriceRule,
 } from '../../api/locationApi'
 import ManagementLayout from '../../components/layout/ManagementLayout'
+import CourtExpansionPanel from './CourtExpansionPanel'
 import styles from './OwnerCourtsPricingPage.module.css'
 
 const WEEK_DAYS = [
@@ -93,13 +93,16 @@ function discountLabel(offer) {
 }
 
 export default function OwnerCourtsPricingPage() {
+  const routeLocation = useLocation()
+  const navigate = useNavigate()
+  const expansionOpen = routeLocation.hash === '#court-expansion'
+  const closeExpansion = () => navigate({ pathname: routeLocation.pathname, search: routeLocation.search, hash: '' }, { replace: true })
   const [locations, setLocations] = useState([])
   const [selectedLocationId, setSelectedLocationId] = useState(() => getStoredLocationId())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
-  const [newCourt, setNewCourt] = useState(null)
 
   // UC09 — bảng giá
   const [priceRules, setPriceRules] = useState([])
@@ -213,7 +216,6 @@ export default function OwnerCourtsPricingPage() {
   }, [selectedLocationId, selectedLocation?.id, courts.length])
 
   const handleFacilityChange = (nextId) => {
-    setNewCourt(null)
     setSelectedLocationId(nextId)
     storeLocationId(nextId)
     setActionError('')
@@ -223,26 +225,6 @@ export default function OwnerCourtsPricingPage() {
   }
 
   // ---------------------------------------------------------------- UC07: sân
-
-  const handleAddCourt = async (event) => {
-    event.preventDefault()
-    const name = newCourt?.trim()
-    if (!selectedLocation || locked || saving || !name) return
-    setSaving(true)
-    setActionError('')
-    setStatusMessage('')
-    try {
-      await createCourt(selectedLocation.id, { name })
-      setNewCourt(null)
-      await loadLocations()
-      setStatusMessage(`Đã thêm sân "${name}". Hãy cấu hình bảng giá trước khi bật sân.`)
-    } catch (err) {
-      setActionError(apiErrorMessage(err))
-      setStatusMessage('')
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const handleEditCourt = async (court) => {
     const name = window.prompt('Court name', court.name)
@@ -505,34 +487,21 @@ export default function OwnerCourtsPricingPage() {
         <section className={`${styles.panel} ${styles.courtPanel}`} aria-labelledby="court-list-heading">
           <div className={styles.panelHeader}>
             <h2 id="court-list-heading">Court List ({courts.length})</h2>
-            <button className={styles.primaryButton} type="button" onClick={() => setNewCourt('')}
-              disabled={saving || !selectedLocation || locked || newCourt !== null}>
-              + Thêm sân
+            <button className={styles.primaryButton} type="button" disabled={!selectedLocation || locked}
+              onClick={() => navigate({ pathname: routeLocation.pathname, search: routeLocation.search, hash: '#court-expansion' })}>
+              + Đăng ký thêm sân
             </button>
           </div>
-          {newCourt !== null && (
-            <form className={styles.ruleForm} onSubmit={handleAddCourt}>
-              <label className={styles.field}>
-                <span>Tên sân</span>
-                <input value={newCourt} onChange={(event) => setNewCourt(event.target.value)}
-                  required maxLength={50} disabled={saving} />
-              </label>
-              <button className={styles.primaryButton} type="submit" disabled={saving || !newCourt.trim()}>
-                {saving ? 'Đang lưu…' : 'Lưu sân'}
-              </button>
-              <button className={styles.secondaryButton} type="button" onClick={() => setNewCourt(null)} disabled={saving}>
-                Hủy
-              </button>
-            </form>
-          )}
           <p>Thêm giá cho tất cả giờ mở cửa trước khi bật bán sân mới.</p>
           {loading && <p className={styles.emptyState}>Loading courts…</p>}
           {!loading && !selectedLocation && (
             <p className={styles.emptyState}>No facility is assigned to this account.</p>
           )}
           {!loading && selectedLocation && courts.length === 0 && (
-            <p className={styles.emptyState}>Địa điểm chưa có sân. Bấm “+ Thêm sân” để tạo sân đầu tiên.</p>
+            <p className={styles.emptyState}>Địa điểm chưa có sân. Gửi yêu cầu thêm sân để Admin kiểm tra và xét duyệt.</p>
           )}
+          {selectedLocation && expansionOpen && <CourtExpansionPanel key={selectedLocation.id}
+            locationId={selectedLocation.id} locked={locked} onClose={closeExpansion} />}
           <div className={styles.courtGrid}>
             {courts.map((court) => (
               <article className={styles.courtCard} key={court.id}>
@@ -542,6 +511,7 @@ export default function OwnerCourtsPricingPage() {
                     {court.active ? 'Active' : 'Disabled'}
                   </span>
                 </div>
+                {court.availableFrom && <p>Kỳ hạn thêm sân: {formatDate(court.availableFrom)} → {formatDate(court.availableUntil)}; các kỳ gia hạn áp dụng theo địa điểm.</p>}
                 <p className={styles.courtDescription}>{court.description || 'No description'}</p>
                 <div className={styles.courtActions}>
                   <button className={styles.secondaryButton} type="button" onClick={() => handleEditCourt(court)} disabled={saving || locked}>

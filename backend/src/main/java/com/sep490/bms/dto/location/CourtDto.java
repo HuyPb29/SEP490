@@ -19,6 +19,8 @@ import lombok.Setter;
 public class CourtDto {
 
     private Long id;
+    private java.time.LocalDate availableFrom;
+    private java.time.LocalDate availableUntil;
     private Long locationId;
     private String name;
     private String description;
@@ -32,6 +34,8 @@ public class CourtDto {
         }
         return CourtDto.builder()
                 .id(court.getId())
+                .availableFrom(court.getAvailableFrom())
+                .availableUntil(court.getAvailableUntil())
                 .locationId(court.getLocationId())
                 .name(court.getName())
                 .description(court.getDescription())

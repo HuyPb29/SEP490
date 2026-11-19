@@ -246,14 +246,15 @@ export async function getMaintenanceRequests(role, status, locationId) {
 }
 
 /** POST /api/staff/maintenance-requests — body {courtId, startAt, endAt, reason}. */
-export async function createMaintenanceRequest(payload) {
-  const { data } = await api.post('/staff/maintenance-requests', payload)
+export async function createMaintenanceRequest(payload, locationId) {
+  const { data } = await api.post('/staff/maintenance-requests', payload, locationId ? ownerConfig(locationId) : undefined)
   return data?.data
 }
 
 /** POST /api/staff/maintenance-requests/{id}/cancel — chỉ người tạo, chỉ khi PENDING. */
-export async function cancelMaintenanceRequest(requestId, reason) {
-  const { data } = await api.post(`/staff/maintenance-requests/${requestId}/cancel`, { reason: reason || null })
+export async function cancelMaintenanceRequest(requestId, reason, locationId) {
+  const { data } = await api.post(`/staff/maintenance-requests/${requestId}/cancel`, { reason: reason || null },
+    locationId ? ownerConfig(locationId) : undefined)
   return data?.data
 }
 

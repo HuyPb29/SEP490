@@ -24,6 +24,10 @@ public class NotificationDto {
     private String content;
     private String refType;
     private Long refId;
+    private Long locationId;
+    private Long bookingId;
+    private Long packageId;
+    private Long rescheduleRequestId;
     private boolean read;
     private LocalDateTime createdAt;
 

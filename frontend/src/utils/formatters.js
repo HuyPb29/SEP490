@@ -76,11 +76,44 @@ const notificationStatusLabels = {
   APPROVED: 'đã duyệt',
   AWAITING_CONFIRMATION: 'đang chờ xác nhận',
   RESUBMIT_REQUESTED: 'cần gửi lại chứng từ',
+  IN_USE: 'đang sử dụng',
+  COMPLETED: 'đã hoàn thành',
+  CANCELLED_BY_PLAYER: 'người chơi đã hủy',
+  CANCELLED_BY_FACILITY: 'sân đã hủy',
+  PAYMENT_REJECTED: 'thanh toán bị từ chối',
+  PENDING: 'đang chờ xử lý',
+  OPEN: 'đang mở',
+  CLOSED: 'đã đóng',
+  CANCELLED: 'đã hủy',
+  ACTIVE: 'đang hoạt động',
+  LOCKED: 'đã khóa',
+  DISABLED: 'đã tạm ngừng',
+  DRAFT: 'bản nháp',
+  PUBLISHED: 'đã phát hành',
+  STOPPED: 'đã dừng',
+  SUBMITTED: 'đã gửi',
+  PENDING_OWNER: 'đang chờ chủ sân xử lý',
+  RESOLVED: 'đã xử lý',
+  REFUNDED: 'đã hoàn tiền',
+  PAID: 'đã thanh toán',
+};
+
+const notificationStatusPattern = new RegExp(`\\b(?:${Object.keys(notificationStatusLabels).join('|')})\\b`, 'g');
+const notificationTerms = {
+  booking: 'đơn đặt sân', bookings: 'đơn đặt sân',
+  slot: 'khung giờ', slots: 'khung giờ',
+  voucher: 'phiếu ưu đãi', vouchers: 'phiếu ưu đãi',
+  owner: 'chủ sân', staff: 'nhân viên', admin: 'quản trị viên', player: 'người chơi',
 };
 
 export function notificationMessage(value) {
-  return uiMessage(value)?.replace(/\b(?:CONFIRMED|REJECTED|EXPIRED|HOLDING|APPROVED|AWAITING_CONFIRMATION|RESUBMIT_REQUESTED)\b/g,
-    (status) => notificationStatusLabels[status]);
+  if (typeof value !== 'string') return value;
+  return uiMessage(value).normalize('NFC')
+    .replace(notificationStatusPattern, (status) => notificationStatusLabels[status])
+    .replace(/\b(?:bookings?|slots?|vouchers?|owner|staff|admin|player)\b/gi, (word) => {
+      const translated = notificationTerms[word.toLowerCase()];
+      return /^[A-Z]/.test(word) ? translated.charAt(0).toUpperCase() + translated.slice(1) : translated;
+    });
 }
 
 export function formatSlotTime(min) {

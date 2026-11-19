@@ -29,7 +29,6 @@ function getPublicMenuItems(roleCode) {
     return [
       ['/', 'Tìm địa điểm'],
       ['/open-matches', 'Kèo mở'],
-      ['/register-service', 'Đăng ký sân'],
       ['/owner/workspace', 'Quản lý cụm sân'],
     ];
   }
@@ -43,7 +42,7 @@ function getPublicMenuItems(roleCode) {
   return [
     ['/', 'Trang chủ'],
     ['/open-matches', 'Kèo mở'],
-    ['/register-service', 'Đăng ký sân'],
+    ['/register-service', 'Đăng ký chủ sân'],
   ];
 }
 

@@ -33,6 +33,7 @@ public class PriceCoverageService {
     private final OpeningHourRepository hours;
     private final OpeningExceptionRepository exceptions;
     private final PriceRuleRepository prices;
+    private final com.sep490.bms.repository.location.ServiceTermRepository terms;
 
     public void requireCourtCoverage(Location location, Court court) {
         requireCoverage(location, List.of(court));
@@ -59,9 +60,14 @@ public class PriceCoverageService {
             lastBookableDay = lastPackageDay;
         }
         List<LocalDate> dates = today.datesUntil(lastBookableDay.plusDays(1)).toList();
+        var serviceTerms = courtsToCheck.stream().anyMatch(c -> c.getAvailableUntil() != null)
+                ? terms.findAllByLocationId(location.getId()) : List.<com.sep490.bms.entity.location.ServiceTerm>of();
         for (Court court : courtsToCheck) {
             List<PriceRule> rules = prices.findAllByCourtIdOrderByStartMinuteAsc(court.getId());
             for (LocalDate date : dates) {
+                if (court.getAvailableFrom() != null && date.isBefore(court.getAvailableFrom())) continue;
+                if (court.getAvailableUntil() != null && date.isAfter(court.getAvailableUntil())
+                        && serviceTerms.stream().noneMatch(t -> !date.isBefore(t.getStartDate()) && !date.isAfter(t.getEndDate()))) continue;
                 int weekday = date.getDayOfWeek().getValue();
                 OpeningException exception = specialHours.get(date);
                 OpeningHour regular = weeklyHours.get(weekday);

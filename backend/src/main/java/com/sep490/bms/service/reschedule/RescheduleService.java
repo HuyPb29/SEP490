@@ -399,7 +399,8 @@ public class RescheduleService {
         if(confirm) {
             support.confirmed(b);
             Court target=support.lock(Court.class,r.getNewCourtId());
-            boolean usable=target.isActive() && "ACTIVE".equals(em.find(Location.class,b.getLocationId()).getStatus())
+            boolean usable=target.isActive() && availability.courtAvailableOn(target,r.getNewDate())
+                    && "ACTIVE".equals(em.find(Location.class,b.getLocationId()).getStatus())
                     && availability.openingWindow(b.getLocationId(),r.getNewDate()).filter(w->w.covers(r.getNewStartMinute(),r.getNewEndMinute())).isPresent();
             Set<Integer> maintenance=availability.maintenanceStarts(List.of(target.getId()),r.getNewDate()).getOrDefault(target.getId(),Set.of());
             for(int m=r.getNewStartMinute();m<r.getNewEndMinute();m+=30) if(maintenance.contains(m)) usable=false;

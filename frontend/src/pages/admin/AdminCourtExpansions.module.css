@@ -1,0 +1,16 @@
+.summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0; padding: 18px 20px; border: 1px solid #dce7e2; border-radius: 16px; background: white; }
+.summary h2, .header h2 { margin: 0; font-size: 18px; font-weight: 750; color: #172b25; }
+.summary p, .header p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
+.summary > button { flex-shrink: 0; padding: 10px 16px; border-radius: 9px; background: #047857; color: white; font-weight: 650; }
+dialog.dialog { width: min(94vw, 900px); max-height: 90dvh; padding: 24px; text-align: left; font-weight: normal; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0; }
+.close { width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; background: #f1f5f9; font-size: 26px; line-height: 1; }
+.hint { margin: 10px 0; padding: 12px; border-radius: 9px; background: #ecfdf5; color: #065f46; }
+.footer { display: flex; justify-content: flex-end; border-top: 1px solid #e2e8f0; padding-top: 16px; }
+.footer button { padding: 8px 16px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.dialog button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 600px) {
+  .summary { align-items: stretch; flex-direction: column; }
+  dialog.dialog { padding: 16px; }
+  .dialog label > input[type=number] { display: block; width: 100%; margin-left: 0; margin-top: 8px; }
+}

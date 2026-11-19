@@ -26,10 +26,13 @@ import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.location.MaintenanceRepository;
+import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 
 import lombok.RequiredArgsConstructor;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 
 /**
  * Feature: F2 - Quản lý địa điểm
@@ -65,6 +68,8 @@ public class MaintenanceService {
     private final AccountRepository accountRepository;
     private final LocationAccessService locationAccessService;
     private final com.sep490.bms.service.reschedule.CancellationService cancellations;
+    private final LocationRepository locations;
+    private final EntityManager em;
 
     /** UC10 - Danh sách yêu cầu bảo trì của địa điểm đang chọn (Staff và Owner dùng chung). */
     @Transactional(readOnly = true)
@@ -88,13 +93,13 @@ public class MaintenanceService {
         return toDto(requireRequestInLocation(location.getId(), maintenanceId));
     }
 
-    /** UC10 - Staff gửi yêu cầu bảo trì cho một sân của địa điểm mình làm việc. */
+    /** UC10 - Owner/Staff gửi yêu cầu bảo trì cho sân thuộc địa điểm đang chọn. */
     @Transactional
     public MaintenanceRequestDto create(UserPrincipal user, CreateMaintenanceRequest request) {
         if (user == null) {
             throw new AppException("Chưa đăng nhập", HttpStatus.UNAUTHORIZED);
         }
-        Location location = locationAccessService.selectedLocation(user);
+        Location location = lockSelectedLocation(user);
         requireActiveLocation(location, "gửi yêu cầu bảo trì");
 
         Court court = requireCourtInLocation(location.getId(), request.getCourtId());
@@ -118,8 +123,9 @@ public class MaintenanceService {
     /** UC10 - Owner duyệt yêu cầu bảo trì đang chờ. */
     @Transactional
     public MaintenanceRequestDto approve(UserPrincipal user, Long maintenanceId) {
-        Location location = locationAccessService.selectedLocation(user);
-        Maintenance entity = requireRequestInLocation(location.getId(), maintenanceId);
+        Location location = lockSelectedLocation(user);
+        requireActiveLocation(location, "duyệt yêu cầu bảo trì");
+        Maintenance entity = requireRequestForUpdate(location.getId(), maintenanceId);
         requirePending(entity);
 
         entity.setStatus(ApprovalStatus.APPROVED);
@@ -133,8 +139,9 @@ public class MaintenanceService {
     @Transactional
     public MaintenanceRequestDto reject(UserPrincipal user, Long maintenanceId,
             RejectMaintenanceRequest request) {
-        Location location = locationAccessService.selectedLocation(user);
-        Maintenance entity = requireRequestInLocation(location.getId(), maintenanceId);
+        Location location = lockSelectedLocation(user);
+        requireActiveLocation(location, "từ chối yêu cầu bảo trì");
+        Maintenance entity = requireRequestForUpdate(location.getId(), maintenanceId);
         requirePending(entity);
         String reason = requireText(request == null ? null : request.getReason(), "Lý do từ chối",
                 REASON_MAX_LENGTH);
@@ -160,8 +167,9 @@ public class MaintenanceService {
         if (user == null) {
             throw new AppException("Chưa đăng nhập", HttpStatus.UNAUTHORIZED);
         }
-        Location location = locationAccessService.selectedLocation(user);
-        Maintenance entity = requireRequestInLocation(location.getId(), maintenanceId);
+        Location location = lockSelectedLocation(user);
+        requireActiveLocation(location, "rút yêu cầu bảo trì");
+        Maintenance entity = requireRequestForUpdate(location.getId(), maintenanceId);
         requirePending(entity);
         if (!Objects.equals(entity.getRequestedBy(), user.getId())) {
             throw new AppException("Chỉ người tạo yêu cầu mới được huỷ", HttpStatus.FORBIDDEN);
@@ -178,6 +186,28 @@ public class MaintenanceService {
     }
 
     // --------------------------------------------------------------- helpers
+
+    /** Khóa địa điểm trước yêu cầu, cùng thứ tự với các thao tác F2 khác.
+     * Khóa này còn bảo vệ kiểm tra trùng giờ khi hai yêu cầu mới chưa có bản ghi để khóa.
+     */
+    private Location lockSelectedLocation(UserPrincipal user) {
+        Location selected = locationAccessService.selectedLocation(user);
+        Location locked = locations.findByIdForUpdate(selected.getId())
+                .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
+        // Địa điểm có thể đã được filter tải vào persistence context trước lúc chờ khóa.
+        em.refresh(locked, LockModeType.PESSIMISTIC_WRITE);
+        locationAccessService.selectedLocation(user);
+        return locked;
+    }
+
+    private Maintenance requireRequestForUpdate(Long locationId, Long maintenanceId) {
+        if (maintenanceId == null || maintenanceId <= 0) throw new AppException("Mã yêu cầu bảo trì không hợp lệ");
+        Maintenance entity = maintenanceRepository.findByIdForUpdate(maintenanceId)
+                .orElseThrow(() -> new AppException("Không tìm thấy yêu cầu bảo trì", HttpStatus.NOT_FOUND));
+        em.refresh(entity, LockModeType.PESSIMISTIC_WRITE);
+        requireCourtInLocation(locationId, entity.getCourtId());
+        return entity;
+    }
 
     private List<Long> courtIdsOf(Long locationId) {
         return courtRepository.findAllByLocationIdOrderByNameAsc(locationId).stream()

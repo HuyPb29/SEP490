@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { notificationMessage } from '../../utils/formatters';
 import styles from './NotificationBell.module.css';
+import { notificationDestination } from '../../utils/notificationNavigation';
 
 /** Nhãn + màu cho từng loại thông báo do job tự động sinh ra. */
 const TYPE_META = {
@@ -18,7 +19,12 @@ const TYPE_META = {
   BOOKING_COMPLETED: { label: 'Hoàn thành buổi chơi', tone: 'ok' },
   BOOKING_AFFECTED: { label: 'Lịch đặt bị ảnh hưởng', tone: 'warn' },
   SERVICE_TERM_EXPIRED: { label: 'Hết hạn dịch vụ', tone: 'danger' },
-  VOUCHER_EXPIRED: { label: 'Voucher hết hạn', tone: 'warn' },
+  VOUCHER_EXPIRED: { label: 'Phiếu ưu đãi hết hạn', tone: 'warn' },
+  SERVICE_REGISTRATION_SUBMITTED: { label: 'Đơn đăng ký dịch vụ', tone: 'info' },
+  COMPLAINT_OVERDUE: { label: 'Khiếu nại quá hạn', tone: 'danger' },
+  BOOKING_ENDING_SOON: { label: 'Sắp hết giờ chơi', tone: 'warn' },
+  SERVICE_TERM_RENEWAL_REMINDER: { label: 'Sắp hết kỳ hạn', tone: 'warn' },
+  SERVICE_TERM_OVERDUE: { label: 'Quá hạn dịch vụ', tone: 'danger' },
   RESCHEDULE_PROOF_SUBMITTED: { label: 'Chờ xác nhận phụ thu', tone: 'warn' },
   VENUE_RESCHEDULE_APPROVED: { label: 'Lịch sân đã đổi', tone: 'ok' },
 };
@@ -121,29 +127,21 @@ export default function NotificationBell() {
     }
   };
 
-  const handleItemClick = async (item) => {
+  const handleItemClick = (item) => {
     if (!item.read) {
-      try {
-        await markNotificationRead(item.id);
+      markNotificationRead(item.id).then(() => {
         setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, read: true } : entry)));
         setUnread((current) => Math.max(0, current - 1));
-      } catch (err) {
+      }).catch((err) => {
         setError(apiErrorMessage(err));
-      }
+      });
     }
-    const upperRole = String(role || '').toUpperCase();
-    if (item.type === 'RESCHEDULE_PROOF_SUBMITTED' && item.refId &&
-        (upperRole === 'OWNER' || upperRole === 'STAFF')) {
-      setSelectedVenue(item.refId);
-      setOpen(false);
-      navigate('/staff/confirm-payments?type=reschedule');
-    } else if (item.refType === 'LOCATION') {
-      setOpen(false);
-      navigate(upperRole === 'ADMIN' ? '/admin/facilities' : '/owner/courts');
-    } else if (item.refType === 'VOUCHER' && upperRole === 'OWNER') {
-      setOpen(false);
-      navigate('/owner/promotions');
+    const locationId = item.locationId || (item.refType === 'LOCATION' ? item.refId : null);
+    if (locationId && ['owner', 'staff'].includes(role)) {
+      setSelectedVenue(locationId);
     }
+    setOpen(false);
+    navigate(notificationDestination(item, role));
   };
 
   const handleMarkAll = async () => {

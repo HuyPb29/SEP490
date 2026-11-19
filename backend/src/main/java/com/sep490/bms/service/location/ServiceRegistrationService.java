@@ -113,8 +113,7 @@ public class ServiceRegistrationService {
         if (request.getLatitude() == null || request.getLongitude() == null) {
             throw new AppException("Hãy chọn vị trí địa điểm trên bản đồ");
         }
-        Account owner = user == null ? null : accountRepository.findById(user.getId())
-                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản Owner", HttpStatus.UNAUTHORIZED));
+        Account owner = user == null ? null : lockOwner(user.getId());
         String contactName = owner == null
                 ? requireText(request.getContactName(), "Họ tên người đại diện", 50) : owner.getFullName();
         String contactPhone = owner == null
@@ -127,6 +126,15 @@ public class ServiceRegistrationService {
             lockContact(contactEmail, contactPhone);
             requireAvailableContact(contactEmail, contactPhone);
             requireNoPendingGuestRegistration(contactEmail, contactPhone);
+        } else {
+            requireNewOwnerLocation(owner.getId(), locationName, address);
+            boolean pending = serviceRegistrationRepository
+                    .findAllByRequesterIdAndStatusOrderByCreatedAtDescIdDesc(owner.getId(), ApprovalStatus.PENDING)
+                    .stream()
+                    .anyMatch(item -> sameVenue(locationName, address, item.getLocationName(), item.getAddress()));
+            if (pending) {
+                throw new AppException("Địa điểm này đã có đơn đăng ký đang chờ duyệt.", HttpStatus.CONFLICT);
+            }
         }
 
         // Kiểm tra xong mọi thứ mới lưu ảnh, để đơn bị từ chối vì dữ liệu sai không để lại file rác.
@@ -219,6 +227,9 @@ public class ServiceRegistrationService {
         if (entity.getRequesterId() == null) {
             newOwner = createOwner(entity);
             entity.setRequesterId(newOwner.account().getId());
+        } else {
+            Account owner = lockOwner(entity.getRequesterId());
+            requireNewOwnerLocation(owner.getId(), entity.getLocationName(), entity.getAddress());
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -315,6 +326,28 @@ public class ServiceRegistrationService {
         }
         throw new AppException("Không sinh được tên đăng nhập cho Owner, vui lòng thử duyệt lại",
                 HttpStatus.CONFLICT);
+    }
+
+    private Account lockOwner(Long ownerId) {
+        return accountRepository.findByIdForUpdate(ownerId)
+                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản Owner", HttpStatus.NOT_FOUND));
+    }
+
+    private void requireNewOwnerLocation(Long ownerId, String name, String address) {
+        if (locationRepository.findAllByOwnerId(ownerId).stream()
+                .anyMatch(location -> sameVenue(name, address, location.getName(), location.getAddress()))) {
+            throw new AppException("Địa điểm này đã thuộc tài khoản Owner.", HttpStatus.CONFLICT);
+        }
+    }
+
+    private static boolean sameVenue(String name, String address, String existingName, String existingAddress) {
+        return normalizeVenueText(name).equals(normalizeVenueText(existingName))
+                && normalizeVenueText(address).equals(normalizeVenueText(existingAddress));
+    }
+
+    private static String normalizeVenueText(String value) {
+        return java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFC)
+                .replaceAll("(?U)\\s+", " ").strip().toLowerCase(Locale.ROOT);
     }
 
     private void lockContact(String email, String phone) {

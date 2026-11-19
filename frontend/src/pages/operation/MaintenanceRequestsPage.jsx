@@ -189,11 +189,12 @@ export default function MaintenanceRequestsPage() {
         startAt: `${form.startAt}:00`,
         endAt: `${form.endAt}:00`,
         reason: form.reason.trim(),
-      });
+      }, ownerLocationId);
       setForm(emptyForm());
       await loadRequests(statusFilter);
       setStatusMessage('Đã gửi yêu cầu bảo trì thành công.');
     } catch (err) {
+      if (err.response?.status === 409) await loadRequests(statusFilter);
       setActionError(apiErrorMessage(err));
     } finally {
       setSaving(false);
@@ -209,6 +210,7 @@ export default function MaintenanceRequestsPage() {
       await loadRequests(statusFilter);
       setStatusMessage('Đã duyệt yêu cầu bảo trì.');
     } catch (err) {
+      if (err.response?.status === 409) await loadRequests(statusFilter);
       setActionError(apiErrorMessage(err));
     } finally {
       setSaving(false);
@@ -220,10 +222,11 @@ export default function MaintenanceRequestsPage() {
     setActionError('');
     setStatusMessage('');
     try {
-      await cancelMaintenanceRequest(id);
+      await cancelMaintenanceRequest(id, null, ownerLocationId);
       await loadRequests(statusFilter);
       setStatusMessage('Đã rút yêu cầu bảo trì.');
     } catch (err) {
+      if (err.response?.status === 409) await loadRequests(statusFilter);
       setActionError(apiErrorMessage(err));
     } finally {
       setSaving(false);
@@ -247,6 +250,11 @@ export default function MaintenanceRequestsPage() {
       setActionError('');
       setStatusMessage('Đã từ chối yêu cầu bảo trì.');
     } catch (err) {
+      if (err.response?.status === 409) {
+        setRejectTarget(null);
+        setRejectReason('');
+        await loadRequests(statusFilter);
+      }
       setActionError(apiErrorMessage(err));
     } finally {
       setSaving(false);
@@ -283,6 +291,7 @@ export default function MaintenanceRequestsPage() {
         setRequests([]);
         setRejectTarget(null);
         setRejectReason('');
+        setForm(emptyForm());
         setLoading(Boolean(nextId));
         setActionError('');
         setStatusMessage('');
@@ -301,13 +310,15 @@ export default function MaintenanceRequestsPage() {
           </div>
         )}
 
-        {isStaff && (
+        {(isStaff || (isOwner && selectedLocation?.status === 'ACTIVE')) && (
           <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
             <h2 className="text-base font-bold text-slate-800 mb-4">Gửi yêu cầu bảo trì mới</h2>
+            {isOwner && <p className="mb-4 text-sm text-slate-600">Yêu cầu mới ở trạng thái chờ duyệt. Hãy kiểm tra rồi duyệt để khóa lịch bảo trì.</p>}
             <form onSubmit={handleCreateSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <FormField label="Sân cần bảo trì" required>
+                <FormField label="Sân cần bảo trì" htmlFor="maintenance-court" required>
                   <Select
+                    id="maintenance-court"
                     value={form.courtId}
                     onChange={(event) => setForm({ ...form, courtId: event.target.value })}
                     disabled={saving}
@@ -319,18 +330,22 @@ export default function MaintenanceRequestsPage() {
                   </Select>
                 </FormField>
 
-                <FormField label="Thời gian bắt đầu" required>
+                <FormField label="Thời gian bắt đầu" htmlFor="maintenance-start" required>
                   <Input
+                    id="maintenance-start"
                     type="datetime-local"
+                    step={1800}
                     value={form.startAt}
                     onChange={(event) => setForm({ ...form, startAt: event.target.value })}
                     disabled={saving}
                   />
                 </FormField>
 
-                <FormField label="Thời gian kết thúc" required>
+                <FormField label="Thời gian kết thúc" htmlFor="maintenance-end" required>
                   <Input
+                    id="maintenance-end"
                     type="datetime-local"
+                    step={1800}
                     value={form.endAt}
                     onChange={(event) => setForm({ ...form, endAt: event.target.value })}
                     disabled={saving}
@@ -338,9 +353,11 @@ export default function MaintenanceRequestsPage() {
                 </FormField>
               </div>
 
-              <FormField label="Lý do bảo trì" required>
+              <FormField label="Lý do bảo trì" htmlFor="maintenance-reason" required>
                 <Textarea
+                  id="maintenance-reason"
                   rows={2}
+                  maxLength={500}
                   value={form.reason}
                   onChange={(event) => setForm({ ...form, reason: event.target.value })}
                   placeholder="Mô tả lý do hoặc nội dung bảo trì..."
@@ -440,7 +457,7 @@ export default function MaintenanceRequestsPage() {
                               </Button>
                             </>
                           )}
-                          {isStaff && isOwn && request.status === 'PENDING' && (
+                          {(isStaff || isOwner) && isOwn && request.status === 'PENDING' && (
                             <Button
                               size="sm"
                               variant="secondary"
