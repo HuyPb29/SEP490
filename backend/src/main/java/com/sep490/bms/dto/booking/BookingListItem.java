@@ -42,4 +42,7 @@ public class BookingListItem {
     /** UC31: booking đã hoàn thành và chưa được đánh giá thì hiện nút Đánh giá. */
     private boolean canReview;
     private RescheduleEligibility reschedule;
+    /** Các lần đổi lịch thành công: đổi từ slot nào sang slot nào (UC17, UC21). */
+    @Builder.Default
+    private java.util.List<RescheduleChange> rescheduleChanges = java.util.List.of();
 }
