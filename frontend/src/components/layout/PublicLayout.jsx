@@ -42,6 +42,7 @@ function getPublicMenuItems(roleCode) {
   return [
     ['/', 'Trang chủ'],
     ['/open-matches', 'Kèo mở'],
+    ['/register-service', 'Đăng ký chủ sân'],
   ];
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import api from '../../api'
 import { downloadVenueData, loadOwnerLocations } from '../../api/ownerApi'
 import { useLocationContext } from '../../hooks/useLocation'

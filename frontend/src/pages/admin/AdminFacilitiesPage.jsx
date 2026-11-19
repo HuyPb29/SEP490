@@ -413,11 +413,11 @@ export default function AdminFacilitiesPage() {
           onClick={loadAll}
           disabled={loading}
         >
-      <AdminCourtExpansions />
           {loading ? 'Đang tải…' : 'Làm mới'}
         </button>
       }
     >
+        <AdminCourtExpansions />
 
         {(statusMessage || (actionError && !modal)) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>

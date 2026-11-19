@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { adminExpansions, decideExpansion, expansionProof } from '../../api/courtExpansionApi'
 import { apiErrorMessage } from '../../api/locationApi'
 import { formatVnd } from '../location/serviceRegistrationTerms'
+import { Modal } from '../../components/common/Modal'
+import styles from './AdminCourtExpansions.module.css'
 
-function RequestRow({ item, reload }) {
+function RequestRow({ item, reload, onBusyChange }) {
   const [received, setReceived] = useState(String(item.quotedAmount))
   const [note, setNote] = useState('')
   const [reason, setReason] = useState('')
@@ -22,12 +25,13 @@ function RequestRow({ item, reload }) {
     if (!approve && !reason.trim()) { setError('Nhập lý do từ chối.'); return }
     if (refund > 0 && !note.trim()) { setError('Ghi thời gian và mã giao dịch hoàn tiền đã thực hiện.'); return }
     setBusy(true)
+    onBusyChange(true)
     try {
       await decideExpansion(item.id, approve, { receivedAmount: Number(received), refundedAmount: refund,
         settlementNote: note.trim(), reason: reason.trim(), effectiveStart: quote?.startDate, finalAmount: quote?.amount })
       await reload()
     } catch (err) { setError(apiErrorMessage(err)) }
-    finally { setBusy(false) }
+    finally { setBusy(false); onBusyChange(false) }
   }
   const showProof = async () => {
     try { setProofUrl(URL.createObjectURL(await expansionProof(item.id, true))) }
@@ -63,8 +67,13 @@ function RequestRow({ item, reload }) {
 }
 
 export default function AdminCourtExpansions() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const open = location.hash === '#court-expansions'
+  const [processing, setProcessing] = useState(false)
   const [items, setItems] = useState([])
   const [error, setError] = useState('')
+  const close = () => navigate({ pathname: location.pathname, search: location.search, hash: '' }, { replace: true })
   const reload = async () => {
     try { setItems(await adminExpansions()); setError('') }
     catch (err) { setError(apiErrorMessage(err)) }
@@ -75,12 +84,30 @@ export default function AdminCourtExpansions() {
       .catch((err) => { if (active) setError(apiErrorMessage(err)) })
     return () => { active = false }
   }, [])
-  return <section id="court-expansions" className="my-5 rounded-2xl border border-slate-200 bg-white p-5">
-    <h2 className="text-lg font-bold">Yêu cầu thêm sân ({items.filter((item) => item.status === 'PENDING').length} chờ duyệt)</h2>
-    <p>Ưu tiên xét duyệt trong ngày. Phí được tính lại từ ngày sau khi duyệt đến hạn hợp đồng đã lưu trong đơn.</p>
-    <button type="button" className="my-2 underline" onClick={reload}>Làm mới yêu cầu và phí hôm nay</button>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
-    {!items.length && !error && <p>Chưa có yêu cầu thêm sân.</p>}
-    {items.map((item) => <RequestRow key={`${item.id}-${item.status}-${item.approvalQuote?.startDate}`} item={item} reload={reload} />)}
-  </section>
+  const pending = items.filter((item) => item.status === 'PENDING').length
+  return <>
+    <section className={styles.summary}>
+      <div><h2>Yêu cầu thêm sân</h2><p>{pending} yêu cầu đang chờ Admin xét duyệt</p></div>
+      <button type="button" onClick={() => navigate({ pathname: location.pathname, search: location.search, hash: '#court-expansions' })}>
+        Xem yêu cầu thêm sân{pending > 0 ? ` (${pending})` : ''}
+      </button>
+      {error && !open && <p role="alert" className="text-red-700">{error}</p>}
+    </section>
+    {open && <Modal labelledBy="admin-expansion-title" className={styles.dialog} busy={processing} onClose={close}>
+      <header className={styles.header}>
+        <div><h2 id="admin-expansion-title">Yêu cầu thêm sân ({pending} chờ duyệt)</h2>
+          <p>Kiểm tra chứng từ, đối chiếu tiền và xét duyệt yêu cầu</p></div>
+        <button type="button" aria-label="Đóng yêu cầu thêm sân" className={styles.close} disabled={processing} onClick={close}>×</button>
+      </header>
+      <div id="court-expansions">
+        <p>Ưu tiên xét duyệt trong ngày. Phí được tính lại từ ngày sau khi duyệt đến hạn hợp đồng đã lưu trong đơn.</p>
+        <p className={styles.hint}>Duyệt sang ngày khác sẽ giảm số ngày tính phí. Admin đối chiếu số tiền thực nhận và ghi nhận hoàn đủ tiền thừa trước khi xác nhận.</p>
+        <button type="button" className="my-2 underline" disabled={processing} onClick={reload}>Làm mới yêu cầu và phí hôm nay</button>
+        {error && <p role="alert" className="text-red-700">{error}</p>}
+        {!items.length && !error && <p>Chưa có yêu cầu thêm sân.</p>}
+        {items.map((item) => <RequestRow key={`${item.id}-${item.status}-${item.approvalQuote?.startDate}`} item={item} reload={reload} onBusyChange={setProcessing} />)}
+      </div>
+      <footer className={styles.footer}><button type="button" disabled={processing} onClick={close}>Đóng</button></footer>
+    </Modal>}
+  </>
 }
