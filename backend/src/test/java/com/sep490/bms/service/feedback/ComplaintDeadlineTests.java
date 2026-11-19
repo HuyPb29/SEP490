@@ -13,7 +13,6 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -24,8 +23,6 @@ import com.sep490.bms.dto.feedback.CreateComplaintRequest;
 import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.entity.feedback.Complaint;
-import com.sep490.bms.entity.location.Location;
-import com.sep490.bms.entity.notification.Notification;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
@@ -86,24 +83,5 @@ class ComplaintDeadlineTests {
         var response = service.createComplaint(player, courtComplaint());
 
         assertThat(response.getId()).isEqualTo(50L);
-    }
-
-    @Test
-    void playerComplaintGoesStraightToOwner() {
-        bookingEndedHoursAgo(1);
-        when(complaints.saveAndFlush(any())).thenAnswer(i -> {
-            Complaint c = i.getArgument(0);
-            c.setId(51L);
-            return c;
-        });
-        when(locations.findById(1L)).thenReturn(Optional.of(Location.builder().id(1L).ownerId(9L).build()));
-
-        var response = service.createComplaint(player, courtComplaint());
-
-        assertThat(response.getStatus()).isEqualTo("PENDING_OWNER");
-        ArgumentCaptor<Notification> sent = ArgumentCaptor.forClass(Notification.class);
-        verify(notifications).save(sent.capture());
-        assertThat(sent.getValue().getRecipientId()).isEqualTo(9L);
-        verify(accounts, never()).findByRoleAndLocationId(Role.STAFF, 1L);
     }
 }

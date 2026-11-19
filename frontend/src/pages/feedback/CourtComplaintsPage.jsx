@@ -151,7 +151,7 @@ function CaseList({ role = 'staff' }) {
   const id = selection.request === requestedCase ? selection.id : requestedCase
   const setId = (value) => setSelection({ request: requestedCase, id: value })
   const [status, setStatus] = useState('')
-  // Owner không thấy khiếu nại tại quầy Staff chưa chuyển, nên không có mục "Chờ Staff chuyển".
+  // D65: Owner chỉ nhận khiếu nại Staff đã chuyển lên, nên không có mục "Chờ Staff chuyển".
   const statusOptions = Object.entries(labels).filter(([value]) => role !== 'owner' || value !== 'SUBMITTED')
   const visible = cases.data
     ?.filter((item) => !status || item.status === status)
@@ -159,7 +159,7 @@ function CaseList({ role = 'staff' }) {
   return <>
     <Section title={role === 'player' ? 'Khiếu nại của tôi' : 'Khiếu nại tại địa điểm'} resource={cases}>
       {role === 'owner' && <p className="cw-muted">
-        Khiếu nại người chơi gửi đến thẳng chủ sân; khiếu nại Staff lập thay khách tại quầy hiện ở đây sau khi Staff chuyển lên.
+        Khiếu nại của người chơi hiện ở đây sau khi Staff kiểm tra và chuyển lên; khiếu nại xác nhận thanh toán trễ đến thẳng chủ sân.
       </p>}
       <Field label="Trạng thái" value={status} options={[[ '', 'Tất cả' ], ...statusOptions]}
         onChange={(event) => { setStatus(event.target.value); setId('') }} />
@@ -225,7 +225,7 @@ function PlayerComplaintForm({ bookingId, paymentId, refresh }) {
     {item && <>
       <p>{item.bookingCode} · {item.playDate}</p>
       <p className="cw-muted">
-        Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của booking. Khiếu nại được gửi thẳng tới chủ sân để xử lý.
+        Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của booking. Nhân viên sân kiểm tra rồi chuyển chủ sân quyết định.
       </p>
       <ActionForm label="Gửi khiếu nại" after={() => { eligibility.reload(); refresh() }} action={(form) => api.post('/complaints', {
         ...form, bookingId: item.id ?? Number(bookingId),
