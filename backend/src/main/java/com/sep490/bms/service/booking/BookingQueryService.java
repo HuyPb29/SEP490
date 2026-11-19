@@ -21,6 +21,7 @@ import com.sep490.bms.dto.booking.BookingDetailResponse;
 import com.sep490.bms.dto.booking.BookingListItem;
 import com.sep490.bms.dto.booking.PackageDetailResponse;
 import com.sep490.bms.dto.booking.PackageListItem;
+import com.sep490.bms.dto.booking.RescheduleChange;
 import com.sep490.bms.dto.booking.RescheduleEligibility;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
@@ -66,6 +67,8 @@ public class BookingQueryService {
     /** F8: booking nào còn đánh giá được (UC31). */
     private final ReviewService reviewService;
     private final RescheduleService reschedules;
+    /** UC21: đổi từ slot nào sang slot nào, hiện ngay trên thẻ booking/gói. */
+    private final com.sep490.bms.repository.reschedule.RescheduleHistoryQuery rescheduleHistory;
 
     /**
      * UC17 #1–2, FR51: booking lẻ của Player kèm trạng thái hiện tại, gồm cả booking đã hết hạn, bị từ chối
@@ -85,9 +88,14 @@ public class BookingQueryService {
         Map<Long, Court> courts = courtsByIds(result.map(Booking::getCourtId).toSet());
         Set<Long> reviewable = reviewService.reviewableBookingIds(result.getContent());
         Map<Long, RescheduleEligibility> eligibility = reschedules.eligibility(result.getContent(), now);
-        return PageResponse.from(result.map(booking -> toListItem(booking, locations.get(booking.getLocationId()),
-                courts.get(booking.getCourtId()), booking.getHoldExpiresAt(), now,
-                reviewable.contains(booking.getId()), eligibility.get(booking.getId()))));
+        Map<Long, List<RescheduleChange>> changes = rescheduleHistory.byBookingIds(result.map(Booking::getId).toList());
+        return PageResponse.from(result.map(booking -> {
+            BookingListItem item = toListItem(booking, locations.get(booking.getLocationId()),
+                    courts.get(booking.getCourtId()), booking.getHoldExpiresAt(), now,
+                    reviewable.contains(booking.getId()), eligibility.get(booking.getId()));
+            item.setRescheduleChanges(changes.getOrDefault(booking.getId(), List.of()));
+            return item;
+        }));
     }
 
     /**
@@ -170,6 +178,7 @@ public class BookingQueryService {
                             session.getPlayDate(), MinuteTime.format(session.getStartMinute()),
                             MinuteTime.format(session.getEndMinute()), session.getStatus());
                 }, Collectors.toList())));
+        Map<Long, List<RescheduleChange>> changes = rescheduleHistory.byPackageIds(result.map(BookingPackage::getId).toList());
 
         return PageResponse.from(result.map(pkg -> {
             BookingStatus shown = shownStatus(pkg.getStatus(), pkg.getHoldExpiresAt(), now);
@@ -187,6 +196,7 @@ public class BookingQueryService {
                     .status(shown)
                     .holdExpiresAt(shown == BookingStatus.HOLDING ? pkg.getHoldExpiresAt() : null)
                     .createdAt(pkg.getCreatedAt())
+                    .rescheduleChanges(changes.getOrDefault(pkg.getId(), List.of()))
                     .build();
         }));
     }
@@ -214,6 +224,7 @@ public class BookingQueryService {
         Map<Long, Court> courts = courtsByIds(sessions.stream().map(Booking::getCourtId).collect(Collectors.toSet()));
         Set<Long> reviewable = reviewService.reviewableBookingIds(sessions);
         Map<Long, RescheduleEligibility> eligibility = reschedules.eligibility(sessions, now);
+        Map<Long, List<RescheduleChange>> changes = rescheduleHistory.byBookingIds(sessions.stream().map(Booking::getId).toList());
         Optional<Payment> payment = paymentService.findForPackage(pkg.getId());
         BookingStatus status = shownStatus(pkg.getStatus(), pkg.getHoldExpiresAt(), now);
 
@@ -244,6 +255,7 @@ public class BookingQueryService {
                             BookingListItem item = toListItem(session, location, courts.get(session.getCourtId()),
                                     pkg.getHoldExpiresAt(), now, reviewable.contains(session.getId()), eligibility.get(session.getId()));
                             item.setBookedHalfHours(bookedHalfHours.get(session.getId()));
+                            item.setRescheduleChanges(changes.getOrDefault(session.getId(), List.of()));
                             return item;
                         })
                         .toList())
