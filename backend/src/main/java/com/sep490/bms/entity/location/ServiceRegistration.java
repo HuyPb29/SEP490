@@ -54,6 +54,22 @@ public class ServiceRegistration {
     @Column(name = "court_count", nullable = false)
     private int courtCount;
 
+    /** Số năm thuê, nguyên, tối thiểu 1 (DR19, DR29). */
+    @Column(name = "rental_years", nullable = false)
+    private int rentalYears;
+
+    /** Số tiền thuê tham khảo do hệ thống tính theo P35 lúc gửi đơn (BR61). */
+    @Column(name = "rental_amount", nullable = false, precision = 12, scale = 0)
+    private BigDecimal rentalAmount;
+
+    /** Ảnh chứng từ chuyển khoản tiền thuê, đường dẫn tương đối trong thư mục ảnh (A03). */
+    @Column(name = "proof_image_path", length = 255)
+    private String proofImagePath;
+
+    /** Thời điểm chủ sân đánh dấu đồng ý điều khoản sử dụng dịch vụ (BR65). */
+    @Column(name = "terms_accepted_at")
+    private LocalDateTime termsAcceptedAt;
+
     @Column(name = "contact_name", length = 50)
     private String contactName;
 

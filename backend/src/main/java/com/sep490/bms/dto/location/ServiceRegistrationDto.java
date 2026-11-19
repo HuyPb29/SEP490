@@ -41,6 +41,16 @@ public class ServiceRegistrationDto {
 
     private Integer courtCount;
 
+    private Integer rentalYears;
+
+    /** Số tiền thuê tham khảo theo P35, hiện cho Admin khi duyệt (FR11). */
+    private BigDecimal rentalAmount;
+
+    /** Đơn có ảnh chứng từ chuyển khoản; Admin xem ảnh qua GET /api/admin/service-registrations/{id}/proof. */
+    private boolean hasProof;
+
+    private LocalDateTime termsAcceptedAt;
+
     private String contactName;
 
     private String contactPhone;
@@ -72,6 +82,10 @@ public class ServiceRegistrationDto {
                 .latitude(entity.getLatitude())
                 .longitude(entity.getLongitude())
                 .courtCount(entity.getCourtCount())
+                .rentalYears(entity.getRentalYears())
+                .rentalAmount(entity.getRentalAmount())
+                .hasProof(entity.getProofImagePath() != null && !entity.getProofImagePath().isBlank())
+                .termsAcceptedAt(entity.getTermsAcceptedAt())
                 .contactName(entity.getContactName())
                 .contactPhone(entity.getContactPhone())
                 .contactEmail(entity.getContactEmail())
