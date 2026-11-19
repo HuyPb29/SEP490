@@ -2,7 +2,7 @@ package com.sep490.bms.service.location;
 
 import java.math.*;
 import java.time.*;
-import java.time.temporal.ChronoUnit;
+
 import java.util.*;
 import com.sep490.bms.dto.location.CourtExpansionDtos.*;
 import com.sep490.bms.entity.account.*;
@@ -33,14 +33,33 @@ public class CourtExpansionService {
     private final AccountRepository accounts;
     private final jakarta.persistence.EntityManager em;
 
-    /** P35 chưa làm tròn theo sân; quy đổi 365 ngày, rồi làm tròn tổng lên nghìn. */
+    /** Phần lẻ đến 15 ngày thì bỏ, từ 16 ngày thì tính thêm một tháng (D173). */
+    static final int HALF_MONTH_DAYS = 15;
+
+    /**
+     * Số tháng tính tiền từ ngày gửi đơn đến ngày hết hạn sử dụng dịch vụ (tính cả ngày cuối), D173:
+     * đếm tháng tròn, phần lẻ 1–15 ngày làm tròn xuống, 16 ngày trở lên làm tròn lên.
+     */
+    public static int chargeableMonths(LocalDate start, LocalDate end) {
+        if (end.isBefore(start)) return 0;
+        Period period = Period.between(start, end.plusDays(1));
+        int months = period.getYears() * 12 + period.getMonths();
+        return period.getDays() > HALF_MONTH_DAYS ? months + 1 : months;
+    }
+
+    /**
+     * Tiền mua thêm sân (D173, P35): 1 sân 1 tháng = P35 ÷ 9 sân ÷ 12 tháng; nhân số sân và số tháng tính tiền,
+     * làm tròn tổng lên nghìn đồng. Còn dưới nửa tháng thì không mua thêm được, phải gia hạn trước.
+     */
     public static Quote calculate(int count, LocalDate start, LocalDate end, BigDecimal referenceFee) {
         if (count < 1 || count > 100) throw new AppException("Số sân thêm phải từ 1 đến 100");
-        long days = ChronoUnit.DAYS.between(start, end) + 1;
-        if (days <= 0) throw new AppException("Hợp đồng không còn ngày sử dụng từ ngày mai");
-        BigDecimal thousands = referenceFee.multiply(BigDecimal.valueOf(count)).multiply(BigDecimal.valueOf(days))
-                .divide(BigDecimal.valueOf(RentalFeeCalculator.REFERENCE_COURTS * 365L * 1000L), 0, RoundingMode.CEILING);
-        return new Quote(count, start, end, days, thousands.multiply(BigDecimal.valueOf(1000)), referenceFee);
+        int months = chargeableMonths(start, end);
+        if (months < 1) {
+            throw new AppException("Thời hạn sử dụng dịch vụ còn không quá nửa tháng nên không mua thêm sân được. Vui lòng gia hạn trước");
+        }
+        BigDecimal thousands = referenceFee.multiply(BigDecimal.valueOf(count)).multiply(BigDecimal.valueOf(months))
+                .divide(BigDecimal.valueOf(RentalFeeCalculator.REFERENCE_COURTS * 12L * 1000L), 0, RoundingMode.CEILING);
+        return new Quote(count, start, end, months, thousands.multiply(BigDecimal.valueOf(1000)), referenceFee);
     }
 
     @Transactional(readOnly=true)
@@ -56,7 +75,8 @@ public class CourtExpansionService {
                 .filter(t -> !t.getStartDate().isAfter(today) && !t.getEndDate().isBefore(today))
                 .max(Comparator.comparing(ServiceTerm::getEndDate))
                 .orElseThrow(() -> new AppException("Cần hợp đồng còn hiệu lực để đăng ký thêm sân"));
-        return calculate(count, today.plusDays(1), term.getEndDate(), BigDecimal.valueOf(RentalFeeCalculator.REFERENCE_FEE));
+        // Số tháng đếm từ ngày gửi đơn; số tiền chốt lúc gửi, Admin duyệt muộn không tính lại (D173).
+        return calculate(count, today, term.getEndDate(), BigDecimal.valueOf(RentalFeeCalculator.REFERENCE_FEE));
     }
 
     @Transactional
@@ -111,14 +131,14 @@ public class CourtExpansionService {
         if (approve) {
             requireActive(location);
             if (!Objects.equals(location.getOwnerId(), request.getOwnerId())) throw new AppException("Chủ địa điểm đã thay đổi");
-            Quote quote = calculate(request.getCourtCount(), now.toLocalDate().plusDays(1), request.getContractEnd(), request.getReferenceFee());
-            // Admin xác nhận đúng báo giá vừa xem; chặn màn hình cũ hoặc qua nửa đêm.
-            if (!quote.startDate().equals(data.effectiveStart()) || data.finalAmount() == null
-                    || quote.amount().compareTo(data.finalAmount()) != 0) {
-                throw new AppException("Phí hoặc ngày hiệu lực đã thay đổi. Hãy tải lại đơn trước khi duyệt", HttpStatus.CONFLICT);
+            // Số tiền đã chốt lúc chủ sân gửi đơn (D173); sân nhận lịch từ ngày sau khi duyệt.
+            LocalDate effectiveStart = now.toLocalDate().plusDays(1);
+            if (effectiveStart.isAfter(request.getContractEnd())) {
+                throw new AppException("Thời hạn sử dụng dịch vụ đã hết nên không duyệt được. Hãy từ chối và hoàn tiền cho chủ sân",
+                        HttpStatus.CONFLICT);
             }
-            amount = quote.amount();
-            request.setEffectiveStart(quote.startDate());
+            amount = request.getQuotedAmount();
+            request.setEffectiveStart(effectiveStart);
         } else if (data.reason() == null || data.reason().isBlank()) {
             throw new AppException("Vui lòng nhập lý do từ chối");
         }
@@ -175,8 +195,11 @@ public class CourtExpansionService {
     }
 
     private View view(CourtExpansion r) {
-        Quote quote = r.getStatus() == ApprovalStatus.PENDING && !LocalDate.now().plusDays(1).isAfter(r.getContractEnd())
-                ? calculate(r.getCourtCount(), LocalDate.now().plusDays(1), r.getContractEnd(), r.getReferenceFee()) : null;
+        // Đơn chờ duyệt: Admin thấy đúng số tiền đã chốt lúc gửi (không tính lại theo ngày duyệt).
+        Quote quote = r.getStatus() == ApprovalStatus.PENDING
+                ? new Quote(r.getCourtCount(), r.getQuotedStart(), r.getContractEnd(),
+                        chargeableMonths(r.getQuotedStart(), r.getContractEnd()), r.getQuotedAmount(), r.getReferenceFee())
+                : null;
         return new View(r.getId(), r.getLocationId(), locations.findById(r.getLocationId()).map(Location::getName).orElse(""),
                 r.getCourtCount(), r.getStatus().name(), r.getQuotedStart(), r.getContractEnd(), r.getQuotedAmount(),
                 r.getEffectiveStart(), r.getFinalAmount(), r.getReceivedAmount(), r.getRefundedAmount(),

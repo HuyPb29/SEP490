@@ -28,14 +28,29 @@ class CourtExpansionServiceTests {
             mock(jakarta.persistence.EntityManager.class));
     private final UserPrincipal admin = UserPrincipal.builder().id(1L).role(Role.ADMIN).build();
 
-    @Test void chargesInclusiveDaysAndRoundsOnlyTotalUp() {
+    @Test void chargesWholeMonthsAndRoundsOnlyTotalUp() {
+        // 20/11 → 31/12: 1 tháng 12 ngày, phần lẻ không quá 15 ngày nên tính 1 tháng (D173).
         Quote q = CourtExpansionService.calculate(2, LocalDate.of(2026,11,20), LocalDate.of(2026,12,31), new BigDecimal("10000000"));
-        assertThat(q.days()).isEqualTo(42);
-        assertThat(q.amount()).isEqualByComparingTo("256000");
+        assertThat(q.months()).isEqualTo(1);
+        assertThat(q.amount()).isEqualByComparingTo("186000");
         assertThat(CourtExpansionService.calculate(9, LocalDate.of(2026,1,1), LocalDate.of(2026,12,31), new BigDecimal("10000000")).amount())
                 .isEqualByComparingTo("10000000");
     }
-    @Test void noDaysLeftCannotBeApproved() {
+    @Test void oddDaysUpToFifteenRoundDownFromSixteenRoundUp() {
+        // 01/12 → 15/02: 2 tháng 15 ngày → 2 tháng; 01/12 → 16/02: 2 tháng 16 ngày → 3 tháng.
+        assertThat(CourtExpansionService.chargeableMonths(LocalDate.of(2026,12,1), LocalDate.of(2027,2,15))).isEqualTo(2);
+        assertThat(CourtExpansionService.chargeableMonths(LocalDate.of(2026,12,1), LocalDate.of(2027,2,16))).isEqualTo(3);
+        // Còn đúng 3 tháng: 01/12 → 28/02.
+        assertThat(CourtExpansionService.chargeableMonths(LocalDate.of(2026,12,1), LocalDate.of(2027,2,28))).isEqualTo(3);
+        // 2 sân × 3 tháng = 10.000.000 × 6 ÷ 108 = 555.556 → 556.000 đồng.
+        assertThat(CourtExpansionService.calculate(2, LocalDate.of(2026,12,1), LocalDate.of(2027,2,28), new BigDecimal("10000000")).amount())
+                .isEqualByComparingTo("556000");
+    }
+    @Test void halfMonthOrLessLeftCannotBuyMoreCourts() {
+        assertThatThrownBy(() -> CourtExpansionService.calculate(1, LocalDate.of(2026,12,1), LocalDate.of(2026,12,15), BigDecimal.TEN))
+                .isInstanceOf(AppException.class);
+        assertThat(CourtExpansionService.calculate(1, LocalDate.of(2026,12,1), LocalDate.of(2026,12,16), new BigDecimal("10000000")).months())
+                .isEqualTo(1);
         assertThatThrownBy(() -> CourtExpansionService.calculate(1, LocalDate.of(2026,12,2), LocalDate.of(2026,12,1), BigDecimal.TEN))
                 .isInstanceOf(AppException.class);
     }
@@ -66,13 +81,11 @@ class CourtExpansionServiceTests {
         when(courts.findAllByLocationIdOrderByNameAsc(2L)).thenReturn(List.of(Court.builder().name("Sân 1").build()));
         return r;
     }
-    @Test void lateApprovalRepricesRefundsAndCreatesExactlyRequestedCourtsFromTomorrow() {
+    @Test void lateApprovalKeepsQuotedAmountAndCreatesExactlyRequestedCourtsFromTomorrow() {
         CourtExpansion r = pending();
-        Quote q = CourtExpansionService.calculate(2, LocalDate.now().plusDays(1), r.getContractEnd(), r.getReferenceFee());
-        service.decide(admin, 7L, new Decision(r.getQuotedAmount(), r.getQuotedAmount().subtract(q.amount()),
-                "Hoàn GD123", null, q.startDate(), q.amount()), true);
+        service.decide(admin, 7L, new Decision(r.getQuotedAmount(), BigDecimal.ZERO, null, null, null, null), true);
         assertThat(r.getStatus()).isEqualTo(ApprovalStatus.APPROVED);
-        assertThat(r.getFinalAmount()).isEqualByComparingTo(q.amount());
+        assertThat(r.getFinalAmount()).isEqualByComparingTo(r.getQuotedAmount());
         ArgumentCaptor<Court> created = ArgumentCaptor.forClass(Court.class);
         verify(courts, times(2)).save(created.capture());
         assertThat(created.getAllValues()).extracting(Court::getName).containsExactly("Sân 2", "Sân 3");
@@ -81,10 +94,10 @@ class CourtExpansionServiceTests {
             assertThat(c.getAvailableFrom()).isEqualTo(LocalDate.now().plusDays(1));
         });
     }
-    @Test void approvalIsNotRepeatableAndStaleQuoteCannotBeConfirmed() {
+    @Test void approvalIsNotRepeatableAndUnderpaymentCannotBeConfirmed() {
         CourtExpansion r = pending();
         assertThatThrownBy(() -> service.decide(admin, 7L, new Decision(BigDecimal.TEN, BigDecimal.ZERO,
-                null, null, LocalDate.now(), BigDecimal.TEN), true)).isInstanceOf(AppException.class);
+                null, null, null, null), true)).isInstanceOf(AppException.class);
         verify(courts, never()).save(any());
         r.setStatus(ApprovalStatus.APPROVED);
         assertThatThrownBy(() -> service.decide(admin, 7L, null, true)).isInstanceOf(AppException.class);

@@ -45,8 +45,7 @@ function RequestRow({ item, reload, onBusyChange }) {
     {proofUrl && <img src={proofUrl} alt={`Chứng từ đơn thêm sân ${item.id}`} className="max-h-96 max-w-full object-contain" />}
     {error && <p role="alert" className="text-red-700">{error}</p>}
     {item.status === 'PENDING' ? <div className="grid gap-3">
-      {quote ? <p><strong>Phí nếu duyệt hôm nay: {formatVnd(quote.amount)}</strong> · Hiệu lực {quote.startDate} → {quote.endDate} ({quote.days} ngày)</p>
-        : <p className="text-red-700">Hợp đồng không còn thời gian sử dụng. Chỉ có thể từ chối và hoàn tiền.</p>}
+      {quote && <p><strong>Phí đã chốt khi gửi: {formatVnd(quote.amount)}</strong> · Tính {quote.months} tháng ({quote.startDate} → {quote.endDate})</p>}
       <label>Số tiền thực tế đã nhận (đối chiếu ngân hàng)
         <input className="ml-2 rounded border p-2" type="number" min="0" step="1" value={received} onChange={(event) => { setReceived(event.target.value); setChecked(false) }} /></label>
       <p>Nếu duyệt: cần hoàn {formatVnd(excess)}. Nếu từ chối: cần hoàn toàn bộ {formatVnd(Number(received))} đã thực nhận.</p>
@@ -100,9 +99,9 @@ export default function AdminCourtExpansions() {
         <button type="button" aria-label="Đóng yêu cầu thêm sân" className={styles.close} disabled={processing} onClick={close}>×</button>
       </header>
       <div id="court-expansions">
-        <p>Ưu tiên xét duyệt trong ngày. Phí được tính lại từ ngày sau khi duyệt đến hạn hợp đồng đã lưu trong đơn.</p>
-        <p className={styles.hint}>Duyệt sang ngày khác sẽ giảm số ngày tính phí. Admin đối chiếu số tiền thực nhận và ghi nhận hoàn đủ tiền thừa trước khi xác nhận.</p>
-        <button type="button" className="my-2 underline" disabled={processing} onClick={reload}>Làm mới yêu cầu và phí hôm nay</button>
+        <p>Phí tính theo số tháng còn lại của thời hạn sử dụng dịch vụ, chốt lúc chủ sân gửi đơn; duyệt muộn không tính lại.</p>
+        <p className={styles.hint}>Admin đối chiếu số tiền thực nhận và ghi nhận hoàn đủ tiền thừa trước khi xác nhận. Thời hạn đã hết thì chỉ từ chối và hoàn tiền được.</p>
+        <button type="button" className="my-2 underline" disabled={processing} onClick={reload}>Làm mới danh sách yêu cầu</button>
         {error && <p role="alert" className="text-red-700">{error}</p>}
         {!items.length && !error && <p>Chưa có yêu cầu thêm sân.</p>}
         {items.map((item) => <RequestRow key={`${item.id}-${item.status}-${item.approvalQuote?.startDate}`} item={item} reload={reload} onBusyChange={setProcessing} />)}

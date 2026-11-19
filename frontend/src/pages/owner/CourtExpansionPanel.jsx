@@ -85,15 +85,15 @@ export default function CourtExpansionPanel({ locationId, locked, onClose }) {
         <p className={styles.subtitle}>Thông tin đăng ký, thanh toán và lịch sử yêu cầu</p></div>
       <button type="button" className={styles.close} aria-label="Đóng đăng ký thêm sân" disabled={saving} onClick={onClose}>×</button>
     </header>
-    <p>Phí tính từ ngày sau khi Admin duyệt đến hết hạn hợp đồng hiện tại. Đơn giá như đăng ký ban đầu, quy đổi 365 ngày/năm và làm tròn tổng lên nghìn đồng.</p>
-    <p>Admin dự kiến xử lý trong ngày. Nếu duyệt muộn, phí được tính lại và tiền thừa phải được hoàn trước khi xác nhận.</p>
+    <p>Phí tính theo số tháng còn lại đến hết thời hạn sử dụng dịch vụ, đếm từ hôm nay: phần lẻ đến 15 ngày không tính, từ 16 ngày tính thêm một tháng. Đơn giá như đăng ký ban đầu (10.000.000 đồng cho 9 sân trong 1 năm), làm tròn tổng lên nghìn đồng.</p>
+    <p>Chuyển khoản ngay khi gửi yêu cầu. Số tiền được chốt lúc gửi, Admin duyệt muộn cũng không tính lại; sân nhận lịch từ ngày sau khi được duyệt.</p>
     {error && <p role="alert" className="my-2 text-red-700">{error}</p>}
     {message && <p role="status" className="my-2 text-emerald-700">{message}</p>}
     {!locked && !pending && <form onSubmit={submit} className="my-4 grid gap-3">
       <label>Số sân muốn thêm <input className="rounded border p-2" type="number" min="1" max="100" required
         value={count} disabled={saving} onChange={(event) => { setCount(event.target.value); setQuote(null); setMessage('') }} /></label>
       {quote && quote.courtCount === Number(count) && <div className="rounded bg-emerald-50 p-3">
-        <p>Dự kiến: {quote.startDate} → {quote.endDate}, {quote.days} ngày.</p>
+        <p>Thời gian tính phí: {quote.startDate} → {quote.endDate}, tính {quote.months} tháng.</p>
         <p>Đơn giá tham chiếu: {formatVnd(quote.referenceFee)} / 9 sân / năm.</p>
         <strong>Số tiền chuyển khoản: {formatVnd(quote.amount)}</strong>
         <p>Nội dung chuyển khoản: THEM SAN {locationId} - {count} SAN</p>

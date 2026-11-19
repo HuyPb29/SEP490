@@ -16,7 +16,8 @@ public final class CourtExpansionDtos {
                            @Size(max=500) String settlementNote,
                            @Size(max=500) String reason,
                            LocalDate effectiveStart, BigDecimal finalAmount) {}
-    public record Quote(int courtCount, LocalDate startDate, LocalDate endDate, long days,
+    /** months: số tháng tính tiền (D173, phần lẻ quá 15 ngày tính thêm một tháng). */
+    public record Quote(int courtCount, LocalDate startDate, LocalDate endDate, int months,
                         BigDecimal amount, BigDecimal referenceFee) {}
     public record View(Long id, Long locationId, String locationName, int courtCount, String status,
                        LocalDate quotedStart, LocalDate contractEnd, BigDecimal quotedAmount,
