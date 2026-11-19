@@ -39,6 +39,9 @@ public class PackageListItem {
     /** Chỉ có khi đang giữ chỗ: mốc để đếm ngược (FR52). */
     private LocalDateTime holdExpiresAt;
     private LocalDateTime createdAt;
+    /** Các buổi trong gói đã đổi lịch thành công: đổi từ slot nào sang slot nào (UC17, UC21). */
+    @Builder.Default
+    private List<RescheduleChange> rescheduleChanges = List.of();
 
     public record DaySession(Long id, String courtName, LocalDate playDate, String startTime, String endTime,
             BookingStatus status) {}
