@@ -137,7 +137,7 @@ export default function PackageSummaryPage() {
     setPointSubmitError('');
     setSubmitting(true);
     try {
-      // UC15 #11: giữ chỗ gói 15 phút (P27) rồi sang thanh toán UC18; voucher, điểm trừ lúc này (D130)
+      // UC15 #11: giữ chỗ gói 10 phút (P27) rồi sang thanh toán UC18; voucher, điểm trừ lúc này (D130)
       const pkg = await createBookingPackage({ ...request, note: note.trim() || null });
       const packageId = pkg?.id ?? pkg?.booking_id ?? pkg?.data?.booking_id;
       sessionStorage.setItem('active_holding_booking', JSON.stringify(pkg));
@@ -353,7 +353,7 @@ export default function PackageSummaryPage() {
               </button>
 
               <p className={styles.holdNotice}>
-                Thanh toán 1 lần cho toàn bộ gói. Bấm xác nhận thì gói được giữ chỗ 15 phút và chuyển sang trang thanh toán (mã QR chuyển khoản).
+                Thanh toán 1 lần cho toàn bộ gói. Bấm xác nhận thì gói được giữ chỗ 10 phút và chuyển sang trang thanh toán (mã QR chuyển khoản).
               </p>
             </div>
           </aside>

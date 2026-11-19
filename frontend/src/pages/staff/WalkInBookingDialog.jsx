@@ -258,14 +258,14 @@ export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }
             <div className={styles.modalActions}>
               <button className={styles.secondaryButton} type="button" onClick={onClose} disabled={busy}>Đóng</button>
               <button className={styles.primaryButton} type="submit" disabled={busy || !courts?.length}>
-                {busy ? 'Đang giữ chỗ…' : 'Giữ chỗ 5 phút'}
+                {busy ? 'Đang giữ chỗ…' : 'Giữ chỗ 10 phút'}
               </button>
             </div>
           </form>
         )}
       </section>
       {booking?.status === 'HOLDING' && remaining > 0 && (
-        <F1Toast>Đã giữ chỗ tại quầy trong 5 phút. (MSG45)</F1Toast>
+        <F1Toast>Đã giữ chỗ tại quầy trong 10 phút. (MSG45)</F1Toast>
       )}
       {booking?.status === 'CONFIRMED' && (
         <F1Toast>Đã xác nhận thanh toán. (MSG46)</F1Toast>

@@ -97,7 +97,7 @@ export default function StaffDashboardPage() {
     return () => clearInterval(timer);
   }, [loadAll]);
 
-  // Đồng hồ đếm ngược mỗi giây cho các booking đang giữ chỗ 5 phút tại quầy (P02 / BR43)
+  // Đồng hồ đếm ngược mỗi giây cho các booking đang giữ chỗ 10 phút tại quầy (P34 / BR43)
   useEffect(() => {
     const hasHolding = counterBookings.some((item) => item.status === 'HOLDING' && item.holdExpiresAt);
     if (!hasHolding) return undefined;
@@ -492,7 +492,7 @@ export default function StaffDashboardPage() {
                           <small className={expiredHold ? styles.overdueText : ''} style={{ color: expiredHold ? '#b91c1c' : '#b45309', fontWeight: 700 }}>
                             {expiredHold
                               ? 'Đã hết thời gian giữ chỗ. Slot đã được nhả. (MSG33)'
-                              : `Đang giữ chỗ 5 phút · Còn lại: ${formatRemaining(remainingMs)}`}
+                              : `Đang giữ chỗ 10 phút · Còn lại: ${formatRemaining(remainingMs)}`}
                           </small>
                         )}
                       </span>
