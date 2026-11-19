@@ -420,8 +420,9 @@ class AuthAndUserApiTests {
     @Test
     void mergedEntitiesCanReadTheExistingSchema() {
         var entities = entityManager.getMetamodel().getEntities();
-        // 38 entity sau khi F2 thêm LocationSlotSetting (cấu hình slot theo địa điểm, UC08).
-        assertThat(entities).hasSize(38);
+        // 39 entity: F2 thêm LocationSlotSetting (cấu hình slot theo địa điểm, UC08)
+        // và OperatorPaymentInfo (thông tin chuyển khoản của bên vận hành, FR127, D168).
+        assertThat(entities).hasSize(39);
         for (var entity : entities) {
             entityManager.createQuery("select e from " + entity.getName() + " e", entity.getJavaType())
                     .setMaxResults(1).getResultList();
