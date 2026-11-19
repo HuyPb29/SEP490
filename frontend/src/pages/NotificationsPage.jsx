@@ -1,12 +1,13 @@
-import { useCallback, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 import api, { getAllPages } from '../api'
 import { getSavedUser } from '../api/session'
 import { cancelMatchApi, keepMatchAfterRescheduleApi } from '../api/bookingApi'
 import WorkspaceLayout, { ActionForm, EmptyState, Section, StatusPill } from './WorkspaceLayout'
 import { useResource } from './workspaceSupport'
 import { useAuth } from '../hooks/useAuth'
-import { notificationMessage } from '../utils/formatters'
+import { dateTime, notificationMessage } from '../utils/formatters'
+import { notificationDestination } from '../utils/notificationNavigation'
 
 const loadNotifications = (signal) => Promise.all([
   getAllPages('/notifications', { signal }),
@@ -19,7 +20,7 @@ function MatchDecision({ id }) {
   if (match.loading) return <p role="status">Đang tải kèo…</p>
   if (match.error) return <p role="alert">{match.error}</p>
   return <div className="space-y-2">
-    <p>{match.data.bookingCode} · {match.data.playDate} · {match.data.courtName} · {match.data.status}</p>
+    <p>{match.data.bookingCode} · {match.data.playDate} · {match.data.courtName} · {notificationMessage(match.data.status)}</p>
     {match.data.host && match.data.reschedulePending && <>
       <ActionForm label="Giữ kèo ở giờ mới" action={() => keepMatchAfterRescheduleApi(id)} after={match.reload} />
       <ActionForm label="Hủy kèo" confirmation="Hủy kèo sau khi đổi lịch?"
@@ -35,7 +36,18 @@ export function Inbox({ title = 'Hộp thư' }) {
   const [unreadOnly, setUnreadOnly] = useState(false)
   const visible = items?.filter((item) => !unreadOnly || !item.read)
   const role = getSavedUser()?.role_code
-  const isPlayer = role === 'player'
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (!hash.startsWith('#notification-')) return
+    const item = document.getElementById(hash.slice(1))
+    item?.scrollIntoView({ block: 'center' })
+    item?.focus({ preventScroll: true })
+  }, [hash, items])
+  const openNotification = (item) => {
+    const locationId = item.locationId || (item.refType === 'LOCATION' ? item.refId : null)
+    if (locationId && ['owner', 'staff'].includes(role)) setSelectedVenue(locationId)
+    if (!item.read) api.patch('/notifications/' + item.id + '/read').then(inbox.reload).catch(() => {})
+  }
   return <Section title={count ? title + ' · ' + (count.unread ?? 0) + ' chưa đọc' : title} resource={inbox}>
     {items?.some((item) => !item.read) && <ActionForm label="Đánh dấu đã đọc tất cả"
       action={() => api.patch('/notifications/read-all')} after={inbox.reload} />}
@@ -44,30 +56,13 @@ export function Inbox({ title = 'Hộp thư' }) {
       <button type="button" aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>Chưa đọc</button>
     </div>
     {visible?.length === 0 && <EmptyState>{unreadOnly ? 'Bạn đã đọc hết thông báo.' : 'Bạn chưa có thông báo.'}</EmptyState>}
-    {visible?.map((item) => <article key={item.id} className={'cw-record flex-col !items-start' + (item.read ? '' : ' cw-notification--new')}>
+    {visible?.map((item) => <article key={item.id} id={`notification-${item.id}`} tabIndex={-1} className={'cw-record flex-col !items-start' + (item.read ? '' : ' cw-notification--new')}>
+      <Link className="block w-full rounded hover:bg-emerald-50 focus-visible:outline focus-visible:outline-emerald-700"
+        to={notificationDestination(item, role)} onClick={() => openNotification(item)}>
       <h3 className="font-semibold">{notificationMessage(item.title) || 'Thông báo'} {!item.read && <StatusPill tone="positive">Chưa đọc</StatusPill>}</h3>
       <p>{notificationMessage(item.content)}</p>
-      <time dateTime={item.createdAt} className="cw-muted text-sm">{item.createdAt?.replace('T', ' ')}</time>
-      {isPlayer && item.refType === 'BOOKING' && <Link className="block underline" to="/my-bookings">Mở lịch đặt sân</Link>}
-      {(role === 'owner' || role === 'staff') && item.type === 'RESCHEDULE_PROOF_SUBMITTED' && item.refId &&
-        <Link className="block underline" to="/staff/confirm-payments?type=reschedule"
-          onClick={() => setSelectedVenue(item.refId)}>Mở danh sách phụ thu chờ xác nhận</Link>}
-      {role === 'staff' && item.type === 'BOOKING_ENDING_SOON' &&
-        <Link className="block underline" to="/staff/dashboard">Mở bảng điều hành</Link>}
-      {role === 'admin' && item.refType === 'SERVICE_REGISTRATION' &&
-        <Link className="block underline" to="/admin/facilities">Xem đơn đăng ký dịch vụ</Link>}
-      {role === 'owner' && item.refType === 'COMPLAINT' &&
-        <Link className="block underline" to={`/owner/workspace?tab=complaints&complaintId=${item.refId}`}>Xem khiếu nại</Link>}
-      {role === 'owner' && item.type === 'REFUND_REQUEST' &&
-        <Link className="block underline" to="/owner/workspace?tab=refund">Xem yêu cầu hoàn tiền</Link>}
-      {isPlayer && item.type === 'LATE_PAYMENT_VOUCHER' &&
-        <Link className="block underline" to="/my-rewards">Xem voucher bồi thường</Link>}
-      {isPlayer && item.refType === 'COMPLAINT' &&
-        <Link className="block underline" to={`/my-complaints?complaintId=${item.refId}`}>Mở khiếu nại</Link>}
-      {isPlayer && item.refType === 'PAYMENT' &&
-        <Link className="block underline" to="/my-bookings">Xem trạng thái thanh toán</Link>}
-      {role === 'owner' && item.type === 'WALK_IN_AFFECTED' &&
-        <Link className="block underline" to="/owner/workspace?tab=complaints">Theo dõi khiếu nại khách tại quầy</Link>}
+      <time dateTime={item.createdAt} className="cw-muted text-sm">{dateTime(item.createdAt)}</time>
+      </Link>
       {item.type === 'MATCH_RESCHEDULED_HOST' && item.refId && <MatchDecision id={item.refId} />}
       {!item.read && <ActionForm label="Đánh dấu đã đọc" action={() => api.patch('/notifications/' + item.id + '/read')} after={inbox.reload} />}
     </article>)}

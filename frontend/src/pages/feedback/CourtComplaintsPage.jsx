@@ -146,7 +146,10 @@ function CaseList({ role = 'staff' }) {
   const cases = useResource(role === 'owner' ? loadOwnerCases : role === 'player' ? loadPlayerCases : loadStaffCases)
   const [params] = useSearchParams()
   const requestedId = params.get('complaintId')
-  const [id, setId] = useState(() => /^[1-9]\d*$/.test(requestedId || '') ? requestedId : '')
+  const requestedCase = /^[1-9]\d*$/.test(requestedId || '') ? requestedId : ''
+  const [selection, setSelection] = useState({ request: requestedCase, id: requestedCase })
+  const id = selection.request === requestedCase ? selection.id : requestedCase
+  const setId = (value) => setSelection({ request: requestedCase, id: value })
   const [status, setStatus] = useState('')
   // D65: Owner chỉ nhận khiếu nại Staff đã chuyển lên, nên không có mục "Chờ Staff chuyển".
   const statusOptions = Object.entries(labels).filter(([value]) => role !== 'owner' || value !== 'SUBMITTED')

@@ -181,9 +181,16 @@ function OwnerLocation() {
 
   return <>
     <Section title="Địa điểm làm việc" resource={locations}>
+      <Link className="inline-flex font-semibold underline" to="/register-service">Đăng ký thêm địa điểm</Link>
       <Field label="Địa điểm" value={location ? selected : ''} onChange={(event) => setSelected(event.target.value)}
-        options={[[ '', 'Chọn địa điểm' ], ...(locations.data ?? []).map((item) => [item.id, item.name + ' · ' + item.status])]} />
+        options={[[ '', 'Chọn địa điểm' ], ...(locations.data ?? []).map((item) => [
+          item.id,
+          [item.name, item.address, item.status === 'LOCKED' ? 'Đã khóa' : null].filter(Boolean).join(' · '),
+        ])]} />
       {locations.data?.length === 0 && <EmptyState>Bạn chưa có địa điểm.</EmptyState>}
+      {location && <p>{location.courts?.length ?? 0} sân con
+        {location.status === 'ACTIVE' && <> · <Link className="underline" to="/owner/courts-pricing">Quản lý sân và bảng giá</Link></>}
+      </p>}
       {locations.data?.length > 0 && !location && <Feedback>
         {tab === 'reviews'
           ? 'Vui lòng chọn cơ sở bên trên để xem và phản hồi các đánh giá của khách hàng.'

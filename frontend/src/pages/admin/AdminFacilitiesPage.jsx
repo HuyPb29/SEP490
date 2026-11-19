@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   apiErrorMessage,
   approveServiceRegistration,
@@ -76,7 +77,15 @@ function daysBetween(fromIso, toIso) {
 }
 
 export default function AdminFacilitiesPage() {
+  const [notificationParams] = useSearchParams()
+  const requestedRegistration = notificationParams.get('registrationId')
   const [pendingRequests, setPendingRequests] = useState([])
+  useEffect(() => {
+    if (!requestedRegistration) return
+    const row = document.getElementById('registration-' + requestedRegistration)
+    row?.scrollIntoView({ block: 'center' })
+    row?.focus({ preventScroll: true })
+  }, [requestedRegistration, pendingRequests])
   const [facilities, setFacilities] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -411,7 +420,7 @@ export default function AdminFacilitiesPage() {
         {(statusMessage || (actionError && !modal)) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
             <span>{actionError || statusMessage}</span>
-            <button type="button" aria-label="Dismiss message" onClick={clearStatus}>×</button>
+            <button type="button" aria-label="Đóng thông báo" onClick={clearStatus}>×</button>
           </div>
         )}
 
@@ -421,7 +430,8 @@ export default function AdminFacilitiesPage() {
           </h2>
           <div className={styles.requestList}>
             {pendingRequests.map((request) => (
-              <article className={styles.requestRow} key={request.id}>
+              <article className={`${styles.requestRow} ${String(request.id) === requestedRegistration ? 'ring-2 ring-emerald-600' : ''}`}
+                id={`registration-${request.id}`} tabIndex={-1} key={request.id}>
                 <div className={styles.requestInfo}>
                   <div className={styles.requestHeading}>
                     <h3>{request.locationName}</h3>
@@ -563,7 +573,7 @@ export default function AdminFacilitiesPage() {
               <span role="columnheader">Trạng thái</span>
               <span role="columnheader">Kỳ hạn dịch vụ</span>
               <span role="columnheader">Số sân</span>
-              <span role="columnheader">Số booking</span>
+              <span role="columnheader">Số đơn đặt sân</span>
               <span role="columnheader">Hành động</span>
             </div>
             {filteredFacilities.map((facility) => {

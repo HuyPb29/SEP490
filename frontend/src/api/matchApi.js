@@ -23,8 +23,8 @@ export async function getMyMatches({ role, status, page = 0, size = 50 } = {}) {
   return data.data
 }
 
-export async function getMatch(id) {
-  const { data } = await api.get(`/matches/${id}`)
+export async function getMatch(id, signal) {
+  const { data } = await api.get(`/matches/${id}`, { signal })
   return data.data
 }
 
