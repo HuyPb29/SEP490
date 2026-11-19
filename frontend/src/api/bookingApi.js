@@ -166,6 +166,7 @@ function bookingCard(item, packageId) {
     status_name: bookingLabels[status] || item.status,
     can_review: item.canReview === true,
     reschedule: item.reschedule,
+    reschedule_changes: item.rescheduleChanges ?? [],
   };
 }
 
@@ -193,6 +194,7 @@ export async function getMyBookingsApi() {
         created_at: item.createdAt,
         status,
         status_name: bookingLabels[status] || item.status,
+        reschedule_changes: item.rescheduleChanges ?? [],
       };
     }),
   ];
