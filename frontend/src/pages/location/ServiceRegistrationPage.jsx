@@ -1,12 +1,25 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import api, { apiErrorMessage } from '../../api';
+import { getServiceRegistrationPaymentInfo, operatorQrUrl, submitServiceRegistration } from '../../api/locationApi';
 import { useAuth } from '../../hooks/useAuth';
 import LocationMap from '../../components/map/LocationMap';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { LoadingState } from '../../components/common';
+import { SERVICE_TERMS, formatVnd, rentalAmount } from './serviceRegistrationTerms';
 import styles from './ServiceRegistrationPage.module.css';
 
+/** DR19: ảnh chứng từ JPG hoặc PNG, tối đa 5 MB (backend FileStorageService kiểm tra lại). */
+const PROOF_TYPES = ['image/jpeg', 'image/png'];
+const PROOF_MAX_BYTES = 5 * 1024 * 1024;
+/** Đề xuất, chưa duyệt: tối đa 10 năm trên một đơn (DR29 chỉ quy định tối thiểu 1 năm). */
+const MAX_RENTAL_YEARS = 10;
+
+/**
+ * Feature: F2 - Quản lý địa điểm
+ * UC05 - Đăng ký sử dụng dịch vụ (FR10, BR61, BR65, DR19, P35; D168, D169).
+ * Guest (hoặc Owner đăng ký thêm địa điểm) nhập địa điểm, số sân, số năm thuê; form tự tính tiền thuê,
+ * hiện QR của bên vận hành và điều khoản; chủ sân chuyển khoản, đính kèm ảnh chứng từ, đồng ý điều khoản rồi gửi.
+ */
 export default function ServiceRegistrationPage() {
   const { user } = useAuth();
 
@@ -20,10 +33,16 @@ export default function ServiceRegistrationPage() {
     latitude: '',
     longitude: '',
     courtCount: '',
+    rentalYears: '1',
     contactName: '',
     contactPhone: '',
     contactEmail: '',
   });
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [proofFile, setProofFile] = useState(null);
+  const [proofPreview, setProofPreview] = useState('');
+  const [paymentInfo, setPaymentInfo] = useState(null);
+  const [paymentInfoError, setPaymentInfoError] = useState('');
 
   const [fieldErrors, setFieldErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,6 +77,46 @@ export default function ServiceRegistrationPage() {
       loadMyRegistrations();
     });
   }, [loadMyRegistrations]);
+
+  // FR127: thông tin chuyển khoản và QR của bên vận hành luôn có (mặc định khi cài hệ thống).
+  useEffect(() => {
+    let cancelled = false;
+    getServiceRegistrationPaymentInfo()
+      .then((info) => { if (!cancelled) setPaymentInfo(info); })
+      .catch((err) => {
+        if (!cancelled) setPaymentInfoError(apiErrorMessage(err, 'Không tải được thông tin chuyển khoản.'));
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Thu hồi object URL của ảnh xem trước khi đổi ảnh hoặc rời trang.
+  useEffect(() => () => { if (proofPreview) URL.revokeObjectURL(proofPreview); }, [proofPreview]);
+
+  const amount = rentalAmount(formData.courtCount, formData.rentalYears,
+    paymentInfo?.referenceFee, paymentInfo?.referenceCourts);
+
+  const clearFieldError = (field) => {
+    setFieldErrors(({ [field]: _removed, ...rest }) => rest);
+  };
+
+  const handleProofChange = (file) => {
+    clearFieldError('proof');
+    if (!file) {
+      setProofFile(null);
+      setProofPreview('');
+      return;
+    }
+    if (!PROOF_TYPES.includes(file.type)) {
+      setFieldErrors((prev) => ({ ...prev, proof: 'Chỉ nhận ảnh JPG hoặc PNG.' }));
+      return;
+    }
+    if (file.size > PROOF_MAX_BYTES) {
+      setFieldErrors((prev) => ({ ...prev, proof: 'Ảnh tối đa 5 MB.' }));
+      return;
+    }
+    setProofFile(file);
+    setProofPreview(URL.createObjectURL(file));
+  };
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -129,7 +188,21 @@ export default function ServiceRegistrationPage() {
     if (!Number.isInteger(courts) || courts < 1) {
       errors.courtCount = 'Số sân phải lớn hơn 0.';
     } else if (courts > 50) {
-      errors.courtCount = 'Số sân tối đa là 50 sân trên một cơ sở.';
+      errors.courtCount = 'Số sân tối đa là 50 sân trên một địa điểm.';
+    }
+
+    const years = Number(formData.rentalYears);
+    if (!Number.isInteger(years) || years < 1) {
+      errors.rentalYears = 'Số năm thuê tối thiểu là 1 năm.';
+    } else if (years > MAX_RENTAL_YEARS) {
+      errors.rentalYears = `Số năm thuê tối đa là ${MAX_RENTAL_YEARS} năm.`;
+    }
+
+    if (!proofFile) {
+      errors.proof = 'Vui lòng đính kèm ảnh chứng từ chuyển khoản tiền thuê.';
+    }
+    if (!termsAccepted) {
+      errors.terms = 'Vui lòng đọc và đồng ý điều khoản sử dụng dịch vụ.';
     }
 
     if (!isOwner) {
@@ -164,6 +237,8 @@ export default function ServiceRegistrationPage() {
         latitude: Number(formData.latitude),
         longitude: Number(formData.longitude),
         courtCount: Number(formData.courtCount),
+        rentalYears: Number(formData.rentalYears),
+        termsAccepted,
         ...(!isOwner && {
           contactName: formData.contactName.trim(),
           contactPhone: formData.contactPhone.trim(),
@@ -171,16 +246,18 @@ export default function ServiceRegistrationPage() {
         }),
       };
 
-      const res = await api.post('/service-registrations', payload);
-      setSubmitSuccess(
-        res.data?.message || 'Đơn đăng ký sử dụng dịch vụ đã được gửi thành công! Quản trị viên sẽ sớm liên hệ và xét duyệt.'
-      );
-      // Reset form
+      const res = await submitServiceRegistration(payload, proofFile);
+      // MSG99 do backend trả về, có email nhận kết quả.
+      setSubmitSuccess(res?.message || 'Đã gửi yêu cầu đăng ký.');
+      // Đơn đã gửi kèm chứng từ của lần chuyển khoản này: xóa để lần sau không gửi trùng ảnh.
       setFormData((prev) => ({
         ...prev,
         locationName: '',
         address: '',
       }));
+      setProofFile(null);
+      setProofPreview('');
+      setTermsAccepted(false);
       setFieldErrors({});
       loadMyRegistrations();
     } catch (err) {
@@ -221,9 +298,6 @@ export default function ServiceRegistrationPage() {
             ✓ {submitSuccess}
           </div>
         )}
-        {submitSuccess && !isOwner && (
-          <p>Sau khi Admin duyệt, vào <Link to="/login">Đăng nhập</Link>, chọn Quên mật khẩu và dùng email đã gửi để đặt mật khẩu lần đầu.</p>
-        )}
         {submitError && (
           <div className={`${styles.alertBox} ${styles.alertDanger}`}>
             ✕ {submitError}
@@ -236,7 +310,8 @@ export default function ServiceRegistrationPage() {
             Thông tin cơ sở cầu lông
           </h3>
           <p className={styles.cardSubtitle}>
-            Các mục đánh dấu <span className={styles.requiredMark}>*</span> là bắt buộc. Sau khi gửi, Quản trị viên sẽ xác thực và phê duyệt địa điểm của bạn.
+            Các mục đánh dấu <span className={styles.requiredMark}>*</span> là bắt buộc. Chuyển khoản tiền thuê theo thông tin bên dưới rồi đính kèm ảnh chứng từ.
+            Khi tiền thuê đã về, Quản trị viên duyệt và hệ thống gửi kết quả, tên đăng nhập, mật khẩu tới email của bạn.
           </p>
 
           <form onSubmit={handleSubmit} noValidate>
@@ -297,6 +372,37 @@ export default function ServiceRegistrationPage() {
                   <p className={styles.errorText} role="alert">{fieldErrors.courtCount}</p>
                 )}
                 <p className={styles.helperText}>Hệ thống sẽ tự động khởi tạo các sân này khi được duyệt.</p>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="rentalYears">
+                  <span>Số năm thuê <span className={styles.requiredMark}>*</span></span>
+                </label>
+                <input
+                  id="rentalYears"
+                  type="number"
+                  min={1}
+                  max={MAX_RENTAL_YEARS}
+                  step={1}
+                  className={`${styles.input} ${fieldErrors.rentalYears ? styles.inputError : ''}`}
+                  value={formData.rentalYears}
+                  onChange={(e) => handleChange('rentalYears', e.target.value)}
+                  disabled={!canSubmit || isSubmitting}
+                />
+                {fieldErrors.rentalYears && (
+                  <p className={styles.errorText} role="alert">{fieldErrors.rentalYears}</p>
+                )}
+                <p className={styles.helperText}>Tối thiểu 1 năm, thời hạn tính từ ngày được duyệt.</p>
+              </div>
+
+              <div className={styles.formGroup}>
+                <span className={styles.label}><span>Số tiền thuê</span></span>
+                <p style={{ fontSize: 20, fontWeight: 700, margin: '8px 0 4px', color: 'var(--color-text)' }} aria-live="polite">
+                  {formatVnd(amount)}
+                </p>
+                <p className={styles.helperText}>
+                  Hệ thống tự tính: 10.000.000 đồng cho 9 sân con trong 1 năm, theo số sân và số năm thuê, làm tròn lên nghìn đồng.
+                </p>
               </div>
             </div>
 
@@ -407,6 +513,86 @@ export default function ServiceRegistrationPage() {
 
             </>}
 
+            <hr style={{ margin: '24px 0', border: 'none', borderTop: '1px solid var(--color-border)' }} />
+
+            <h4 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 8px', color: 'var(--color-text)' }}>
+              Chuyển khoản tiền thuê
+            </h4>
+            <p className={styles.helperText}>
+              Chuyển <strong>{formatVnd(amount)}</strong> vào tài khoản của bên vận hành, sau đó đính kèm ảnh chứng từ.
+              Không giới hạn thời gian thanh toán.
+            </p>
+            {paymentInfoError && (
+              <div className={`${styles.alertBox} ${styles.alertDanger}`}>{paymentInfoError}</div>
+            )}
+            {paymentInfo && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start', margin: '12px 0 16px' }}>
+                <img
+                  src={operatorQrUrl(paymentInfo.updatedAt)}
+                  alt="Mã QR chuyển khoản của bên vận hành"
+                  width={180}
+                  height={180}
+                  style={{ border: '1px solid var(--color-border)', borderRadius: 8, background: '#fff' }}
+                />
+                <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px' }}>
+                  <dt>Ngân hàng</dt><dd style={{ margin: 0 }}><strong>{paymentInfo.bankName}</strong></dd>
+                  <dt>Số tài khoản</dt><dd style={{ margin: 0 }}><strong>{paymentInfo.bankAccountNo}</strong></dd>
+                  <dt>Chủ tài khoản</dt><dd style={{ margin: 0 }}><strong>{paymentInfo.bankAccountHolder}</strong></dd>
+                  <dt>Số tiền</dt><dd style={{ margin: 0 }}><strong>{formatVnd(amount)}</strong></dd>
+                  <dt />
+                  <dd style={{ margin: 0 }}>
+                    <a href={operatorQrUrl(paymentInfo.updatedAt)} download="qr-ben-van-hanh.png" className="underline">
+                      Lưu ảnh QR
+                    </a>
+                  </dd>
+                </dl>
+              </div>
+            )}
+
+            <div className={styles.formGroup}>
+              <label className={styles.label} htmlFor="proof">
+                <span>Ảnh chứng từ chuyển khoản <span className={styles.requiredMark}>*</span></span>
+              </label>
+              <input
+                id="proof"
+                type="file"
+                accept="image/jpeg,image/png"
+                onChange={(e) => handleProofChange(e.target.files?.[0] ?? null)}
+                disabled={!canSubmit || isSubmitting}
+              />
+              <p className={styles.helperText}>Ảnh JPG hoặc PNG, tối đa 5 MB.</p>
+              {proofPreview && (
+                <img src={proofPreview} alt="Ảnh chứng từ đã chọn" style={{ maxWidth: 240, marginTop: 8, borderRadius: 8 }} />
+              )}
+              {fieldErrors.proof && (
+                <p className={styles.errorText} role="alert">{fieldErrors.proof}</p>
+              )}
+            </div>
+
+            <div className={styles.formGroup}>
+              <span className={styles.label}><span>Điều khoản sử dụng dịch vụ</span></span>
+              <ol
+                style={{
+                  maxHeight: 220, overflowY: 'auto', margin: '8px 0', padding: '12px 12px 12px 32px',
+                  border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 'var(--text-sm)', lineHeight: 1.5,
+                }}
+              >
+                {SERVICE_TERMS.map((term) => <li key={term} style={{ marginBottom: 6 }}>{term}</li>)}
+              </ol>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => { setTermsAccepted(e.target.checked); clearFieldError('terms'); }}
+                  disabled={!canSubmit || isSubmitting}
+                />
+                <span>Tôi đã đọc và đồng ý các điều khoản sử dụng dịch vụ. <span className={styles.requiredMark}>*</span></span>
+              </label>
+              {fieldErrors.terms && (
+                <p className={styles.errorText} role="alert">{fieldErrors.terms}</p>
+              )}
+            </div>
+
             <button
               type="submit"
               className={styles.primaryBtn}
@@ -444,6 +630,8 @@ export default function ServiceRegistrationPage() {
                       <th>Tên cơ sở</th>
                       <th>Địa chỉ</th>
                       <th>Số sân</th>
+                      <th>Số năm thuê</th>
+                      <th>Số tiền thuê</th>
                       <th>Trạng thái</th>
                       <th>Ngày gửi</th>
                     </tr>
@@ -455,11 +643,13 @@ export default function ServiceRegistrationPage() {
                         <td><strong>{item.locationName}</strong></td>
                         <td>{item.address}</td>
                         <td>{item.courtCount} sân</td>
+                        <td>{item.rentalYears} năm</td>
+                        <td>{formatVnd(item.rentalAmount)}</td>
                         <td>
                           {item.status === 'APPROVED' ? (
                             <span className={`${styles.badge} ${styles.badgeApproved}`}>Đã duyệt</span>
                           ) : item.status === 'REJECTED' ? (
-                            <span className={`${styles.badge} ${styles.badgeRejected}`} title={item.rejectionReason}>
+                            <span className={`${styles.badge} ${styles.badgeRejected}`} title={item.rejectReason}>
                               Bị từ chối
                             </span>
                           ) : (

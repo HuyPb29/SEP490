@@ -161,9 +161,54 @@ export async function approveServiceRegistration(requestId) {
   return data?.data
 }
 
-/** POST /api/admin/service-registrations/{id}/reject — body {"reason": "..."}. */
+/** POST /api/admin/service-registrations/{id}/reject — body {"reason": "..."}; hệ thống gửi email MSG117. */
 export async function rejectServiceRegistration(requestId, reason) {
   const { data } = await api.post(`/admin/service-registrations/${requestId}/reject`, { reason })
+  return data?.data
+}
+
+/** GET /api/admin/service-registrations/{id}/proof — ảnh chứng từ chuyển khoản tiền thuê (FR11), trả Blob. */
+export async function getServiceRegistrationProof(requestId) {
+  const { data } = await api.get(`/admin/service-registrations/${requestId}/proof`, { responseType: 'blob' })
+  return data
+}
+
+// ------------------------------------------- UC05, UC06 #8: thông tin chuyển khoản của bên vận hành (FR127)
+
+/** Đường dẫn ảnh QR của bên vận hành, công khai; thêm version để trình duyệt tải lại khi Admin đổi ảnh. */
+export function operatorQrUrl(version) {
+  return `/api/service-registrations/payment-info/qr${version ? `?v=${encodeURIComponent(version)}` : ''}`
+}
+
+/** GET /api/service-registrations/payment-info — công khai: ngân hàng, số tài khoản, chủ tài khoản, mức P35. */
+export async function getServiceRegistrationPaymentInfo() {
+  const { data } = await api.get('/service-registrations/payment-info')
+  return data?.data
+}
+
+/**
+ * POST /api/service-registrations (multipart): phần "data" là JSON đơn, phần "proof" là ảnh chứng từ.
+ * Trả nguyên body để lấy câu MSG99 trong message.
+ */
+export async function submitServiceRegistration(payload, proofFile) {
+  const body = new FormData()
+  body.append('data', new Blob([JSON.stringify(payload)], { type: 'application/json' }))
+  body.append('proof', proofFile)
+  const { data } = await api.post('/service-registrations', body)
+  return data
+}
+
+/** PUT /api/admin/operator-payment-info — body {bankName, bankAccountNo, bankAccountHolder}. */
+export async function updateOperatorPaymentInfo(payload) {
+  const { data } = await api.put('/admin/operator-payment-info', payload)
+  return data?.data
+}
+
+/** POST /api/admin/operator-payment-info/qr — multipart "image" (JPG/PNG, tối đa 5 MB). */
+export async function uploadOperatorQr(image) {
+  const body = new FormData()
+  body.append('image', image)
+  const { data } = await api.post('/admin/operator-payment-info/qr', body)
   return data?.data
 }
 
