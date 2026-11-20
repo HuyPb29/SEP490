@@ -61,7 +61,7 @@ class BookingPaymentExpiryTests {
     private final PackageService packages = mock(PackageService.class);
     private final PaymentService service = new PaymentService(payments, mock(PaymentProofRepository.class), bookings,
             locations, mock(FileStorageService.class), mock(LocationAccessService.class), vouchers, points,
-            notifications, packages, mock(RescheduleRequestRepository.class));
+            notifications, packages, mock(RescheduleRequestRepository.class), mock(PaymentEscalation.class));
 
     private Booking booking;
     private Payment payment;
