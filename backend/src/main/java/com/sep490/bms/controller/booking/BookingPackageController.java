@@ -55,7 +55,7 @@ public class BookingPackageController {
 
     /**
      * UC15 – Đặt nhiều buổi (#6–8, #11: bấm xác nhận lịch; tạo gói và các buổi con, trừ voucher và điểm,
-     * giữ chỗ 15 phút)
+     * giữ chỗ 10 phút)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
      * Gửi cùng nội dung với preview, sessions là danh sách buổi sau khi xử lý buổi trùng.

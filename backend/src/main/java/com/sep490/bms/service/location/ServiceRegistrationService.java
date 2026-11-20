@@ -1,19 +1,24 @@
 package com.sep490.bms.service.location;
 
+import java.math.BigDecimal;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.core.io.Resource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.sep490.bms.dto.location.CreateServiceRegistrationRequest;
 import com.sep490.bms.dto.location.RejectServiceRegistrationRequest;
@@ -34,32 +39,41 @@ import com.sep490.bms.repository.location.ServiceRegistrationRepository;
 import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.account.OtpLockService;
+import com.sep490.bms.service.integration.EmailService;
+import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.notification.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 
 /**
  * Feature: F2 - Quản lý địa điểm
- * Owner: Minh Anh
- * UC05 và UC06 - Đăng ký và duyệt sử dụng dịch vụ (FR10, FR11).
+ * Owner: Minh Anh (Leader code lại theo D168, D169)
+ * UC05 và UC06 - Đăng ký và duyệt sử dụng dịch vụ (FR10, FR11, FR12, BR61, BR65).
  *
- * Guest hoặc Owner gửi đơn (PENDING). Khi Admin duyệt, hệ thống tạo địa điểm,
- * sinh đủ số sân mà đơn khai báo ("Sân 1".."Sân N") và mở một kỳ hạn sử dụng dịch vụ 12 tháng;
- * Admin từ chối thì bắt buộc ghi lý do.
+ * Guest hoặc Owner điền đơn kèm số năm thuê, chuyển khoản trước tiền thuê (P35), đính kèm ảnh chứng từ,
+ * đồng ý điều khoản rồi gửi (PENDING, không tự hết hạn). Admin thấy tiền về thì duyệt: hệ thống tạo địa điểm,
+ * sinh đủ số sân mà đơn khai báo ("Sân 1".."Sân N"), ghi thời hạn từ ngày duyệt theo số năm thuê,
+ * tạo tài khoản Owner với tên đăng nhập và mật khẩu do hệ thống sinh (đơn của Guest) và gửi email MSG116.
+ * Admin từ chối thì bắt buộc ghi lý do, hệ thống gửi email MSG117.
+ * Gửi email lỗi thì hủy cả lần duyệt/từ chối để chủ sân không bị mất tài khoản hoặc kết quả; Admin thử lại.
  * Đơn đã xử lý không được xử lý lại (tránh tạo trùng địa điểm).
  */
 @Service
 @RequiredArgsConstructor
 public class ServiceRegistrationService {
 
-    private static final int SERVICE_TERM_MONTHS = 12;
     private static final String STATUS_ACTIVE = "ACTIVE";
+    private static final int USERNAME_ATTEMPTS = 20;
+    private static final DateTimeFormatter EMAIL_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     /**
      * Trần số sân của một đơn đăng ký. Số sân được dùng để sinh sân thật khi duyệt đơn,
      * nên phải chặn trần để một đơn sai không tạo ra hàng nghìn dòng trong bảng court.
      */
     private static final int MAX_COURT_COUNT = 50;
+
+    /** Đề xuất, chưa duyệt: trần số năm thuê trên một đơn (DR29 chỉ quy định tối thiểu 1 năm). */
+    private static final int MAX_RENTAL_YEARS = 10;
 
     private final ServiceRegistrationRepository serviceRegistrationRepository;
     private final ServiceTermRepository serviceTermRepository;
@@ -69,36 +83,74 @@ public class ServiceRegistrationService {
     private final PasswordEncoder passwordEncoder;
     private final NotificationService notifications;
     private final OtpLockService contactLocks;
+    private final FileStorageService files;
+    private final EmailService emails;
+    private final OwnerCredentialGenerator credentials;
 
-    /** UC05 - Guest đăng ký dịch vụ hoặc Owner đăng ký thêm địa điểm. */
+    /** Tài khoản Owner vừa tạo kèm mật khẩu gốc, chỉ dùng để gửi email MSG116 rồi bỏ. */
+    private record NewOwner(Account account, String rawPassword) {
+    }
+
+    /** UC05 - Guest đăng ký dịch vụ hoặc Owner đăng ký thêm địa điểm (FR10). */
     @Transactional
-    public ServiceRegistrationDto submit(UserPrincipal user, CreateServiceRegistrationRequest request) {
+    public ServiceRegistrationDto submit(UserPrincipal user, CreateServiceRegistrationRequest request,
+            MultipartFile proof) {
         if (user != null && user.getRole() != Role.OWNER) {
             throw new AppException("Chỉ Owner mới được đăng ký sử dụng dịch vụ", HttpStatus.FORBIDDEN);
         }
+        if (request == null) {
+            throw new AppException("Thiếu thông tin đơn đăng ký");
+        }
+        if (!Boolean.TRUE.equals(request.getTermsAccepted())) {
+            throw new AppException("Vui lòng đọc và đồng ý điều khoản sử dụng dịch vụ");
+        }
+        if (proof == null || proof.isEmpty()) {
+            throw new AppException("Vui lòng đính kèm ảnh chứng từ chuyển khoản tiền thuê");
+        }
 
         int courtCount = validateCourtCount(request.getCourtCount());
-        Account owner = user == null ? null : accountRepository.findById(user.getId())
-                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản Owner", HttpStatus.UNAUTHORIZED));
+        int rentalYears = validateRentalYears(request.getRentalYears());
+        if (request.getLatitude() == null || request.getLongitude() == null) {
+            throw new AppException("Hãy chọn vị trí địa điểm trên bản đồ");
+        }
+        Account owner = user == null ? null : lockOwner(user.getId());
         String contactName = owner == null
-                ? requireText(request.getContactName(), "Tên người liên hệ", 50) : owner.getFullName();
+                ? requireText(request.getContactName(), "Họ tên người đại diện", 50) : owner.getFullName();
         String contactPhone = owner == null
-                ? requireText(request.getContactPhone(), "Số điện thoại liên hệ", 10) : owner.getPhone();
+                ? requireText(request.getContactPhone(), "Số điện thoại", 10) : owner.getPhone();
         String contactEmail = owner == null
-                ? requireText(request.getContactEmail(), "Email liên hệ", 100).toLowerCase(Locale.ROOT) : owner.getEmail();
+                ? requireText(request.getContactEmail(), "Email", 100).toLowerCase(Locale.ROOT) : owner.getEmail();
+        String locationName = requireText(request.getLocationName(), "Tên địa điểm", 100);
+        String address = requireText(request.getAddress(), "Địa chỉ", 255);
         if (owner == null) {
             lockContact(contactEmail, contactPhone);
             requireAvailableContact(contactEmail, contactPhone);
             requireNoPendingGuestRegistration(contactEmail, contactPhone);
+        } else {
+            requireNewOwnerLocation(owner.getId(), locationName, address);
+            boolean pending = serviceRegistrationRepository
+                    .findAllByRequesterIdAndStatusOrderByCreatedAtDescIdDesc(owner.getId(), ApprovalStatus.PENDING)
+                    .stream()
+                    .anyMatch(item -> sameVenue(locationName, address, item.getLocationName(), item.getAddress()));
+            if (pending) {
+                throw new AppException("Địa điểm này đã có đơn đăng ký đang chờ duyệt.", HttpStatus.CONFLICT);
+            }
         }
 
+        // Kiểm tra xong mọi thứ mới lưu ảnh, để đơn bị từ chối vì dữ liệu sai không để lại file rác.
+        String proofPath = files.storeImage(proof, "service-registration-proofs");
+        LocalDateTime now = LocalDateTime.now();
         ServiceRegistration entity = ServiceRegistration.builder()
                 .requesterId(owner == null ? null : owner.getId())
-                .locationName(requireText(request.getLocationName(), "Tên địa điểm", 100))
-                .address(requireText(request.getAddress(), "Địa chỉ", 255))
+                .locationName(locationName)
+                .address(address)
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .courtCount(courtCount)
+                .rentalYears(rentalYears)
+                .rentalAmount(RentalFeeCalculator.amount(courtCount, rentalYears))
+                .proofImagePath(proofPath)
+                .termsAcceptedAt(now)
                 .contactName(contactName)
                 .contactPhone(contactPhone)
                 .contactEmail(contactEmail)
@@ -128,7 +180,7 @@ public class ServiceRegistrationService {
         return toDtos(items);
     }
 
-    /** UC05 - Admin xem toàn bộ đơn, lọc tuỳ chọn theo trạng thái. */
+    /** UC06 #1 - Admin xem toàn bộ đơn, lọc tuỳ chọn theo trạng thái. */
     @Transactional(readOnly = true)
     public List<ServiceRegistrationDto> listForAdmin(String status) {
         ApprovalStatus filter = parseStatus(status);
@@ -138,9 +190,24 @@ public class ServiceRegistrationService {
         return toDtos(items);
     }
 
+    /** UC06 #1 - Admin xem ảnh chứng từ chuyển khoản của đơn (FR11). Quyền Admin do SecurityConfig chặn. */
+    @Transactional(readOnly = true)
+    public Resource loadProof(Long registrationId) {
+        if (registrationId == null || registrationId <= 0) {
+            throw new AppException("Mã đơn đăng ký không hợp lệ");
+        }
+        ServiceRegistration entity = serviceRegistrationRepository.findById(registrationId)
+                .orElseThrow(() -> new AppException("Không tìm thấy đơn đăng ký", HttpStatus.NOT_FOUND));
+        if (isBlank(entity.getProofImagePath())) {
+            throw new AppException("Đơn đăng ký không có ảnh chứng từ", HttpStatus.NOT_FOUND);
+        }
+        return files.load(entity.getProofImagePath());
+    }
+
     /**
-     * UC05 - Admin duyệt đơn: tạo địa điểm thật cho owner gửi đơn, sinh đủ số sân mà đơn
-     * đã khai báo và mở kỳ hạn dịch vụ 12 tháng.
+     * UC06 #2 - Admin duyệt đơn khi đã thấy tiền thuê về (FR11, FR12): tạo địa điểm, sinh đủ số sân mà đơn
+     * đã khai báo, ghi thời hạn từ ngày duyệt theo số năm thuê, tạo tài khoản Owner nếu là đơn của Guest
+     * và gửi email MSG116.
      *
      * Các sân mặc định ở trạng thái tạm ngưng để Owner thiết lập giá trước khi bật.
      */
@@ -151,9 +218,18 @@ public class ServiceRegistrationService {
         if (isBlank(entity.getContactPhone())) {
             throw new AppException("Đơn thiếu số điện thoại liên hệ, không thể duyệt");
         }
+        if (isBlank(entity.getContactEmail())) {
+            throw new AppException("Đơn thiếu email của chủ sân, không gửi được kết quả");
+        }
         int courtCount = validateCourtCount(entity.getCourtCount());
+        int rentalYears = validateRentalYears(entity.getRentalYears());
+        NewOwner newOwner = null;
         if (entity.getRequesterId() == null) {
-            entity.setRequesterId(createOwner(entity).getId());
+            newOwner = createOwner(entity);
+            entity.setRequesterId(newOwner.account().getId());
+        } else {
+            Account owner = lockOwner(entity.getRequesterId());
+            requireNewOwnerLocation(owner.getId(), entity.getLocationName(), entity.getAddress());
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -170,11 +246,13 @@ public class ServiceRegistrationService {
 
         courtRepository.saveAll(defaultCourts(location.getId(), courtCount));
 
+        // FR12, DR29: thời hạn tính từ ngày duyệt theo số năm thuê (1 năm = 12 tháng, đủ mức tối thiểu).
         LocalDate startDate = LocalDate.now();
+        LocalDate endDate = startDate.plusYears(rentalYears).minusDays(1);
         serviceTermRepository.save(ServiceTerm.builder()
                 .locationId(location.getId())
                 .startDate(startDate)
-                .endDate(startDate.plusMonths(SERVICE_TERM_MONTHS).minusDays(1))
+                .endDate(endDate)
                 .recordedBy(admin == null ? null : admin.getId())
                 .build());
 
@@ -185,10 +263,16 @@ public class ServiceRegistrationService {
         entity.setRejectReason(null);
 
         ServiceRegistration saved = serviceRegistrationRepository.save(entity);
+
+        // MSG116: gửi sau cùng; lỗi thì exception hủy toàn bộ giao dịch (chưa tạo địa điểm, tài khoản).
+        emails.sendServiceRegistrationApproved(saved.getContactEmail(), saved.getLocationName(), courtCount,
+                formatMoney(rentalAmountOf(saved)), startDate.format(EMAIL_DATE), endDate.format(EMAIL_DATE),
+                newOwner == null ? null : newOwner.account().getUsername(),
+                newOwner == null ? null : newOwner.rawPassword());
         return ServiceRegistrationDto.fromEntity(saved, requesterName(saved.getRequesterId()));
     }
 
-    /** UC05 - Admin từ chối đơn, bắt buộc ghi lý do. */
+    /** UC06 #3 - Admin từ chối đơn, bắt buộc ghi lý do; hệ thống gửi email lý do (MSG117). */
     @Transactional
     public ServiceRegistrationDto reject(UserPrincipal admin, Long registrationId,
             RejectServiceRegistrationRequest request) {
@@ -201,30 +285,69 @@ public class ServiceRegistrationService {
         entity.setProcessedAt(LocalDateTime.now());
 
         ServiceRegistration saved = serviceRegistrationRepository.save(entity);
+        if (!isBlank(saved.getContactEmail())) {
+            emails.sendServiceRegistrationRejected(saved.getContactEmail(), saved.getLocationName(), reason);
+        }
         return ServiceRegistrationDto.fromEntity(saved, requesterName(saved.getRequesterId()));
     }
 
     // --------------------------------------------------------------- helpers
 
-    private Account createOwner(ServiceRegistration registration) {
+    /** FR11, BR59: tên đăng nhập theo DR22 và mật khẩu theo DR23 do hệ thống sinh; mật khẩu lưu dạng băm. */
+    private NewOwner createOwner(ServiceRegistration registration) {
         String email = requireText(registration.getContactEmail(), "Email liên hệ", 100).toLowerCase(Locale.ROOT);
         lockContact(email, registration.getContactPhone());
         requireAvailableContact(email, registration.getContactPhone());
-        // The Owner sets their first password through the existing email OTP reset flow.
+        String username = uniqueUsername();
+        String rawPassword = credentials.password();
         try {
-            return accountRepository.saveAndFlush(Account.builder()
-                    .username("owner." + UUID.randomUUID().toString().replace("-", "").substring(0, 26))
+            Account account = accountRepository.saveAndFlush(Account.builder()
+                    .username(username)
                     .email(email)
                     .phone(registration.getContactPhone())
                     .fullName(registration.getContactName())
-                    .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
+                    .passwordHash(passwordEncoder.encode(rawPassword))
                     .role(Role.OWNER)
                     .status(AccountStatus.ACTIVE)
                     .build());
+            return new NewOwner(account, rawPassword);
         } catch (DataIntegrityViolationException ex) {
             throw new AppException("Không thể tạo tài khoản Owner. Kiểm tra email và số điện thoại của đơn.",
                     HttpStatus.CONFLICT);
         }
+    }
+
+    private String uniqueUsername() {
+        for (int attempt = 0; attempt < USERNAME_ATTEMPTS; attempt++) {
+            String candidate = credentials.username();
+            if (!accountRepository.existsByUsername(candidate)) {
+                return candidate;
+            }
+        }
+        throw new AppException("Không sinh được tên đăng nhập cho Owner, vui lòng thử duyệt lại",
+                HttpStatus.CONFLICT);
+    }
+
+    private Account lockOwner(Long ownerId) {
+        return accountRepository.findByIdForUpdate(ownerId)
+                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản Owner", HttpStatus.NOT_FOUND));
+    }
+
+    private void requireNewOwnerLocation(Long ownerId, String name, String address) {
+        if (locationRepository.findAllByOwnerId(ownerId).stream()
+                .anyMatch(location -> sameVenue(name, address, location.getName(), location.getAddress()))) {
+            throw new AppException("Địa điểm này đã thuộc tài khoản Owner.", HttpStatus.CONFLICT);
+        }
+    }
+
+    private static boolean sameVenue(String name, String address, String existingName, String existingAddress) {
+        return normalizeVenueText(name).equals(normalizeVenueText(existingName))
+                && normalizeVenueText(address).equals(normalizeVenueText(existingAddress));
+    }
+
+    private static String normalizeVenueText(String value) {
+        return java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFC)
+                .replaceAll("(?U)\\s+", " ").strip().toLowerCase(Locale.ROOT);
     }
 
     private void lockContact(String email, String phone) {
@@ -245,7 +368,7 @@ public class ServiceRegistrationService {
 
     private void requireAvailableContact(String email, String phone) {
         if (accountRepository.existsByEmail(email)) {
-            throw new AppException("Email đã có tài khoản. Hãy đăng nhập bằng tài khoản Owner để gửi đơn. (MSG103)",
+            throw new AppException("Email này đã có tài khoản. Vui lòng đăng nhập để đăng ký thêm địa điểm. (MSG103)",
                     HttpStatus.CONFLICT);
         }
         if (accountRepository.existsByPhone(phone)) {
@@ -278,6 +401,33 @@ public class ServiceRegistrationService {
             throw new AppException("Số sân tối đa là " + MAX_COURT_COUNT);
         }
         return courtCount;
+    }
+
+    /** DR19, DR29: số năm thuê nguyên, tối thiểu 1. */
+    private int validateRentalYears(Integer rentalYears) {
+        if (rentalYears == null) {
+            throw new AppException("Số năm thuê không được để trống");
+        }
+        if (rentalYears < 1) {
+            throw new AppException("Số năm thuê tối thiểu là 1 năm");
+        }
+        if (rentalYears > MAX_RENTAL_YEARS) {
+            throw new AppException("Số năm thuê tối đa là " + MAX_RENTAL_YEARS + " năm");
+        }
+        return rentalYears;
+    }
+
+    /** Đơn cũ (trước D168) đã được migration tính tiền; phòng khi thiếu thì tính lại theo P35. */
+    private BigDecimal rentalAmountOf(ServiceRegistration entity) {
+        return entity.getRentalAmount() != null ? entity.getRentalAmount()
+                : RentalFeeCalculator.amount(entity.getCourtCount(), entity.getRentalYears());
+    }
+
+    /** 4445000 → "4.445.000" (cách viết tiền trong MSG116). */
+    static String formatMoney(BigDecimal amount) {
+        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.ROOT);
+        symbols.setGroupingSeparator('.');
+        return new DecimalFormat("#,##0", symbols).format(amount);
     }
 
     /** Đơn phải đang PENDING: đã duyệt/từ chối rồi thì trả 409 để tránh tạo trùng địa điểm. */

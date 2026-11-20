@@ -1,5 +1,5 @@
 -- ============================================================
--- BMS (SEP490-G13) - Tạo database BMS và 37 bảng, SQL Server 2019+. Chỉ có cấu trúc, chưa có dữ liệu.
+-- BMS (SEP490-G13) - Tạo database BMS và 38 bảng, SQL Server 2019+. Chỉ có cấu trúc, chưa có dữ liệu.
 -- Theo Baseline 2 (UC_FR_NFR_baseline2.xlsx, 21/10/2026). Sinh tự động từ erd_spec.js, khớp BMS_ERD.drawio.
 -- Khóa ngoại thêm sau cùng (account <-> location tham chiếu vòng).
 -- Trạng thái lưu bằng mã viết hoa theo sheet Trang_thai (@Enumerated(EnumType.STRING)).
@@ -108,6 +108,10 @@ CREATE TABLE service_registration (
     latitude DECIMAL(9,6) NOT NULL,
     longitude DECIMAL(9,6) NOT NULL,
     court_count INT NOT NULL,
+    rental_years INT NOT NULL,
+    rental_amount DECIMAL(12,0) NOT NULL,
+    proof_image_path VARCHAR(255) NULL,
+    terms_accepted_at DATETIME2(0) NULL,
     contact_name NVARCHAR(50) NULL,
     contact_phone VARCHAR(10) NULL,
     contact_email VARCHAR(100) NULL,
@@ -119,6 +123,8 @@ CREATE TABLE service_registration (
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_service_registration_created_at DEFAULT SYSDATETIME(),
     CONSTRAINT pk_service_registration PRIMARY KEY (id),
     CONSTRAINT ck_sreg_courts CHECK (court_count > 0),
+    CONSTRAINT ck_sreg_rental_years CHECK (rental_years >= 1),
+    CONSTRAINT ck_sreg_rental_amount CHECK (rental_amount > 0),
     CONSTRAINT ck_sreg_phone_digits CHECK (contact_phone IS NULL OR (LEN(contact_phone) = 10 AND contact_phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
     CONSTRAINT ck_sreg_status CHECK (status IN ('PENDING','APPROVED','REJECTED')),
     CONSTRAINT ck_sreg_guest_contact CHECK (requester_id IS NOT NULL OR (contact_name IS NOT NULL AND contact_phone IS NOT NULL AND contact_email IS NOT NULL)),
@@ -168,6 +174,23 @@ CREATE TABLE service_term (
 );
 CREATE INDEX ix_sterm_location ON service_term (location_id, end_date);
 
+-- operator_payment_info: Thông tin nhận chuyển khoản của bên vận hành, một dòng duy nhất (FR127, DR28).
+-- qr_image_path để trống thì backend trả ảnh QR mặc định đóng gói sẵn.
+CREATE TABLE operator_payment_info (
+    id INT NOT NULL,
+    bank_name NVARCHAR(100) NOT NULL,
+    bank_account_no VARCHAR(30) NOT NULL,
+    bank_account_holder NVARCHAR(100) NOT NULL,
+    qr_image_path VARCHAR(255) NULL,
+    updated_by BIGINT NULL,
+    updated_at DATETIME2(0) NULL,
+    CONSTRAINT pk_operator_payment_info PRIMARY KEY (id),
+    CONSTRAINT ck_operator_payment_info_single CHECK (id = 1)
+);
+-- Giá trị mặc định khi cài hệ thống (D169); tài khoản giả, Admin sửa thành tài khoản thật.
+INSERT INTO operator_payment_info (id, bank_name, bank_account_no, bank_account_holder)
+VALUES (1, N'MB Bank', '0123456789', N'BEN VAN HANH BMS');
+
 -- court: Sân con của địa điểm (UC07).
 CREATE TABLE court (
     id BIGINT IDENTITY(1,1) NOT NULL,
@@ -177,10 +200,39 @@ CREATE TABLE court (
     is_active BIT NOT NULL CONSTRAINT df_court_is_active DEFAULT 0,
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_court_created_at DEFAULT SYSDATETIME(),
     updated_at DATETIME2(0) NULL,
+    -- Sân mua thêm (D173): chỉ nhận lịch từ ngày sau khi Admin duyệt đến hết thời hạn đã trả; NULL với sân khác.
+    available_from DATE NULL,
+    available_until DATE NULL,
     CONSTRAINT pk_court PRIMARY KEY (id),
     CONSTRAINT ux_court_name UNIQUE (location_id, name),
     CONSTRAINT uk_court_id_location UNIQUE (id, location_id)
 );
+
+-- Yêu cầu mua thêm sân (D173): tiền tính theo tháng còn lại của thời hạn, chốt lúc gửi; Admin duyệt thì hệ thống tạo sân.
+CREATE TABLE court_expansion_request (
+    id BIGINT IDENTITY PRIMARY KEY,
+    location_id BIGINT NOT NULL REFERENCES location(id),
+    owner_id BIGINT NOT NULL REFERENCES account(id),
+    court_count INT NOT NULL CHECK(court_count BETWEEN 1 AND 100),
+    reference_fee DECIMAL(14,0) NOT NULL CHECK(reference_fee > 0),
+    quoted_start DATE NOT NULL, contract_end DATE NOT NULL,
+    quoted_amount DECIMAL(14,0) NOT NULL CHECK(quoted_amount > 0),
+    proof_path NVARCHAR(255) NOT NULL,
+    status VARCHAR(10) NOT NULL CHECK(status IN ('PENDING','APPROVED','REJECTED')),
+    effective_start DATE NULL, final_amount DECIMAL(14,0) NULL,
+    received_amount DECIMAL(14,0) NULL, refunded_amount DECIMAL(14,0) NULL,
+    settlement_note NVARCHAR(500) NULL, reject_reason NVARCHAR(500) NULL,
+    processed_by BIGINT NULL REFERENCES account(id),
+    processed_at DATETIME2 NULL, created_at DATETIME2 NOT NULL,
+    CONSTRAINT ck_expansion_dates CHECK(contract_end >= quoted_start),
+    CONSTRAINT ck_expansion_settlement CHECK(status='PENDING' OR
+        (final_amount IS NOT NULL AND received_amount IS NOT NULL AND refunded_amount IS NOT NULL
+         AND final_amount >= 0 AND refunded_amount >= 0 AND received_amount = final_amount + refunded_amount)),
+    CONSTRAINT ck_expansion_decision CHECK(status='PENDING' OR (processed_by IS NOT NULL AND processed_at IS NOT NULL)),
+    CONSTRAINT ck_expansion_approved CHECK(status<>'APPROVED' OR (effective_start IS NOT NULL AND effective_start<=contract_end AND final_amount>0)),
+    CONSTRAINT ck_expansion_rejected CHECK(status<>'REJECTED' OR (reject_reason IS NOT NULL AND final_amount=0))
+);
+CREATE UNIQUE INDEX ux_expansion_pending ON court_expansion_request(location_id) WHERE status='PENDING';
 
 -- opening_hour: Giờ mở cửa theo thứ trong tuần (FR18). Không có dòng = ngày đó đóng cửa.
 CREATE TABLE opening_hour (
@@ -810,6 +862,7 @@ ALTER TABLE service_registration ADD CONSTRAINT fk_service_registration_location
 ALTER TABLE location ADD CONSTRAINT fk_location_owner_id FOREIGN KEY (owner_id) REFERENCES account (id);
 ALTER TABLE service_term ADD CONSTRAINT fk_service_term_location_id FOREIGN KEY (location_id) REFERENCES location (id);
 ALTER TABLE service_term ADD CONSTRAINT fk_service_term_recorded_by FOREIGN KEY (recorded_by) REFERENCES account (id);
+ALTER TABLE operator_payment_info ADD CONSTRAINT fk_operator_payment_info_updated_by FOREIGN KEY (updated_by) REFERENCES account (id);
 ALTER TABLE court ADD CONSTRAINT fk_court_location_id FOREIGN KEY (location_id) REFERENCES location (id);
 ALTER TABLE opening_hour ADD CONSTRAINT fk_opening_hour_location_id FOREIGN KEY (location_id) REFERENCES location (id);
 ALTER TABLE opening_exception ADD CONSTRAINT fk_opening_exception_location_id FOREIGN KEY (location_id) REFERENCES location (id);
@@ -904,10 +957,10 @@ ALTER TABLE complaint ADD CONSTRAINT fkc_complaint_payment_location FOREIGN KEY 
 
 COMMIT TRANSACTION;
 GO
--- Kiểm tra: phải ra 37 bảng, 90 khóa ngoại một cột, 9 khóa ngoại kép.
-SELECT COUNT(*) AS so_bang_BMS FROM sys.tables WHERE name IN ('account', 'account_audit', 'otp_request', 'service_registration', 'location', 'service_term', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'loyalty_accrual', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
+-- Kiểm tra: phải ra 38 bảng, 91 khóa ngoại một cột, 9 khóa ngoại kép.
+SELECT COUNT(*) AS so_bang_BMS FROM sys.tables WHERE name IN ('account', 'account_audit', 'otp_request', 'service_registration', 'location', 'service_term', 'operator_payment_info', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'loyalty_accrual', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
 SELECT COUNT(*) AS so_khoa_ngoai_BMS FROM sys.foreign_keys WHERE name LIKE 'fk[_]%' COLLATE Latin1_General_CS_AS;
 SELECT COUNT(*) AS so_khoa_ngoai_kep FROM sys.foreign_keys WHERE name LIKE 'fkc[_]%' COLLATE Latin1_General_CS_AS;
 -- Database mới được sao từ database hệ thống model. Nếu model có bảng thì các bảng đó hiện ở đây: không thuộc BMS, nên xóa.
-SELECT name AS bang_khong_thuoc_BMS FROM sys.tables WHERE name NOT IN ('account', 'account_audit', 'otp_request', 'service_registration', 'location', 'service_term', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'loyalty_accrual', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
+SELECT name AS bang_khong_thuoc_BMS FROM sys.tables WHERE name NOT IN ('account', 'account_audit', 'otp_request', 'service_registration', 'location', 'service_term', 'operator_payment_info', 'court', 'opening_hour', 'opening_exception', 'price_rule', 'maintenance', 'booking_package', 'booking', 'booking_slot', 'payment', 'payment_proof', 'reconciliation', 'reschedule_request', 'affected_booking', 'refund_request', 'voucher', 'voucher_grant', 'voucher_usage', 'player_location_balance', 'point_transaction', 'loyalty_tier', 'loyalty_reward', 'loyalty_accrual', 'batch_offer', 'team', 'team_member', 'team_join_request', 'match', 'match_join_request', 'review', 'complaint', 'notification');
 GO

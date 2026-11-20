@@ -39,6 +39,7 @@ export function Modal({
       className={[styles.dialogNative, className].filter(Boolean).join(' ')}
       onCancel={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         if (!busy && handleClose) handleClose();
       }}
     >

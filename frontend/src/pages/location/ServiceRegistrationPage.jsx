@@ -1,12 +1,31 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import api, { apiErrorMessage } from '../../api';
+import { getServiceRegistrationPaymentInfo, operatorQrUrl, submitServiceRegistration } from '../../api/locationApi';
 import { useAuth } from '../../hooks/useAuth';
 import LocationMap from '../../components/map/LocationMap';
+import GoogleLocationPicker, { hasGoogleMapsKey, loadMaps } from '../../components/map/GoogleLocationPicker';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { LoadingState } from '../../components/common';
+import { SERVICE_TERMS, formatVnd, rentalAmount } from './serviceRegistrationTerms';
 import styles from './ServiceRegistrationPage.module.css';
+import { attribution, provinces } from './vietnam-addresses.json';
 
+const addressFields = { provinceCode: '', wardCode: '', addressDetail: '' };
+const compareNames = new Intl.Collator('vi').compare;
+const provinceOptions = [...provinces].sort((a, b) => compareNames(a.name, b.name));
+
+/** DR19: ảnh chứng từ JPG hoặc PNG, tối đa 5 MB (backend FileStorageService kiểm tra lại). */
+const PROOF_TYPES = ['image/jpeg', 'image/png'];
+const PROOF_MAX_BYTES = 5 * 1024 * 1024;
+/** Đề xuất, chưa duyệt: tối đa 10 năm trên một đơn (DR29 chỉ quy định tối thiểu 1 năm). */
+const MAX_RENTAL_YEARS = 10;
+
+/**
+ * Feature: F2 - Quản lý địa điểm
+ * UC05 - Đăng ký sử dụng dịch vụ (FR10, BR61, BR65, DR19, P35; D168, D169).
+ * Guest (hoặc Owner đăng ký thêm địa điểm) nhập địa điểm, số sân, số năm thuê; form tự tính tiền thuê,
+ * hiện QR của bên vận hành và điều khoản; chủ sân chuyển khoản, đính kèm ảnh chứng từ, đồng ý điều khoản rồi gửi.
+ */
 export default function ServiceRegistrationPage() {
   const { user } = useAuth();
 
@@ -16,16 +35,26 @@ export default function ServiceRegistrationPage() {
 
   const [formData, setFormData] = useState({
     locationName: '',
-    address: '',
+    ...addressFields,
     latitude: '',
     longitude: '',
     courtCount: '',
+    rentalYears: '1',
     contactName: '',
     contactPhone: '',
     contactEmail: '',
   });
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [proofFile, setProofFile] = useState(null);
+  const [proofPreview, setProofPreview] = useState('');
+  const [paymentInfo, setPaymentInfo] = useState(null);
+  const [paymentInfoError, setPaymentInfoError] = useState('');
 
   const [fieldErrors, setFieldErrors] = useState({});
+  const [lookingUpAddress, setLookingUpAddress] = useState(false);
+  const [mapAddressError, setMapAddressError] = useState('');
+  const [mapAddress, setMapAddress] = useState('');
+  const mapLookupInProgress = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -36,6 +65,13 @@ export default function ServiceRegistrationPage() {
   const [myRegistrations, setMyRegistrations] = useState([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [listError, setListError] = useState('');
+
+  const province = provinceOptions.find(({ code }) => code === formData.provinceCode);
+  const wardOptions = province ? [...province.wards].sort((a, b) => compareNames(a.name, b.name)) : [];
+  const ward = wardOptions.find(({ code }) => code === formData.wardCode);
+  const addressDetail = formData.addressDetail.trim();
+  const address = province && ward && addressDetail ? [addressDetail, ward.name, province.name].join(', ') : '';
+  const addressDisabled = !canSubmit || isSubmitting || lookingUpAddress || locating;
 
   const loadMyRegistrations = useCallback(async () => {
     if (!user || !isOwner) return;
@@ -59,6 +95,48 @@ export default function ServiceRegistrationPage() {
     });
   }, [loadMyRegistrations]);
 
+  // FR127: thông tin chuyển khoản và QR của bên vận hành luôn có (mặc định khi cài hệ thống).
+  useEffect(() => {
+    let cancelled = false;
+    getServiceRegistrationPaymentInfo()
+      .then((info) => { if (!cancelled) setPaymentInfo(info); })
+      .catch((err) => {
+        if (!cancelled) setPaymentInfoError(apiErrorMessage(err, 'Không tải được thông tin chuyển khoản.'));
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Thu hồi object URL của ảnh xem trước khi đổi ảnh hoặc rời trang.
+  useEffect(() => () => { if (proofPreview) URL.revokeObjectURL(proofPreview); }, [proofPreview]);
+
+  const amount = rentalAmount(formData.courtCount, formData.rentalYears,
+    paymentInfo?.referenceFee, paymentInfo?.referenceCourts);
+
+  const clearFieldError = (field) => {
+    setFieldErrors(({ [field]: _removed, ...rest }) => rest);
+  };
+
+  const handleProofChange = (file) => {
+    clearFieldError('proof');
+    setProofFile(null);
+    setProofPreview('');
+    if (!file) return;
+    if (!PROOF_TYPES.includes(file.type)) {
+      setFieldErrors((prev) => ({ ...prev, proof: 'Chỉ nhận ảnh JPG hoặc PNG.' }));
+      return;
+    }
+    if (file.size > PROOF_MAX_BYTES) {
+      setFieldErrors((prev) => ({ ...prev, proof: 'Ảnh tối đa 5 MB.' }));
+      return;
+    }
+    if (file.size === 0) {
+      setFieldErrors((prev) => ({ ...prev, proof: 'Ảnh chứng từ không được là file rỗng.' }));
+      return;
+    }
+    setProofFile(file);
+    setProofPreview(URL.createObjectURL(file));
+  };
+
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (fieldErrors[field]) {
@@ -76,11 +154,60 @@ export default function ServiceRegistrationPage() {
       latitude: Number(latitude.toFixed(6)),
       longitude: Number(longitude.toFixed(6)),
     }));
-    setFieldErrors(({ location: _location, ...rest }) => rest);
+    setFieldErrors(({ latitude: _latitude, longitude: _longitude, ...rest }) => rest);
     setLocationError('');
   };
 
+  const handleAddressChange = (field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+      ...(field === 'provinceCode' && { wardCode: '' }),
+      latitude: '',
+      longitude: '',
+    }));
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      delete next.latitude;
+      delete next.address;
+      if (field === 'provinceCode') delete next.wardCode;
+      return next;
+    });
+    setMapAddress('');    setMapAddressError('');
+    setLocationError('');
+  };
+
+  const lookupMapAddress = async (request) => {
+    if (mapLookupInProgress.current || isSubmitting) return;
+    mapLookupInProgress.current = true;
+    setLookingUpAddress(true);
+    setMapAddressError('');
+    setMapAddress('');
+    try {
+      const maps = await loadMaps();
+      const { Geocoder } = await maps.importLibrary('geocoding');
+      const { results } = await new Geocoder().geocode(request);
+      const result = results[0];
+      if (!result?.formatted_address) throw new Error('No matching address');
+      setMapAddress(result.formatted_address);
+    } catch {
+      setMapAddressError('Google Maps chưa tra được địa chỉ tại điểm ghim. Vị trí bạn chọn vẫn được giữ.');
+    } finally {
+      mapLookupInProgress.current = false;
+      setLookingUpAddress(false);
+    }
+  };
+
+  const handleMapPick = (latitude, longitude) => {
+    if (mapLookupInProgress.current || isSubmitting) return;
+    fillCoordinates(latitude, longitude);    setMapAddress('');
+    setMapAddressError('');
+    if (hasGoogleMapsKey) lookupMapAddress({ location: { lat: latitude, lng: longitude } });
+  };
+
   const handleGetCurrentLocation = () => {
+    if (mapLookupInProgress.current || isSubmitting || locating) return;
     if (!window.isSecureContext || !navigator.geolocation) {
       setLocationError('Không thể dùng định vị ở trình duyệt này. Hãy bấm vào bản đồ để đặt ghim.');
       return;
@@ -89,7 +216,7 @@ export default function ServiceRegistrationPage() {
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
-        fillCoordinates(coords.latitude, coords.longitude);
+        handleMapPick(coords.latitude, coords.longitude);
         setLocating(false);
       },
       (error) => {
@@ -105,7 +232,7 @@ export default function ServiceRegistrationPage() {
     );
   };
 
-  const validate = () => {
+  const getValidationErrors = () => {
     const errors = {};
 
     if (!formData.locationName.trim()) {
@@ -114,56 +241,84 @@ export default function ServiceRegistrationPage() {
       errors.locationName = 'Tên địa điểm tối đa 100 ký tự.';
     }
 
-    if (!formData.address.trim()) {
-      errors.address = 'Địa chỉ không được để trống.';
-    } else if (formData.address.trim().length > 255) {
-      errors.address = 'Địa chỉ tối đa 255 ký tự.';
-    }
+    if (!province) errors.provinceCode = 'Hãy chọn tỉnh hoặc thành phố.';
+    if (!ward) errors.wardCode = 'Hãy chọn xã, phường hoặc đặc khu.';
+    if (!addressDetail) errors.addressDetail = 'Hãy nhập địa chỉ chi tiết.';
+    if (address.length > 255) errors.address = 'Địa chỉ đầy đủ tối đa 255 ký tự.';
 
-    // DR19: vị trí bắt buộc, chọn bằng điểm ghim trên bản đồ (kinh độ, vĩ độ do bản đồ điền, không nhập tay).
-    if (formData.latitude === '' || formData.longitude === '') {
-      errors.location = 'Hãy chọn vị trí địa điểm trên bản đồ.';
+    if (formData.latitude === '' || formData.longitude === '' ||
+        !Number.isFinite(Number(formData.latitude)) || Math.abs(Number(formData.latitude)) > 90 ||
+        !Number.isFinite(Number(formData.longitude)) || Math.abs(Number(formData.longitude)) > 180) {
+      errors.latitude = 'Hãy xác định vị trí sân trên bản đồ.';
     }
 
     const courts = Number(formData.courtCount);
     if (!Number.isInteger(courts) || courts < 1) {
       errors.courtCount = 'Số sân phải lớn hơn 0.';
     } else if (courts > 50) {
-      errors.courtCount = 'Số sân tối đa là 50 sân trên một cơ sở.';
+      errors.courtCount = 'Số sân tối đa là 50 sân trên một địa điểm.';
+    }
+
+    const years = Number(formData.rentalYears);
+    if (!Number.isInteger(years) || years < 1) {
+      errors.rentalYears = 'Số năm thuê tối thiểu là 1 năm.';
+    } else if (years > MAX_RENTAL_YEARS) {
+      errors.rentalYears = `Số năm thuê tối đa là ${MAX_RENTAL_YEARS} năm.`;
+    }
+
+    if (!proofFile) {
+      errors.proof = 'Vui lòng đính kèm ảnh chứng từ chuyển khoản tiền thuê.';
+    }
+    if (!termsAccepted) {
+      errors.terms = 'Vui lòng đọc và đồng ý điều khoản sử dụng dịch vụ.';
     }
 
     if (!isOwner) {
       if (!formData.contactName.trim()) {
         errors.contactName = 'Tên người liên hệ không được để trống.';
+      } else if (formData.contactName.trim().length > 50) {
+        errors.contactName = 'Tên người liên hệ tối đa 50 ký tự.';
       }
       if (!/^[0-9]{10}$/.test(formData.contactPhone.trim())) {
         errors.contactPhone = 'Số điện thoại liên hệ phải gồm đúng 10 chữ số.';
       }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contactEmail.trim())) {
+      if (formData.contactEmail.trim().length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contactEmail.trim())) {
         errors.contactEmail = 'Nhập email hợp lệ để nhận quyền truy cập tài khoản sau khi được duyệt.';
       }
     }
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
+    return errors;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (addressDisabled || mapLookupInProgress.current) return;
     setSubmitSuccess('');
     setSubmitError('');
 
     if (!canSubmit) return;
 
-    if (!validate()) return;
+    const validationErrors = getValidationErrors();
+    setFieldErrors(validationErrors);
+    const firstError = Object.keys(validationErrors)[0];
+    if (firstError) {
+      const fieldId = { address: 'addressDetail', latitude: 'registration-map' }[firstError] || firstError;
+      const field = e.currentTarget.querySelector('[id="' + fieldId + '"]');
+      const target = firstError === 'proof' ? e.currentTarget.querySelector('label[for="proof"]') : field;
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      field?.focus({ preventScroll: true });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       const payload = {
         locationName: formData.locationName.trim(),
-        address: formData.address.trim(),
+        address,
         latitude: Number(formData.latitude),
         longitude: Number(formData.longitude),
         courtCount: Number(formData.courtCount),
+        rentalYears: Number(formData.rentalYears),
+        termsAccepted,
         ...(!isOwner && {
           contactName: formData.contactName.trim(),
           contactPhone: formData.contactPhone.trim(),
@@ -171,16 +326,22 @@ export default function ServiceRegistrationPage() {
         }),
       };
 
-      const res = await api.post('/service-registrations', payload);
-      setSubmitSuccess(
-        res.data?.message || 'Đơn đăng ký sử dụng dịch vụ đã được gửi thành công! Quản trị viên sẽ sớm liên hệ và xét duyệt.'
-      );
-      // Reset form
+      const res = await submitServiceRegistration(payload, proofFile);
+      // MSG99 do backend trả về, có email nhận kết quả.
+      setSubmitSuccess(res?.message || 'Đã gửi yêu cầu đăng ký.');
+      // Đơn đã gửi kèm chứng từ của lần chuyển khoản này: xóa để lần sau không gửi trùng ảnh.
+      setMapAddress('');
+      setMapAddressError('');
       setFormData((prev) => ({
         ...prev,
         locationName: '',
-        address: '',
+        ...addressFields,
+        latitude: '',
+        longitude: '',
       }));
+      setProofFile(null);
+      setProofPreview('');
+      setTermsAccepted(false);
       setFieldErrors({});
       loadMyRegistrations();
     } catch (err) {
@@ -192,18 +353,18 @@ export default function ServiceRegistrationPage() {
 
   return (
     <PublicLayout
-      title="Đăng ký dịch vụ sân"
-      subtitle="Đưa cơ sở cầu lông của bạn lên hệ thống Courtly để tiếp cận hàng ngàn người chơi"
+      title={isOwner ? 'Đăng ký thêm địa điểm' : 'Đăng ký dịch vụ sân'}
+      subtitle={isOwner ? 'Địa điểm mới sẽ được gắn với tài khoản của bạn sau khi Admin duyệt.' : 'Đưa địa điểm cầu lông của bạn lên Courtly'}
     >
       <div className={styles.container}>
         {/* Banner giới thiệu */}
-        <div className={styles.introCard}>
+        {!isOwner && <div className={styles.introCard}>
           <h2 className={styles.introHeading}>Trở thành đối tác của Courtly</h2>
           <p className={styles.introText}>
             Hệ thống Courtly giúp bạn quản lý lịch đặt sân, doanh thu, nhân viên và kết nối với cộng đồng người chơi cầu
             lông năng động. Hãy điền thông tin cơ sở của bạn để bắt đầu!
           </p>
-        </div>
+        </div>}
 
         {/* Kiểm tra điều kiện vai trò */}
         {!canSubmit && (
@@ -221,9 +382,6 @@ export default function ServiceRegistrationPage() {
             ✓ {submitSuccess}
           </div>
         )}
-        {submitSuccess && !isOwner && (
-          <p>Sau khi Admin duyệt, vào <Link to="/login">Đăng nhập</Link>, chọn Quên mật khẩu và dùng email đã gửi để đặt mật khẩu lần đầu.</p>
-        )}
         {submitError && (
           <div className={`${styles.alertBox} ${styles.alertDanger}`}>
             ✕ {submitError}
@@ -236,7 +394,8 @@ export default function ServiceRegistrationPage() {
             Thông tin cơ sở cầu lông
           </h3>
           <p className={styles.cardSubtitle}>
-            Các mục đánh dấu <span className={styles.requiredMark}>*</span> là bắt buộc. Sau khi gửi, Quản trị viên sẽ xác thực và phê duyệt địa điểm của bạn.
+            Các mục đánh dấu <span className={styles.requiredMark}>*</span> là bắt buộc. Chuyển khoản tiền thuê theo thông tin bên dưới rồi đính kèm ảnh chứng từ.
+            Khi tiền thuê đã về, Quản trị viên duyệt và hệ thống gửi kết quả, tên đăng nhập, mật khẩu tới email của bạn.
           </p>
 
           <form onSubmit={handleSubmit} noValidate>
@@ -259,23 +418,50 @@ export default function ServiceRegistrationPage() {
               )}
             </div>
 
+            <div className={styles.twoColRow}>
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="provinceCode">
+                  <span>Tỉnh/Thành phố <span className={styles.requiredMark}>*</span></span>
+                </label>
+                <select id="provinceCode" className={`${styles.input} ${fieldErrors.provinceCode ? styles.inputError : ''}`}
+                  value={formData.provinceCode} onChange={(e) => handleAddressChange('provinceCode', e.target.value)}
+                  disabled={addressDisabled} required>
+                  <option value="">Chọn tỉnh/thành phố</option>
+                  {provinceOptions.map(({ code, name }) => <option key={code} value={code}>{name}</option>)}
+                </select>
+                {fieldErrors.provinceCode && <p className={styles.errorText} role="alert">{fieldErrors.provinceCode}</p>}
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="wardCode">
+                  <span>Xã/Phường/Đặc khu <span className={styles.requiredMark}>*</span></span>
+                </label>
+                <select id="wardCode" className={`${styles.input} ${fieldErrors.wardCode ? styles.inputError : ''}`}
+                  value={formData.wardCode} onChange={(e) => handleAddressChange('wardCode', e.target.value)}
+                  disabled={addressDisabled || !province} required>
+                  <option value="">{province ? 'Chọn xã/phường/đặc khu' : 'Chọn tỉnh/thành phố trước'}</option>
+                  {wardOptions.map(({ code, name }) => <option key={code} value={code}>{name}</option>)}
+                </select>
+                {fieldErrors.wardCode && <p className={styles.errorText} role="alert">{fieldErrors.wardCode}</p>}
+              </div>
+            </div>
+
             <div className={styles.formGroup}>
-              <label className={styles.label} htmlFor="address">
+              <label className={styles.label} htmlFor="addressDetail">
                 <span>Địa chỉ chi tiết <span className={styles.requiredMark}>*</span></span>
               </label>
-              <input
-                id="address"
-                type="text"
-                maxLength={255}
-                placeholder="VD: Số 123 Đường Cầu Giấy, Phường Dịch Vọng, Quận Cầu Giấy, Hà Nội"
-                className={`${styles.input} ${fieldErrors.address ? styles.inputError : ''}`}
-                value={formData.address}
-                onChange={(e) => handleChange('address', e.target.value)}
-                disabled={!canSubmit || isSubmitting}
+              <input id="addressDetail" type="text" maxLength={255}
+                placeholder="Số nhà, tên đường, thôn hoặc tổ dân phố"
+                className={`${styles.input} ${fieldErrors.addressDetail || fieldErrors.address ? styles.inputError : ''}`}
+                value={formData.addressDetail} onChange={(e) => handleAddressChange('addressDetail', e.target.value)}
+                disabled={addressDisabled} required
               />
-              {fieldErrors.address && (
-                <p className={styles.errorText} role="alert">{fieldErrors.address}</p>
-              )}
+              {(fieldErrors.addressDetail || fieldErrors.address) &&
+                <p className={styles.errorText} role="alert">{fieldErrors.addressDetail || fieldErrors.address}</p>}
+              {address && <p className={styles.helperText}>Địa chỉ đầy đủ: {address}</p>}
+              <small className={styles.helperText}>
+                Danh mục hành chính từ <a href={attribution.source} className="underline">{attribution.author}</a>
+                {' · '}<a href={attribution.license} className="underline">CC BY 4.0</a>
+              </small>
             </div>
 
             <div className={styles.threeColRow}>
@@ -298,42 +484,69 @@ export default function ServiceRegistrationPage() {
                 )}
                 <p className={styles.helperText}>Hệ thống sẽ tự động khởi tạo các sân này khi được duyệt.</p>
               </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="rentalYears">
+                  <span>Số năm thuê <span className={styles.requiredMark}>*</span></span>
+                </label>
+                <input
+                  id="rentalYears"
+                  type="number"
+                  min={1}
+                  max={MAX_RENTAL_YEARS}
+                  step={1}
+                  className={`${styles.input} ${fieldErrors.rentalYears ? styles.inputError : ''}`}
+                  value={formData.rentalYears}
+                  onChange={(e) => handleChange('rentalYears', e.target.value)}
+                  disabled={!canSubmit || isSubmitting}
+                />
+                {fieldErrors.rentalYears && (
+                  <p className={styles.errorText} role="alert">{fieldErrors.rentalYears}</p>
+                )}
+                <p className={styles.helperText}>Tối thiểu 1 năm, thời hạn tính từ ngày được duyệt.</p>
+              </div>
+
+              <div className={styles.formGroup}>
+                <span className={styles.label}><span>Số tiền thuê</span></span>
+                <p style={{ fontSize: 20, fontWeight: 700, margin: '8px 0 4px', color: 'var(--color-text)' }} aria-live="polite">
+                  {formatVnd(amount)}
+                </p>
+                <p className={styles.helperText}>
+                  Hệ thống tự tính: 10.000.000 đồng cho 9 sân con trong 1 năm, theo số sân và số năm thuê, làm tròn lên nghìn đồng.
+                </p>
+              </div>
             </div>
 
-            <div className={styles.formGroup}>
-              <span className={styles.label}>
-                <span>Vị trí địa điểm trên bản đồ <span className={styles.requiredMark}>*</span></span>
-              </span>
-              <p className={styles.helperText}>
-                Bấm vào bản đồ để đặt ghim tại sân của bạn, kéo ghim để chỉnh cho đúng. Có thể kéo, phóng to bản đồ để tìm.
-              </p>
-              {canSubmit && (
-                <div className="mt-2 max-w-md">
-                  <LocationMap
+            {fieldErrors.latitude && <p className={styles.errorText} role="alert">{fieldErrors.latitude}</p>}
+            {canSubmit && (
+              <div id="registration-map" tabIndex={-1} className="mt-4 max-w-md" aria-label="Vị trí sân trên bản đồ">
+                <p>Bấm vào bản đồ để ghim vị trí sân.</p>
+                <GoogleLocationPicker
+                  point={formData.latitude !== '' && formData.longitude !== '' &&
+                    Math.abs(Number(formData.latitude)) <= 90 && Math.abs(Number(formData.longitude)) <= 180
+                    ? { lat: Number(formData.latitude), lng: Number(formData.longitude) } : null}
+                  onPick={handleMapPick}
+                  disabled={isSubmitting || lookingUpAddress || locating}
+                  fallback={<LocationMap
                     initialCenter={{ latitude: 21.028511, longitude: 105.854444 }}
                     venues={formData.latitude === '' || formData.longitude === '' ? [] :
                       [{ facility_id: 'registration', latitude: formData.latitude, longitude: formData.longitude }]}
-                    onPick={fillCoordinates}
-                    pickDisabled={isSubmitting || locating}
-                  />
-                </div>
-              )}
-              <p className={styles.helperText} aria-live="polite">
-                {formData.latitude === '' || formData.longitude === ''
-                  ? 'Chưa chọn vị trí.'
-                  : `Đã chọn vị trí: ${formData.latitude}, ${formData.longitude}`}
-              </p>
-              {fieldErrors.location && (
-                <p className={styles.errorText} role="alert">{fieldErrors.location}</p>
-              )}
-            </div>
+                    onPick={handleMapPick}
+                    pickDisabled={isSubmitting || lookingUpAddress || locating}
+                  />}
+                />
+                {lookingUpAddress && <p role="status">Đang tìm địa chỉ trên bản đồ…</p>}
+                {mapAddress && <p role="status">Vị trí tìm được: {mapAddress}. Hãy kiểm tra và chỉnh ghim đúng vị trí sân trước khi gửi.</p>}
+                {mapAddressError && <p role="alert" className={styles.errorText}>{mapAddressError}</p>}
+              </div>
+            )}
 
             <div className={styles.coordActionRow}>
               <button
                 type="button"
                 className={styles.secondaryBtn}
                 onClick={handleGetCurrentLocation}
-                disabled={!canSubmit || isSubmitting || locating}
+                disabled={addressDisabled}
               >
                 {locating ? 'Đang lấy vị trí…' : 'Đặt ghim tại vị trí hiện tại (GPS)'}
               </button>
@@ -407,10 +620,101 @@ export default function ServiceRegistrationPage() {
 
             </>}
 
+            <hr style={{ margin: '24px 0', border: 'none', borderTop: '1px solid var(--color-border)' }} />
+
+            <h4 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 8px', color: 'var(--color-text)' }}>
+              Chuyển khoản tiền thuê
+            </h4>
+            <p className={styles.helperText}>
+              Chuyển <strong>{formatVnd(amount)}</strong> vào tài khoản của bên vận hành, sau đó đính kèm ảnh chứng từ.
+              Không giới hạn thời gian thanh toán.
+            </p>
+            {paymentInfoError && (
+              <div className={`${styles.alertBox} ${styles.alertDanger}`}>{paymentInfoError}</div>
+            )}
+            {paymentInfo && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start', margin: '12px 0 16px' }}>
+                <img
+                  src={operatorQrUrl(paymentInfo.updatedAt)}
+                  alt="Mã QR chuyển khoản của bên vận hành"
+                  width={180}
+                  height={180}
+                  style={{ border: '1px solid var(--color-border)', borderRadius: 8, background: '#fff' }}
+                />
+                <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px' }}>
+                  <dt>Ngân hàng</dt><dd style={{ margin: 0 }}><strong>{paymentInfo.bankName}</strong></dd>
+                  <dt>Số tài khoản</dt><dd style={{ margin: 0 }}><strong>{paymentInfo.bankAccountNo}</strong></dd>
+                  <dt>Chủ tài khoản</dt><dd style={{ margin: 0 }}><strong>{paymentInfo.bankAccountHolder}</strong></dd>
+                  <dt>Số tiền</dt><dd style={{ margin: 0 }}><strong>{formatVnd(amount)}</strong></dd>
+                  <dt />
+                  <dd style={{ margin: 0 }}>
+                    <a href={operatorQrUrl(paymentInfo.updatedAt)} download="qr-ben-van-hanh.png" className="underline">
+                      Lưu ảnh QR
+                    </a>
+                  </dd>
+                </dl>
+              </div>
+            )}
+
+            <div className={styles.formGroup}>
+              <label className={styles.label} htmlFor="proof">
+                <span>Ảnh chứng từ chuyển khoản <span className={styles.requiredMark}>*</span></span>
+              </label>
+              <input
+                id="proof"
+                className={styles.proofInput}
+                type="file"
+                accept="image/jpeg,image/png"
+                onChange={(e) => {
+                  handleProofChange(e.target.files?.[0] ?? null);
+                  e.target.value = '';
+                }}
+                disabled={!canSubmit || isSubmitting}
+                aria-describedby="proof-help"
+                aria-invalid={Boolean(fieldErrors.proof)}
+              />
+              <label htmlFor="proof" className={`${styles.proofPicker} ${proofFile ? styles.proofSelected : ''}`}>
+                {proofPreview ? <img src={proofPreview} alt="Ảnh chứng từ đã chọn" /> : <span className={styles.proofAdd} aria-hidden="true">+</span>}
+                <strong>{proofFile ? 'Bấm để thay ảnh chứng từ' : 'Bấm để chọn ảnh chứng từ'}</strong>
+                {proofFile && <span className={styles.proofFileName}>{proofFile.name}</span>}
+                <span id="proof-help">Ảnh JPG hoặc PNG, tối đa 5 MB.</span>
+              </label>
+              {proofFile && <button type="button" className={styles.removeProof} disabled={!canSubmit || isSubmitting}
+                onClick={() => handleProofChange(null)}>Xóa ảnh chứng từ</button>}
+              {fieldErrors.proof && (
+                <p className={styles.errorText} role="alert">{fieldErrors.proof}</p>
+              )}
+            </div>
+
+            <div className={styles.formGroup}>
+              <span className={styles.label}><span>Điều khoản sử dụng dịch vụ</span></span>
+              <ol
+                style={{
+                  maxHeight: 220, overflowY: 'auto', margin: '8px 0', padding: '12px 12px 12px 32px',
+                  border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 'var(--text-sm)', lineHeight: 1.5,
+                }}
+              >
+                {SERVICE_TERMS.map((term) => <li key={term} style={{ marginBottom: 6 }}>{term}</li>)}
+              </ol>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>
+                <input
+                  id="terms"
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => { setTermsAccepted(e.target.checked); clearFieldError('terms'); }}
+                  disabled={!canSubmit || isSubmitting}
+                />
+                <span>Tôi đã đọc và đồng ý các điều khoản sử dụng dịch vụ. <span className={styles.requiredMark}>*</span></span>
+              </label>
+              {fieldErrors.terms && (
+                <p className={styles.errorText} role="alert">{fieldErrors.terms}</p>
+              )}
+            </div>
+
             <button
               type="submit"
               className={styles.primaryBtn}
-              disabled={!canSubmit || isSubmitting}
+              disabled={addressDisabled}
             >
               {isSubmitting ? 'Đang gửi đơn đăng ký…' : 'Gửi đơn đăng ký dịch vụ'}
             </button>
@@ -444,6 +748,8 @@ export default function ServiceRegistrationPage() {
                       <th>Tên cơ sở</th>
                       <th>Địa chỉ</th>
                       <th>Số sân</th>
+                      <th>Số năm thuê</th>
+                      <th>Số tiền thuê</th>
                       <th>Trạng thái</th>
                       <th>Ngày gửi</th>
                     </tr>
@@ -455,11 +761,13 @@ export default function ServiceRegistrationPage() {
                         <td><strong>{item.locationName}</strong></td>
                         <td>{item.address}</td>
                         <td>{item.courtCount} sân</td>
+                        <td>{item.rentalYears} năm</td>
+                        <td>{formatVnd(item.rentalAmount)}</td>
                         <td>
                           {item.status === 'APPROVED' ? (
                             <span className={`${styles.badge} ${styles.badgeApproved}`}>Đã duyệt</span>
                           ) : item.status === 'REJECTED' ? (
-                            <span className={`${styles.badge} ${styles.badgeRejected}`} title={item.rejectionReason}>
+                            <span className={`${styles.badge} ${styles.badgeRejected}`} title={item.rejectReason}>
                               Bị từ chối
                             </span>
                           ) : (

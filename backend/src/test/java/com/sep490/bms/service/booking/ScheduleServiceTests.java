@@ -66,6 +66,7 @@ class ScheduleServiceTests {
 
     @BeforeEach
     void defaults() {
+        when(availability.courtAvailableOn(any(), any())).thenReturn(true);
         when(locations.findActive(LOCATION)).thenReturn(location);
         when(courts.activeCourts(LOCATION)).thenReturn(
                 List.of(Court.builder().id(COURT).locationId(LOCATION).name("Sân 1").build()));
@@ -83,6 +84,12 @@ class ScheduleServiceTests {
         assertThat(cell.getStatus()).isEqualTo(SlotStatus.AVAILABLE);
         assertThat(cell.getTime()).isEqualTo("13:00");
         assertThat(cell.getPrice()).isEqualByComparingTo("60000");
+    }
+
+    @Test
+    void courtsOutsidePurchasedServiceDatesAreNotShownAsBookable() {
+        when(availability.courtAvailableOn(any(), any())).thenReturn(false);
+        assertThat(service.schedule(LOCATION, TOMORROW, null, NOW).getCourts()).isEmpty();
     }
 
     @Test

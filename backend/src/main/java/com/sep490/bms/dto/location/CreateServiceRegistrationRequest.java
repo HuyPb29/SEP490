@@ -2,9 +2,11 @@ package com.sep490.bms.dto.location;
 
 import java.math.BigDecimal;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -20,7 +22,9 @@ import lombok.Setter;
 /**
  * Feature: F2 - Quản lý địa điểm
  * Owner: Minh Anh
- * UC05 - Owner gửi đơn đăng ký đưa địa điểm vào sử dụng hệ thống.
+ * UC05 - Guest hoặc Owner gửi đơn đăng ký đưa địa điểm vào sử dụng hệ thống (FR10, DR19).
+ * Gửi dạng multipart: phần "data" là JSON này, phần "proof" là ảnh chứng từ chuyển khoản.
+ * Không có trường số tiền: backend tự tính theo P35.
  *
  * Ràng buộc theo BMS_database.sql: ck_sreg_courts (court_count > 0),
  * ck_sreg_phone_digits (số điện thoại đúng 10 chữ số), toạ độ decimal(9,6).
@@ -53,6 +57,16 @@ public class CreateServiceRegistrationRequest {
     @NotNull(message = "Số sân không được để trống")
     @Min(value = 1, message = "Số sân phải lớn hơn 0")
     private Integer courtCount;
+
+    /** DR19, DR29: số năm thuê nguyên, từ 1 trở lên. Trần 10 năm là đề xuất, chưa duyệt (chặn số tiền vô lý). */
+    @NotNull(message = "Số năm thuê không được để trống")
+    @Min(value = 1, message = "Số năm thuê tối thiểu là 1 năm")
+    @Max(value = 10, message = "Số năm thuê tối đa là 10 năm")
+    private Integer rentalYears;
+
+    /** BR65: phải đánh dấu đồng ý điều khoản sử dụng dịch vụ mới gửi được đơn. */
+    @AssertTrue(message = "Vui lòng đọc và đồng ý điều khoản sử dụng dịch vụ")
+    private Boolean termsAccepted;
 
     @Size(max = 50, message = "Tên người liên hệ tối đa 50 ký tự")
     private String contactName;

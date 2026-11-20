@@ -88,7 +88,7 @@ public class BookingController {
     }
 
     /**
-     * UC16 – Đặt sân tại quầy (#1–2: Staff nhập tên, số điện thoại khách, chọn slot; giữ chỗ 5 phút)
+     * UC16 – Đặt sân tại quầy (#1–2: Staff nhập tên, số điện thoại khách, chọn slot; giữ chỗ 10 phút)
      * Feature: F3 – Tìm và đặt sân
      * Owner: Minh
      * Địa điểm lấy từ tài khoản Staff, không cần header X-Location-Id.
@@ -99,7 +99,7 @@ public class BookingController {
             @Valid @RequestBody WalkInBookingRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
-                "Đã tạo booking, giữ chỗ trong 5 phút. Xác nhận khi đã nhận đủ tiền.",
+                "Đã tạo booking, giữ chỗ trong 10 phút. Xác nhận khi đã nhận đủ tiền.",
                 walkInBookingService.create(currentUser, request)));
     }
 

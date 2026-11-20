@@ -176,6 +176,24 @@ class OperationReportAndReviewHideTests {
     }
 
     @Test
+    void staffDashboardScheduleListsOnlyBookingsHoldingTheCourt() {
+        long confirmed = booking("CONFIRMED", 100000);
+        long inUse = booking("IN_USE", 100000);
+        long completed = booking("COMPLETED", 100000);
+        booking("PAYMENT_REJECTED", 100000);
+        booking("EXPIRED", 100000);
+        booking("CANCELLED_BY_PLAYER", 100000);
+        booking("AWAITING_CONFIRMATION", 100000);
+        UserPrincipal staff = UserPrincipal.builder().id(owner.id()).username("staff").role(Role.STAFF)
+                .locationId(location.getId()).status(AccountStatus.ACTIVE).authorities(List.of()).build();
+
+        var dashboard = operations.getStaffDashboard(staff);
+
+        assertThat(dashboard.getTodayBookings()).extracting("id").containsExactlyInAnyOrder(confirmed, inUse, completed);
+        assertThat(dashboard.getBookingsByStatus()).containsEntry("PAYMENT_REJECTED", 1L);
+    }
+
+    @Test
     void reportsRejectRangeLongerThanAYear() {
         assertThatThrownBy(() -> operations.getVoucherReport(principal(owner),
                 today.minusDays(400), today)).isInstanceOf(AppException.class);

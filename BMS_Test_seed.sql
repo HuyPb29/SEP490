@@ -55,11 +55,11 @@ SET IDENTITY_INSERT account OFF;
 
 -- service_registration (4)
 SET IDENTITY_INSERT service_registration ON;
-INSERT INTO service_registration (id, requester_id, location_name, address, latitude, longitude, court_count, contact_name, contact_phone, contact_email, status, reject_reason, processed_by, processed_at, location_id) VALUES
-  (1, 2, N'Cầu lông Sunrise', N'12 Nguyễn Trãi, Thanh Xuân, Hà Nội', 20.99412, 105.80731, 4, N'Nguyễn Minh Khôi', N'0901000001', N'owner.sunrise@bms.vn', N'APPROVED', NULL, 1, DATEADD(MINUTE,0,CAST(DATEADD(DAY,-121,@today) AS DATETIME2(0))), 1),
-  (2, 3, N'Cầu lông Thăng Long', N'88 Cầu Giấy, Cầu Giấy, Hà Nội', 21.0333, 105.7978, 3, N'Trần Thu Hà', N'0901000002', N'owner.thanglong@bms.vn', N'APPROVED', NULL, 1, DATEADD(MINUTE,0,CAST(DATEADD(DAY,-61,@today) AS DATETIME2(0))), 2),
-  (3, NULL, N'Cầu lông Bình Minh', N'5 Lê Văn Lương, Hà Nội', 21.007, 105.8, 6, N'Đỗ Văn Nam', N'0933444555', N'nam.do@gmail.com', N'PENDING', NULL, NULL, NULL, NULL),
-  (4, 7, N'Sân cầu lông Hoa Sữa', N'30 Láng Hạ, Hà Nội', 21.015, 105.812, 2, N'Nguyễn Văn An', N'0912000007', N'an.nguyen@gmail.com', N'REJECTED', N'Thiếu giấy phép kinh doanh', 1, DATEADD(MINUTE,0,CAST(DATEADD(DAY,-10,@today) AS DATETIME2(0))), NULL);
+INSERT INTO service_registration (id, requester_id, location_name, address, latitude, longitude, court_count, rental_years, rental_amount, contact_name, contact_phone, contact_email, status, reject_reason, processed_by, processed_at, location_id) VALUES
+  (1, 2, N'Cầu lông Sunrise', N'12 Nguyễn Trãi, Thanh Xuân, Hà Nội', 20.99412, 105.80731, 4, 1, 4445000, N'Nguyễn Minh Khôi', N'0901000001', N'owner.sunrise@bms.vn', N'APPROVED', NULL, 1, DATEADD(MINUTE,0,CAST(DATEADD(DAY,-121,@today) AS DATETIME2(0))), 1),
+  (2, 3, N'Cầu lông Thăng Long', N'88 Cầu Giấy, Cầu Giấy, Hà Nội', 21.0333, 105.7978, 3, 1, 3334000, N'Trần Thu Hà', N'0901000002', N'owner.thanglong@bms.vn', N'APPROVED', NULL, 1, DATEADD(MINUTE,0,CAST(DATEADD(DAY,-61,@today) AS DATETIME2(0))), 2),
+  (3, NULL, N'Cầu lông Bình Minh', N'5 Lê Văn Lương, Hà Nội', 21.007, 105.8, 6, 1, 6667000, N'Đỗ Văn Nam', N'0933444555', N'nam.do@gmail.com', N'PENDING', NULL, NULL, NULL, NULL),
+  (4, 7, N'Sân cầu lông Hoa Sữa', N'30 Láng Hạ, Hà Nội', 21.015, 105.812, 2, 1, 2223000, N'Nguyễn Văn An', N'0912000007', N'an.nguyen@gmail.com', N'REJECTED', N'Thiếu giấy phép kinh doanh', 1, DATEADD(MINUTE,0,CAST(DATEADD(DAY,-10,@today) AS DATETIME2(0))), NULL);
 SET IDENTITY_INSERT service_registration OFF;
 
 INSERT INTO service_term (location_id, start_date, end_date, recorded_by) VALUES

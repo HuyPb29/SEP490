@@ -54,7 +54,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class BookingService {
 
-    /** Thời gian giữ chỗ của đặt sân lẻ online (BR03, P02): 10 phút (D164), cố định, Owner không cài (D154). */
+    /** Thời gian giữ chỗ của mọi loại đặt (đặt lẻ, đơn đặt lẻ, gói, tại quầy; BR03, P02, D170): 10 phút, cố định (D154). */
     static final int HOLD_MINUTES = 10;
     /** Số booking đang chờ thanh toán tối đa của một Player (BR35, P08): cố định (D154). */
     static final int MAX_PENDING_PAYMENTS = 2;
@@ -131,7 +131,7 @@ public class BookingService {
         // Kiểm tra lại slot và tính lại giá niêm yết như màn tóm tắt: slot có thể vừa bị người khác giữ (FR39).
         // Voucher, điểm không kiểm tra ở bước này: lúc trừ sẽ kiểm tra lại dưới khóa dòng, lỗi báo MSG108.
         BookingSummaryResponse summary = previewSummary(player, withoutDiscounts(request), now);
-        // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 5 phút.
+        // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 10 phút.
         LocalDateTime createdAt = now.truncatedTo(ChronoUnit.SECONDS);
 
         // Lưu với giá niêm yết; consumeForBooking, redeemForBooking tự ghi số giảm và finalAmount vào booking.

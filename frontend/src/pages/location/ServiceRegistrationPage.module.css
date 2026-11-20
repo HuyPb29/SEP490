@@ -130,6 +130,87 @@
   margin: 5px 0 0;
 }
 
+.proofInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.proofPicker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 16px;
+  border: 2px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  text-align: center;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.proofPicker:hover,
+.proofInput:focus-visible + .proofPicker {
+  border-color: var(--color-primary-accent);
+  background: var(--color-bg);
+}
+
+.proofInput:focus-visible + .proofPicker {
+  outline: 2px solid var(--color-primary-accent);
+  outline-offset: 3px;
+}
+
+.proofInput:disabled + .proofPicker {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.proofInput[aria-invalid='true'] + .proofPicker {
+  border-color: var(--color-danger);
+}
+
+.proofSelected {
+  border-style: solid;
+  border-color: var(--color-primary-accent);
+}
+
+.proofPicker img {
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.proofPicker span {
+  font-size: var(--text-sm);
+}
+
+.proofPicker .proofAdd {
+  font-size: 32px;
+  line-height: 1;
+  color: var(--color-primary);
+}
+
+.proofFileName {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.removeProof {
+  align-self: flex-start;
+  margin-top: 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-danger);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .coordActionRow {
   display: flex;
   gap: 8px;
@@ -183,7 +264,8 @@
 }
 
 .primaryBtn:disabled {
-  opacity: 0.6;
+  background: #e5e7eb;
+  color: #6b7280;
   cursor: not-allowed;
 }
 

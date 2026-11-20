@@ -114,7 +114,7 @@ class WalkInBookingServiceTests {
         assertThat(b.getNote()).isNull();
         assertThat(b.getStatus()).isEqualTo(BookingStatus.HOLDING);
         assertThat(b.getCreatedAt()).isEqualTo(LocalDateTime.of(2026, 11, 6, 9, 0, 15));
-        assertThat(b.getHoldExpiresAt()).isEqualTo(LocalDateTime.of(2026, 11, 6, 9, 5, 15));
+        assertThat(b.getHoldExpiresAt()).isEqualTo(LocalDateTime.of(2026, 11, 6, 9, 10, 15));
 
         assertThat(item.getId()).isEqualTo(100L);
         assertThat(item.getBookingCode()).isEqualTo("BK0001");
@@ -313,7 +313,7 @@ class WalkInBookingServiceTests {
         Booking overdue = Booking.builder().id(101L).bookingCode("BK0002").bookingType(BookingType.WALK_IN)
                 .locationId(LOCATION).courtId(COURT).customerName("Trần Bình").customerPhone("0987654321")
                 .playDate(DATE).startMinute(1200).endMinute(1260).finalAmount(new BigDecimal("80000"))
-                .status(BookingStatus.HOLDING).holdExpiresAt(NOW.minusSeconds(1)).createdAt(NOW.minusMinutes(6))
+                .status(BookingStatus.HOLDING).holdExpiresAt(NOW.minusSeconds(1)).createdAt(NOW.minusMinutes(11))
                 .build();
         listReturns(confirmed, overdue);
         when(payments.findForBookings(List.of(100L, 101L))).thenReturn(Map.of(100L,

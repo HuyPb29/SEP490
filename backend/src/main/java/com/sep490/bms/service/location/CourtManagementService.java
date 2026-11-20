@@ -67,27 +67,8 @@ public class CourtManagementService {
     /** UC07 - Owner thêm sân mới để thiết lập giá trước khi bật bán. */
     @Transactional
     public CourtDto create(UserPrincipal user, Long locationId, CreateCourtRequest request) {
-        Location location = locationManagementService.ownedLocation(user, locationId);
-        if (!STATUS_ACTIVE.equals(location.getStatus())) {
-            throw new AppException("Địa điểm đang bị khoá, không thể thêm sân", HttpStatus.FORBIDDEN);
-        }
-
-        String name = request.getName() == null ? "" : request.getName().trim();
-        if (name.isEmpty()) {
-            throw new AppException("Tên sân không được để trống");
-        }
-        if (name.length() > 50) {
-            throw new AppException("Tên sân tối đa 50 ký tự");
-        }
-        ensureNameAvailable(location.getId(), name, null);
-
-        Court court = Court.builder()
-                .locationId(location.getId())
-                .name(name)
-                .description(trimToNull(request.getDescription()))
-                .active(false)
-                .build();
-        return CourtDto.fromEntity(courtRepository.save(court));
+        locationManagementService.ownedLocation(user, locationId);
+        throw new AppException("Vui lòng gửi yêu cầu thêm sân và thanh toán phí để Admin xét duyệt", HttpStatus.CONFLICT);
     }
 
     /** UC07 - Owner cập nhật tên, mô tả hoặc tạm ngưng sân. */

@@ -239,6 +239,50 @@
   color: #64748b;
 }
 
+/* UC21: dòng "đổi từ slot nào sang slot nào" dưới mã booking/gói */
+.changeList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.changeList li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.changeList strong {
+  color: #0d8a52;
+  font-weight: 700;
+}
+
+.changeTag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef9c3;
+  color: #854d0e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.changeFrom {
+  color: #64748b;
+  text-decoration: line-through;
+  text-decoration-color: rgba(100, 116, 139, 0.5);
+}
+
+.changeArrow {
+  color: #0d8a52;
+  font-weight: 800;
+}
+
 /* Card Right: Price & Action Buttons */
 .cardRight {
   display: flex;

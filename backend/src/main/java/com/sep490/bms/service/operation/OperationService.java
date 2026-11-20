@@ -100,7 +100,10 @@ public class OperationService {
                 .locationName(location.getName())
                 .date(today)
                 .bookingsByStatus(byStatus)
-                .todayBookings(rows.stream().map(r -> StaffDashboardResponse.BookingItem.builder()
+                // Lịch chơi chỉ gồm đơn đã xác nhận (CONFIRMED, IN_USE, COMPLETED) theo góp ý review WEB-07.
+                // Đơn đang giữ chỗ/chờ xác nhận xem ở thẻ sân và danh sách giao dịch chờ xác nhận.
+                .todayBookings(rows.stream().filter(r -> VALID_STATUSES.contains(r.getStatus()))
+                        .map(r -> StaffDashboardResponse.BookingItem.builder()
                         .id(r.getId())
                         .bookingCode(r.getBookingCode())
                         .courtName(r.getCourtName())

@@ -1,3 +1,4 @@
+import NotificationBell from '../notification/NotificationBell';
 import React, { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
@@ -35,7 +36,7 @@ export default function Header({ roleContext }) {
     user?.full_name ||
     user?.username ||
     user?.email ||
-    (isOwnerRoute ? 'Facility Owner' : '')
+    (isOwnerRoute ? 'Chủ sân' : '')
   const initial = (displayName || 'U').charAt(0).toUpperCase()
 
   // Active route matching
@@ -61,50 +62,43 @@ export default function Header({ roleContext }) {
             <span className={styles.brandText}>Courtly</span>
           </div>
           {isOwnerRoute && (
-            <span className={styles.portalBadge}>Owner Portal</span>
+            <span className={styles.portalBadge}>Quản lý chủ sân</span>
           )}
         </div>
 
         {/* Global Navigation Links */}
-        <nav className={styles.navLinks} aria-label="Main navigation">
+        <nav className={styles.navLinks} aria-label="Điều hướng chính">
           <Link
             to="/locations"
             className={isFindCourtsActive ? styles.activeLink : ''}
           >
-            Find Courts
+            Tìm địa điểm
           </Link>
           <Link
             to="/open-matches"
             className={isOpenMatchesActive ? styles.activeLink : ''}
           >
-            Open Matches
+            Kèo đang mở
           </Link>
           <Link
             to="/my-bookings"
             className={isMyBookingsActive ? styles.activeLink : ''}
           >
-            My Bookings
+            Lịch đặt sân của tôi
           </Link>
           <Link
             to="/register-service"
             className={isRegisterServiceActive ? styles.activeLink : ''}
           >
-            Register Service
+            Đăng ký chủ sân
           </Link>
         </nav>
 
-        {/* Right side: User Area & Notifications OR Login/Sign Up */}
+        {/* Right side: User Area & Notifications OR Đăng nhập/Đăng ký */}
         <div className={styles.userArea}>
           {isLoggedIn ? (
             <>
-              <button
-                type="button"
-                className={styles.bellBtn}
-                aria-label="Notifications"
-                onClick={() => alert('No new notifications')}
-              >
-                🔔
-              </button>
+              <NotificationBell />
 
               <div className={styles.userMenuWrapper} ref={dropdownRef}>
                 <button
@@ -124,7 +118,7 @@ export default function Header({ roleContext }) {
                     <div className={styles.dropdownHeader}>
                       <p className={styles.dropdownUser}>{displayName}</p>
                       <p className={styles.dropdownRole}>
-                        {user?.role_code?.toUpperCase() || user?.role || (isOwnerRoute ? 'FACILITY_OWNER' : 'PLAYER')}
+                        {({ owner: 'Chủ sân', staff: 'Nhân viên', admin: 'Quản trị viên', player: 'Người chơi' })[String(user?.role_code || user?.role || '').toLowerCase()] || (isOwnerRoute ? 'Chủ sân' : 'Người chơi')}
                       </p>
                     </div>
                     <div className={styles.dropdownDivider} />
@@ -137,7 +131,7 @@ export default function Header({ roleContext }) {
                       }}
                       role="menuitem"
                     >
-                      ⚙️ Account Settings
+                      ⚙️ Cài đặt tài khoản
                     </button>
                     <button
                       type="button"
@@ -148,7 +142,7 @@ export default function Header({ roleContext }) {
                       }}
                       role="menuitem"
                     >
-                      🏸 My Bookings
+                      🏸 Lịch đặt sân của tôi
                     </button>
                     {isOwnerRoute ? (
                       <button
@@ -160,7 +154,7 @@ export default function Header({ roleContext }) {
                         }}
                         role="menuitem"
                       >
-                        🌐 Switch to Player View
+                        🌐 Xem giao diện người chơi
                       </button>
                     ) : (
                       <button
@@ -172,7 +166,7 @@ export default function Header({ roleContext }) {
                         }}
                         role="menuitem"
                       >
-                        🏟️ Switch to Owner Portal
+                        🏟️ Mở trang quản lý chủ sân
                       </button>
                     )}
                     <div className={styles.dropdownDivider} />
@@ -185,7 +179,7 @@ export default function Header({ roleContext }) {
                       }}
                       role="menuitem"
                     >
-                      🚪 Sign Out
+                      🚪 Đăng xuất
                     </button>
                   </div>
                 )}
@@ -198,14 +192,14 @@ export default function Header({ roleContext }) {
                 className={styles.loginBtn}
                 onClick={() => navigate('/login')}
               >
-                Login
+                Đăng nhập
               </button>
               <button
                 type="button"
                 className={styles.registerBtn}
                 onClick={() => navigate('/login', { state: { isSignUp: true } })}
               >
-                Sign Up
+                Đăng ký
               </button>
             </div>
           )}

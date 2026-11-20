@@ -74,8 +74,6 @@ public class PackageService {
     /** BR27: định kỳ kéo dài từ 1 đến 3 tháng; tự chọn trong vòng tối đa 3 tháng. */
     static final int MIN_MONTHS = 1;
     static final int MAX_MONTHS = 3;
-    /** Thời gian giữ chỗ của gói, tính từ lúc bấm xác nhận lịch (P27, BR53): cố định (D154). */
-    static final int HOLD_MINUTES = 15;
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     /** Loại thông báo khi tặng voucher của chương trình theo lô (FR124). */
     static final String BATCH_OFFER_VOUCHER = "BATCH_OFFER_VOUCHER";
@@ -195,7 +193,7 @@ public class PackageService {
     /**
      * UC15 #7–8, #11, FR41, FR46, BR53: Player bấm xác nhận lịch. Kiểm tra trùng lại một lần nữa; còn buổi trùng
      * thì chưa giữ chỗ, báo số buổi và danh sách (MSG44). Không trùng thì tạo gói Đang giữ chỗ và các buổi con
-     * (booking SESSION), lưu từng slot, giữ chỗ 15 phút tính từ lúc bấm (P27); trừ voucher, điểm trên cả gói rồi
+     * (booking SESSION), lưu từng slot, giữ chỗ 10 phút tính từ lúc bấm (P27, D170); trừ voucher, điểm trên cả gói rồi
      * chia cho từng buổi (BR28). Tất cả trong một giao dịch: lỗi ở bước nào thì không lưu gì.
      */
     @Transactional
@@ -248,10 +246,10 @@ public class PackageService {
         }
         List<Priced> priced = price(sessions);
         BigDecimal listAmount = sum(priced);
-        // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 15 phút.
-        // Đơn đặt lẻ giữ chỗ như đặt sân lẻ (10 phút, BR03), gói giữ 15 phút (P27).
+        // Cột DATETIME2(0) chỉ lưu đến giây: bỏ phần lẻ để created_at và hold_expires_at cách nhau đúng 10 phút.
+        // Đơn đặt lẻ và gói đều giữ chỗ 10 phút như đặt sân lẻ (BR03, P27, D170).
         LocalDateTime createdAt = now.truncatedTo(ChronoUnit.SECONDS);
-        LocalDateTime holdExpiresAt = createdAt.plusMinutes(order ? BookingService.HOLD_MINUTES : HOLD_MINUTES);
+        LocalDateTime holdExpiresAt = createdAt.plusMinutes(BookingService.HOLD_MINUTES);
 
         // Lưu với giá niêm yết; consumeForPackage, redeemForPackage tự ghi số giảm và finalAmount vào gói.
         BookingPackage pkg = bookingPackageRepository.save(BookingPackage.builder()
@@ -326,7 +324,7 @@ public class PackageService {
     }
 
     /**
-     * UC37, BR53: gói Đang giữ chỗ quá 15 phút mà Player chưa báo thanh toán thì gói và các buổi chuyển Hết hạn,
+     * UC37, BR53: gói Đang giữ chỗ quá 10 phút mà Player chưa báo thanh toán thì gói và các buổi chuyển Hết hạn,
      * nhả slot, trả voucher và điểm (BR40, BR45), báo Player (FR124, MSG110). Khóa dòng gói rồi kiểm tra lại:
      * Player có thể vừa gửi chứng từ sau lần quét của job. Mỗi gói một giao dịch riêng.
      *

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PublicHeader } from '../../components/layout/PublicLayout';
 import PublicFooter from '../../components/layout/PublicFooter';
 import { apiErrorMessage } from '../../api';
@@ -10,6 +10,7 @@ import {
   closeMatch,
   formatMinute,
   getJoinRequests,
+  getMatch,
   getMyMatches,
   getOpenMatches,
   rejectJoinRequest,
@@ -20,6 +21,43 @@ import { getMySkillLevel } from '../../api/teamApi';
 import { useAuth } from '../../hooks/useAuth';
 import { isSkillLevel, SKILL_LEVELS } from '../../utils/skillLevels';
 import styles from './OpenMatchesPage.module.css';
+import { useResource } from '../workspaceSupport';
+import { keepMatchAfterRescheduleApi } from '../../api/bookingApi';
+
+function NotificationMatch({ id }) {
+  const load = useCallback((signal) => getMatch(id, signal), [id]);
+  const resource = useResource(load, id);
+  const [actionError, setActionError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const decide = async (keep) => {
+    setBusy(true);
+    setActionError('');
+    try {
+      await (keep ? keepMatchAfterRescheduleApi(id) : cancelMatch(id));
+      resource.reload();
+    } catch (err) {
+      setActionError(apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const match = resource.data;
+  return <section className="my-5 rounded-xl border-2 border-emerald-600 p-5" aria-label="Kèo từ thông báo">
+    {resource.loading && <p role="status">Đang tải kèo từ thông báo…</p>}
+    {resource.error && <p role="alert">{resource.error}</p>}
+    {match && <>
+      <h2 className="font-semibold">Kèo #{match.id} · {match.locationName} · {match.courtName}</h2>
+      <p>{match.playDate} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}</p>
+      <p>Chủ kèo {match.hostName} · Đội {match.teamName}</p>
+      <p>Trạng thái {({ OPEN: 'Đang mở', CLOSED: 'Đã đóng', CANCELLED: 'Đã hủy', EXPIRED: 'Hết hạn' })[match.status] || match.status}</p>
+      {match.host && match.reschedulePending && <div className="mt-3 flex gap-3">
+        <button type="button" disabled={busy} onClick={() => decide(true)}>Giữ kèo ở giờ mới</button>
+        <button type="button" disabled={busy} onClick={() => decide(false)}>Hủy kèo</button>
+      </div>}
+      {actionError && <p role="alert">{actionError}</p>}
+    </>}
+  </section>;
+}
 
 const TIME_SLOTS = {
   morning: { label: 'Sáng (06:00 – 12:00)', fromMinute: 360, toMinute: 720 },
@@ -45,13 +83,16 @@ function capacityOf(match) {
 }
 
 export default function OpenMatchesPage() {
+  const [notificationParams] = useSearchParams();
+  const requestedMatch = notificationParams.get('matchId');
   const { isAuthenticated, role } = useAuth();
   const isPlayer = isAuthenticated && role === 'player';
 
-  const [selectedDate, setSelectedDate] = useState(todayIso);
+  // Bỏ trống = mọi ngày từ hôm nay trở đi (backend chỉ trả kèo OPEN chưa qua ngày chơi).
+  const [selectedDate, setSelectedDate] = useState('');
   const [timeSlot, setTimeSlot] = useState('all');
   const [selectedLocation, setSelectedLocation] = useState('');
-  const [appliedFilters, setAppliedFilters] = useState(() => ({ date: todayIso(), timeSlot: 'all', locationId: '' }));
+  const [appliedFilters, setAppliedFilters] = useState(() => ({ date: '', timeSlot: 'all', locationId: '' }));
   // FR104: lọc kèo theo địa điểm; danh sách địa điểm đang hoạt động lấy từ UC11.
   const [locations, setLocations] = useState([]);
 
@@ -267,6 +308,7 @@ export default function OpenMatchesPage() {
       <PublicHeader />
 
       <main className={styles.main}>
+        {/^[1-9]\d*$/.test(requestedMatch || '') && <NotificationMatch key={requestedMatch} id={requestedMatch} />}
         <div className={styles.headingRow}>
           <div className={styles.pageHeading}>
             <p>GIAO LƯU</p>
@@ -290,8 +332,14 @@ export default function OpenMatchesPage() {
             <input
               type="date"
               value={selectedDate}
+              min={todayIso()}
               onChange={(event) => setSelectedDate(event.target.value)}
             />
+            {selectedDate && (
+              <button type="button" className={styles.clearDateButton} onClick={() => setSelectedDate('')}>
+                Mọi ngày
+              </button>
+            )}
           </label>
           <label className={styles.filterField}>
             <span>Khung giờ</span>
@@ -343,7 +391,9 @@ export default function OpenMatchesPage() {
               </article>
             ))}
             {!loadingMatches && !matchesError && matches.length === 0 && (
-              <div className={styles.emptyState}>Không có kèo phù hợp với địa điểm, ngày và khung giờ đã chọn.</div>
+              <div className={styles.emptyState}>{appliedFilters.date || appliedFilters.locationId || appliedFilters.timeSlot !== 'all'
+                  ? 'Không có kèo phù hợp với địa điểm, ngày và khung giờ đã chọn.'
+                  : 'Hiện chưa có kèo nào đang tìm người chơi.'}</div>
             )}
           </section>
 

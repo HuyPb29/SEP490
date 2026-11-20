@@ -1,7 +1,7 @@
 import HistoryDetailDialog from './HistoryDetailDialog';
 import { affectedBookingActions, blocksNormalBookingActions, bookingStatusLabels, bookingStartsAfter, canPayHistoryEntry, canRescheduleBooking } from '../../api/bookingHistory';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, Link, Navigate } from 'react-router-dom';
+import { useNavigate, Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import styles from './MyBookingsPage.module.css';
@@ -65,8 +65,17 @@ function serverTimestamp(value) {
 const formatDeadline = (value) => new Date(serverTimestamp(value))
   .toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
+/** UC21: "Sân A · 2026-11-20 · 17:30–19:00" cho slot cũ (from) hoặc slot mới (to) của một lần đổi lịch. */
+const describeSlot = (change, side) => [
+  change[side + 'CourtName'], change[side + 'Date'],
+  change[side + 'StartTime'] + '–' + change[side + 'EndTime'],
+].filter(Boolean).join(' · ');
+
 export default function MyBookingsPage() {
   const navigate = useNavigate();
+  const [notificationParams, setNotificationParams] = useSearchParams();
+  const requestedBooking = notificationParams.get('bookingId');
+  const requestedPackage = notificationParams.get('packageId');
   const { user } = useAuth();
   const {
     getMyBookingsApi,
@@ -97,7 +106,25 @@ export default function MyBookingsPage() {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   // State Modal xem chi tiết đơn đặt sân (UC17 #3-5, FR35, FR51, FR52, FR57)
-  const [detailTarget, setDetailTarget] = useState(null);
+  const [manualDetailTarget, setDetailTarget] = useState(null);
+  const notificationTarget = useMemo(() => {
+    const id = requestedPackage || requestedBooking;
+    if (!isPlayer || !/^[1-9]\d*$/.test(id || '')) return null;
+    return { booking_id: Number(id), booking_type: requestedPackage ? 'package' : 'single', booking_code: '#' + id };
+  }, [isPlayer, requestedBooking, requestedPackage]);
+  const detailTarget = manualDetailTarget || notificationTarget;
+
+  const closeDetail = () => {
+    setDetailTarget(null);
+    if (requestedBooking || requestedPackage) {
+      setNotificationParams((current) => {
+        const next = new URLSearchParams(current);
+        next.delete('bookingId');
+        next.delete('packageId');
+        return next;
+      }, { replace: true });
+    }
+  };
 
   // State Modal xác nhận Hủy booking theo BR07 / MSG66
   const [cancelTarget, setCancelTarget] = useState(null);
@@ -813,6 +840,19 @@ export default function MyBookingsPage() {
                         {item.booking_code} · {item.time_range}
                         {item.booker_label ? ` · ${item.booker_label}` : ''}
                       </p>
+                      {item.reschedule_changes?.length > 0 && (
+                        <ul className={styles.changeList} aria-label="Lịch đã đổi">
+                          {item.reschedule_changes.map((change, index) => (
+                            <li key={change.bookingId + ':' + index}>
+                              <span className={styles.changeTag}>Đã đổi lịch</span>
+                              {item.booking_type === 'package' && <span>Buổi {change.bookingCode}:</span>}
+                              {change.fromDate && <span className={styles.changeFrom}>{describeSlot(change, 'from')}</span>}
+                              {change.fromDate && <span className={styles.changeArrow} aria-label="sang">→</span>}
+                              <strong>{describeSlot(change, 'to')}</strong>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       {item.day_sessions?.length > 0 && (
                         <ul className={styles.orderRanges}>
                           {item.day_sessions.map((session) => (
@@ -968,12 +1008,12 @@ export default function MyBookingsPage() {
 
       {detailTarget && (
         <HistoryDetailDialog key={detailTarget.booking_type + ':' + detailTarget.booking_id}
-          item={detailTarget} now={nowMs} onClose={() => setDetailTarget(null)} onPayment={handleGoToPayment}
-          onReschedule={(booking) => { setDetailTarget(null); handleRescheduleClick(booking); }}
+          item={detailTarget} now={nowMs} onClose={closeDetail} onPayment={handleGoToPayment}
+          onReschedule={(booking) => { closeDetail(); handleRescheduleClick(booking); }}
           affected={detailTarget.booking_type !== 'package' ? affectedByBooking[detailTarget.booking_id] : null}
           affectedReady={affectedReady} affectedLoading={affectedLoading} canCancel={canCancel}
-          onCancelBooking={(booking) => { setDetailTarget(null); setCancelTarget(booking); }}
-          onAffected={(booking, id, choice) => { setDetailTarget(null); beginAffectedAction(booking, id, choice); }} />
+          onCancelBooking={(booking) => { closeDetail(); setCancelTarget(booking); }}
+          onAffected={(booking, id, choice) => { closeDetail(); beginAffectedAction(booking, id, choice); }} />
       )}
 
       {/* UC21: Modal chọn slot mới & xem chênh lệch đổi lịch */}

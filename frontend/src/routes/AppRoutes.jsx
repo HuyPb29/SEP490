@@ -147,7 +147,7 @@ export default function AppRoutes() {
           path="/owner/courts-pricing"
           element={
             <RequireRole roles={['owner']} selectedVenue>
-              <OwnerCourtsPricingPage />
+              <OwnerCourtsPricingPage key={selectedLocationId} />
             </RequireRole>
           }
         />

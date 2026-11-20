@@ -3,20 +3,27 @@ package com.sep490.bms.repository.location;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.sep490.bms.entity.enums.ApprovalStatus;
 import com.sep490.bms.entity.location.Maintenance;
+import jakarta.persistence.LockModeType;
 
 /**
  * Tra cứu yêu cầu bảo trì và tìm các khoảng bảo trì giao nhau với lịch sân.
  */
 @Repository
 public interface MaintenanceRepository extends JpaRepository<Maintenance, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select m from Maintenance m where m.id = :id")
+    Optional<Maintenance> findByIdForUpdate(@Param("id") Long id);
 
     /**
      * F2 - UC10, dùng chung với F3 khi tính lịch trống: lấy bảo trì của các sân,

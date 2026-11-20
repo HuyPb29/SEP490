@@ -43,6 +43,14 @@ public class Court {
     @Column(name = "is_active", nullable = false)
     private boolean active;
 
+    /** Sân mua thêm chỉ nhận lịch từ ngày sau khi Admin duyệt. NULL cho sân cũ. */
+    @Column(name = "available_from")
+    private java.time.LocalDate availableFrom;
+
+    /** Hạn đã trả phí khi mua thêm; gia hạn địa điểm tiếp theo được tra từ service_term. */
+    @Column(name = "available_until")
+    private java.time.LocalDate availableUntil;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

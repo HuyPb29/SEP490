@@ -43,7 +43,23 @@ public class NotificationService {
                         .findAllByRecipientIdAndReadFalseOrderByCreatedAtDescIdDesc(user.getId(), pageable)
                 : notificationRepository
                         .findAllByRecipientIdOrderByCreatedAtDescIdDesc(user.getId(), pageable);
-        return PageResponse.from(result.map(NotificationDto::fromEntity));
+        Page<NotificationDto> response = result.map(NotificationDto::fromEntity);
+        if (!response.isEmpty()) {
+            var references = notificationRepository.findReferenceDetails(user.getId(),
+                    response.getContent().stream().map(NotificationDto::getId).toList()).stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            NotificationRepository.ReferenceDetails::getNotificationId, item -> item));
+            response.forEach(item -> {
+                var reference = references.get(item.getId());
+                if (reference != null) {
+                    item.setLocationId(reference.getLocationId());
+                    item.setBookingId(reference.getBookingId());
+                    item.setPackageId(reference.getPackageId());
+                    item.setRescheduleRequestId(reference.getRescheduleRequestId());
+                }
+            });
+        }
+        return PageResponse.from(response);
     }
 
     /** UC37 - Số thông báo chưa đọc, dùng cho badge trên thanh điều hướng. */

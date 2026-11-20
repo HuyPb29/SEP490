@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   apiErrorMessage,
   approveServiceRegistration,
@@ -6,11 +7,22 @@ import {
   getAdminLocations,
   getAdminServiceRegistrations,
   getLocationServiceTerms,
+  getServiceRegistrationPaymentInfo,
+  getServiceRegistrationProof,
+  operatorQrUrl,
   rejectServiceRegistration,
   updateLocationStatus,
+  updateOperatorPaymentInfo,
+  uploadOperatorQr,
 } from '../../api/locationApi'
 import AdminLayout from '../../components/layout/AdminLayout'
+import AdminCourtExpansions from './AdminCourtExpansions'
+import { formatVnd } from '../location/serviceRegistrationTerms'
 import styles from './AdminFacilitiesPage.module.css'
+
+/** DR28: ảnh QR JPG hoặc PNG, tối đa 5 MB (backend kiểm tra lại). */
+const QR_TYPES = ['image/jpeg', 'image/png']
+const QR_MAX_BYTES = 5 * 1024 * 1024
 
 const EXTENSION_OPTIONS = [
   { months: 12, label: '12 tháng (1 năm)' },
@@ -66,7 +78,15 @@ function daysBetween(fromIso, toIso) {
 }
 
 export default function AdminFacilitiesPage() {
+  const [notificationParams] = useSearchParams()
+  const requestedRegistration = notificationParams.get('registrationId')
   const [pendingRequests, setPendingRequests] = useState([])
+  useEffect(() => {
+    if (!requestedRegistration) return
+    const row = document.getElementById('registration-' + requestedRegistration)
+    row?.scrollIntoView({ block: 'center' })
+    row?.focus({ preventScroll: true })
+  }, [requestedRegistration, pendingRequests])
   const [facilities, setFacilities] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -75,6 +95,92 @@ export default function AdminFacilitiesPage() {
   const [modal, setModal] = useState(null)
   const [statusMessage, setStatusMessage] = useState('')
   const [actionError, setActionError] = useState('')
+  // UC06 #8, FR127: thông tin nhận chuyển khoản của bên vận hành.
+  const [operatorInfo, setOperatorInfo] = useState(null)
+  const [operatorForm, setOperatorForm] = useState({ bankName: '', bankAccountNo: '', bankAccountHolder: '' })
+  const [operatorMessage, setOperatorMessage] = useState('')
+  const [operatorError, setOperatorError] = useState('')
+
+  const applyOperatorInfo = (info) => {
+    setOperatorInfo(info)
+    setOperatorForm({
+      bankName: info?.bankName ?? '',
+      bankAccountNo: info?.bankAccountNo ?? '',
+      bankAccountHolder: info?.bankAccountHolder ?? '',
+    })
+  }
+
+  const loadOperatorInfo = async () => {
+    try {
+      applyOperatorInfo(await getServiceRegistrationPaymentInfo())
+    } catch (err) {
+      setOperatorError(apiErrorMessage(err))
+    }
+  }
+
+  useEffect(() => {
+    Promise.resolve().then(() => loadOperatorInfo())
+  }, [])
+
+  const handleSaveOperatorInfo = async (event) => {
+    event.preventDefault()
+    const payload = {
+      bankName: operatorForm.bankName.trim(),
+      bankAccountNo: operatorForm.bankAccountNo.trim(),
+      bankAccountHolder: operatorForm.bankAccountHolder.trim(),
+    }
+    if (!payload.bankName || !payload.bankAccountNo || !payload.bankAccountHolder) {
+      setOperatorError('Nhập đủ ngân hàng, số tài khoản và tên chủ tài khoản.')
+      setOperatorMessage('')
+      return
+    }
+    setSaving(true)
+    try {
+      applyOperatorInfo(await updateOperatorPaymentInfo(payload))
+      setOperatorError('')
+      setOperatorMessage('Đã lưu thông tin nhận chuyển khoản.')
+    } catch (err) {
+      setOperatorError(apiErrorMessage(err))
+      setOperatorMessage('')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleOperatorQr = async (file) => {
+    if (!file) return
+    if (!QR_TYPES.includes(file.type) || file.size > QR_MAX_BYTES) {
+      setOperatorError('Ảnh QR phải là JPG hoặc PNG, tối đa 5 MB.')
+      setOperatorMessage('')
+      return
+    }
+    setSaving(true)
+    try {
+      applyOperatorInfo(await uploadOperatorQr(file))
+      setOperatorError('')
+      setOperatorMessage('Đã lưu ảnh QR.')
+    } catch (err) {
+      setOperatorError(apiErrorMessage(err))
+      setOperatorMessage('')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // FR11: Admin xem ảnh chứng từ chuyển khoản tiền thuê trước khi duyệt.
+  const handleViewProof = async (request) => {
+    setSaving(true)
+    try {
+      const blob = await getServiceRegistrationProof(request.id)
+      setModal({ type: 'proof', locationName: request.locationName, url: URL.createObjectURL(blob) })
+      setActionError('')
+    } catch (err) {
+      setActionError(apiErrorMessage(err))
+      setStatusMessage('')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // UC06: nạp danh sách địa điểm + đơn đăng ký đang chờ duyệt.
   const loadAll = async () => {
@@ -116,13 +222,19 @@ export default function AdminFacilitiesPage() {
   // --------------------------------------------------- UC05: duyệt / từ chối đơn đăng ký
 
   const handleApprove = async (request) => {
-    if (!window.confirm(`Duyệt "${request.locationName}"? Owner sẽ tự cấu hình giờ mở cửa và bảng giá.`)) return
+    const confirmed = window.confirm(
+      `Duyệt "${request.locationName}"?\n`
+      + `Chỉ duyệt khi đã thấy ${formatVnd(request.rentalAmount)} về tài khoản của bên vận hành.\n`
+      + `Hệ thống sẽ tạo địa điểm, ghi thời hạn ${request.rentalYears} năm từ hôm nay`
+      + `${request.requesterId ? '' : ', tạo tài khoản Owner'} và gửi email kết quả tới ${request.contactEmail}.`,
+    )
+    if (!confirmed) return
     setSaving(true)
     try {
       await approveServiceRegistration(request.id)
       await loadAll()
       setActionError('')
-      setStatusMessage(`Đã duyệt "${request.locationName}". Owner có thể cấu hình giờ mở cửa và bảng giá.`)
+      setStatusMessage(`Đã duyệt "${request.locationName}" và gửi email kết quả tới ${request.contactEmail}.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -140,7 +252,7 @@ export default function AdminFacilitiesPage() {
   const handleConfirmRejection = async (event) => {
     event.preventDefault()
     if (!modal?.reason.trim()) {
-      setActionError('A rejection reason is required.')
+      setActionError('Vui lòng nhập lý do từ chối.')
       return
     }
     setSaving(true)
@@ -149,7 +261,7 @@ export default function AdminFacilitiesPage() {
       await loadAll()
       setModal(null)
       setActionError('')
-      setStatusMessage(`Rejected "${modal.locationName}".`)
+      setStatusMessage(`Đã từ chối "${modal.locationName}" và gửi email lý do tới chủ sân.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
     } finally {
@@ -268,6 +380,7 @@ export default function AdminFacilitiesPage() {
   }
 
   const closeModal = () => {
+    if (modal?.type === 'proof' && modal.url) URL.revokeObjectURL(modal.url)
     setModal(null)
     setActionError('')
   }
@@ -304,11 +417,12 @@ export default function AdminFacilitiesPage() {
         </button>
       }
     >
+        <AdminCourtExpansions />
 
         {(statusMessage || (actionError && !modal)) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
             <span>{actionError || statusMessage}</span>
-            <button type="button" aria-label="Dismiss message" onClick={clearStatus}>×</button>
+            <button type="button" aria-label="Đóng thông báo" onClick={clearStatus}>×</button>
           </div>
         )}
 
@@ -318,11 +432,15 @@ export default function AdminFacilitiesPage() {
           </h2>
           <div className={styles.requestList}>
             {pendingRequests.map((request) => (
-              <article className={styles.requestRow} key={request.id}>
+              <article className={`${styles.requestRow} ${String(request.id) === requestedRegistration ? 'ring-2 ring-emerald-600' : ''}`}
+                id={`registration-${request.id}`} tabIndex={-1} key={request.id}>
                 <div className={styles.requestInfo}>
                   <div className={styles.requestHeading}>
                     <h3>{request.locationName}</h3>
                     <span className={styles.requestType}>{request.courtCount} sân</span>
+                    <span className={styles.requestType}>{request.rentalYears} năm</span>
+                    <span className={styles.requestType}>{formatVnd(request.rentalAmount)}</span>
+                    <span className={styles.requestType}>{request.requesterId ? 'Owner thêm địa điểm' : 'Chủ sân mới'}</span>
                   </div>
                   <p className={styles.requestAddress}>{request.address || 'Chưa có địa chỉ'}</p>
                   <p className={styles.requestMeta}>
@@ -333,6 +451,13 @@ export default function AdminFacilitiesPage() {
                   </p>
                 </div>
                 <div className={styles.requestActions}>
+                  {request.hasProof ? (
+                    <button className={styles.extendButton} type="button" onClick={() => handleViewProof(request)} disabled={saving}>
+                      Xem chứng từ
+                    </button>
+                  ) : (
+                    <span className={styles.requestMeta}>Không có ảnh chứng từ</span>
+                  )}
                   <button className={styles.rejectButton} type="button" onClick={() => handleReject(request)} disabled={saving}>
                     Từ chối
                   </button>
@@ -345,6 +470,73 @@ export default function AdminFacilitiesPage() {
             {!loading && pendingRequests.length === 0 && (
               <p className={styles.emptyState}>Không có đơn đăng ký dịch vụ nào đang chờ duyệt.</p>
             )}
+          </div>
+        </section>
+
+        <section className={`${styles.panel} ${styles.requestsPanel}`} aria-labelledby="operator-payment-title">
+          <h2 className={styles.sectionTitle} id="operator-payment-title">
+            Thông tin nhận chuyển khoản của bên vận hành
+          </h2>
+          <p className={styles.requestMeta}>
+            Hiện trên form đăng ký sử dụng dịch vụ để chủ sân chuyển khoản tiền thuê.
+            {operatorInfo && !operatorInfo.customQr && ' Đang dùng ảnh QR mặc định khi cài hệ thống: hãy tải ảnh QR thật của tài khoản lên.'}
+          </p>
+          {(operatorMessage || operatorError) && (
+            <div className={operatorError ? styles.errorNotice : styles.statusNotice} role={operatorError ? 'alert' : 'status'}>
+              <span>{operatorError || operatorMessage}</span>
+              <button type="button" aria-label="Đóng thông báo" onClick={() => { setOperatorError(''); setOperatorMessage('') }}>×</button>
+            </div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start', padding: '12px 0' }}>
+            {operatorInfo && (
+              <div>
+                <img
+                  src={operatorQrUrl(operatorInfo.updatedAt)}
+                  alt="Mã QR chuyển khoản của bên vận hành"
+                  width={160}
+                  height={160}
+                  style={{ border: '1px solid #e3e7ed', borderRadius: 8, background: '#fff', display: 'block' }}
+                />
+                <label className={styles.modalField} style={{ marginTop: 8 }}>
+                  <span>Thay ảnh QR (JPG/PNG, tối đa 5 MB)</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    disabled={saving}
+                    onChange={(event) => { handleOperatorQr(event.target.files?.[0]); event.target.value = '' }}
+                  />
+                </label>
+              </div>
+            )}
+            <form onSubmit={handleSaveOperatorInfo} style={{ flex: '1 1 280px', maxWidth: 420 }}>
+              <label className={styles.modalField}>
+                <span>Ngân hàng</span>
+                <input
+                  maxLength={100}
+                  value={operatorForm.bankName}
+                  onChange={(event) => setOperatorForm((form) => ({ ...form, bankName: event.target.value }))}
+                />
+              </label>
+              <label className={styles.modalField}>
+                <span>Số tài khoản</span>
+                <input
+                  maxLength={30}
+                  value={operatorForm.bankAccountNo}
+                  onChange={(event) => setOperatorForm((form) => ({ ...form, bankAccountNo: event.target.value }))}
+                />
+              </label>
+              <label className={styles.modalField}>
+                <span>Tên chủ tài khoản</span>
+                <input
+                  maxLength={100}
+                  value={operatorForm.bankAccountHolder}
+                  onChange={(event) => setOperatorForm((form) => ({ ...form, bankAccountHolder: event.target.value }))}
+                />
+              </label>
+              <button className={styles.approveButton} type="submit" disabled={saving}>
+                Lưu thông tin chuyển khoản
+              </button>
+            </form>
           </div>
         </section>
 
@@ -383,7 +575,7 @@ export default function AdminFacilitiesPage() {
               <span role="columnheader">Trạng thái</span>
               <span role="columnheader">Kỳ hạn dịch vụ</span>
               <span role="columnheader">Số sân</span>
-              <span role="columnheader">Số booking</span>
+              <span role="columnheader">Số đơn đặt sân</span>
               <span role="columnheader">Hành động</span>
             </div>
             {filteredFacilities.map((facility) => {
@@ -434,7 +626,22 @@ export default function AdminFacilitiesPage() {
           </div>
         </section>
 
-        {modal && (
+        {modal?.type === 'proof' && (
+          <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeModal()
+          }}>
+            <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="proof-modal-title">
+              <h2 id="proof-modal-title">Chứng từ chuyển khoản</h2>
+              <p>Đơn đăng ký "{modal.locationName}". Đối chiếu với lịch sử giao dịch của tài khoản bên vận hành trước khi duyệt.</p>
+              <img src={modal.url} alt="Ảnh chứng từ chuyển khoản tiền thuê" style={{ maxWidth: '100%', maxHeight: '60vh', display: 'block', margin: '0 auto' }} />
+              <div className={styles.modalActions}>
+                <button className={styles.cancelButton} type="button" onClick={closeModal}>Đóng</button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {modal && modal.type !== 'proof' && (
           <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => {
             if (event.target === event.currentTarget) closeModal()
           }}>
@@ -446,7 +653,7 @@ export default function AdminFacilitiesPage() {
               </h2>
               <p>
                 {modal.type === 'reject'
-                  ? `Chủ sở hữu của "${modal.locationName}" sẽ thấy lý do này.`
+                  ? `Hệ thống gửi email lý do tới chủ sân của "${modal.locationName}" (MSG117), kèm câu bên vận hành sẽ liên hệ hoàn tiền thuê đã chuyển.`
                   : `Kỳ hạn dịch vụ mới cho "${modal.facilityName}". Hệ thống yêu cầu tối thiểu 12 tháng và không trùng lặp với kỳ hạn đang có.`}
               </p>
               <form onSubmit={modal.type === 'reject' ? handleConfirmRejection : handleConfirmExtension}>

@@ -142,7 +142,9 @@ function PaymentDesk({ role, surcharge }) {
   const payment = detail?.payment || detail;
   const activeDetail = !loadingQueue && selectedId && payment?.id === selectedId ? detail : null;
   const activePayment = activeDetail ? payment : null;
-  const canDecide = activePayment?.status === 'AWAITING_CONFIRMATION';
+  // D174: chờ quá 15 phút trong giờ mở cửa thì giao dịch đã chuyển cho chủ sân; Staff chỉ xem, Owner vẫn xử lý.
+  const transferredToOwner = Boolean(activePayment?.transferredToOwner);
+  const canDecide = activePayment?.status === 'AWAITING_CONFIRMATION' && !(transferredToOwner && role !== 'owner');
   const proofs = surcharge ? (activeDetail?.proofs ?? []).slice().reverse() : activeDetail?.proofs ?? [];
   const activeProofId = proofs.some(({ id }) => id === selectedProofId) ? selectedProofId : null;
   const proofKey = selectedId && activeProofId ? selectedId + ':' + activeProofId : '';
@@ -365,7 +367,9 @@ function PaymentDesk({ role, surcharge }) {
                   Mã GD #{item.id} · Còn {item.resubmitsLeft ?? Math.max(0, 3 - (item.resubmitCount ?? 0))} lượt gửi lại
                 </span>
                 <span className={styles.waiting}>
-                  {item.submittedAt ? `Gửi lúc ${item.submittedAt.replace('T', ' ')}` : 'Đang chờ xác nhận'}
+                  {item.transferredToOwner
+                    ? 'Đã chuyển cho chủ sân xử lý'
+                    : item.submittedAt ? `Gửi lúc ${item.submittedAt.replace('T', ' ')}` : 'Đang chờ xác nhận'}
                 </span>
               </button>
             ))}
@@ -391,9 +395,18 @@ function PaymentDesk({ role, surcharge }) {
                       {activeDetail?.customerName ? ` · ${activeDetail.customerName}` : ''}
                     </h2>
                     <span className={styles.statusBadge}>
-                      {canDecide ? 'Chờ xác nhận · Còn ' + resubmitsLeft + '/3 lượt bổ sung' : 'Giao dịch đã được xử lý.'}
+                      {canDecide ? 'Chờ xác nhận · Còn ' + resubmitsLeft + '/3 lượt bổ sung'
+                        : transferredToOwner && activePayment?.status === 'AWAITING_CONFIRMATION' ? 'Đã chuyển cho chủ sân'
+                        : 'Giao dịch đã được xử lý.'}
                     </span>
                   </header>
+                  {transferredToOwner && activePayment?.status === 'AWAITING_CONFIRMATION' && (
+                    <p role="status" className={styles.errorMessage}>
+                      {role === 'owner'
+                        ? 'Giao dịch đã chờ quá 15 phút mà nhân viên chưa xác nhận nên được chuyển cho bạn xử lý.'
+                        : 'Giao dịch đã chờ quá 15 phút mà chưa được xác nhận nên đã được chuyển cho chủ sân xử lý. (MSG118)'}
+                    </p>
+                  )}
 
                   {proofs.length > 1 && (
                     <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>

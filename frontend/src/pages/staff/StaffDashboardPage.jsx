@@ -97,7 +97,7 @@ export default function StaffDashboardPage() {
     return () => clearInterval(timer);
   }, [loadAll]);
 
-  // Đồng hồ đếm ngược mỗi giây cho các booking đang giữ chỗ 5 phút tại quầy (P02 / BR43)
+  // Đồng hồ đếm ngược mỗi giây cho các booking đang giữ chỗ 10 phút tại quầy (P34 / BR43)
   useEffect(() => {
     const hasHolding = counterBookings.some((item) => item.status === 'HOLDING' && item.holdExpiresAt);
     if (!hasHolding) return undefined;
@@ -237,7 +237,7 @@ export default function StaffDashboardPage() {
     {
       label: 'Chờ xác nhận TT',
       value: String(dashboard?.paymentsAwaitingConfirmation ?? pendingPayments.length),
-      note: `${overduePayments.length} giao dịch chờ quá 15 phút`,
+      note: `${overduePayments.length} giao dịch đã chuyển cho chủ sân`,
     },
     {
       label: 'Doanh thu hôm nay',
@@ -327,14 +327,14 @@ export default function StaffDashboardPage() {
           {overduePayments.length > 0 && (
             <div className={styles.urgentBanner} role="alert">
               <span>
-                Khẩn cấp: Có {overduePayments.length} giao dịch ({overduePayments[0]?.label || `#${overduePayments[0]?.id}`}) đã chờ xác nhận quá 15 phút trong giờ mở cửa!
+                Có {overduePayments.length} giao dịch ({overduePayments[0]?.label || `#${overduePayments[0]?.id}`}) đã chờ quá 15 phút trong giờ mở cửa mà chưa được xác nhận nên đã được chuyển cho chủ sân xử lý. (MSG118)
               </span>
               <button
                 className={styles.handleButton}
                 type="button"
                 onClick={() => openPaymentConfirmation(overduePayments[0])}
               >
-                Xử lý ngay
+                Xem giao dịch
               </button>
             </div>
           )}
@@ -428,7 +428,7 @@ export default function StaffDashboardPage() {
                     <span className={styles.transactionAmount}>
                       <strong>{formatMoney(payment.amountDue)}</strong>
                       <small className={payment.overdue ? styles.overdueText : ''}>
-                        {payment.overdue ? 'Quá hạn 15 phút!' : 'Chờ xác nhận'}
+                        {payment.overdue ? 'Đã chuyển cho chủ sân' : 'Chờ xác nhận'}
                       </small>
                     </span>
                   </button>
@@ -492,7 +492,7 @@ export default function StaffDashboardPage() {
                           <small className={expiredHold ? styles.overdueText : ''} style={{ color: expiredHold ? '#b91c1c' : '#b45309', fontWeight: 700 }}>
                             {expiredHold
                               ? 'Đã hết thời gian giữ chỗ. Slot đã được nhả. (MSG33)'
-                              : `Đang giữ chỗ 5 phút · Còn lại: ${formatRemaining(remainingMs)}`}
+                              : `Đang giữ chỗ 10 phút · Còn lại: ${formatRemaining(remainingMs)}`}
                           </small>
                         )}
                       </span>
@@ -545,6 +545,7 @@ export default function StaffDashboardPage() {
                       <small>
                         {booking.bookingCode}
                         {booking.customerName ? ` · ${booking.customerName}` : ''}
+                        {booking.customerPhone ? ` · ${booking.customerPhone}` : ''}
                       </small>
                     </span>
                     <span className={styles.transactionAmount}>
