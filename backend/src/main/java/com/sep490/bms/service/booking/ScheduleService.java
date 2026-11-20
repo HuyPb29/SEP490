@@ -122,11 +122,20 @@ public class ScheduleService {
         List<Long> courtIds = courts.stream().map(Court::getId).toList();
         List<BookingSlot> slots = bookingSlotRepository.findByCourtIdInAndSlotDateAndActiveTrue(courtIds, day);
         Map<Long, Booking> bookings = loadBookings(slots);
+        Booking rescheduling = bookingId == null ? null : bookings.get(bookingId);
+        boolean canReselectOriginal = viewer != null && viewer.getRole() == Role.PLAYER
+                && rescheduling != null && viewer.getId().equals(rescheduling.getPlayerId())
+                && rescheduling.getLocationId().equals(locationId)
+                && rescheduling.getStatus() == BookingStatus.CONFIRMED;
+        List<BookingSlot> visibleSlots = slots.stream()
+                .filter(slot -> !(canReselectOriginal && bookingId.equals(slot.getBookingId())
+                        && inBookedFrame(slot, rescheduling)))
+                .toList();
 
         DayView view = new DayView(
                 day, now, manager,
                 slotAvailabilityService.openingWindow(locationId, day),
-                indexByCourtAndStart(slots), bookings,
+                indexByCourtAndStart(visibleSlots), bookings,
                 manager ? loadPlayers(bookings) : Map.of(),
                 slotAvailabilityService.maintenanceStarts(courtIds, day),
                 priceCalculator.slotPrices(courtIds, day));

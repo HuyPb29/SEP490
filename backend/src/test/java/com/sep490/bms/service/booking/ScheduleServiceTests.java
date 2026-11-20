@@ -313,6 +313,19 @@ class ScheduleServiceTests {
                 .filter(c -> c.getStartMinute() == startMinute).findFirst().orElseThrow();
     }
 
+    @Test
+    void onlyBookingPlayerCanReselectOriginalSlotsOnRescheduleCalendar() {
+        bookingAt(TOMORROW, 780, BookingStatus.CONFIRMED, 7L);
+        assertThat(cell(service.schedule(LOCATION, TOMORROW, user(7L, Role.PLAYER, null), 100L, NOW), 780).getStatus())
+                .isEqualTo(SlotStatus.AVAILABLE);
+        assertThat(cell(service.schedule(LOCATION, TOMORROW, user(8L, Role.PLAYER, null), 100L, NOW), 780).getStatus())
+                .isEqualTo(SlotStatus.BOOKED);
+        assertThat(cell(service.schedule(LOCATION, TOMORROW, null, 100L, NOW), 780).getStatus())
+                .isEqualTo(SlotStatus.BOOKED);
+        assertThat(cell(service.schedule(LOCATION, TOMORROW, user(7L, Role.PLAYER, null), NOW), 780).getStatus())
+                .isEqualTo(SlotStatus.BOOKED);
+    }
+
     /** Booking 1 slot; playerId null là booking tại quầy. */
     private void bookingAt(LocalDate date, int startMinute, BookingStatus status, Long playerId) {
         Booking booking = booking(status, playerId, date, startMinute);
@@ -323,7 +336,7 @@ class ScheduleServiceTests {
     }
 
     private static Booking booking(BookingStatus status, Long playerId, LocalDate date, int startMinute) {
-        return Booking.builder().id(100L).courtId(COURT).playerId(playerId)
+        return Booking.builder().id(100L).locationId(LOCATION).courtId(COURT).playerId(playerId)
                 .customerName(playerId == null ? "Khách quầy" : null)
                 .customerPhone(playerId == null ? "0987654321" : null)
                 .playDate(date).startMinute(startMinute).endMinute(startMinute + 30)

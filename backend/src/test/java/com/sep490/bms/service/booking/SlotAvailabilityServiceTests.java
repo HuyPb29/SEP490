@@ -99,6 +99,16 @@ class SlotAvailabilityServiceTests {
     }
 
     @Test
+    void rescheduleIgnoresOnlyItsOwnBookingSlots() {
+        when(slots.findByCourtIdInAndSlotDateAndActiveTrue(any(), any())).thenReturn(List.of(
+                BookingSlot.builder().bookingId(10L).courtId(COURT).slotDate(DATE).slotStartMinute(540).build(),
+                BookingSlot.builder().bookingId(11L).courtId(COURT).slotDate(DATE).slotStartMinute(630).build()));
+        assertThat(service.findProblem(LOCATION, COURT, DATE, 510, 600, 10L)).isEmpty();
+        assertThat(service.findProblem(LOCATION, COURT, DATE, 510, 660, 10L)).contains(SlotProblem.TAKEN);
+        assertThat(service.findProblem(LOCATION, COURT, DATE, 510, 600)).contains(SlotProblem.TAKEN);
+    }
+
+    @Test
     void approvedMaintenanceInsideRangeIsMaintenance() {
         when(maintenance.findByCourtIdInAndStatusAndStartAtLessThanAndEndAtGreaterThan(any(), any(), any(), any()))
                 .thenReturn(List.of(Maintenance.builder().courtId(COURT).status(ApprovalStatus.APPROVED)
