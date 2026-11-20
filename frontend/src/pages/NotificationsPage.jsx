@@ -52,6 +52,11 @@ export function Inbox({ title = 'Hộp thư' }) {
       {(role === 'owner' || role === 'staff') && item.type === 'RESCHEDULE_PROOF_SUBMITTED' && item.refId &&
         <Link className="block underline" to="/staff/confirm-payments?type=reschedule"
           onClick={() => setSelectedVenue(item.refId)}>Mở danh sách phụ thu chờ xác nhận</Link>}
+      {role === 'staff' && item.type === 'PAYMENT_ESCALATED' &&
+        <Link className="block underline" to="/staff/dashboard">Mở bảng điều hành</Link>}
+      {role === 'owner' && item.type === 'PAYMENT_ESCALATED_TO_OWNER' && item.refId &&
+        <Link className="block underline" to={'/staff/confirm-payments?paymentId=' + item.refId
+          + (item.refType === 'RESCHEDULE_PAYMENT' ? '&type=reschedule' : '')}>Xử lý giao dịch</Link>}
       {role === 'staff' && item.type === 'BOOKING_ENDING_SOON' &&
         <Link className="block underline" to="/staff/dashboard">Mở bảng điều hành</Link>}
       {role === 'admin' && item.refType === 'SERVICE_REGISTRATION' &&
