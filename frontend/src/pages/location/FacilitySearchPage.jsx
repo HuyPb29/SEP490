@@ -4,7 +4,6 @@ import courtPhoto from '../../assets/badminton-court.jpg';
 import { PublicHeader } from '../../components/layout/PublicLayout';
 import PublicFooter from '../../components/layout/PublicFooter';
 import GoogleVenueMap from '../../components/map/GoogleVenueMap';
-import { useAuth } from '../../hooks/useAuth';
 import { useFacilitySearch } from '../../hooks/useFacilitySearch';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import { distanceKm } from '../../utils/distance';
@@ -105,10 +104,8 @@ function VenueCard({ venue, index, onSelect }) {
   );
 }
 
-export default function FacilitySearchPage() {
+export default function FacilitySearchPage({ searchOnly = false }) {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const roleCode = String(user?.role_code || user?.role || '').toLowerCase();
   const [keyword, setKeyword] = useState('');
   const [searchedKeyword, setSearchedKeyword] = useState('');
   const [playDate, setPlayDate] = useState(MIN_PLAY_DATE);
@@ -156,10 +153,6 @@ export default function FacilitySearchPage() {
     keywordInput.current?.focus({ preventScroll: true });
   };
 
-  const rewardsLink = roleCode === 'player'
-    ? { to: '/my-rewards', label: 'Xem điểm & voucher' }
-    : !user ? { to: '/login?mode=register', label: 'Đăng ký để tích điểm' } : null;
-
   return (
     <div className={styles.page}>
       <PublicHeader />
@@ -173,7 +166,7 @@ export default function FacilitySearchPage() {
               {activeCount} cụm sân đang hoạt động trên Courtly
             </p>
           )}
-          <h1 className={styles.heroTitle}>Đặt sân cầu lông dễ dàng hơn</h1>
+          <h1 className={styles.heroTitle}>{searchOnly ? 'Tìm sân cầu lông' : 'Đặt sân cầu lông dễ dàng hơn'}</h1>
           <p className={styles.heroSubtitle}>
             Tìm sân gần bạn, chọn giờ phù hợp và đặt sân chỉ trong vài bước.
           </p>
@@ -239,7 +232,7 @@ export default function FacilitySearchPage() {
       </section>
 
       <main>
-        <div className={styles.featureStrip}>
+        {!searchOnly && <div className={styles.featureStrip}>
           {FEATURES.map((item) => (
             <div key={item.title} className={styles.featureItem}>
               <span className={styles.featureIcon}><HomeIcon name={item.icon} /></span>
@@ -249,7 +242,7 @@ export default function FacilitySearchPage() {
               </div>
             </div>
           ))}
-        </div>
+        </div>}
 
         <section className={styles.section} ref={resultsSection} aria-labelledby="featured-title">
           <div className={styles.sectionHead}>
@@ -298,7 +291,7 @@ export default function FacilitySearchPage() {
           )}
         </section>
 
-        <section className={styles.stepsBand} aria-labelledby="steps-title">
+        {!searchOnly && <section className={styles.stepsBand} aria-labelledby="steps-title">
           <div className={styles.stepsInner}>
             <p className={styles.eyebrow}>Nhanh chóng & đơn giản</p>
             <h2 id="steps-title" className={styles.sectionTitle}>Đặt sân chỉ với 3 bước</h2>
@@ -313,9 +306,9 @@ export default function FacilitySearchPage() {
               ))}
             </ol>
           </div>
-        </section>
+        </section>}
 
-        {rewardsLink && (
+        {!searchOnly && (
           <section className={styles.section} aria-labelledby="rewards-title">
             <div className={styles.promo}>
               <span className={styles.promoTag}>Dành cho người chơi</span>
@@ -323,8 +316,8 @@ export default function FacilitySearchPage() {
               <p className={styles.promoText}>
                 Đặt sân là được cộng điểm tại cụm sân đó. Dùng điểm và voucher để giảm giá cho lần đặt tiếp theo.
               </p>
-              <Link to={rewardsLink.to} className={styles.promoBtn}>
-                {rewardsLink.label}
+              <Link to="/login?mode=register" className={styles.promoBtn}>
+                Đăng ký để tích điểm
                 <HomeIcon name="arrowRight" size={16} />
               </Link>
             </div>
@@ -379,14 +372,14 @@ export default function FacilitySearchPage() {
           </div>
         </section>
 
-        <section className={styles.ctaBand} aria-labelledby="cta-title">
+        {!searchOnly && <section className={styles.ctaBand} aria-labelledby="cta-title">
           <h2 id="cta-title" className={styles.ctaTitle}>Sẵn sàng ra sân?</h2>
           <p className={styles.ctaText}>Tìm sân phù hợp và bắt đầu trận đấu của bạn ngay hôm nay.</p>
           <button type="button" className={styles.ctaBtn} onClick={focusSearch}>
             Tìm sân ngay
             <HomeIcon name="arrowRight" size={16} />
           </button>
-        </section>
+        </section>}
       </main>
 
       <PublicFooter />

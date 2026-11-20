@@ -293,9 +293,19 @@ export default function MyBookingsPage() {
       .map((s) => ({ courtId: court.court_id, courtName: court.court_name, time: s.time, price: Number(s.price) }));
   }, [rsCurrent, selectedCourtId, startMin, endMin]);
   const originalBooking = rescheduleTarget?.booking;
-  const originalMinutes = originalBooking?.start_time && originalBooking?.end_time
-    ? toMinutes(originalBooking.end_time) - toMinutes(originalBooking.start_time)
-    : 0;
+  const originalStart = originalBooking?.start_time ? toMinutes(originalBooking.start_time) : null;
+  const originalEnd = originalBooking?.end_time ? toMinutes(originalBooking.end_time) : null;
+  const originalMinutes = originalStart != null && originalEnd != null ? originalEnd - originalStart : 0;
+  const showingOriginalDate = newPlayDate === originalBooking?.booking_date && originalMinutes > 0;
+  const isOriginalSlot = showingOriginalDate
+    ? (court, slot) => {
+      const sameCourt = originalBooking.court_id == null
+        ? court.court_name === originalBooking.court_name
+        : String(court.court_id) === String(originalBooking.court_id);
+      const minute = toMinutes(slot.time);
+      return sameCourt && minute >= originalStart && minute < originalEnd;
+    }
+    : undefined;
   const selectedMinutes = rsSelected.length > 0 ? endMin - startMin : 0;
   const missingSlots = selectedMinutes > 0 ? Math.ceil((originalMinutes - selectedMinutes) / SLOT_MINUTES) : 0;
 
@@ -710,7 +720,7 @@ export default function MyBookingsPage() {
           <button
             type="button"
             className={styles.multiBookBtn}
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/locations')}
           >
             Tìm sân để đặt
           </button>
@@ -791,7 +801,7 @@ export default function MyBookingsPage() {
           <Feedback>Đang tải lịch đặt sân…</Feedback>
         ) : fetchError ? null : displayedBookings.length === 0 ? (
           <EmptyState action={search ? <button type="button" className="cw-secondary" onClick={() => setSearch('')}>Xóa từ khóa</button>
-            : activeTab === 'all' ? <Link to="/" className="cw-secondary">Tìm sân</Link> : null}>
+            : activeTab === 'all' ? <Link to="/locations" className="cw-secondary">Tìm sân</Link> : null}>
             {search ? 'Không tìm thấy lịch đặt sân phù hợp.' : 'Chưa có lịch đặt sân trong mục này.'}
           </EmptyState>
         ) : (
@@ -1052,7 +1062,8 @@ export default function MyBookingsPage() {
               </p>}
               {rsCurrent?.data?.time_headers.length === 0 && <p className={styles.modalBody}>Ngày này chưa có khung giờ mở đặt.</p>}
               {rsCurrent?.data?.time_headers.length > 0 && <ScheduleGrid schedule={rsCurrent.data} selected={rsSelected}
-                courtsAsColumns initialTime={originalBooking.start_time}
+                courtsAsColumns initialTime={showingOriginalDate ? originalBooking.start_time.slice(0, 5) : undefined}
+                isOriginalSlot={isOriginalSlot}
                 allowBooking={!rescheduleSubmitting} showBooker={false} onSlot={pickRescheduleSlot} onInspect={() => {}} />}
 
               <p className={styles.modalBody} aria-live="polite" style={{ margin: '0 0 12px' }}>

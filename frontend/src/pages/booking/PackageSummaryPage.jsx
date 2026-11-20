@@ -157,7 +157,7 @@ export default function PackageSummaryPage() {
   };
 
   if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/package-summary' }} replace />;
-  if (!draft) return <Navigate to="/" replace />;
+  if (!draft) return <Navigate to="/locations" replace />;
   if (!isPlayer) return <p role="alert">Vui lòng đăng nhập bằng tài khoản Player để đặt sân.</p>;
   if (!preview) {
     return (

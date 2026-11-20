@@ -2,6 +2,7 @@ import NavigationPage from '../pages/NavigationPage';
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { canResumePath } from '../api/f1Navigation';
 import { AccountPage, AdminWorkspace } from '../pages/account/AccountPages';
 import AdminFacilitiesPage from '../pages/admin/AdminFacilitiesPage';
 import AuthPage from '../pages/auth/AuthPage';
@@ -37,6 +38,24 @@ const OwnerWorkspace = lazy(() => import('../pages/owner/OwnerWorkspace'));
 const MultiSessionBookingPage = lazy(() => import('../pages/booking/MultiSessionBookingPage'));
 const PackageSummaryPage = lazy(() => import('../pages/booking/PackageSummaryPage'));
 
+function PublicEntry({ signedInRoles = [], children }) {
+  const { user, roleHome } = useAuth();
+  if (user && !signedInRoles.includes(user.role_code)) {
+    return <Navigate to={roleHome[user.role_code] ?? '/login'} replace />;
+  }
+  return children;
+}
+
+function LoginEntry() {
+  const { user, roleHome } = useAuth();
+  const { state } = useLocation();
+  const role = user?.role_code;
+  const home = roleHome[role];
+  if (!home) return <AuthPage />;
+  const returnTo = state?.returnTo;
+  return <Navigate to={canResumePath(returnTo, role) ? returnTo : home} replace />;
+}
+
 function LegacyMultiBookingRedirect() {
   const location = useLocation();
   const savedFacilityId = sessionStorage.getItem('selected_facility_id') || '1';
@@ -50,20 +69,29 @@ function LegacyMultiBookingRedirect() {
 }
 
 export default function AppRoutes() {
-  const { token, selectedLocationId } = useAuth();
+  const { token, user, selectedLocationId } = useAuth();
   const location = useLocation();
 
   return (
     <Suspense fallback={<p role="status" className="p-6">Đang tải trang…</p>}>
       <Routes key={token ? 'signed-in' : 'guest'}>
         {/* UC11: Tìm kiếm địa điểm */}
-        <Route path="/" element={<FacilitySearchPage />} />
+        <Route path="/" element={<PublicEntry><FacilitySearchPage /></PublicEntry>} />
+        <Route path="/locations" element={
+          <PublicEntry signedInRoles={['player']}>
+            {user ? <FacilitySearchPage searchOnly /> : <Navigate to="/" replace />}
+          </PublicEntry>
+        } />
 
         {/* UC05: Đăng ký dịch vụ sân */}
-        <Route path="/register-service" element={<ServiceRegistrationPage />} />
+        <Route path="/register-service" element={
+          <PublicEntry signedInRoles={['owner']}><ServiceRegistrationPage /></PublicEntry>
+        } />
 
         {/* UC12-13: Thông tin & Lịch sân */}
-        <Route path="/facilities/:id" element={<FacilityDetailPage />} />
+        <Route path="/facilities/:id" element={
+          <PublicEntry signedInRoles={['player']}><FacilityDetailPage /></PublicEntry>
+        } />
 
         {/* UC15: Đặt nhiều buổi định kỳ hoặc tự chọn */}
         <Route
@@ -87,7 +115,9 @@ export default function AppRoutes() {
         />
 
         {/* UC29-30: Open matches */}
-        <Route path="/open-matches" element={<OpenMatchesPage />} />
+        <Route path="/open-matches" element={
+          <PublicEntry signedInRoles={['player']}><OpenMatchesPage /></PublicEntry>
+        } />
 
         {/* UC34: Bảng điều hành Staff */}
         <Route
@@ -194,7 +224,6 @@ export default function AppRoutes() {
 
         {/* UC01-03: Đăng ký, xác minh OTP, đăng nhập và quên mật khẩu */}
         <Route path="/register" element={<Navigate to="/login?mode=register" state={location.state} replace />} />
-        <Route path="/locations" element={<Navigate to="/" replace />} />
         <Route path="/matches" element={<Navigate to="/open-matches" replace />} />
         <Route path="/my-vouchers" element={<Navigate to="/my-rewards" replace />} />
         <Route path="/complaints" element={<Navigate to="/my-complaints" replace />} />
@@ -204,7 +233,7 @@ export default function AppRoutes() {
         <Route path="/teams" element={<RequireRole roles={['player']}><TeamsPage /></RequireRole>} />
         <Route path="/my-reschedules" element={<RequireRole roles={['player']}><NavigationPage kind="reschedules" /></RequireRole>} />
         <Route path="/admin/reviews" element={<RequireRole roles={['admin']}><NavigationPage kind="reviews" /></RequireRole>} />
-        <Route path="/login" element={<AuthPage />} />
+        <Route path="/login" element={<LoginEntry />} />
 
         {/* UC04 & F1: Quản lý tài khoản theo vai trò */}
         <Route

@@ -205,7 +205,9 @@
 
 @media (max-width: 560px) {
   .panel {
-    right: -44px;
-    width: min(312px, calc(100vw - 24px));
+    position: fixed;
+    top: calc(var(--header-height) + 4px);
+    right: 12px;
+    width: min(340px, calc(100vw - 24px));
   }
 }

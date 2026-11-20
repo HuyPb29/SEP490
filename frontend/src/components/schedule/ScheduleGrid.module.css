@@ -203,6 +203,16 @@ thead .court {
   color: #065f46;
 }
 
+.originalSlot {
+  background: #ede9fe;
+  border-color: #a78bfa;
+  color: #5b21b6;
+}
+
+.selectedOriginalSlot {
+  box-shadow: inset 0 0 0 2px #c4b5fd;
+}
+
 .selected:focus-visible,
 .cell:focus-visible {
   outline: 2px solid #0f172a;

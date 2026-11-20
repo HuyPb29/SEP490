@@ -41,15 +41,19 @@ function FooterColumn({ title, links }) {
 }
 
 export default function PublicFooter() {
-  const { user } = useAuth();
+  const { user, roleHome } = useAuth();
   const roleCode = String(user?.role_code || user?.role || '').toLowerCase();
   const isPlayer = roleCode === 'player';
+  const homeUrl = isPlayer ? '/locations' : roleHome[roleCode] ?? '/';
+  const productLinks = isPlayer ? [['/locations', 'Tìm sân'], ['/open-matches', 'Kèo mở']]
+    : roleCode === 'owner' ? [['/register-service', 'Đăng ký sân']]
+      : !user ? PRODUCT_LINKS : [];
 
   return (
     <footer className={styles.footer}>
       <div className={styles.inner}>
         <div className={styles.brandBlock}>
-          <Link to="/" className={styles.brandLink}>
+          <Link to={homeUrl} className={styles.brandLink}>
             <span className={styles.brandMark} aria-hidden="true">
               C
             </span>
@@ -60,7 +64,7 @@ export default function PublicFooter() {
           </p>
         </div>
 
-        <FooterColumn title="Sản phẩm" links={PRODUCT_LINKS} />
+        {productLinks.length > 0 && <FooterColumn title="Sản phẩm" links={productLinks} />}
         {!user && <FooterColumn title="Tài khoản" links={GUEST_LINKS} />}
         {isPlayer && <FooterColumn title="Cá nhân" links={PLAYER_LINKS} />}
       </div>

@@ -540,7 +540,7 @@ export default function MultiSessionBookingPage() {
         <main className={styles.mainContainer}>
           <h1 className={styles.pageTitle}>Đặt lịch nhiều buổi</h1>
           <p>Vui lòng mở trang đặt nhiều buổi từ trang chi tiết cụm sân.</p>
-          <Link to="/">‹ Tìm sân</Link>
+          <Link to="/locations">‹ Tìm sân</Link>
         </main>
         <PublicFooter />
       </div>

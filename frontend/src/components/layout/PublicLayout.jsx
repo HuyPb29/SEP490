@@ -5,11 +5,12 @@ import { PageHeader } from '../common/PageHeader';
 import PublicFooter from './PublicFooter';
 import styles from './AppLayouts.module.css';
 import { UserMenu } from './UserMenu';
+import NavigationDrawer from './NavigationDrawer';
 
 function getPublicMenuItems(roleCode) {
   if (roleCode === 'player') {
     return [
-      ['/', 'Tìm địa điểm'],
+      ['/locations', 'Tìm sân'],
       ['/my-bookings', 'Booking của tôi'],
       ['/open-matches', 'Kèo'],
       ['/teams', 'Đội của tôi'],
@@ -17,27 +18,9 @@ function getPublicMenuItems(roleCode) {
       ['/my-complaints', 'Khiếu nại'],
     ];
   }
-  if (roleCode === 'staff') {
-    return [
-      ['/', 'Tìm địa điểm'],
-      ['/open-matches', 'Kèo mở'],
-      ['/staff/dashboard', 'Bảng điều hành'],
-    ];
-  }
-  if (roleCode === 'owner') {
-    return [
-      ['/', 'Tìm địa điểm'],
-      ['/open-matches', 'Kèo mở'],
-      ['/owner/workspace', 'Quản lý cụm sân'],
-    ];
-  }
-  if (roleCode === 'admin') {
-    return [
-      ['/', 'Tìm địa điểm'],
-      ['/open-matches', 'Kèo mở'],
-      ['/admin/workspace', 'Quản trị hệ thống'],
-    ];
-  }
+  if (roleCode === 'owner') return [['/owner/workspace', 'Quản lý cụm sân']];
+  if (roleCode === 'staff') return [['/staff/dashboard', 'Bảng điều hành']];
+  if (roleCode === 'admin') return [['/admin/workspace', 'Quản trị hệ thống']];
   return [
     ['/', 'Trang chủ'],
     ['/open-matches', 'Kèo mở'],
@@ -53,7 +36,7 @@ export function PublicHeader({ user: userProp }) {
 
   const roleCode = String(user?.role_code || user?.role || '').toLowerCase();
   const menuItems = getPublicMenuItems(roleCode);
-  const homeUrl = user ? roleHome?.[roleCode] || '/' : '/';
+  const homeUrl = roleCode === 'player' ? '/locations' : roleHome?.[roleCode] || '/';
   const isAuthRoute = location.pathname.startsWith('/login');
 
   return (
@@ -96,14 +79,7 @@ export function PublicHeader({ user: userProp }) {
       </div>
 
       {drawerOpen && (
-        <div
-          className={styles.drawerBackdrop}
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setDrawerOpen(false);
-          }}
-        >
-          <aside className={styles.drawerPanel} aria-label="Menu di động">
+        <NavigationDrawer label="Menu di động" onClose={() => setDrawerOpen(false)}>
             <div className={styles.drawerTop}>
               <Link to={homeUrl} className={styles.brandLink} onClick={() => setDrawerOpen(false)}>
                 <span className={styles.brandMark} aria-hidden="true">
@@ -147,8 +123,7 @@ export function PublicHeader({ user: userProp }) {
                 </NavLink>
               )}
             </nav>
-          </aside>
-        </div>
+        </NavigationDrawer>
       )}
     </header>
   );

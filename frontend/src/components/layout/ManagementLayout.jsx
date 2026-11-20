@@ -5,6 +5,7 @@ import { useLocationContext } from '../../hooks/useLocation';
 import { PageHeader } from '../common/PageHeader';
 import styles from './AppLayouts.module.css';
 import { UserMenu } from './UserMenu';
+import NavigationDrawer from './NavigationDrawer';
 
 export default function ManagementLayout({
   role: requiredRole,
@@ -226,14 +227,7 @@ export default function ManagementLayout({
       </div>
 
       {drawerOpen && (
-        <div
-          className={`${styles.drawerBackdrop} ${styles.drawerBackdropLeft}`}
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setDrawerOpen(false);
-          }}
-        >
-          <aside className={`${styles.drawerPanel} ${styles.drawerPanelDark}`} aria-label="Menu quản lý di động">
+        <NavigationDrawer label="Menu quản lý di động" left onClose={() => setDrawerOpen(false)}>
             <div className={styles.drawerTop}>
               <Link
                 to={homeUrl}
@@ -263,8 +257,7 @@ export default function ManagementLayout({
             <nav className={styles.drawerNav} aria-label="Menu vai trò di động">
               {renderMenuList(true)}
             </nav>
-          </aside>
-        </div>
+        </NavigationDrawer>
       )}
     </div>
   );

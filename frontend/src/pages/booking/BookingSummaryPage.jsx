@@ -235,7 +235,7 @@ export default function BookingSummaryPage() {
     }
   };
 
-  if (!bookingContext) return <Navigate to="/" replace />;
+  if (!bookingContext) return <Navigate to="/locations" replace />;
   if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/summary' }} replace />;
   if (!isPlayer) return <p role="alert">Vui lòng đăng nhập bằng tài khoản Player để đặt sân.</p>;
   if (!quote) return <div className="cw-workspace"><PublicHeader user={user} /><main className={styles.mainContainer}>

@@ -1,15 +1,13 @@
 import { uiMessage } from '../../utils/formatters';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { canResumePath } from '../../api/f1Navigation';
 import { fieldError, messages, normalizeName, otpSendError, otpSent, validEmail, validName, validPassword, validPhone, validUsername } from '../../api/f1Rules';
 import styles from './AuthPage.module.css';
 import courtPhoto from '../../assets/badminton-court.jpg';
 
 export default function AuthPage() {
-  const navigate = useNavigate();
   const location = useLocation();
   const {
     user: currentUser,
@@ -19,7 +17,6 @@ export default function AuthPage() {
     resendOtp: resendOtpApi,
     forgotPassword: forgotPasswordApi,
     resetPassword: resetPasswordApi,
-    roleHome,
   } = useAuth();
   // Tab: 'login' (UC02) | 'register' (UC01) | 'otp' (DR25)
   const [requestedTab, setActiveTab] = useState(
@@ -103,10 +100,7 @@ export default function AuthPage() {
 
     setLoginLoading(true);
     try {
-      const user = await loginApi({ username_or_email: loginIdentity, password: loginPassword });
-      const home = roleHome[user.role.toLowerCase()] ?? '/';
-      const returnTo = location.state?.returnTo;
-      navigate(canResumePath(returnTo, user.role.toLowerCase()) ? returnTo : home, { replace: true });
+      await loginApi({ username_or_email: loginIdentity, password: loginPassword });
     } catch (error) {
       const errors = error.response?.data?.errors;
       if (errors) setLoginFields({ identity: errors.email, password: errors.password });

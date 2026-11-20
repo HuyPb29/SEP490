@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { PageHeader } from '../common/PageHeader';
 import styles from './AppLayouts.module.css';
 import { UserMenu } from './UserMenu';
+import NavigationDrawer from './NavigationDrawer';
 
 const ADMIN_MENU = [
   { to: '/admin/workspace', label: 'Quản lý tài khoản', end: true },
@@ -110,14 +111,7 @@ export default function AdminLayout({
       </div>
 
       {drawerOpen && (
-        <div
-          className={`${styles.drawerBackdrop} ${styles.drawerBackdropLeft}`}
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setDrawerOpen(false);
-          }}
-        >
-          <aside className={`${styles.drawerPanel} ${styles.drawerPanelDark}`} aria-label="Menu quản trị di động">
+        <NavigationDrawer label="Menu quản trị di động" left onClose={() => setDrawerOpen(false)}>
             <div className={styles.drawerTop}>
               <Link
                 to="/admin/workspace"
@@ -147,8 +141,7 @@ export default function AdminLayout({
             <nav className={styles.drawerNav} aria-label="Menu quản trị di động">
               {renderNavLinks(true)}
             </nav>
-          </aside>
-        </div>
+        </NavigationDrawer>
       )}
     </div>
   );

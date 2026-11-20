@@ -34,7 +34,7 @@ export default function FacilityDetailPage() {
 
       <main className={styles.mainContainer}>
         <div className={styles.breadcrumb}>
-          <Link to="/" className={styles.breadcrumbLink}>Tìm sân</Link>
+          <Link to="/locations" className={styles.breadcrumbLink}>Tìm sân</Link>
           <span className={styles.breadcrumbSep}>/</span>
           <span className={styles.breadcrumbCurrent}>{facility.facility_name}</span>
         </div>

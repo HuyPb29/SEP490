@@ -154,6 +154,7 @@ function bookingCard(item, packageId) {
     package_id: packageId,
     location_id: item.locationId,
     facility_name: item.locationName,
+    court_id: item.courtId,
     court_name: item.courtName,
     booking_date: item.playDate,
     start_time: item.startTime,

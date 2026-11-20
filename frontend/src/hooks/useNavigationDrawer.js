@@ -7,11 +7,13 @@ export function useNavigationDrawer() {
   const open = openedAt === location
   useEffect(() => {
     if (!open) return undefined
-    const close = (event) => {
-      if (event.key === 'Escape' && !event.defaultPrevented) setOpenedAt(null)
+    const desktop = window.matchMedia('(min-width: 1024px)')
+    const closeOnDesktop = () => {
+      if (desktop.matches) setOpenedAt(null)
     }
-    window.addEventListener('keydown', close)
-    return () => window.removeEventListener('keydown', close)
+    desktop.addEventListener('change', closeOnDesktop)
+    closeOnDesktop()
+    return () => desktop.removeEventListener('change', closeOnDesktop)
   }, [open])
   return [open, (next) => setOpenedAt(next ? location : null)]
 }
