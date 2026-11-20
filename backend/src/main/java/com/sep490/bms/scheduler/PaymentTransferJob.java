@@ -39,10 +39,13 @@ public class PaymentTransferJob {
     private final AccountRepository accounts;
     private final NotificationService notifications;
 
-    @Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "${bms.job.payment-escalation.cron:0 * * * * *}")
     @Transactional
     public void notifyTransferredPayments() {
-        LocalDateTime now = LocalDateTime.now();
+        notifyTransferredPayments(LocalDateTime.now());
+    }
+
+    void notifyTransferredPayments(LocalDateTime now) {
         for (Payment payment : payments.findByStatusAndSubmittedAtBefore(PaymentStatus.AWAITING_CONFIRMATION,
                 now.minus(Payment.LATE_CONFIRMATION_WAIT))) {
             if (!policy.transferredToOwner(payment, now)) {

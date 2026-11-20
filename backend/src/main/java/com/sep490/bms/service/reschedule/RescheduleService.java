@@ -75,16 +75,26 @@ public class RescheduleService {
 
     public List<Payment> staffPayments(UserPrincipal u,PaymentStatus status) {
         Long location=access.selectedLocation(u).getId();
-        return em.createQuery("select p from Payment p where p.locationId=:l and p.rescheduleRequestId is not null and p.status=:s order by p.submittedAt,p.id",Payment.class)
+        List<Payment> list=em.createQuery("select p from Payment p where p.locationId=:l and p.rescheduleRequestId is not null and p.status=:s order by p.submittedAt,p.id",Payment.class)
                 .setParameter("l",location).setParameter("s",status==null?PaymentStatus.AWAITING_CONFIRMATION:status).getResultList();
+        // FR120, BR58: đánh dấu giao dịch đã chuyển cho chủ sân để màn Staff khóa nút xử lý.
+        LocalDateTime now=LocalDateTime.now();
+        list.forEach(p -> p.setTransferredToOwner(transferPolicy.transferredToOwner(p, now)));
+        return list;
     }
     public PaymentView payment(UserPrincipal u,Long id) {
         Payment p=em.find(Payment.class,id);
         if(p==null) throw new AppException("Không tìm thấy thanh toán",HttpStatus.NOT_FOUND);
         if(p.getRescheduleRequestId()==null) throw new AppException("Không tìm thấy thanh toán phụ thu đổi lịch",HttpStatus.NOT_FOUND);
         RescheduleRequest r=find(p.getRescheduleRequestId());Booking b=support.booking(r.getBookingId());
-        if(u.getRole()==Role.PLAYER) support.player(u,b);
-        else if(!access.selectedLocation(u).getId().equals(b.getLocationId())) throw new AppException("Sai địa điểm",HttpStatus.FORBIDDEN);
+        if (u.getRole() == Role.PLAYER) {
+            support.player(u, b);
+        } else {
+            if (!access.selectedLocation(u).getId().equals(b.getLocationId())) {
+                throw new AppException("Sai địa điểm", HttpStatus.FORBIDDEN);
+            }
+            p.setTransferredToOwner(transferPolicy.transferredToOwner(p, LocalDateTime.now()));
+        }
         return new PaymentView(p,em.createQuery("select p from PaymentProof p where p.paymentId=:id order by p.id",PaymentProof.class).setParameter("id",id).getResultList());
     }
 

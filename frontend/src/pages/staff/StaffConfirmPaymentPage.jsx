@@ -109,7 +109,7 @@ function PaymentDesk({ role, surcharge }) {
       const list = items.filter((item) => item.status === 'AWAITING_CONFIRMATION');
       setQueue(list);
       const matched = requestedId && list.find((item) => String(item.id) === requestedId || item.bookingCode === requestedId);
-      setSelectedId((current) => list.find(({ id }) => id === current)?.id ?? (matched || list[0])?.id ?? null);
+      setSelectedId((current) => matched?.id ?? list.find(({ id }) => id === current)?.id ?? list[0]?.id ?? null);
       setQueueError('');
     }).catch((error) => {
       if (signal.aborted) return;
@@ -143,7 +143,8 @@ function PaymentDesk({ role, surcharge }) {
   const activeDetail = !loadingQueue && selectedId && payment?.id === selectedId ? detail : null;
   const activePayment = activeDetail ? payment : null;
   // D174: chờ quá 15 phút trong giờ mở cửa thì giao dịch đã chuyển cho chủ sân; Staff chỉ xem, Owner vẫn xử lý.
-  const transferredToOwner = Boolean(activePayment?.transferredToOwner);
+  const transferredToOwner = activePayment?.transferredToOwner
+    ?? Boolean(queue.find(({ id }) => id === selectedId)?.transferredToOwner);
   const canDecide = activePayment?.status === 'AWAITING_CONFIRMATION' && !(transferredToOwner && role !== 'owner');
   const proofs = surcharge ? (activeDetail?.proofs ?? []).slice().reverse() : activeDetail?.proofs ?? [];
   const activeProofId = proofs.some(({ id }) => id === selectedProofId) ? selectedProofId : null;
@@ -401,7 +402,7 @@ function PaymentDesk({ role, surcharge }) {
                     </span>
                   </header>
                   {transferredToOwner && activePayment?.status === 'AWAITING_CONFIRMATION' && (
-                    <p role="status" className={styles.errorMessage}>
+                    <p role="status" className={styles.escalatedNotice}>
                       {role === 'owner'
                         ? 'Giao dịch đã chờ quá 15 phút mà nhân viên chưa xác nhận nên được chuyển cho bạn xử lý.'
                         : 'Giao dịch đã chờ quá 15 phút mà chưa được xác nhận nên đã được chuyển cho chủ sân xử lý. (MSG118)'}

@@ -305,6 +305,18 @@
   line-height: 1.45;
 }
 
+.escalatedNotice {
+  margin: 14px 0 0;
+  padding: 11px 13px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
 .ownerNote strong {
   color: #172033;
 }

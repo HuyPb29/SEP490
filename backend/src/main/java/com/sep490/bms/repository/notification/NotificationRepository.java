@@ -40,7 +40,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             FROM notification n
             LEFT JOIN booking b ON n.ref_type = 'BOOKING' AND n.ref_id = b.id
             LEFT JOIN booking_package bp ON n.ref_type = 'PACKAGE' AND n.ref_id = bp.id
-            LEFT JOIN payment p ON n.ref_type = 'PAYMENT' AND n.ref_id = p.id
+            LEFT JOIN payment p ON n.ref_type IN ('PAYMENT', 'RESCHEDULE_PAYMENT') AND n.ref_id = p.id
             LEFT JOIN complaint c ON n.ref_type = 'COMPLAINT' AND n.ref_id = c.id
             LEFT JOIN review r ON n.ref_type = 'REVIEW' AND n.ref_id = r.id
             LEFT JOIN service_term st ON n.ref_type = 'SERVICE_TERM' AND n.ref_id = st.id

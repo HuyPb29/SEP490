@@ -107,6 +107,7 @@ export default function StaffDashboardPage() {
 
   const todayBookings = useMemo(() => dashboard?.todayBookings ?? [], [dashboard]);
   const pendingPayments = useMemo(() => dashboard?.pendingPayments ?? [], [dashboard]);
+  // FR120, BR58: giao dịch chờ quá 15 phút trong giờ mở cửa đã chuyển cho chủ sân, Staff chỉ xem.
   const overduePayments = useMemo(() => pendingPayments.filter((p) => p.overdue), [pendingPayments]);
 
   const nowDate = useMemo(() => new Date(now), [now]);
@@ -327,7 +328,9 @@ export default function StaffDashboardPage() {
           {overduePayments.length > 0 && (
             <div className={styles.urgentBanner} role="alert">
               <span>
-                Có {overduePayments.length} giao dịch ({overduePayments[0]?.label || `#${overduePayments[0]?.id}`}) đã chờ quá 15 phút trong giờ mở cửa mà chưa được xác nhận nên đã được chuyển cho chủ sân xử lý. (MSG118)
+                {overduePayments.length === 1
+                  ? `Giao dịch ${overduePayments[0].label || `#${overduePayments[0].id}`}`
+                  : `${overduePayments.length} giao dịch`} đã chờ quá 15 phút trong giờ mở cửa và đã được chuyển cho chủ sân xử lý.
               </span>
               <button
                 className={styles.handleButton}
@@ -403,7 +406,7 @@ export default function StaffDashboardPage() {
               <button
                 className={styles.viewAllButton}
                 type="button"
-                onClick={() => openPaymentConfirmation(pendingPayments[0])}
+                onClick={() => openPaymentConfirmation(pendingPayments.find((p) => !p.overdue) ?? pendingPayments[0])}
               >
                 Mở bàn xác nhận ›
               </button>
