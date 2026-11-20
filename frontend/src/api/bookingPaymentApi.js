@@ -1,4 +1,5 @@
 import api, { getAllPages } from './index'
+import { withBookingDeadlines } from './bookingHistory'
 
 const targets = {
   booking: '/bookings',
@@ -8,12 +9,15 @@ const targets = {
 
 export async function loadPayment({ kind, id }, signal) {
   const path = `${targets[kind]}/${id}`
-  const { data: { data: detail } } = await api.get(path, { signal })
-  const payment = kind === 'reschedule' && detail.extraAmount > 0 && detail.status !== 'PENDING_PAYMENT'
-    ? (await api.get(`${path}/payment`, { signal })).data.data
+  const { data } = await api.get(path, { signal })
+  const detail = withBookingDeadlines(data.data, data.timestamp)
+  const paymentPath = kind === 'reschedule' && detail.extraAmount > 0 && detail.status !== 'PENDING_PAYMENT'
+    ? `${path}/payment`
     : kind !== 'reschedule' && detail.paymentId
-      ? (await api.get(`/payments/${detail.paymentId}`, { signal })).data.data
+      ? `/payments/${detail.paymentId}`
       : null
+  const paymentResponse = paymentPath ? (await api.get(paymentPath, { signal })).data : null
+  const payment = paymentResponse && withBookingDeadlines(paymentResponse.data, paymentResponse.timestamp)
   const resubmitting = (payment?.status ?? detail.status) === 'RESUBMIT_REQUESTED'
   const awaiting = detail.status === 'AWAITING_CONFIRMATION' && !resubmitting
   const canPay = detail.status === (kind === 'reschedule' ? 'PENDING_PAYMENT' : 'HOLDING')
@@ -28,7 +32,9 @@ export async function loadPayment({ kind, id }, signal) {
     canPay,
     paymentId: payment?.id ?? detail.paymentId,
     resubmitting,
-    deadline: resubmitting ? (payment?.resubmitDeadline ?? detail.resubmitDeadline) : detail.holdExpiresAt,
+    deadlineMs: resubmitting
+      ? (payment?.resubmitDeadline ? payment.resubmitDeadlineMs : detail.resubmitDeadlineMs)
+      : detail.holdDeadlineMs,
     approveDeadline: kind === 'reschedule' ? detail.approveDeadline : null,
     reason: payment?.resubmitReason ?? detail.resubmitReason,
     resubmitsLeft: payment?.resubmitsLeft ?? detail.resubmitsLeft ?? detail.remainingResubmissions,
@@ -40,9 +46,13 @@ export async function loadPayment({ kind, id }, signal) {
   }
   if (!canPay) return result
   try {
-    const { data: { data: instructions } } = await api.get(`${path}/payment-instructions`, { signal })
-    return { ...result, instructions, amount: instructions.amountDue,
-      deadline: result.deadline ?? instructions.holdExpiresAt }
+    const { data } = await api.get(`${path}/payment-instructions`, { signal })
+    const instructions = withBookingDeadlines(data.data, data.timestamp)
+    return {
+      ...result, instructions, amount: instructions.amountDue,
+      deadlineMs: !resubmitting && Number.isFinite(instructions.holdDeadlineMs)
+        ? instructions.holdDeadlineMs : result.deadlineMs,
+    }
   } catch (cause) {
     const message = cause.response?.data?.message || ''
     if (message.includes('MSG33') || message.includes('MSG52')) {

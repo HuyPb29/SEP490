@@ -1,4 +1,4 @@
-import { enrichHistoryEntry } from './bookingHistory';
+import { enrichHistoryEntry, withBookingDeadlines } from './bookingHistory';
 import api, { getAllPages } from './index';
 
 export function toMinutes(time) {
@@ -160,7 +160,7 @@ function bookingCard(item, packageId) {
     start_time: item.startTime,
     end_time: item.endTime,
     time_range: item.startTime + ' – ' + item.endTime,
-    hold_expires_at: item.holdExpiresAt,
+    hold_deadline_ms: item.holdDeadlineMs,
     final_amount: item.finalAmount,
     created_at: item.createdAt,
     status,
@@ -173,8 +173,8 @@ function bookingCard(item, packageId) {
 
 export async function getMyBookingsApi() {
   const [bookings, packages] = await Promise.all([
-    getAllPages('/me/bookings'),
-    getAllPages('/me/booking-packages'),
+    getAllPages('/me/bookings', {}, withBookingDeadlines),
+    getAllPages('/me/booking-packages', {}, withBookingDeadlines),
   ]);
   const entries = [
     ...bookings.map((item) => bookingCard(item)),
@@ -189,7 +189,7 @@ export async function getMyBookingsApi() {
         court_name: item.sessionCount + (item.packageType === 'DAY' ? ' sân/khung giờ' : ' buổi'),
         booking_date: item.startDate,
         time_range: item.startDate === item.endDate ? item.startDate : item.startDate + ' – ' + item.endDate,
-        hold_expires_at: item.holdExpiresAt,
+        hold_deadline_ms: item.holdDeadlineMs,
         day_sessions: item.daySessions?.map((session) => bookingCard(session, item.id)) ?? [],
         final_amount: item.finalAmount,
         created_at: item.createdAt,
@@ -209,7 +209,11 @@ export async function getBookingDetailApi(bookingId) {
 
 export async function getPackageDetailApi(packageId) {
   const { data } = await api.get('/booking-packages/' + packageId);
-  return data.data;
+  const receivedAt = Date.now();
+  return {
+    ...data.data,
+    sessions: data.data.sessions?.map((item) => withBookingDeadlines(item, data.timestamp, receivedAt)),
+  };
 }
 
 export async function getPackageSessionsApi(packageId) {

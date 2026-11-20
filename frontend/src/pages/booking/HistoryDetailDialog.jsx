@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api, { apiErrorMessage } from '../../api'
-import { affectedBookingActions, blocksNormalBookingActions, bookingStatusLabels, bookingStartsAfter, bookingTimestamp, canPayHistoryEntry, canRescheduleBooking, getHistoryDetail } from '../../api/bookingHistory'
+import { affectedBookingActions, blocksNormalBookingActions, bookingStatusLabels, bookingStartsAfter, canPayHistoryEntry, canRescheduleBooking, getHistoryDetail, withBookingDeadlines } from '../../api/bookingHistory'
 import { createMatch } from '../../api/matchApi'
 import { formatVnd, uiMessage } from '../../utils/formatters'
 import styles from './MyBookingsPage.module.css'
@@ -101,7 +101,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
           try {
             const response = await api.get('/payments/' + data.paymentId, { signal })
             if (signal.aborted) return
-            setPayment(response.data.data)
+            setPayment(withBookingDeadlines(response.data.data, response.data.timestamp))
             setPaymentError('')
           } catch (cause) {
             if (signal.aborted) return
@@ -122,14 +122,14 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
     return () => { controller.abort(); clearTimeout(timer) }
   }, [item, revision])
 
-  const seconds = Math.max(0, Math.ceil((bookingTimestamp(detail?.holdExpiresAt) - now) / 1000)) || 0
-  const status = detail?.status.toLowerCase()
-  const currentStatus = status === 'holding' && !seconds ? 'expired' : status
-  const requestOpen = status === 'resubmit_requested' && payment?.status === 'RESUBMIT_REQUESTED'
+  const seconds = Math.max(0, Math.ceil((detail?.holdDeadlineMs - now) / 1000))
+  const currentStatus = detail?.status.toLowerCase()
+  const requestOpen = currentStatus === 'resubmit_requested' && payment?.status === 'RESUBMIT_REQUESTED'
   const target = detail && {
-    ...item, status: currentStatus, hold_expires_at: detail.holdExpiresAt,
+    ...item, status: currentStatus, hold_deadline_ms: detail.holdDeadlineMs,
     payment_id: requestOpen ? detail.paymentId : null,
-    resubmit_deadline: requestOpen ? payment.resubmitDeadline ?? detail.resubmitDeadline : null,
+    resubmit_deadline_ms: requestOpen
+      ? (payment.resubmitDeadline ? payment.resubmitDeadlineMs : detail.resubmitDeadlineMs) : null,
     reschedule: detail.reschedule, booking_date: detail.playDate ?? item.booking_date,
     start_time: detail.startTime ?? item.start_time,
     end_time: detail.endTime ?? item.end_time,
@@ -175,12 +175,13 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
             {detail.pointDiscount > 0 && <DetailRow label="Giảm bằng điểm">{currency.format(detail.pointDiscount)}</DetailRow>}
             <DetailRow label="Thành tiền">{currency.format(detail.finalAmount ?? 0)}</DetailRow>
             <DetailRow label="Mã biên nhận">{detail.receiptNo}</DetailRow>
-            {currentStatus === 'holding' && <DetailRow label="Thời gian giữ chỗ còn lại">
-              {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
+            {currentStatus === 'holding' && Number.isFinite(seconds) && <DetailRow label="Thời gian giữ chỗ">
+              {seconds > 0 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+                : 'Đang cập nhật trạng thái giữ chỗ…'}
             </DetailRow>}
-            {status === 'resubmit_requested' && <DetailRow label="Lý do gửi lại chứng từ">{uiMessage(detail.resubmitReason)}</DetailRow>}
-            {status === 'resubmit_requested' && detail.resubmitDeadline && <DetailRow label="Hạn gửi lại chứng từ">
-              {new Date(bookingTimestamp(detail.resubmitDeadline)).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
+            {currentStatus === 'resubmit_requested' && <DetailRow label="Lý do gửi lại chứng từ">{uiMessage(detail.resubmitReason)}</DetailRow>}
+            {currentStatus === 'resubmit_requested' && Number.isFinite(target.resubmit_deadline_ms) && <DetailRow label="Hạn gửi lại chứng từ">
+              {new Date(target.resubmit_deadline_ms).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
             </DetailRow>}
             {requestOpen && showPayment && <DetailRow label="Lượt bổ sung">
               {payment.resubmitsLeft > 0 ? 'Còn ' + payment.resubmitsLeft + ' lượt' : 'Yêu cầu bổ sung cuối đang mở'}

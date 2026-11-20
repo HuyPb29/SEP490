@@ -237,31 +237,8 @@ export default function MyBookingsPage() {
     return () => { active = false; clearInterval(timer); };
   }, [isPlayer, loading, fetchError, reload, expandedPackages, getMyBookingsApi, getPackageSessionsApi]);
 
-  // BR03: Đếm lùi thời gian thực cho các booking đang giữ chỗ (holding)
   useEffect(() => {
-    const timer = setInterval(() => {
-      const currentNow = Date.now();
-      setNowMs(currentNow);
-
-      // Tự động chuyển sang expired nếu hết thời gian giữ chỗ mà chưa gửi chứng từ (MSG33)
-      setBookings((prev) =>
-        prev.map((item) => {
-          if (item.status === 'holding' && item.hold_expires_at) {
-            const left = serverTimestamp(item.hold_expires_at) - currentNow;
-            if (left <= 0) {
-              return {
-                ...item,
-                status: 'expired',
-                status_name: 'Hết hạn',
-                sub_note: 'Đã hết thời gian giữ chỗ mà chưa gửi chứng từ.',
-              };
-            }
-          }
-          return item;
-        })
-      );
-    }, 1000);
-
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -396,9 +373,8 @@ export default function MyBookingsPage() {
     };
   };
 
-  const formatCountdown = (expiresIso) => {
-    if (!expiresIso) return '00:00';
-    const secs = Math.max(0, Math.floor((serverTimestamp(expiresIso) - nowMs) / 1000));
+  const formatCountdown = (deadline) => {
+    const secs = Math.ceil((deadline - nowMs) / 1000);
     const mm = String(Math.floor(secs / 60)).padStart(2, '0');
     const ss = String(secs % 60).padStart(2, '0');
     return `${mm}:${ss}`;
@@ -814,7 +790,11 @@ export default function MyBookingsPage() {
 
               let secondaryLine = item.sub_note || '';
               if (item.status === 'holding') {
-                secondaryLine = `${formatCountdown(item.hold_expires_at)} còn lại để thanh toán`;
+                if (Number.isFinite(item.hold_deadline_ms)) {
+                  secondaryLine = item.hold_deadline_ms > nowMs
+                    ? `${formatCountdown(item.hold_deadline_ms)} còn lại để thanh toán`
+                    : 'Đang cập nhật trạng thái giữ chỗ…';
+                }
               } else if (item.status === 'resubmit_requested') {
                 secondaryLine = 'Nhân viên yêu cầu gửi lại chứng từ.';
               } else if (affectedPending) {
