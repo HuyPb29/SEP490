@@ -42,6 +42,8 @@ public class PaymentResponse {
     private LocalDateTime submittedAt;
     private LocalDateTime confirmedAt;
     private String receiptNo;
+    /** FR120, BR58: chờ xác nhận quá P24 nên đã chuyển cho chủ sân; Staff chỉ xem. Chỉ điền ở danh sách chờ (UC19 #1). */
+    private boolean escalatedToOwner;
 
     public static PaymentResponse from(Payment payment, Booking booking) {
         return common(payment)
