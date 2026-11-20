@@ -158,32 +158,6 @@
   gap: 16px;
 }
 
-.promoBanner {
-  min-height: 62px;
-  padding: 13px 18px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border: 1px solid #cfead8;
-  border-radius: 12px;
-  background: #eaf8ed;
-}
-
-.promoBanner strong {
-  color: #185e39;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.promoBanner span {
-  color: #0d7041;
-  font-size: 11px;
-  font-weight: 700;
-  text-align: right;
-  white-space: nowrap;
-}
-
 .calendarCard {
   padding: 22px 24px;
 }
@@ -496,14 +470,6 @@
     grid-template-columns: 1fr;
   }
 
-  .promoBanner {
-    align-items: flex-start;
-  }
-
-  .promoBanner span {
-    max-width: 130px;
-    white-space: normal;
-  }
 }
 
 @media (max-width: 480px) {
@@ -678,7 +644,7 @@
 
 .monthRow {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 

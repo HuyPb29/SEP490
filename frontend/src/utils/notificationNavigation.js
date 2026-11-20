@@ -15,6 +15,8 @@ export function notificationDestination(item, userRole) {
   if (type === 'RESCHEDULE_PROOF_SUBMITTED' && ['owner', 'staff'].includes(role)) {
     return '/staff/confirm-payments?type=reschedule';
   }
+  const paymentTransferred = ['PAYMENT_TRANSFERRED_TO_OWNER', 'PAYMENT_ESCALATED', 'PAYMENT_ESCALATED_TO_OWNER'];
+  if (role === 'staff' && paymentTransferred.includes(type)) return '/staff/dashboard';
   if (refType === 'SERVICE_REGISTRATION') {
     return role === 'admin' ? `/admin/facilities?registrationId=${refId || ''}` : '/register-service';
   }
@@ -47,9 +49,9 @@ export function notificationDestination(item, userRole) {
   if (refType === 'MAINTENANCE' || refType === 'COURT') {
     return ['owner', 'staff'].includes(role) ? '/maintenance' : fallback;
   }
-  if (refType === 'PAYMENT' && ['owner', 'staff'].includes(role)) {
+  if (['PAYMENT', 'RESCHEDULE_PAYMENT'].includes(refType) && ['owner', 'staff'].includes(role)) {
     const params = new URLSearchParams();
-    if (item.rescheduleRequestId) params.set('type', 'reschedule');
+    if (item.rescheduleRequestId || refType === 'RESCHEDULE_PAYMENT') params.set('type', 'reschedule');
     if (refId) params.set('paymentId', refId);
     return '/staff/confirm-payments?' + params;
   }

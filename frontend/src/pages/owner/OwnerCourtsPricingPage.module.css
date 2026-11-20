@@ -401,44 +401,6 @@
   opacity: 1;
 }
 
-.offerPanel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin-top: 15px;
-  padding: 14px 15px;
-}
-
-.offerCopy {
-  min-width: 0;
-}
-
-.offerEyebrow {
-  margin: 0 0 3px;
-  color: #128044;
-  font-size: 9px;
-  font-weight: 750;
-}
-
-.offerCopy h2 {
-  margin: 0;
-  color: #172033;
-  font-size: 12px;
-  font-weight: 750;
-  line-height: 1.4;
-}
-
-.offerMeta {
-  margin: 3px 0 0;
-  color: #7d899b;
-  font-size: 10px;
-}
-
-.offerPanel > .secondaryButton {
-  flex: 0 0 auto;
-}
-
 .actionError {
   margin: 0 0 10px;
   color: #dc2626;
@@ -534,15 +496,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .offerPanel {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .offerCopy h2 {
-    font-size: 12px;
-  }
 }
 
 .statusMessage {
@@ -642,92 +595,4 @@
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-}
-
-/* ------------------------------------------------- UC09: bulk offer section */
-
-.offerSection {
-  margin-top: 15px;
-  padding: 15px;
-}
-
-.offerHint {
-  margin: 0 0 12px;
-  color: #7d899b;
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.offerList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.offerCard {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  background: #fbfcfe;
-  border: 1px solid #e4e9f1;
-  border-radius: 10px;
-}
-
-.offerCardBody {
-  min-width: 0;
-}
-
-.offerCardBody h3 {
-  margin: 0;
-  color: #172033;
-  font-size: 11px;
-  font-weight: 750;
-}
-
-.offerCardActions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.offerForm {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px dashed #e0e5ec;
-}
-
-.offerForm .field {
-  margin-top: 0;
-}
-
-.offerForm .timeFields {
-  margin-top: 0;
-}
-
-.offerForm > .field:first-child,
-.offerForm .timeFields {
-  grid-column: 1 / -1;
-}
-
-.offerForm .saveButton,
-.offerForm .cancelButton {
-  align-self: end;
-  margin-top: 0;
-}
-
-@media (max-width: 800px) {
-  .offerForm {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .offerCard {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 }

@@ -147,7 +147,7 @@ export default function BookingPaymentPage() {
     return () => { controller.abort(); clearTimeout(timer); };
   }, [trackStatus, submitting, kind, id, loadPayment]);
 
-  const deadline = bookingTimestamp(bookingData?.deadline);
+  const deadline = bookingData?.deadlineMs;
   useEffect(() => {
     if (!Number.isFinite(deadline)) return undefined;
     const update = () => setClock(Date.now());
@@ -241,7 +241,7 @@ export default function BookingPaymentPage() {
       if (error.response?.status === 409) {
         const refreshed = await loadPayment({ kind, id }).catch(() => null);
         if (refreshed) setBookingData(refreshed);
-        if (message.includes('MSG33') || message.includes('MSG52')) {
+        if (!refreshed && (message.includes('MSG33') || message.includes('MSG52'))) {
           setBookingData((current) => ({ ...current, status: 'EXPIRED', canPay: false }));
         }
       }
@@ -263,7 +263,8 @@ export default function BookingPaymentPage() {
     </Feedback>
   </main><PublicFooter /></div>;
 
-  const isExpired = bookingData.status === 'EXPIRED' || (bookingData.canPay && remainingSeconds === 0);
+  const isExpired = bookingData.status === 'EXPIRED';
+  const deadlineElapsed = bookingData.canPay && remainingSeconds === 0;
   const isConfirmedWait = bookingData.awaiting;
   const isConfirmedDone = ['CONFIRMED', 'APPROVED', 'IN_USE', 'COMPLETED'].includes(bookingData.status);
   const isRejected = ['PAYMENT_REJECTED', 'REJECTED'].includes(bookingData.status);
@@ -373,9 +374,11 @@ export default function BookingPaymentPage() {
           <div className={styles.expiredBanner}>
             <span>{bookingData.resubmitting
                 ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ.'
-                : 'Đã hết thời gian giữ chỗ. Slot đã được nhả.'}</span>
+                : "Đã hết thời gian giữ chỗ. khung giờ đã được nhả."}</span>
             <span className={styles.countdownText}>00:00</span>
           </div>
+        ) : deadlineElapsed ? (
+          <Feedback>Đang kiểm tra trạng thái thanh toán…</Feedback>
         ) : bookingData.canPay ? (
           <div className={styles.holdBanner}>
             <div className={styles.holdBannerLeft}>
@@ -387,8 +390,8 @@ export default function BookingPaymentPage() {
                 {bookingData.resubmitting && bookingData.resubmitsLeft != null &&
                   (bookingData.resubmitsLeft > 0 ? ' · Còn ' + bookingData.resubmitsLeft + ' lượt bổ sung'
                     : ' · Yêu cầu bổ sung cuối đang mở')}
-                {bookingData.resubmitting && bookingData.deadline &&
-                  ` · Hạn gửi lại: ${bookingData.deadline.replace('T', ' ')}`}
+                {bookingData.resubmitting && Number.isFinite(deadline) &&
+                  ` · Hạn gửi lại: ${new Date(deadline).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`}
               </span>
             </div>
             {remainingSeconds !== null && <strong className={styles.countdownText}>{formatCountdown(remainingSeconds)}</strong>}
@@ -407,7 +410,7 @@ export default function BookingPaymentPage() {
         {kind === 'reschedule' && bookingData.paymentId &&
           <ReschedulePaymentDetail paymentId={bookingData.paymentId} />}
 
-        {bookingData.canPay && !isExpired && <div className={styles.contentGrid}>
+        {bookingData.canPay && !isExpired && !deadlineElapsed && <div className={styles.contentGrid}>
           {/* CỘT TRÁI: Mã QR & Thông tin tài khoản nhận (DR28, FR17, FR55) */}
           <section className={styles.qrCard}>
             <h2 className={styles.cardTitle}>Thông tin chuyển khoản</h2>

@@ -2,9 +2,9 @@ import { NavLink } from 'react-router-dom'
 import styles from './AdminLocationsPage.module.css'
 
 const NAV_ITEMS = [
-  { label: 'Locations', to: '/admin/locations' },
-  { label: 'Accounts', to: '/admin/accounts' },
-  { label: 'Violating Reviews', to: '/admin/violating-reviews' },
+  { label: "Địa điểm", to: '/admin/locations' },
+  { label: "Tài khoản", to: '/admin/accounts' },
+  { label: "Đánh giá vi phạm", to: '/admin/violating-reviews' },
 ]
 
 export default function AdminPortalSidebar({ pendingRequestCount = 3 }) {
@@ -16,11 +16,11 @@ export default function AdminPortalSidebar({ pendingRequestCount = 3 }) {
       </div>
 
       <div className={styles.roleCard}>
-        <span>System Administration</span>
-        <strong>Admin</strong>
+        <span>Quản trị hệ thống</span>
+        <strong>Quản trị viên</strong>
       </div>
 
-      <nav className={styles.navigation} aria-label="Admin navigation">
+      <nav className={styles.navigation} aria-label="Điều hướng quản trị viên">
         {NAV_ITEMS.map((item) => (
           <NavLink
             className={({ isActive }) => `${styles.navItem} ${isActive ? styles.navItemActive : ''}`}

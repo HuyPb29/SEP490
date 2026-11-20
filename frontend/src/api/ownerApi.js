@@ -1,4 +1,22 @@
-import api from './index'
+import api, { getAllPages } from './index'
+
+const vouchersPath = '/owner/vouchers'
+
+export function loadOwnerVouchers(locationId, signal) {
+  return getAllPages(vouchersPath, { locationId, signal })
+}
+
+export function createOwnerVoucher(locationId, voucher) {
+  return api.post(vouchersPath, voucher, { locationId })
+}
+
+export function updateOwnerVoucher(locationId, current, voucher) {
+  return api.patch(`${vouchersPath}/${current.id}`, { version: current.version, voucher }, { locationId })
+}
+
+export function publishOwnerVoucher(locationId, voucherId) {
+  return api.post(`${vouchersPath}/${voucherId}/publish`, undefined, { locationId })
+}
 
 export async function loadOwnerLocations(signal) {
   const { data } = await api.get('/owner/locations', { signal })

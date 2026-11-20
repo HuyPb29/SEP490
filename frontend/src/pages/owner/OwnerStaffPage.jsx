@@ -41,7 +41,7 @@ function isValidPhone(p) {
 }
 
 function getErrMsg(err) {
-  return err?.response?.data?.message || err?.message || 'An unexpected error occurred.'
+  return err?.response?.data?.message || err?.message || "Đã xảy ra lỗi. Vui lòng thử lại."
 }
 
 // ─── Modal: Add / Edit Staff ──────────────────────────────────────────────────
@@ -72,12 +72,12 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
   function validate() {
     const e = {}
     if (isAdd && !isValidUsername(form.username)) {
-      e.username = 'Username must be 3–50 characters: letters, digits, or underscores only.'
+      e.username = "Tên đăng nhập phải có 3–50 ký tự, chỉ gồm chữ cái, chữ số hoặc dấu gạch dưới."
     }
-    if (!form.full_name.trim()) e.full_name = 'Full name is required.'
-    if (!isValidPhone(form.phone)) e.phone = 'Phone must be 10 digits starting with 0 (e.g. 0912345678).'
+    if (!form.full_name.trim()) e.full_name = "Vui lòng nhập họ tên."
+    if (!isValidPhone(form.phone)) e.phone = "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0 (ví dụ: 0912345678)."
     if (isAdd && !isValidPassword(form.password)) {
-      e.password = 'Password must be 8–32 characters with at least 1 letter and 1 digit.'
+      e.password = "Mật khẩu phải có 8–32 ký tự, gồm ít nhất một chữ cái và một chữ số."
     }
     setErrors(e)
     return Object.keys(e).length === 0
@@ -115,8 +115,8 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
     <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-labelledby="staff-modal-title">
       <div className={styles.modal}>
         <div className={styles.modalHeader}>
-          <h2 id="staff-modal-title">{isAdd ? 'Add Staff' : 'Edit Staff'}</h2>
-          <button className={styles.closeBtn} type="button" onClick={onClose} aria-label="Close">×</button>
+          <h2 id="staff-modal-title">{isAdd ? "Thêm nhân viên" : "Sửa nhân viên"}</h2>
+          <button className={styles.closeBtn} type="button" onClick={onClose} aria-label="Đóng">×</button>
         </div>
 
         <form className={styles.modalBody} onSubmit={handleSubmit} noValidate>
@@ -124,7 +124,7 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
 
           {isAdd && (
             <div className={styles.field}>
-              <label htmlFor="sf-username">Username <span className={styles.req}>*</span></label>
+              <label htmlFor="sf-username">Tên đăng nhập <span className={styles.req}>*</span></label>
               <input
                 id="sf-username"
                 ref={firstInputRef}
@@ -139,7 +139,7 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
           )}
 
           <div className={styles.field}>
-            <label htmlFor="sf-fullname">Full Name <span className={styles.req}>*</span></label>
+            <label htmlFor="sf-fullname">Họ và tên <span className={styles.req}>*</span></label>
             <input
               id="sf-fullname"
               ref={isAdd ? undefined : firstInputRef}
@@ -152,7 +152,7 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
           </div>
 
           <div className={styles.field}>
-            <label htmlFor="sf-phone">Phone Number <span className={styles.req}>*</span></label>
+            <label htmlFor="sf-phone">Số điện thoại <span className={styles.req}>*</span></label>
             <input
               id="sf-phone"
               type="tel"
@@ -166,7 +166,7 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
 
           {isAdd && (
             <div className={styles.field}>
-              <label htmlFor="sf-password">Password <span className={styles.req}>*</span></label>
+              <label htmlFor="sf-password">Mật khẩu <span className={styles.req}>*</span></label>
               <input
                 id="sf-password"
                 type="password"
@@ -176,14 +176,14 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
                 aria-invalid={!!errors.password}
               />
               {errors.password && <span className={styles.fieldError}>{errors.password}</span>}
-              <span className={styles.hint}>8–32 characters, at least 1 letter and 1 digit.</span>
+              <span className={styles.hint}>8–32 ký tự, gồm ít nhất một chữ cái và một chữ số.</span>
             </div>
           )}
 
           <div className={styles.modalActions}>
-            <button className={styles.cancelBtn} type="button" onClick={onClose}>Cancel</button>
+            <button className={styles.cancelBtn} type="button" onClick={onClose}>Hủy</button>
             <button className={styles.saveBtn} type="submit" disabled={saving}>
-              {saving ? 'Saving…' : isAdd ? 'Add Staff' : 'Save Changes'}
+              {saving ? "Đang lưu…" : isAdd ? "Thêm nhân viên" : "Lưu thay đổi"}
             </button>
           </div>
         </form>
@@ -207,10 +207,10 @@ function ResetPasswordModal({ staff, locationId, onClose, onDone }) {
   function validate() {
     const e = {}
     if (!isValidPassword(newPw)) {
-      e.newPw = 'Password must be 8–32 characters with at least 1 letter and 1 digit.'
+      e.newPw = "Mật khẩu phải có 8–32 ký tự, gồm ít nhất một chữ cái và một chữ số."
     }
     if (newPw !== confirmPw) {
-      e.confirmPw = 'Passwords do not match.'
+      e.confirmPw = "Mật khẩu không trùng khớp."
     }
     setErrors(e)
     return Object.keys(e).length === 0
@@ -235,17 +235,17 @@ function ResetPasswordModal({ staff, locationId, onClose, onDone }) {
     <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-labelledby="rp-title">
       <div className={styles.modal}>
         <div className={styles.modalHeader}>
-          <h2 id="rp-title">Reset Password</h2>
-          <button className={styles.closeBtn} type="button" onClick={onClose} aria-label="Close">×</button>
+          <h2 id="rp-title">Cấp lại mật khẩu</h2>
+          <button className={styles.closeBtn} type="button" onClick={onClose} aria-label="Đóng">×</button>
         </div>
         <div className={styles.modalBody}>
           <p className={styles.modalSub}>
-            Resetting password for <strong>{staff.full_name}</strong> (@{staff.username})
+            Cấp lại mật khẩu cho <strong>{staff.full_name}</strong> (@{staff.username})
           </p>
           {apiError && <p className={styles.apiError} role="alert">{apiError}</p>}
           <form onSubmit={handleSubmit} noValidate>
             <div className={styles.field}>
-              <label htmlFor="rp-new">New Password <span className={styles.req}>*</span></label>
+              <label htmlFor="rp-new">Mật khẩu mới <span className={styles.req}>*</span></label>
               <input
                 id="rp-new"
                 ref={firstRef}
@@ -256,10 +256,10 @@ function ResetPasswordModal({ staff, locationId, onClose, onDone }) {
                 aria-invalid={!!errors.newPw}
               />
               {errors.newPw && <span className={styles.fieldError}>{errors.newPw}</span>}
-              <span className={styles.hint}>8–32 characters, at least 1 letter and 1 digit.</span>
+              <span className={styles.hint}>8–32 ký tự, gồm ít nhất một chữ cái và một chữ số.</span>
             </div>
             <div className={styles.field}>
-              <label htmlFor="rp-confirm">Confirm New Password <span className={styles.req}>*</span></label>
+              <label htmlFor="rp-confirm">Xác nhận mật khẩu mới <span className={styles.req}>*</span></label>
               <input
                 id="rp-confirm"
                 type="password"
@@ -271,9 +271,9 @@ function ResetPasswordModal({ staff, locationId, onClose, onDone }) {
               {errors.confirmPw && <span className={styles.fieldError}>{errors.confirmPw}</span>}
             </div>
             <div className={styles.modalActions}>
-              <button className={styles.cancelBtn} type="button" onClick={onClose}>Cancel</button>
+              <button className={styles.cancelBtn} type="button" onClick={onClose}>Hủy</button>
               <button className={styles.saveBtn} type="submit" disabled={saving}>
-                {saving ? 'Resetting…' : 'Reset Password'}
+                {saving ? "Đang cấp lại mật khẩu…" : "Cấp lại mật khẩu"}
               </button>
             </div>
           </form>
@@ -341,10 +341,10 @@ export default function OwnerStaffPage() {
   function handleStaffSaved(result, mode) {
     if (mode === 'add') {
       dispatch({ type: 'ADD', payload: result })
-      showToast(`Staff "${result.username}" added successfully.`)
+      showToast(`Nhân viên "${result.username}" đã được thêm thành công.`)
     } else {
       dispatch({ type: 'UPDATE', payload: result })
-      showToast('Staff information updated successfully.')
+      showToast("Đã cập nhật thông tin nhân viên.")
     }
     setAddModal(false)
     setEditTarget(null)
@@ -356,8 +356,8 @@ export default function OwnerStaffPage() {
     if (!member.is_locked) {
       // MSG13: confirm before locking
       const ok = window.confirm(
-        `Lock account for "${member.full_name}" (@${member.username})?\n\n` +
-        'The staff member will no longer be able to log in until unlocked.',
+        `Khóa tài khoản của "${member.full_name}" (@${member.username})?\n\n` +
+        "Nhân viên sẽ không thể đăng nhập cho đến khi được mở khóa.",
       )
       if (!ok) return
     }
@@ -366,11 +366,11 @@ export default function OwnerStaffPage() {
         await unlockStaff(locationId, member.id)
         dispatch({ type: 'UPDATE', payload: { ...member, is_locked: false } })
         // MSG14
-        showToast(`Account for "${member.full_name}" has been unlocked.`)
+        showToast(`Tài khoản của "${member.full_name}" đã được mở khóa.`)
       } else {
         await lockStaff(locationId, member.id)
         dispatch({ type: 'UPDATE', payload: { ...member, is_locked: true } })
-        showToast(`Account for "${member.full_name}" has been locked.`)
+        showToast(`Tài khoản của "${member.full_name}" đã được khóa.`)
       }
     } catch (err) {
       setRowErr(member.id, getErrMsg(err))
@@ -379,7 +379,7 @@ export default function OwnerStaffPage() {
 
   // ── Reset password callback ─────────────────────────────────────────────────
   function handlePasswordReset() {
-    showToast('Password has been reset successfully.')
+    showToast("Đã cấp lại mật khẩu thành công.")
     setResetTarget(null)
   }
 
@@ -421,24 +421,24 @@ export default function OwnerStaffPage() {
       {/* Page header */}
       <div className={styles.header}>
         <div>
-          <h1 className={styles.title}>Staff</h1>
-          <p className={styles.sub}>Location #{locationId} · Manage staff accounts</p>
+          <h1 className={styles.title}>Nhân viên</h1>
+          <p className={styles.sub}>Mã địa điểm #{locationId} · Quản lý tài khoản nhân viên</p>
         </div>
         <button className={styles.addBtn} type="button" onClick={() => setAddModal(true)}>
-          + Add Staff
+          + Thêm nhân viên
         </button>
       </div>
 
       {pageError && <p className={styles.pageError} role="alert">{pageError}</p>}
 
       {loading ? (
-        <p className={styles.loading}>Loading staff…</p>
+        <p className={styles.loading}>Đang tải danh sách nhân viên…</p>
       ) : staff.length === 0 ? (
         <div className={styles.empty}>
           <span aria-hidden="true">👤</span>
-          <p>No staff members for this location yet.</p>
+          <p>Địa điểm chưa có nhân viên.</p>
           <button className={styles.addBtn} type="button" onClick={() => setAddModal(true)}>
-            + Add First Staff
+            + Thêm nhân viên đầu tiên
           </button>
         </div>
       ) : (
@@ -447,11 +447,11 @@ export default function OwnerStaffPage() {
             <thead>
               <tr>
                 <th scope="col">#</th>
-                <th scope="col">Username</th>
-                <th scope="col">Full Name</th>
-                <th scope="col">Phone</th>
-                <th scope="col">Status</th>
-                <th scope="col">Actions</th>
+                <th scope="col">Tên đăng nhập</th>
+                <th scope="col">Họ và tên</th>
+                <th scope="col">Số điện thoại</th>
+                <th scope="col">Trạng thái</th>
+                <th scope="col">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -466,9 +466,9 @@ export default function OwnerStaffPage() {
                     <td>{member.phone}</td>
                     <td>
                       {member.is_locked ? (
-                        <span className={styles.badgeLocked}>Locked</span>
+                        <span className={styles.badgeLocked}>Đã khóa</span>
                       ) : (
-                        <span className={styles.badgeActive}>Active</span>
+                        <span className={styles.badgeActive}>Đang hoạt động</span>
                       )}
                     </td>
                     <td>
@@ -478,21 +478,21 @@ export default function OwnerStaffPage() {
                           type="button"
                           onClick={() => setEditTarget(member)}
                         >
-                          Edit
+                          Sửa
                         </button>
                         <button
                           className={styles.actionBtn}
                           type="button"
                           onClick={() => setResetTarget(member)}
                         >
-                          Reset Password
+                          Cấp lại mật khẩu
                         </button>
                         <button
                           className={`${styles.actionBtn} ${member.is_locked ? styles.unlockBtn : styles.lockBtn}`}
                           type="button"
                           onClick={() => handleToggleLock(member)}
                         >
-                          {member.is_locked ? 'Unlock' : 'Lock'}
+                          {member.is_locked ? "Mở khóa" : "Khóa"}
                         </button>
                       </div>
                     </td>

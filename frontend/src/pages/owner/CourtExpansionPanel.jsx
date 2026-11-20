@@ -5,7 +5,7 @@ import { formatVnd } from '../location/serviceRegistrationTerms'
 import { Modal } from '../../components/common/Modal'
 import styles from './CourtExpansionPanel.module.css'
 
-const statuses = { PENDING: 'Chờ Admin duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Đã từ chối' }
+const statuses = { PENDING: "Chờ quản trị viên duyệt", APPROVED: 'Đã duyệt', REJECTED: 'Đã từ chối' }
 
 export default function CourtExpansionPanel({ locationId, locked, onClose }) {
   const fileInput = useRef(null)
@@ -70,7 +70,7 @@ export default function CourtExpansionPanel({ locationId, locked, onClose }) {
     setSaving(true)
     try {
       await submitExpansion(locationId, quote, proof)
-      setMessage('Đã gửi yêu cầu. Admin kiểm tra tiền và xét duyệt; sân chỉ có hiệu lực từ ngày sau khi duyệt.')
+      setMessage("Đã gửi yêu cầu. quản trị viên kiểm tra tiền và xét duyệt; sân chỉ có hiệu lực từ ngày sau khi duyệt.")
       clearProof()
       event.target.reset()
       setRefresh((value) => value + 1)
@@ -86,7 +86,7 @@ export default function CourtExpansionPanel({ locationId, locked, onClose }) {
       <button type="button" className={styles.close} aria-label="Đóng đăng ký thêm sân" disabled={saving} onClick={onClose}>×</button>
     </header>
     <p>Phí tính theo số tháng còn lại đến hết thời hạn sử dụng dịch vụ, đếm từ hôm nay: phần lẻ đến 15 ngày không tính, từ 16 ngày tính thêm một tháng. Đơn giá như đăng ký ban đầu (10.000.000 đồng cho 9 sân trong 1 năm), làm tròn tổng lên nghìn đồng.</p>
-    <p>Chuyển khoản ngay khi gửi yêu cầu. Số tiền được chốt lúc gửi, Admin duyệt muộn cũng không tính lại; sân nhận lịch từ ngày sau khi được duyệt.</p>
+    <p>Chuyển khoản ngay khi gửi yêu cầu. Số tiền được chốt lúc gửi, quản trị viên duyệt muộn cũng không tính lại; sân nhận lịch từ ngày sau khi được duyệt.</p>
     {error && <p role="alert" className="my-2 text-red-700">{error}</p>}
     {message && <p role="status" className="my-2 text-emerald-700">{message}</p>}
     {!locked && !pending && <form onSubmit={submit} className="my-4 grid gap-3">
@@ -128,7 +128,7 @@ export default function CourtExpansionPanel({ locationId, locked, onClose }) {
         {saving ? 'Đang gửi…' : 'Gửi yêu cầu thêm sân'}
       </button>
     </form>}
-    {pending && <p className="my-3 text-amber-700">Đã có đơn chờ duyệt. Vui lòng chờ Admin xử lý trước khi gửi đơn mới.</p>}
+    {pending && <p className="my-3 text-amber-700">Đã có đơn chờ duyệt. Vui lòng chờ quản trị viên xử lý trước khi gửi đơn mới.</p>}
     <button type="button" className="my-2 underline" onClick={() => setRefresh((value) => value + 1)}>Làm mới đơn và báo giá</button>
     <ul className="grid gap-3">{requests.map((item) => <li key={item.id} className="rounded border p-3">
       <strong>Đơn #{item.id}: thêm {item.courtCount} sân — {statuses[item.status]}</strong>

@@ -26,13 +26,15 @@ api.interceptors.response.use((response) => response, (error) => {
   return Promise.reject(error)
 })
 
-export async function getAllPages(path, config = {}) {
+export async function getAllPages(path, config = {}, mapItem) {
   const entries = []
   let page = 0
   let totalPages
   do {
     const { data } = await api.get(path, { ...config, params: { ...config.params, page, size: 50 } })
-    entries.push(...data.data.content)
+    const receivedAt = Date.now()
+    const items = data.data.content
+    entries.push(...(mapItem ? items.map((item) => mapItem(item, data.timestamp, receivedAt)) : items))
     totalPages = data.data.totalPages
     page += 1
   } while (page < totalPages)

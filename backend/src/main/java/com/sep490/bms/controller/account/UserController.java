@@ -38,7 +38,7 @@ public class UserController {
     }
 
     @PatchMapping("/me")
-    @PreAuthorize("hasRole('PLAYER')")
+    @PreAuthorize("hasAnyRole('PLAYER','OWNER')")
     public ResponseEntity<ApiResponse<UserDto>> updateCurrentUser(
             @AuthenticationPrincipal UserPrincipal currentUser,
             @Valid @RequestBody UpdateProfileRequest request) {

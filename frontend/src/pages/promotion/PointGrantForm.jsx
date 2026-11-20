@@ -5,13 +5,13 @@ import { formatSlotTime } from '../workspaceSupport'
 
 const initialSearch = { q: '', page: 0 }
 
-function Lookup({ title, label, search, onSearch, resource, empty, children }) {
+function Lookup({ title, label, search, onSearch, resource, empty, searchInput, children }) {
   return <Section title={title} resource={resource}>
     <Field label={label} type="search" maxLength={100} value={search.q}
       onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }}
-      onChange={(event) => onSearch({ q: event.target.value, page: 0 })} />
-    {resource.data?.content.length === 0 && <EmptyState>{empty}</EmptyState>}
-    {resource.data?.totalPages > 1 && <div className="flex flex-wrap items-center gap-2">
+      onChange={(event) => onSearch({ q: event.target.value, page: 0 })} {...searchInput} />
+    {resource?.data?.content.length === 0 && <EmptyState>{empty}</EmptyState>}
+    {resource?.data?.totalPages > 1 && <div className="flex flex-wrap items-center gap-2">
       <button className="cw-secondary" type="button" disabled={search.page === 0}
         onClick={() => onSearch({ ...search, page: search.page - 1 })}>Trang trước</button>
       <span>Trang {search.page + 1}/{resource.data.totalPages}</span>
@@ -35,7 +35,7 @@ export default function PointGrantForm({ locationId }) {
     setBookingSearch(initialSearch)
   }
 
-  const playerOptions = players.data?.content.map((item) => [item.id, `${item.fullName} · ${item.username}`]) ?? []
+  const playerOptions = players?.data?.content.map((item) => [item.id, `${item.fullName} · ${item.username}`]) ?? []
   const bookingOptions = bookings.data?.content.map((item) => [item.id,
     `${item.bookingCode} · ${item.playDate} · ${formatSlotTime(item.startMinute)}–${formatSlotTime(item.endMinute)}`,
   ]) ?? []
@@ -49,17 +49,18 @@ export default function PointGrantForm({ locationId }) {
       {(errors) => <>
         <Lookup title="Người nhận" label="Tìm theo họ tên hoặc tên đăng nhập"
           search={playerSearch} onSearch={(search) => { setPlayerSearch(search); selectPlayer('') }}
-          resource={players} empty="Không có Player phù hợp tại địa điểm này.">
-          <Field label="Player nhận điểm" name="playerId" required value={playerId}
+          searchInput={{ name: 'playerQuery', required: true, pattern: '.*\\S.*', error: errors.playerQuery }}
+          resource={players} empty="Không tìm thấy người chơi phù hợp tại địa điểm này.">
+          {players && <Field label="Người chơi nhận điểm" name="playerId" required value={playerId}
             onChange={(event) => selectPlayer(event.target.value)}
-            options={[[ '', 'Chọn Player' ], ...playerOptions]} error={errors.playerId} />
+            options={[[ '', 'Chọn người chơi' ], ...playerOptions]} error={errors.playerId} />}
         </Lookup>
-        {playerId && <Lookup title="Lịch đặt sân" label="Tìm theo mã booking"
+        {playerId && <Lookup title="Lịch đặt sân" label="Tìm theo mã đặt sân"
           search={bookingSearch} onSearch={(search) => { setBookingSearch(search); setBookingId('') }}
-          resource={bookings} empty="Không có booking phù hợp cho Player này.">
-          <Field label="Booking liên quan" name="bookingId" required value={bookingId}
+          resource={bookings} empty="Không có lịch đặt sân phù hợp cho người chơi này.">
+          <Field label="Lịch đặt sân liên quan" name="bookingId" required value={bookingId}
             onChange={(event) => setBookingId(event.target.value)}
-            options={[[ '', 'Chọn booking' ], ...bookingOptions]} error={errors.bookingId} />
+            options={[[ '', 'Chọn lịch đặt sân' ], ...bookingOptions]} error={errors.bookingId} />
         </Lookup>}
         <Field label="Điểm cộng" name="points" type="number" min={1} max={2147483647} required error={errors.points} />
         <Field label="Lý do" name="reason" maxLength={255} required error={errors.reason} />

@@ -14,9 +14,9 @@ export const money = (amount) =>
 
 export const formatVnd = (amount) => {
   if (amount === null || amount === undefined || Number.isNaN(Number(amount))) {
-    return '0 VND';
+    return '0 đồng';
   }
-  return `${vndNumberFormatter.format(Math.round(Number(amount)))} VND`;
+  return `${vndNumberFormatter.format(Math.round(Number(amount)))} đồng`;
 };
 
 export const formatMoney = formatVnd;
@@ -53,10 +53,10 @@ export const dateTime = (value) => {
   });
 };
 
-export const errorMessage = (error) =>
+export const errorMessage = (error) => uiMessage(
   error?.response?.data?.message ||
   error?.message ||
-  'Không thể hoàn thành thao tác. Vui lòng thử lại.';
+  'Không thể hoàn thành thao tác. Vui lòng thử lại.');
 
 const technicalCode = '(?:MSG|BR|DR|FR|NFR|UC|P)\\d+';
 const standaloneCode = new RegExp(`^${technicalCode}$`);
@@ -65,7 +65,15 @@ const technicalSuffix = new RegExp(`\\s*\\(\\s*${technicalCode}(?:\\s*[,/]\\s*${
 export function uiMessage(value) {
   if (typeof value !== 'string') return value;
   const message = value.replace(technicalSuffix, '').trim();
-  return standaloneCode.test(message) ? 'Không thể hoàn thành thao tác. Vui lòng kiểm tra lại.' : message;
+  if (/^(Network Error|Failed to fetch|Load failed)$/i.test(message)) return 'Không thể kết nối máy chủ. Vui lòng kiểm tra kết nối và thử lại.';
+  if (/^Request failed with status code \d+$/i.test(message)) return 'Không thể hoàn thành thao tác. Vui lòng thử lại.';
+  if (message === 'No message available') return 'Không có nội dung thông báo.';
+  if (message === 'Bad credentials') return 'Email hoặc mật khẩu không chính xác.';
+  if (/^must not be (null|blank|empty)$/i.test(message)) return 'Vui lòng điền thông tin bắt buộc.';
+  if (/^must be (true|false)$/i.test(message)) return 'Vui lòng kiểm tra lựa chọn xác nhận.';
+  if (/^must be a well-formed email address$/i.test(message)) return 'Vui lòng nhập địa chỉ email hợp lệ.';
+  if (standaloneCode.test(message)) return 'Không thể hoàn thành thao tác. Vui lòng kiểm tra lại.';
+  return Object.hasOwn(notificationStatusLabels, message) ? notificationStatusLabels[message] : message;
 }
 
 const notificationStatusLabels = {
@@ -96,6 +104,19 @@ const notificationStatusLabels = {
   RESOLVED: 'đã xử lý',
   REFUNDED: 'đã hoàn tiền',
   PAID: 'đã thanh toán',
+  UNVERIFIED: 'chưa xác thực',
+  AVAILABLE: 'có thể sử dụng',
+  USED: 'đã sử dụng',
+  UNAVAILABLE: 'chưa khả dụng',
+  PENDING_REFUND: 'chờ hoàn tiền',
+  SINGLE: 'đặt sân lẻ',
+  SESSION: 'buổi trong gói',
+  WALK_IN: 'đặt tại quầy',
+  DAY: 'đặt theo ngày',
+  CUSTOM: 'nhiều buổi tự chọn',
+  RECURRING: 'đặt định kỳ',
+  CAMPAIGN: 'chương trình ưu đãi',
+  LOYALTY: 'ưu đãi tích lũy',
 };
 
 const notificationStatusPattern = new RegExp(`\\b(?:${Object.keys(notificationStatusLabels).join('|')})\\b`, 'g');

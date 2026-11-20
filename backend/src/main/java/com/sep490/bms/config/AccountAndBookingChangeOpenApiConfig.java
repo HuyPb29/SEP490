@@ -31,7 +31,7 @@ public class AccountAndBookingChangeOpenApiConfig {
     public GroupedOpenApi accountOpenApi(@Qualifier("locationHeader") OpenApiCustomizer locationHeader) {
         return GroupedOpenApi.builder().group("f1-accounts")
                 .pathsToMatch("/api/auth/**", "/api/users/me", "/api/users/me/password", "/api/owner/staff-members/**",
-                        "/api/admin/accounts/**", "/api/admin/account-audits")
+                        "/api/admin/accounts/**")
                 .addOpenApiCustomizer(locationHeader)
                 .addOpenApiCustomizer(api -> api.getPaths().forEach((path, item) -> item.readOperations().forEach(operation -> {
                     boolean publicAuth = path.startsWith("/api/auth/") && !path.endsWith("/logout");

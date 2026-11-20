@@ -42,6 +42,14 @@ public class UserService {
         Account account = accountRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new AppException("Không tìm thấy người dùng"));
 
+        if (account.getRole() != Role.PLAYER && account.getRole() != Role.OWNER) {
+            throw new AppException("Bạn không có quyền cập nhật hồ sơ", HttpStatus.FORBIDDEN);
+        }
+        if (account.getRole() != Role.PLAYER && request.getSkillLevel() != null) {
+            String message = "Chỉ người chơi được cập nhật trình độ chơi";
+            throw new AppException(message, HttpStatus.BAD_REQUEST, java.util.Map.of("skillLevel", message));
+        }
+
         if (StringUtils.hasText(request.getFullName())) {
             account.setFullName(request.getFullName().trim());
         }
@@ -65,7 +73,12 @@ public class UserService {
             throw new AppException("Nhân viên cần liên hệ Owner để cấp lại mật khẩu", HttpStatus.FORBIDDEN);
         }
         if (!passwordEncoder.matches(request.getCurrentPassword(), account.getPasswordHash())) {
-            throw new AppException("Mật khẩu hiện tại không chính xác (MSG113)");
+            throw new AppException("Mật khẩu hiện tại không chính xác (MSG113)", HttpStatus.BAD_REQUEST,
+                    java.util.Map.of("currentPassword", "Mật khẩu hiện tại không đúng. Vui lòng nhập lại."));
+        }
+        if (passwordEncoder.matches(request.getNewPassword(), account.getPasswordHash())) {
+            String message = "Mật khẩu mới phải khác mật khẩu hiện tại.";
+            throw new AppException(message, HttpStatus.BAD_REQUEST, java.util.Map.of("newPassword", message));
         }
         account.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         account.revokeTokens();

@@ -171,7 +171,7 @@ export function OwnerReviews() {
                 <div>
                   <h4 className={styles.reviewerName}>{item.playerName || 'Người chơi ẩn danh'}</h4>
                   <div className={styles.reviewMeta}>
-                    Booking #{item.bookingId} ·{' '}
+                    Mã đặt sân #{item.bookingId} ·{' '}
                     {item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—'}
                   </div>
                 </div>

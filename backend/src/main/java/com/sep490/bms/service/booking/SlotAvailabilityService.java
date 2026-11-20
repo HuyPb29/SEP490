@@ -161,6 +161,13 @@ public class SlotAvailabilityService {
     @Transactional(readOnly = true)
     public Optional<SlotProblem> findProblem(Long locationId, Long courtId, LocalDate date,
             int startMinute, int endMinute) {
+        return findProblem(locationId, courtId, date, startMinute, endMinute, null);
+    }
+
+    /** Khi đổi lịch, các slot của chính booking vẫn có thể nằm trong khung mới. */
+    @Transactional(readOnly = true)
+    public Optional<SlotProblem> findProblem(Long locationId, Long courtId, LocalDate date,
+            int startMinute, int endMinute, Long excludedBookingId) {
         var court = courtRepository.findById(courtId).orElse(null);
         if (court != null && !courtAvailableOn(court, date)) {
             return Optional.of(SlotProblem.CLOSED);
@@ -169,7 +176,10 @@ public class SlotAvailabilityService {
         if (window.isEmpty() || !window.get().covers(startMinute, endMinute)) {
             return Optional.of(SlotProblem.CLOSED);
         }
-        Set<Integer> booked = bookedStarts(List.of(courtId), date).getOrDefault(courtId, Set.of());
+        Set<Integer> booked = new HashSet<>();
+        for (BookingSlot slot : bookingSlotRepository.findByCourtIdInAndSlotDateAndActiveTrue(List.of(courtId), date)) {
+            if (excludedBookingId == null || !excludedBookingId.equals(slot.getBookingId())) booked.add(slot.getSlotStartMinute());
+        }
         Set<Integer> maintenance = maintenanceStarts(List.of(courtId), date).getOrDefault(courtId, Set.of());
         for (int s = startMinute; s < endMinute; s += MinuteTime.SLOT_MINUTES) {
             if (booked.contains(s)) {

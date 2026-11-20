@@ -184,7 +184,7 @@ class PaymentConfirmationTests {
 
     @Test
     void staffCannotDecideAfterTransferToOwnerButOwnerCan() {
-        when(availability.exceededOpeningTime(eq(LOCATION), any(), eq(NOW), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
 
         assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW))
                 .isInstanceOf(AppException.class)
@@ -193,10 +193,16 @@ class PaymentConfirmationTests {
         assertThatThrownBy(() -> service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Ảnh mờ", true, null), NOW))
                 .isInstanceOf(AppException.class)
                 .hasMessageContaining("MSG118");
+        assertThatThrownBy(() -> service.reject(staff, PAYMENT, new RejectPaymentRequest("Tiền không về")))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("MSG118");
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.AWAITING_CONFIRMATION);
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.AWAITING_CONFIRMATION);
+        verify(bookings, never()).lockForPayment(any());
 
         PaymentResponse result = service.confirm(owner, PAYMENT, null, NOW);
         assertThat(result.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(payment.getConfirmedBy()).isEqualTo(OWNER);
     }
 
     @Test

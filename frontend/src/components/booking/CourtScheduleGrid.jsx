@@ -17,7 +17,7 @@ export default function CourtScheduleGrid({
       <table className={styles.scheduleTable}>
         <thead>
           <tr>
-            <th className={styles.courtColHeader}>Court</th>
+            <th className={styles.courtColHeader}>Sân</th>
             {timeHeaders.map((time) => <th key={time}>{time}</th>)}
           </tr>
         </thead>
@@ -31,16 +31,16 @@ export default function CourtScheduleGrid({
                 let label = `${slot.price / 1000}k`
                 if (selected) {
                   buttonClass = styles.slotSelected
-                  label = 'Selected'
+                  label = "Đã chọn"
                 } else if (slot.status === 'booked') {
                   buttonClass = styles.slotBooked
-                  label = 'Booked'
+                  label = "Đã đặt"
                 } else if (slot.status === 'holding') {
                   buttonClass = styles.slotHolding
-                  label = 'Holding'
+                  label = "Đang giữ chỗ"
                 } else if (slot.status === 'maintenance') {
                   buttonClass = styles.slotMaintenance
-                  label = 'Maint.'
+                  label = "Bảo trì"
                 }
 
                 return (

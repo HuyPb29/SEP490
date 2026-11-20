@@ -27,7 +27,7 @@ export default function AccountForm({ fields = [], label, submit, confirmation, 
           .filter(({ name }) => response?.errors?.[name])
           .map(({ name }) => [name, response.errors[name]])
       );
-      if (message.includes('MSG113')) byField.currentPassword = 'Mật khẩu hiện tại không đúng.';
+      if (message.includes('MSG113') && !byField.currentPassword) byField.currentPassword = 'Mật khẩu hiện tại không đúng. Vui lòng nhập lại.';
       setErrors(Object.keys(byField).length ? byField : { form: message });
     } finally {
       setBusy(false);

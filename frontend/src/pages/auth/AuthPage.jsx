@@ -1,15 +1,13 @@
 import { uiMessage } from '../../utils/formatters';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { canResumePath } from '../../api/f1Navigation';
 import { fieldError, messages, normalizeName, otpSendError, otpSent, validEmail, validName, validPassword, validPhone, validUsername } from '../../api/f1Rules';
 import styles from './AuthPage.module.css';
 import courtPhoto from '../../assets/badminton-court.jpg';
 
 export default function AuthPage() {
-  const navigate = useNavigate();
   const location = useLocation();
   const {
     user: currentUser,
@@ -19,7 +17,6 @@ export default function AuthPage() {
     resendOtp: resendOtpApi,
     forgotPassword: forgotPasswordApi,
     resetPassword: resetPasswordApi,
-    roleHome,
   } = useAuth();
   // Tab: 'login' (UC02) | 'register' (UC01) | 'otp' (DR25)
   const [requestedTab, setActiveTab] = useState(
@@ -103,10 +100,7 @@ export default function AuthPage() {
 
     setLoginLoading(true);
     try {
-      const user = await loginApi({ username_or_email: loginIdentity, password: loginPassword });
-      const home = roleHome[user.role.toLowerCase()] ?? '/';
-      const returnTo = location.state?.returnTo;
-      navigate(canResumePath(returnTo, user.role.toLowerCase()) ? returnTo : home, { replace: true });
+      await loginApi({ username_or_email: loginIdentity, password: loginPassword });
     } catch (error) {
       const errors = error.response?.data?.errors;
       if (errors) setLoginFields({ identity: errors.email, password: errors.password });
@@ -197,8 +191,16 @@ export default function AuthPage() {
       setLoginNotice(resettingPassword ? messages.reset : messages.verified);
       setActiveTab('login');
     } catch (error) {
-      const message = error.response?.data?.message || 'Không thể xác minh mã. Vui lòng thử lại.';
-      setOtpError(message);
+      const response = error.response?.data;
+      const message = response?.message || 'Không thể xác minh mã. Vui lòng thử lại.';
+      const byField = Object.fromEntries(
+        Object.entries({ email: 'email', otp: 'otp', newPassword: 'password' })
+          .filter(([name]) => response?.errors?.[name])
+          .map(([name, target]) => [target, response.errors[name]])
+      );
+      if (!Object.keys(byField).length && /MSG96|mã xác (minh|thực)/i.test(message)) byField.otp = message;
+      setOtpFields(byField);
+      setOtpError(Object.keys(byField).length ? '' : message);
       if (!resettingPassword && message.includes('Vui lòng đăng ký lại')) {
         setRegistrationExpired(true);
         setPendingRegistrationEmail('');
@@ -243,7 +245,9 @@ export default function AuthPage() {
       setCooldowns((current) => ({ ...current, [otpKey]: sentAt + 60_000 }));
     } catch (error) {
       const message = otpSendError(error);
-      setSendError(message);
+      const emailError = error.response?.data?.errors?.email;
+      if (emailError) setOtpFields((current) => ({ ...current, email: emailError }));
+      setSendError(emailError ? '' : message);
       if (!resettingPassword && message.includes('Vui lòng đăng ký lại')) {
         setRegistrationExpired(true);
         setPendingRegistrationEmail('');

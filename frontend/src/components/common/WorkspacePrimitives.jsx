@@ -36,7 +36,7 @@ export function CheckoutProgress({ current, surcharge = false }) {
 }
 
 export function StatusPill({ children, tone = 'neutral' }) {
-  return <span className={'cw-status cw-status--' + tone}>{children}</span>;
+  return <span className={'cw-status cw-status--' + tone}>{uiMessage(children)}</span>;
 }
 
 export function Section({ title, resource, actions, children }) {

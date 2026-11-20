@@ -1,12 +1,12 @@
 export default function BookingModeSelector({ mode, onChange, styles }) {
   const options = [
-    { value: 'single', label: 'Single-Day Booking (Đặt lẻ - UC14)' },
-    { value: 'custom', label: 'Custom Multi-Session (Đặt nhiều buổi tự chọn - UC15 CUSTOM)' },
-    { value: 'recurring', label: 'Recurring Booking (Đặt định kỳ - UC15 RECURRING)' },
+    { value: 'single', label: "Đặt sân lẻ trong ngày" },
+    { value: 'custom', label: "Đặt nhiều buổi tự chọn" },
+    { value: 'recurring', label: "Đặt sân định kỳ" },
   ]
 
   return (
-    <div className={styles.bookingModeSelector} role="group" aria-label="Booking mode">
+    <div className={styles.bookingModeSelector} role="group" aria-label="Cách đặt sân">
       {options.map((option) => (
         <button
           key={option.value}

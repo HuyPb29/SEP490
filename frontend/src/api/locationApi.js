@@ -94,39 +94,6 @@ export async function deletePriceRule(priceRuleId, locationId) {
   await api.delete(`/owner/price-rules/${priceRuleId}`, ownerConfig(locationId))
 }
 
-// --------------------------------------------------------- UC09: ưu đãi đặt theo lô
-
-/** GET /api/owner/batch-offers — ưu đãi của địa điểm đang chọn (X-Location-Id). */
-export async function getBatchOffers(locationId) {
-  const { data } = await api.get('/owner/batch-offers', ownerConfig(locationId))
-  return data?.data ?? []
-}
-
-/** POST /api/owner/batch-offers */
-export async function createBatchOffer(payload, locationId) {
-  const { data } = await api.post('/owner/batch-offers', payload, ownerConfig(locationId))
-  return data?.data
-}
-
-/** PATCH /api/owner/batch-offers/{id} */
-export async function updateBatchOffer(offerId, payload, locationId) {
-  const { data } = await api.patch(`/owner/batch-offers/${offerId}`, payload, ownerConfig(locationId))
-  return data?.data
-}
-
-/** DELETE /api/owner/batch-offers/{id} */
-export async function deleteBatchOffer(offerId, locationId) {
-  await api.delete(`/owner/batch-offers/${offerId}`, ownerConfig(locationId))
-}
-
-/** GET /api/owner/vouchers — chỉ lấy voucher PUBLISHED để gắn vào ưu đãi. */
-export async function getPublishedVouchers(locationId) {
-  const { data } = await api.get('/owner/vouchers', ownerConfig(locationId, {
-    params: { status: 'PUBLISHED', page: 0, size: 100 },
-  }))
-  return data?.data?.content ?? []
-}
-
 // ------------------------------------------------------------ UC06: Admin quản lý địa điểm
 
 /** GET /api/admin/locations?status=ACTIVE|LOCKED — AdminLocationDto[]. */
@@ -258,9 +225,16 @@ export async function cancelMaintenanceRequest(requestId, reason, locationId) {
   return data?.data
 }
 
-/** POST /api/owner/maintenance-requests/{id}/approve — không có body. */
-export async function approveMaintenanceRequest(requestId, locationId) {
-  const { data } = await api.post(`/owner/maintenance-requests/${requestId}/approve`, null, ownerConfig(locationId))
+/** GET MSG15: booking đã xác nhận bị ảnh hưởng trước khi duyệt bảo trì. */
+export async function getMaintenanceImpact(requestId, locationId) {
+  const { data } = await api.get(`/owner/maintenance-requests/${requestId}/impact`, ownerConfig(locationId))
+  return data.data
+}
+
+/** POST: xác nhận đúng phiên bản danh sách booking Owner đã xem. */
+export async function approveMaintenanceRequest(requestId, locationId, bookings = []) {
+  const expectedBookings = bookings.map(({ id, version }) => ({ id, version }))
+  const { data } = await api.post(`/owner/maintenance-requests/${requestId}/approve`, { expectedBookings }, ownerConfig(locationId))
   return data?.data
 }
 

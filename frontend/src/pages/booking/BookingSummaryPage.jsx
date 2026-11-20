@@ -235,9 +235,9 @@ export default function BookingSummaryPage() {
     }
   };
 
-  if (!bookingContext) return <Navigate to="/" replace />;
+  if (!bookingContext) return <Navigate to="/locations" replace />;
   if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/summary' }} replace />;
-  if (!isPlayer) return <p role="alert">Vui lòng đăng nhập bằng tài khoản Player để đặt sân.</p>;
+  if (!isPlayer) return <p role="alert">Vui lòng đăng nhập bằng tài khoản người chơi để đặt sân.</p>;
   if (!quote) return <div className="cw-workspace"><PublicHeader user={user} /><main className={styles.mainContainer}>
     <Feedback tone={quoteError ? 'error' : 'info'}>{quoteError || 'Đang tải giá đặt sân…'}
       {quoteError && <Link className="cw-secondary" to={'/facilities/' + bookingContext.facility.facility_id}>Quay lại lịch sân</Link>}
@@ -358,7 +358,7 @@ export default function BookingSummaryPage() {
             {teamError && <p role="alert" className={styles.errorText}>{teamError}</p>}
             {/* Card 3: Ưu đãi (Voucher & Điểm thưởng - DR08, BR41, P10, P13) */}
             <section className={styles.card}>
-              <h2 className={styles.cardTitle}>Voucher và điểm thưởng</h2>
+              <h2 className={styles.cardTitle}>phiếu ưu đãi và điểm thưởng</h2>
 
               <CheckoutVoucherPicker {...voucher} disabled={submitting || Boolean(quote.conflictSessions)} />
 
@@ -369,7 +369,7 @@ export default function BookingSummaryPage() {
                   <strong className={styles.pointsTitle}>Dùng điểm thưởng</strong>
                   <span className={styles.pointsSub}>
                     Bạn đang có {availablePoints} điểm tại địa điểm này (1 điểm = {formatVnd(pointValue)}).{' '}
-                    Tối đa {checkoutPointPercent}% {appliedVoucher ? 'số tiền còn lại sau voucher' : 'giá niêm yết'}.
+                    Tối đa {checkoutPointPercent}% {appliedVoucher ? "số tiền còn lại sau phiếu ưu đãi" : 'giá niêm yết'}.
                   </span>
                 </div>
 
@@ -392,7 +392,7 @@ export default function BookingSummaryPage() {
 
               <div className={styles.priceLine}>
                 <span className={styles.priceLabel}>
-                  Tiền sân ({slotSummary.totalSlots} slot{isOrder ? `, ${ranges.length} dải` : ''})
+                  Tiền sân ({slotSummary.totalSlots} khung giờ{isOrder ? `, ${ranges.length} dải` : ''})
                 </span>
                 <strong className={styles.priceValue}>
                   {formatVnd(pricingSummary.listPrice)}
@@ -400,7 +400,7 @@ export default function BookingSummaryPage() {
               </div>
 
               <div className={styles.priceLine}>
-                <span className={styles.priceLabel}>Voucher</span>
+                <span className={styles.priceLabel}>Phiếu ưu đãi</span>
                 <strong className={styles.discountValue}>
                   –{formatVnd(pricingSummary.voucherDiscount)}
                 </strong>

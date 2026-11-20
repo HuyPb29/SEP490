@@ -1,3 +1,5 @@
+import { uiMessage } from '../../utils/formatters';
+
 /**
  * Bảng ánh xạ trạng thái chuẩn từ sheet Trang_thai trong UC_FR_NFR_v19 (1).xlsx
  */
@@ -39,7 +41,7 @@ export const STATUS_CATALOG = {
   },
   complaint: {
     SUBMITTED: { label: 'Mới gửi', tone: 'warning' },
-    PENDING_OWNER: { label: 'Chờ Owner quyết định', tone: 'warning' },
+    PENDING_OWNER: { label: "Chờ chủ sân quyết định", tone: 'warning' },
     RESOLVED: { label: 'Đã xử lý', tone: 'success' },
     REJECTED: { label: 'Bị từ chối', tone: 'danger' },
   },
@@ -79,5 +81,5 @@ export function resolveStatusMeta(status, category = 'booking') {
   for (const cat of Object.values(STATUS_CATALOG)) {
     if (cat[key]) return cat[key];
   }
-  return { label: String(status), tone: 'neutral' };
+  return { label: uiMessage(String(status)), tone: 'neutral' };
 }

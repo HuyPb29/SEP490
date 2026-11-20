@@ -5,6 +5,7 @@ import { useLocationContext } from '../../hooks/useLocation';
 import { PageHeader } from '../common/PageHeader';
 import styles from './AppLayouts.module.css';
 import { UserMenu } from './UserMenu';
+import NavigationDrawer from './NavigationDrawer';
 
 export default function ManagementLayout({
   role: requiredRole,
@@ -75,7 +76,7 @@ export default function ManagementLayout({
   const ownerMenu = [
     { to: '/owner/workspace', label: 'Tổng quan & Vận hành', end: true },
     { to: '/owner/courts-pricing', label: 'Sân & Bảng giá' },
-    { to: '/owner/opening-hours', label: 'Giờ mở cửa & Slot' },
+    { to: '/owner/opening-hours', label: "Giờ mở cửa & khung giờ" },
     { to: '/owner/facility-settings', label: 'Hồ sơ địa điểm' },
     { to: '/owner/workspace?tab=reviews', label: 'Đánh giá' },
     { to: '/staff/confirm-payments', label: 'Xác nhận thanh toán' },
@@ -226,14 +227,7 @@ export default function ManagementLayout({
       </div>
 
       {drawerOpen && (
-        <div
-          className={`${styles.drawerBackdrop} ${styles.drawerBackdropLeft}`}
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setDrawerOpen(false);
-          }}
-        >
-          <aside className={`${styles.drawerPanel} ${styles.drawerPanelDark}`} aria-label="Menu quản lý di động">
+        <NavigationDrawer label="Menu quản lý di động" left onClose={() => setDrawerOpen(false)}>
             <div className={styles.drawerTop}>
               <Link
                 to={homeUrl}
@@ -263,8 +257,7 @@ export default function ManagementLayout({
             <nav className={styles.drawerNav} aria-label="Menu vai trò di động">
               {renderMenuList(true)}
             </nav>
-          </aside>
-        </div>
+        </NavigationDrawer>
       )}
     </div>
   );

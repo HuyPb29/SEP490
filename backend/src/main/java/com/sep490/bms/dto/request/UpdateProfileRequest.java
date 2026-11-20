@@ -10,10 +10,10 @@ import lombok.*;
  */
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class UpdateProfileRequest {
-    @Size(min = 2, max = 50)
-    @Pattern(regexp = ValidationRules.NAME, message = "Họ tên chỉ được chứa chữ và khoảng trắng")
+    @Size(min = 2, max = 50, message = "Họ và tên phải có từ 2 đến 50 ký tự")
+    @Pattern(regexp = ValidationRules.NAME, message = "Họ và tên chỉ được chứa chữ và khoảng trắng, không chứa số hoặc ký tự đặc biệt")
     private String fullName;
     @Pattern(regexp = "Mới chơi|Trung bình|Khá|Nâng cao",
-            message = "Chọn một trong bốn mức trình độ chơi theo DR33")
+            message = "Trình độ chơi phải là Mới chơi, Trung bình, Khá hoặc Nâng cao")
     private String skillLevel;
 }

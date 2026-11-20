@@ -21,7 +21,7 @@ export function loadMaps() {
       const fail = () => {
         cleanup()
         script.remove()
-        reject(new Error('Google Maps unavailable'))
+        reject(new Error("Không tải được Google Maps"))
       }
       const timeout = setTimeout(fail, 15000)
       window[callback] = () => {

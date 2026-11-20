@@ -19,8 +19,8 @@ export default function CheckoutVoucherPicker({ vouchers, orderAmount, code, onC
     item.selection.grantId ? item.selection.grantId === applied.selection.grantId
       : item.selection.code === applied.selection.code);
   const groups = [
-    { id: 'checkout-voucher-grant', title: 'Voucher của tôi', items: vouchers.items.filter((item) => item.selection.grantId) },
-    { id: 'checkout-voucher-facility', title: 'Voucher của sân', items: vouchers.items.filter((item) => item.selection.code) },
+    { id: 'checkout-voucher-grant', title: "phiếu ưu đãi của tôi", items: vouchers.items.filter((item) => item.selection.grantId) },
+    { id: 'checkout-voucher-facility', title: "phiếu ưu đãi của sân", items: vouchers.items.filter((item) => item.selection.code) },
   ];
   const blocked = disabled || checking || !(orderAmount > 0);
   return (
@@ -35,20 +35,20 @@ export default function CheckoutVoucherPicker({ vouchers, orderAmount, code, onC
               const item = items.find((option) => option.key === event.target.value);
               if (item) onApply(item.selection, item.voucher.name);
             }}>
-            <option value="">{vouchers.loading ? 'Đang kiểm tra voucher…' : items.length ? 'Chọn voucher' : 'Không có voucher dùng được cho đơn này'}</option>
+            <option value="">{vouchers.loading ? "Đang kiểm tra phiếu ưu đãi…" : items.length ? "Chọn phiếu ưu đãi" : "Không có phiếu ưu đãi dùng được cho đơn này"}</option>
             {items.map((item) => <option key={item.key} value={item.key}>{voucherDescription(item)}</option>)}
           </select>
         </div>
       ))}
       <div className={styles.group}>
-        <label htmlFor="checkout-voucher-code">Nhập mã voucher của sân</label>
+        <label htmlFor="checkout-voucher-code">Nhập mã phiếu ưu đãi của sân</label>
         <div className={styles.actions}>
           <input id="checkout-voucher-code" className={styles.input} value={code} maxLength={20} disabled={blocked || Boolean(applied)}
             placeholder="Nhập mã giảm giá"
             aria-describedby={error ? 'checkout-voucher-error' : undefined}
             aria-invalid={Boolean(error)} onChange={(event) => onCode(event.target.value.toUpperCase())} />
           {applied
-            ? <button type="button" className="cw-secondary" onClick={onRemove} disabled={disabled}>Bỏ voucher</button>
+            ? <button type="button" className="cw-secondary" onClick={onRemove} disabled={disabled}>Bỏ phiếu ưu đãi</button>
             : <button type="button" className="cw-secondary" disabled={blocked}
                 onClick={() => onApply({ code: code.trim() }, code.trim())}>{checking ? 'Đang kiểm tra…' : 'Áp dụng'}</button>}
         </div>

@@ -109,7 +109,7 @@ function PaymentDesk({ role, surcharge }) {
       const list = items.filter((item) => item.status === 'AWAITING_CONFIRMATION');
       setQueue(list);
       const matched = requestedId && list.find((item) => String(item.id) === requestedId || item.bookingCode === requestedId);
-      setSelectedId((current) => list.find(({ id }) => id === current)?.id ?? (matched || list[0])?.id ?? null);
+      setSelectedId((current) => matched?.id ?? list.find(({ id }) => id === current)?.id ?? list[0]?.id ?? null);
       setQueueError('');
     }).catch((error) => {
       if (signal.aborted) return;
@@ -143,7 +143,8 @@ function PaymentDesk({ role, surcharge }) {
   const activeDetail = !loadingQueue && selectedId && payment?.id === selectedId ? detail : null;
   const activePayment = activeDetail ? payment : null;
   // D174: chờ quá 15 phút trong giờ mở cửa thì giao dịch đã chuyển cho chủ sân; Staff chỉ xem, Owner vẫn xử lý.
-  const transferredToOwner = Boolean(activePayment?.transferredToOwner);
+  const transferredToOwner = activePayment?.transferredToOwner
+    ?? Boolean(queue.find(({ id }) => id === selectedId)?.transferredToOwner);
   const canDecide = activePayment?.status === 'AWAITING_CONFIRMATION' && !(transferredToOwner && role !== 'owner');
   const proofs = surcharge ? (activeDetail?.proofs ?? []).slice().reverse() : activeDetail?.proofs ?? [];
   const activeProofId = proofs.some(({ id }) => id === selectedProofId) ? selectedProofId : null;
@@ -231,7 +232,7 @@ function PaymentDesk({ role, surcharge }) {
         const excess = isOverpaid ? ' Đã thông báo Chủ sân về khoản chuyển thừa.' : '';
         if (result.status === 'EXPIRED') setMessage('Đã hết hạn thanh toán.');
         else if (surcharge && result.status !== 'APPROVED') {
-          setErrorMessage('Đổi lịch không thành công. Booking giữ giờ cũ.');
+          setErrorMessage("Đổi lịch không thành công. đặt sân giữ giờ cũ.");
         } else setMessage('Đã xác nhận thanh toán cho ' + label + '.' + receipt + excess);
       } else if (action === 'request-resubmission') {
         result = await submit(id, action, { reason: reason.text, playerAtFault: reason.playerAtFault,
@@ -401,7 +402,7 @@ function PaymentDesk({ role, surcharge }) {
                     </span>
                   </header>
                   {transferredToOwner && activePayment?.status === 'AWAITING_CONFIRMATION' && (
-                    <p role="status" className={styles.errorMessage}>
+                    <p role="status" className={styles.escalatedNotice}>
                       {role === 'owner'
                         ? 'Giao dịch đã chờ quá 15 phút mà nhân viên chưa xác nhận nên được chuyển cho bạn xử lý.'
                         : 'Giao dịch đã chờ quá 15 phút mà chưa được xác nhận nên đã được chuyển cho chủ sân xử lý. (MSG118)'}
@@ -495,7 +496,7 @@ function PaymentDesk({ role, surcharge }) {
                             <div>
                               <dt>Khách hàng / SĐT</dt>
                               <dd>
-                                {activeDetail?.customerName || 'Khách đặt online'}
+                                {activeDetail?.customerName || "Khách đặt trực tuyến"}
                                 {activeDetail?.customerPhone ? ` · ${activeDetail.customerPhone}` : ''}
                               </dd>
                             </div>

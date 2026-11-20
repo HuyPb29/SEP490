@@ -42,6 +42,87 @@ import org.springframework.web.context.WebApplicationContext;
  */
 @SpringBootTest(properties="app.booking-change.jobs-enabled=false")
 class BookingChangeApiTests {
+    private String overlappingSlot() throws Exception {
+        jdbc.update("delete from booking_slot where booking_id=?", booking.getId());
+        jdbc.update("update booking set start_minute=450,end_minute=600 where id=?", booking.getId());
+        jdbc.update("update booking set list_amount=250000,voucher_discount=25000,final_amount=225000 where id=?", booking.getId());
+        jdbc.update("update payment set amount_due=225000,received_amount=225000 where booking_id=?", booking.getId());
+        for (int minute = 450; minute < 600; minute += 30) {
+            jdbc.update("insert into booking_slot(booking_id,court_id,slot_date,slot_start_minute,price,is_active) values(?,?,?,?,50000,1)",
+                    booking.getId(), court, booking.getPlayDate(), minute);
+        }
+        return json.writeValueAsString(new ReschedulePreviewRequest(court, booking.getPlayDate(), 510, 660));
+    }
+
+    private Long createOverlappingRequest() throws Exception {
+        String body = overlappingSlot();
+        String path = "/api/bookings/" + booking.getId() + "/reschedule-requests";
+        mvc.perform(post(path + "/preview").header("Authorization", token(player))
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+        var response = mvc.perform(post(path).header("Authorization", token(player))
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isCreated()).andReturn();
+        return json.readTree(response.getResponse().getContentAsString()).at("/data/id").asLong();
+    }
+
+    @Test void overlappingRescheduleKeepsBothRangesThenPromotesAllTargetSlots() throws Exception {
+        Long id = createOverlappingRequest();
+        assertThat(active(booking.getPlayDate())).isEqualTo(7);
+        mvc.perform(paymentProof(id)).andExpect(status().isOk());
+        Long payment = jdbc.queryForObject("select id from payment where reschedule_request_id=?", Long.class, id);
+        mvc.perform(post("/api/staff/reschedule-payments/" + payment + "/confirm")
+                .header("Authorization", token(owner)).header("X-Location-Id", location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("APPROVED"));
+        assertThat(jdbc.queryForList("select slot_start_minute from booking_slot where booking_id=? and is_active=1 order by slot_start_minute",
+                Integer.class, booking.getId())).containsExactly(510, 540, 570, 600, 630);
+        assertThat(jdbc.queryForObject("select start_minute from booking where id=?", Integer.class, booking.getId())).isEqualTo(510);
+        assertThat(jdbc.queryForObject("select end_minute from booking where id=?", Integer.class, booking.getId())).isEqualTo(660);
+    }
+
+    @Test void overlappingRescheduleExpiryPreservesEveryOriginalSlot() throws Exception {
+        Long id = createOverlappingRequest();
+        jdbc.update("update reschedule_request set hold_expires_at=? where id=?", LocalDateTime.now().minusMinutes(1), id);
+        reschedules.expireRequest(id);
+        reschedules.expireRequest(id);
+        assertThat(jdbc.queryForList("select slot_start_minute from booking_slot where booking_id=? and is_active=1 order by slot_start_minute",
+                Integer.class, booking.getId())).containsExactly(450, 480, 510, 540, 570);
+        assertThat(bookingStatus()).isEqualTo("CONFIRMED");
+    }
+
+    @Test void overlappingRescheduleWithoutExtraAppliesImmediately() throws Exception {
+        String body = overlappingSlot();
+        jdbc.update("update price_rule set price_per_slot=50000 where court_id=?", court);
+        mvc.perform(post("/api/bookings/" + booking.getId() + "/reschedule-requests")
+                .header("Authorization", token(player)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("APPROVED"));
+        assertThat(jdbc.queryForList("select slot_start_minute from booking_slot where booking_id=? and is_active=1 order by slot_start_minute",
+                Integer.class, booking.getId())).containsExactly(510, 540, 570, 600, 630);
+    }
+
+    @Test void overlappingRescheduleRejectionPreservesEveryOriginalSlot() throws Exception {
+        Long id = createOverlappingRequest();
+        mvc.perform(paymentProof(id)).andExpect(status().isOk());
+        Long payment = jdbc.queryForObject("select id from payment where reschedule_request_id=?", Long.class, id);
+        mvc.perform(post("/api/staff/reschedule-payments/" + payment + "/reject")
+                .header("Authorization", token(owner)).header("X-Location-Id", location.getId())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Chưa nhận được tiền\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("REJECTED"));
+        assertThat(jdbc.queryForList("select slot_start_minute from booking_slot where booking_id=? and is_active=1 order by slot_start_minute",
+                Integer.class, booking.getId())).containsExactly(450, 480, 510, 540, 570);
+    }
+
+    @Test void unpaidRescheduleHoldsNewSlotsForTenMinutesUnderD171() throws Exception {
+        LocalDateTime before = LocalDateTime.now();
+        Long requestId = create(660);
+        LocalDateTime after = LocalDateTime.now();
+        LocalDateTime expiry = jdbc.queryForObject(
+                "select hold_expires_at from reschedule_request where id=?", LocalDateTime.class, requestId);
+        assertThat(expiry).isBetween(before.plusMinutes(10).minusSeconds(1), after.plusMinutes(10).plusSeconds(1));
+        assertThat(expiry).isBefore(jdbc.queryForObject(
+                "select approve_deadline from reschedule_request where id=?", LocalDateTime.class, requestId));
+        assertThat(active(booking.getPlayDate())).isEqualTo(2);
+        assertThat(active(LocalDate.now().plusDays(3))).isEqualTo(2);
+    }
+
     @Test void extraPaymentSupportsResubmissionAndPlayerCanReadItsProof() throws Exception {
         Account staff = createStaff(AccountStatus.ACTIVE);
         Account disabledStaff = createStaff(AccountStatus.DISABLED);
@@ -176,7 +257,7 @@ class BookingChangeApiTests {
             Court c=Court.builder().locationId(location.getId()).name("Test court").active(true).build();em.persist(c);em.flush();court=c.getId();
             for(int day=1;day<=7;day++) em.persist(OpeningHour.builder().locationId(location.getId()).dayOfWeek(day).openMinute(0).closeMinute(1440).build());
             em.persist(PriceRule.builder().courtId(court).startMinute(0).endMinute(1440).pricePerSlot(new BigDecimal("60000"))
-                    .applyDays("1111111").validFrom(LocalDate.now()).validTo(LocalDate.now().plusMonths(4)).build());
+                    .applyDays("1111111").validFrom(LocalDate.now()).validTo(LocalDate.now().plusMonths(13)).build());
             booking=Booking.builder().bookingCode("C"+UUID.randomUUID().toString().substring(0,12)).bookingType(BookingType.SINGLE)
                     .locationId(location.getId()).courtId(court).playerId(player.getId()).playDate(LocalDate.now().plusDays(2)).startMinute(600).endMinute(660)
                     .listAmount(new BigDecimal("100000")).finalAmount(new BigDecimal("90000")).voucherDiscount(new BigDecimal("10000"))
@@ -422,8 +503,9 @@ class BookingChangeApiTests {
     }
     @Test void unavailableOutsideHorizonAndInvalidSlotsAreRejected() throws Exception {
         String base="/api/bookings/"+booking.getId()+"/reschedule-requests";
+        LocalDate occupiedDate = occupyOtherBooking();
         mvc.perform(post(base).header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(new ReschedulePreviewRequest(court,booking.getPlayDate(),600,660)))).andExpect(status().isConflict());
+                .content(json.writeValueAsString(new ReschedulePreviewRequest(court,occupiedDate,600,660)))).andExpect(status().isConflict());
         mvc.perform(post(base).header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(new ReschedulePreviewRequest(court,LocalDate.now().plusDays(31),600,660)))).andExpect(status().isBadRequest());
         mvc.perform(post(base).header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON)
@@ -482,7 +564,7 @@ class BookingChangeApiTests {
 
     @Test void occupiedSlotAndExhaustedQuotaHaveDifferentCodes() throws Exception {
         String url="/api/bookings/"+booking.getId()+"/reschedule-requests/preview";
-        var occupied = new ReschedulePreviewRequest(court,booking.getPlayDate(),booking.getStartMinute(),booking.getEndMinute());
+        var occupied = new ReschedulePreviewRequest(court,occupyOtherBooking(),600,660);
         mvc.perform(post(url).header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(occupied))).andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errors.code").value("MSG28")).andExpect(jsonPath("$.errors.reason").value("SLOT_TAKEN"));
@@ -490,6 +572,23 @@ class BookingChangeApiTests {
         mvc.perform(post(url).header("Authorization",token(player)).contentType(MediaType.APPLICATION_JSON).content(slot(660)))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.errors.code").value("MSG62"))
                 .andExpect(jsonPath("$.errors.reason").value("LIMIT_REACHED"));
+    }
+
+    private LocalDate occupyOtherBooking() {
+        LocalDate date = LocalDate.now().plusDays(4);
+        tx.executeWithoutResult(status -> {
+            Booking otherBooking = Booking.builder().bookingCode("O" + UUID.randomUUID().toString().substring(0, 12))
+                    .bookingType(BookingType.SINGLE).locationId(location.getId()).courtId(court).playerId(other.getId())
+                    .playDate(date).startMinute(600).endMinute(660).listAmount(new BigDecimal("120000"))
+                    .finalAmount(new BigDecimal("120000")).status(BookingStatus.CONFIRMED).build();
+            em.persist(otherBooking);
+            em.flush();
+            for (int minute = 600; minute < 660; minute += 30) {
+                em.persist(BookingSlot.builder().bookingId(otherBooking.getId()).courtId(court).slotDate(date)
+                        .slotStartMinute(minute).price(new BigDecimal("60000")).build());
+            }
+        });
+        return date;
     }
     @Test void courtAndHoursApiChangesMarkAffectedBookings() throws Exception {
         mvc.perform(put("/api/owner/locations/"+location.getId()+"/opening-hours").header("Authorization",token(owner))

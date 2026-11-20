@@ -157,8 +157,8 @@ export default function PackageSummaryPage() {
   };
 
   if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/package-summary' }} replace />;
-  if (!draft) return <Navigate to="/" replace />;
-  if (!isPlayer) return <p role="alert">Vui lòng đăng nhập bằng tài khoản Player để đặt sân.</p>;
+  if (!draft) return <Navigate to="/locations" replace />;
+  if (!isPlayer) return <p role="alert">Vui lòng đăng nhập bằng tài khoản người chơi để đặt sân.</p>;
   if (!preview) {
     return (
       <div className="cw-workspace"><PublicHeader user={user} /><main className={styles.mainContainer}>
@@ -179,7 +179,7 @@ export default function PackageSummaryPage() {
       {confirmPoints && <ConfirmDialog title="Xác nhận dùng điểm" onCancel={() => setConfirmPoints(false)} onConfirm={() => {
         setConfirmPoints(false);
         handleConfirm();
-      }}>Dùng {pointsUsed} điểm để giảm {formatVnd(pointDiscount)}? Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy booking. (MSG39)</ConfirmDialog>}
+      }}>Dùng {pointsUsed} điểm để giảm {formatVnd(pointDiscount)}? Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy đặt sân. (MSG39)</ConfirmDialog>}
 
       <main className={styles.mainContainer}>
         <Link to={editPath} className={styles.backLink}>‹ Sửa lịch gói</Link>
@@ -192,7 +192,7 @@ export default function PackageSummaryPage() {
             <Feedback tone="error">
               Bạn có {conflictedSessions.length} buổi vừa bị đặt trùng: {conflictedSessions
                 .map((session) => `${formatDay(session.date)} ${session.startTime}–${session.endTime} ${session.courtName} (${CONFLICT_LABELS[session.conflict] || session.conflict})`)
-                .join('; ')}. Vui lòng quay lại lịch để chọn slot bù hoặc bỏ buổi. (MSG44)
+                .join('; ')}. Vui lòng quay lại lịch để chọn khung giờ bù hoặc bỏ buổi. (MSG44)
               <Link className="cw-secondary" to={editPath}>Quay lại sửa lịch gói</Link>
             </Feedback>
           </div>
@@ -263,7 +263,7 @@ export default function PackageSummaryPage() {
                         <td>{formatDay(session.date)}</td>
                         <td>
                           {session.courtName}
-                          {isReplacement(session) && <span className={own.replacementTag}>Slot bù</span>}
+                          {isReplacement(session) && <span className={own.replacementTag}>khung giờ bù</span>}
                         </td>
                         <td>{session.startTime}–{session.endTime}</td>
                         <td className={own.amount}>
@@ -286,7 +286,7 @@ export default function PackageSummaryPage() {
 
             {/* Voucher và điểm thưởng (BR14, BR41, D130, D161) */}
             <section className={styles.card}>
-              <h2 className={styles.cardTitle}>Voucher và điểm thưởng</h2>
+              <h2 className={styles.cardTitle}>phiếu ưu đãi và điểm thưởng</h2>
 
               <CheckoutVoucherPicker {...voucher} error={voucherError}
                 disabled={submitting || !baseResult?.data || conflictedSessions.length > 0} />
@@ -297,7 +297,7 @@ export default function PackageSummaryPage() {
                   <strong className={styles.pointsTitle}>Dùng điểm thưởng</strong>
                   <span className={styles.pointsSub}>
                     Bạn đang có {availablePoints} điểm tại địa điểm này (1 điểm = {formatVnd(pointValue)}).{' '}
-                    Tối đa {checkoutPointPercent}% {appliedVoucher ? 'số tiền còn lại sau voucher' : 'giá niêm yết'}.
+                    Tối đa {checkoutPointPercent}% {appliedVoucher ? "số tiền còn lại sau phiếu ưu đãi" : 'giá niêm yết'}.
                   </span>
                 </div>
                 <input type="number" aria-label="Số điểm muốn dùng" min="0" max={pointsAllowed}
@@ -322,7 +322,7 @@ export default function PackageSummaryPage() {
                 <strong className={styles.priceValue}>{formatVnd(preview.listAmount)}</strong>
               </div>
               <div className={styles.priceLine}>
-                <span className={styles.priceLabel}>Voucher</span>
+                <span className={styles.priceLabel}>Phiếu ưu đãi</span>
                 <strong className={styles.discountValue}>–{formatVnd(voucherDiscount)}</strong>
               </div>
               <div className={styles.priceLine}>
@@ -336,12 +336,6 @@ export default function PackageSummaryPage() {
                 <span className={styles.totalLabel}>Cần thanh toán</span>
                 <strong className={styles.totalValue}>{formatVnd(preview.finalAmount)}</strong>
               </div>
-
-              {preview.batchOffer && (
-                <p className={`${own.batchNote} ${preview.batchOffer.reached ? '' : own.batchNoteMuted}`}>
-                  🎁 {preview.batchOffer.name}: {preview.batchOffer.message}
-                </p>
-              )}
 
               {loading && <p role="status" className={styles.holdNotice}>Đang cập nhật giá gói…</p>}
               {previewError && <p role="alert" className={styles.errorText}>{previewError}</p>}

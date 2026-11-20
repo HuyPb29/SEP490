@@ -44,7 +44,7 @@ const DURATIONS = Array.from({ length: 10 }, (_, index) => (index + 1) * 30);
 const durationLabel = (minutes) => {
   const hours = Math.floor(minutes / 60);
   const text = [hours ? `${hours} giờ` : '', minutes % 60 ? '30 phút' : ''].filter(Boolean).join(' ');
-  return `${text} (${minutes / 30} slot)`;
+  return `${text} (${minutes / 30} khung giờ)`;
 };
 const shortPrice = (price) => (price == null ? '' : `${Math.round(Number(price) / 1000)}k`);
 
@@ -68,8 +68,11 @@ const formatCurrency = formatVnd;
 const sessionKey = (session) => `${session.date}|${session.courtId}|${session.startMinute}`;
 
 const TODAY_DATE = getTodayStr();
-// D162: mọi buổi nằm trong 3 tháng kể từ hôm nay, tính cả hôm nay (đặt 07/11 thì xa nhất 06/02)
-const MAX_ALLOWED_DATE = addMonths(TODAY_DATE, 3, 1);
+// D175: gói định kỳ dài 1–12 tháng; mọi buổi nằm trong 1 năm kể từ hôm nay, tính cả hôm nay
+// (đặt 20/11/2026 thì xa nhất 19/11/2027), và không quá hạn dịch vụ của địa điểm (lấy từ backend, xem packageMaxDate)
+const MAX_PACKAGE_MONTHS = 12;
+const PACKAGE_MONTH_OPTIONS = Array.from({ length: MAX_PACKAGE_MONTHS }, (_, index) => index + 1);
+const MAX_ALLOWED_DATE = addMonths(TODAY_DATE, MAX_PACKAGE_MONTHS, 1);
 const shiftDay = (dateKey, offset) => {
   const date = parseDateKey(dateKey);
   return toDateKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset));
@@ -79,7 +82,7 @@ const formatDay = (dateKey) => {
   return `${['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][date.getDay()]}, ${dateKey.slice(8)}/${dateKey.slice(5, 7)}/${dateKey.slice(0, 4)}`;
 };
 
-// Lịch sân một ngày để chọn buổi trên bảng slot; Player xem được tới hết 3 tháng của gói (forPackage)
+// Lịch sân một ngày để chọn buổi trên bảng slot; Player xem được tới ngày xa nhất đặt được của gói (forPackage)
 function useDaySchedule(facilityId, date, enabled, load) {
   const [result, setResult] = useState(null);
   useEffect(() => {
@@ -129,7 +132,9 @@ export default function MultiSessionBookingPage() {
   const facilityId = Number(id || location.state?.facilityId) || null;
 
   const today = TODAY_DATE;
-  const maxAllowedDate = MAX_ALLOWED_DATE;
+  // Ngày xa nhất backend cho chọn buổi của gói (mốc 1 năm, không quá hạn dịch vụ của địa điểm, D175)
+  const [packageMaxDate, setPackageMaxDate] = useState(null);
+  const maxAllowedDate = packageMaxDate && packageMaxDate < MAX_ALLOWED_DATE ? packageMaxDate : MAX_ALLOWED_DATE;
 
   // Quay lại từ trang tóm tắt gói thì khôi phục lịch đã chọn, kể cả buổi bỏ và slot bù
   const [draft] = useState(() => readPackageDraft(facilityId));
@@ -183,17 +188,32 @@ export default function MultiSessionBookingPage() {
       .catch((err) => setPreviewError(apiErrorMessage(err, 'Không tải được danh sách sân.')));
   }, [facilityId, getLocationCourts]);
 
+  useEffect(() => {
+    if (!facilityId) return undefined;
+    const controller = new AbortController();
+    getVenueSchedule(facilityId, today, controller.signal, undefined, { forPackage: true })
+      .then((data) => { if (!controller.signal.aborted && data?.max_date) setPackageMaxDate(data.max_date); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [facilityId, today, getVenueSchedule]);
+
   const resetConflictAdjustments = () => {
     setRemovedKeys([]);
     setReplacements({});
   };
 
-  // ---- Định kỳ: thời gian gói 1–3 tháng từ ngày bắt đầu (BR27), mọi buổi trong 3 tháng kể từ hôm nay (D162)
+  // ---- Định kỳ: thời gian gói 1–12 tháng từ ngày bắt đầu (BR27), mọi buổi không quá maxAllowedDate (D175)
   const monthEnd = (count) => addMonths(fromDate, count, 1);
   const monthAllowed = (count) => monthEnd(count) <= maxAllowedDate;
-  const effectiveMonths = monthAllowed(months) ? months : ([3, 2, 1].find(monthAllowed) ?? 1);
+  const effectiveMonths = monthAllowed(months) ? months
+    : ([...PACKAGE_MONTH_OPTIONS].reverse().find(monthAllowed) ?? 1);
   const toDate = monthEnd(effectiveMonths);
-  const latestFromDate = addMonths(today, 2, 0);
+  // Ngày bắt đầu muộn nhất để gói 1 tháng vẫn kết thúc trước maxAllowedDate
+  // (lùi thêm vài ngày khi tháng trước ngắn hơn, ví dụ 31/03 lùi 1 tháng thành 03/03 thì quá)
+  let latestFromDate = addMonths(shiftDay(maxAllowedDate, 1), -1, 0);
+  while (latestFromDate > today && addMonths(latestFromDate, 1, 1) > maxAllowedDate) {
+    latestFromDate = shiftDay(latestFromDate, -1);
+  }
 
   const timeKey = perDayTimes ? (selectedWeekdays.includes(timeTab) ? timeTab : selectedWeekdays[0]) : 'all';
   const recurringPattern = useMemo(() => {
@@ -385,7 +405,7 @@ export default function MultiSessionBookingPage() {
   const removeAllConflicts = () => {
     const remaining = new Set(sessions.filter((session) => !session.conflict).map((session) => session.date));
     if (remaining.size < 2) {
-      setNotice('Gói phải có buổi trong ít nhất 2 ngày khác nhau. Vui lòng chọn slot bù thay vì bỏ. (MSG92)');
+      setNotice("Gói phải có buổi trong ít nhất 2 ngày khác nhau. Vui lòng chọn khung giờ bù thay vì bỏ. (MSG92)");
       return;
     }
     const keys = conflictedSessions.map(originalKeyOf);
@@ -449,7 +469,7 @@ export default function MultiSessionBookingPage() {
       date: compensationDate, courtId: court.court_id, courtName: court.court_name,
       startMinute: startAt, endMinute: startAt + duration,
     } }));
-    setCompensationMessage({ error: false, text: `Slot bù: ${formatDay(compensationDate)} · ${court.court_name} · ${toTimeLabel(startAt)}–${toTimeLabel(startAt + duration)}` });
+    setCompensationMessage({ error: false, text: `khung giờ bù: ${formatDay(compensationDate)} · ${court.court_name} · ${toTimeLabel(startAt)}–${toTimeLabel(startAt + duration)}` });
   };
 
   // Áp dụng cùng sân, cùng giờ bắt đầu cho các buổi trùng còn lại, mỗi buổi giữ ngày của mình (xử lý hàng loạt, D49)
@@ -476,7 +496,7 @@ export default function MultiSessionBookingPage() {
     });
     setReplacements(next);
     setShowCompensation(false);
-    setNotice(`Đã áp dụng slot bù cho ${entries.length} buổi trùng.`);
+    setNotice(`Đã áp dụng khung giờ bù cho ${entries.length} buổi trùng.`);
   };
 
   // Sang trang tóm tắt gói; chưa tạo gói, chưa giữ chỗ (giữ chỗ khi bấm xác nhận ở trang tóm tắt)
@@ -487,7 +507,7 @@ export default function MultiSessionBookingPage() {
       return;
     }
     if (conflictedSessions.length > 0) {
-      setNotice('Vui lòng xử lý tất cả các buổi trùng (chọn slot bù hoặc bỏ buổi trùng) trước khi tiếp tục.');
+      setNotice("Vui lòng xử lý tất cả các buổi trùng (chọn khung giờ bù hoặc bỏ buổi trùng) trước khi tiếp tục.");
       return;
     }
     savePackageDraft({
@@ -515,7 +535,7 @@ export default function MultiSessionBookingPage() {
     return { day, text, missing: time?.start == null };
   });
   const conflictHint = conflictedSessions.length > 0
-    ? `Còn ${conflictedSessions.length} buổi trùng: chọn slot bù hoặc bỏ buổi trùng ở lịch phía trên.` : null;
+    ? `Còn ${conflictedSessions.length} buổi trùng: chọn khung giờ bù hoặc bỏ buổi trùng ở lịch phía trên.` : null;
   const summaryTitle = mode === 'custom'
     ? customRanges.length
       ? `${summaryCount} buổi · ${preview ? distinctDays : customDates.length} ngày · ${formatCurrency(summaryAmount)}`
@@ -535,12 +555,12 @@ export default function MultiSessionBookingPage() {
 
   if (!facilityId) {
     return (
-      <div className={styles.pageWrapper + ' cw-workspace'}>
+      <div className={styles.pageWrapper + " cw-workspace"}>
         <PublicHeader user={user} />
         <main className={styles.mainContainer}>
           <h1 className={styles.pageTitle}>Đặt lịch nhiều buổi</h1>
           <p>Vui lòng mở trang đặt nhiều buổi từ trang chi tiết cụm sân.</p>
-          <Link to="/">‹ Tìm sân</Link>
+          <Link to="/locations">‹ Tìm sân</Link>
         </main>
         <PublicFooter />
       </div>
@@ -548,7 +568,7 @@ export default function MultiSessionBookingPage() {
   }
 
   return (
-    <div className={styles.pageWrapper + ' cw-workspace'}>
+    <div className={styles.pageWrapper + " cw-workspace"}>
       <PublicHeader user={user} />
 
       <main className={styles.mainContainer}>
@@ -623,7 +643,7 @@ export default function MultiSessionBookingPage() {
                 <em className={styles.fieldLabelValue}>{formatDay(fromDate).slice(4, 9)} – {formatDay(toDate).slice(4, 9)}</em>
               </span>
               <div className={styles.monthRow} role="group" aria-label="Thời gian gói">
-                {[1, 2, 3].map((count) => (
+                {PACKAGE_MONTH_OPTIONS.map((count) => (
                   <button key={count} type="button" aria-pressed={effectiveMonths === count} disabled={!monthAllowed(count)}
                     className={`${styles.weekdayBtn} ${effectiveMonths === count ? styles.weekdayBtnActive : ''}`}
                     onClick={() => { resetConflictAdjustments(); setMonths(count); }}>
@@ -674,25 +694,19 @@ export default function MultiSessionBookingPage() {
             {mode === 'custom' && <div className={styles.fieldGroup}>
               <span className={styles.fieldLabel}>Các buổi đã chọn ({customRanges.length} buổi · {customDates.length} ngày)</span>
               <p className={styles.customModeHint}>
-                Bấm một ngày trên lịch tháng để mở bảng slot của ngày đó, rồi bấm các ô trống để thêm buổi.
+                Bấm một ngày trên lịch tháng để mở bảng khung giờ của ngày đó, rồi bấm các ô trống để thêm buổi.
                 Ô liền nhau trên cùng sân là một buổi; một ngày có thể có nhiều buổi, nhiều sân.
                 Các buổi đã chọn hiện ở thanh tóm tắt dưới bảng.
               </p>
             </div>}
 
             <p className={styles.ruleHintText}>
-              Định kỳ: tối thiểu 1 buổi/tuần, kéo dài từ 1 đến 3 tháng. Tất cả các buổi phải nằm trong vòng 3 tháng kể từ hôm nay.
+              Định kỳ: tối thiểu 1 buổi/tuần, kéo dài từ 1 đến 12 tháng. Tất cả các buổi phải nằm trong vòng 1 năm
+              kể từ hôm nay và trong thời hạn sử dụng dịch vụ của địa điểm, muộn nhất {formatDay(maxAllowedDate)}.
             </p>
           </aside>
 
           <div className={styles.rightColumn}>
-            {preview?.batchOffer && (
-              <div className={styles.promoBanner}>
-                <strong>🎁 {preview.batchOffer.name}</strong>
-                <span>{preview.batchOffer.message}</span>
-              </div>
-            )}
-
             {mode === 'recurring' && (
               <section className={styles.gridCard} aria-label="Khung giờ chơi hằng tuần">
                 <div className={styles.gridHeader}>
@@ -734,7 +748,7 @@ export default function MultiSessionBookingPage() {
                       ? <>Đang chọn <strong>{toTimeLabel(currentTime.start)}–{toTimeLabel(currentTime.end)}</strong>
                         {currentTime.end - currentTime.start < currentDuration ? ` (rút ngắn vì ${toTimeLabel(closeMinute)} đóng cửa)` : ''}.
                         {' '}Bấm ô khác để đổi giờ bắt đầu; đổi thời lượng ở ô bên phải.</>
-                      : 'Bấm một ô để chọn giờ bắt đầu, rồi chọn thời lượng ở ô bên phải (tối thiểu 1 slot = 30 phút).'}
+                      : "Bấm một ô để chọn giờ bắt đầu, rồi chọn thời lượng ở ô bên phải (tối thiểu 1 khung giờ = 30 phút)."}
                 </p>
 
                 {selectedWeekdays.length > 0 && !timeGrid && <p role="status">Đang tải giờ mở cửa…</p>}
@@ -850,7 +864,7 @@ export default function MultiSessionBookingPage() {
                       key={day.dateKey}
                       disabled={mode !== 'custom' || isOutOfWindow}
                       aria-current={mode === 'custom' && day.dateKey === gridDate ? 'date' : undefined}
-                      aria-label={`${day.day}${day.isConflicted ? ', trùng lịch' : day.isSelected ? ', có buổi' : ''}${mode === 'custom' ? ', xem bảng slot ngày này' : ''}`}
+                      aria-label={`${day.day}${day.isConflicted ? ', trùng lịch' : day.isSelected ? ', có buổi' : ''}${mode === 'custom' ? ", xem bảng khung giờ ngày này" : ''}`}
                       className={className}
                       onClick={() => chooseGridDate(day.dateKey)}
                     >
@@ -876,7 +890,7 @@ export default function MultiSessionBookingPage() {
                   </strong>
                   <div className={styles.conflictActionRow}>
                     <button type="button" className={styles.compensateBtn} onClick={openCompensation}>
-                      Chọn slot bù
+                      Chọn khung giờ bù
                     </button>
                     <button type="button" className={styles.removeConflictsBtn} onClick={removeAllConflicts}>
                       Bỏ tất cả buổi trùng
@@ -893,13 +907,13 @@ export default function MultiSessionBookingPage() {
             </section>
 
             {mode === 'custom' && (
-              <section className={styles.gridCard} aria-label="Bảng slot của ngày đang chọn">
+              <section className={styles.gridCard} aria-label="Bảng khung giờ của ngày đang chọn">
                 <div className={styles.gridHeader}>
-                  <h2 className={styles.gridTitle}>Bảng slot {formatDay(gridDate)}</h2>
+                  <h2 className={styles.gridTitle}>Bảng khung giờ {formatDay(gridDate)}</h2>
                   <div className={styles.gridDateNav}>
                     <button type="button" className={styles.navBtn} aria-label="Ngày trước"
                       disabled={gridDate <= today} onClick={() => chooseGridDate(shiftDay(gridDate, -1))}>‹</button>
-                    <input type="date" className={styles.dateInput} aria-label="Chọn ngày xem bảng slot"
+                    <input type="date" className={styles.dateInput} aria-label="Chọn ngày xem bảng khung giờ"
                       min={today} max={maxAllowedDate} value={gridDate}
                       onChange={(event) => {
                         chooseGridDate(event.target.value);
@@ -947,7 +961,7 @@ export default function MultiSessionBookingPage() {
         <div className={styles.modalOverlay} role="presentation" onClick={() => setShowCompensation(false)}>
           <section className={`${styles.modalCard} ${styles.modalWide}`} role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={(event) => event.stopPropagation()}>
             <button type="button" className={styles.modalClose} aria-label="Đóng" onClick={() => setShowCompensation(false)}>×</button>
-            <h2 id="modal-title" className={styles.modalTitle}>Chọn slot bù cho buổi trùng</h2>
+            <h2 id="modal-title" className={styles.modalTitle}>Chọn khung giờ bù cho buổi trùng</h2>
             <p className={styles.modalSub}>
               Chọn buổi trùng cần bù, rồi bấm ô bắt đầu trên bảng: hệ thống tự lấy đủ thời lượng buổi. Đổi được sang ngày khác trong thời gian gói.
             </p>
@@ -980,7 +994,7 @@ export default function MultiSessionBookingPage() {
               <div className={styles.gridDateNav}>
                 <button type="button" className={styles.navBtn} aria-label="Ngày trước"
                   disabled={compensationDate <= compensationMinDate} onClick={() => chooseCompensationDate(shiftDay(compensationDate, -1))}>‹</button>
-                <input type="date" className={styles.dateInput} aria-label="Ngày của slot bù"
+                <input type="date" className={styles.dateInput} aria-label="Ngày của khung giờ bù"
                   min={compensationMinDate} max={compensationMaxDate} value={compensationDate}
                   onChange={(event) => chooseCompensationDate(event.target.value)} />
                 <button type="button" className={styles.navBtn} aria-label="Ngày sau"
@@ -1017,7 +1031,7 @@ export default function MultiSessionBookingPage() {
               <button type="button" className={styles.removeConflictsBtn} onClick={() => setShowCompensation(false)}>Hủy</button>
               <button type="button" className={styles.confirmScheduleBtn} disabled={!Object.keys(compensationPicks).length}
                 onClick={applyCompensation}>
-                Áp dụng slot bù ({Object.keys(compensationPicks).length}/{conflictedSessions.length})
+                Áp dụng khung giờ bù ({Object.keys(compensationPicks).length}/{conflictedSessions.length})
               </button>
             </div>
           </section>

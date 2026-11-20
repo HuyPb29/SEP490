@@ -56,12 +56,14 @@ import com.sep490.bms.entity.enums.VoucherStatus;
 import com.sep490.bms.entity.enums.VoucherTargetGroup;
 import com.sep490.bms.entity.location.BatchOffer;
 import com.sep490.bms.entity.location.Court;
+import com.sep490.bms.entity.location.ServiceTerm;
 import com.sep490.bms.entity.promotion.Voucher;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.booking.BookingPackageRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.location.BatchOfferRepository;
 import com.sep490.bms.repository.location.CourtRepository;
+import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.repository.promotion.VoucherRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.LocationQueryService;
@@ -96,8 +98,9 @@ class PackageServiceTests {
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final BookingCodeGenerator codes = mock(BookingCodeGenerator.class);
     private final NotificationService notifications = mock(NotificationService.class);
+    private final ServiceTermRepository serviceTerms = mock(ServiceTermRepository.class);
     private final PackageService service = new PackageService(locations, offers, vouchers, courts, bookingService,
-            availability, prices, voucherService, points, packages, bookings, codes, notifications);
+            availability, prices, voucherService, points, packages, bookings, codes, notifications, serviceTerms);
 
     /** Gói vừa lưu trong lần gọi create gần nhất (mock save gán id 50). */
     private BookingPackage savedPackage;
@@ -259,14 +262,15 @@ class PackageServiceTests {
         assertThat(PackageService.isWithinMonths(DEC_1, DEC_31)).isTrue();
         assertThat(PackageService.isWithinMonths(DEC_1, LocalDate.of(2026, 12, 30))).isFalse();
         assertThat(PackageService.isWithinMonths(DEC_1, LocalDate.of(2027, 2, 28))).isTrue();
-        assertThat(PackageService.isWithinMonths(DEC_1, LocalDate.of(2027, 3, 1))).isFalse();
+        assertThat(PackageService.isWithinMonths(DEC_1, LocalDate.of(2027, 11, 30))).isTrue();
+        assertThat(PackageService.isWithinMonths(DEC_1, LocalDate.of(2027, 12, 1))).isFalse();
         assertThat(PackageService.isWithinMonths(DEC_31, DEC_1)).isFalse();
     }
 
     @Test
-    void recurringOutsideOneToThreeMonthsIsMsg41() {
+    void recurringOutsideOneToTwelveMonthsIsMsg41() {
         assertMsg41(recurring(DEC_1, LocalDate.of(2026, 12, 30), TUESDAY_EVENING));
-        assertMsg41(recurring(DEC_1, LocalDate.of(2027, 3, 1), TUESDAY_EVENING));
+        assertMsg41(recurring(DEC_1, LocalDate.of(2027, 12, 1), TUESDAY_EVENING));
         assertMsg41(recurring(DEC_1, DEC_31));
         assertMsg41(recurring(null, DEC_31, TUESDAY_EVENING));
     }
@@ -363,14 +367,14 @@ class PackageServiceTests {
     }
 
     @Test
-    void customNeedsTwoSessionsWithinThreeMonths() {
+    void customNeedsTwoSessionsWithinTwelveMonths() {
         assertThatThrownBy(() -> service.preview(player, custom(session(DEC_1, null, 1080, 1140)), NOW))
                 .hasMessageContaining("(MSG91)");
         assertThatThrownBy(() -> service.preview(player,
                 new PackageRequest(PackageType.CUSTOM, COURT, null, null, null, null, null, null, null, null), NOW))
                 .hasMessageContaining("(MSG91)");
         assertThatThrownBy(() -> service.preview(player, custom(
-                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 3, 1), null, 1080, 1140)), NOW))
+                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 12, 1), null, 1080, 1140)), NOW))
                 .hasMessageContaining("(MSG91)");
         assertThat(service.preview(player, custom(
                 session(TODAY, null, 1080, 1140), session(LocalDate.of(2027, 2, 6), null, 1080, 1140)), NOW)
@@ -388,24 +392,48 @@ class PackageServiceTests {
     }
 
     @Test
-    void everySessionWithinThreeMonthsFromToday() {
-        // Hôm nay 07/11/2026: buổi xa nhất là 06/02/2027 (D162).
+    void everySessionWithinOneYearFromToday() {
+        // Hôm nay 07/11/2026, địa điểm chưa có thời hạn dịch vụ: buổi xa nhất là 06/11/2027 (D175).
         assertThat(service.preview(player, custom(
-                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 2, 6), null, 1080, 1140)), NOW)
+                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 11, 6), null, 1080, 1140)), NOW)
                 .getTotalSessions()).isEqualTo(2);
         assertThatThrownBy(() -> service.preview(player, custom(
-                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 2, 7), null, 1080, 1140)), NOW))
-                .hasMessage("Chỉ đặt được các buổi trong vòng 3 tháng kể từ hôm nay, muộn nhất ngày 06/02/2027. (MSG115)");
-        // Định kỳ đủ dài (01/12–28/02) nhưng có buổi sau 06/02 thì bị chặn; định kỳ đủ 3 tháng phải bắt đầu hôm nay.
+                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 11, 7), null, 1080, 1140)), NOW))
+                .hasMessage("Chỉ đặt được các buổi trong vòng 1 năm kể từ hôm nay và trong thời hạn sử dụng dịch vụ "
+                        + "của địa điểm, muộn nhất ngày 06/11/2027. (MSG115)");
+        // Định kỳ đủ 12 tháng (01/12–30/11) nhưng có buổi sau 06/11 thì bị chặn; đủ 12 tháng phải bắt đầu hôm nay.
         assertThatThrownBy(() -> service.preview(player,
-                recurring(DEC_1, LocalDate.of(2027, 2, 28), TUESDAY_EVENING), NOW))
-                .hasMessageContaining("trong vòng 3 tháng kể từ hôm nay");
+                recurring(DEC_1, LocalDate.of(2027, 11, 30), TUESDAY_EVENING), NOW))
+                .hasMessageContaining("trong vòng 1 năm kể từ hôm nay");
         assertThat(service.preview(player,
-                recurring(TODAY, LocalDate.of(2027, 2, 6), TUESDAY_EVENING), NOW).getTotalSessions()).isEqualTo(13);
+                recurring(TODAY, LocalDate.of(2027, 11, 6), TUESDAY_EVENING), NOW).getTotalSessions()).isEqualTo(52);
         // Slot bù của định kỳ cũng bị chặn theo cùng mốc.
-        PackageRequest late = new PackageRequest(PackageType.RECURRING, COURT, LocalDate.of(2027, 1, 10),
-                LocalDate.of(2027, 2, 9), List.of(TUESDAY_EVENING), null, null, null, null, null);
-        assertThatThrownBy(() -> service.preview(player, late, NOW)).hasMessageContaining("muộn nhất ngày 06/02/2027");
+        PackageRequest late = new PackageRequest(PackageType.RECURRING, COURT, LocalDate.of(2027, 10, 10),
+                LocalDate.of(2027, 11, 9), List.of(TUESDAY_EVENING), null, null, null, null, null);
+        assertThatThrownBy(() -> service.preview(player, late, NOW)).hasMessageContaining("muộn nhất ngày 06/11/2027");
+    }
+
+    @Test
+    void sessionsStopAtServiceTermEnd() {
+        // D175: thời hạn dịch vụ hết 31/03/2027, sớm hơn mốc 1 năm, nên buổi xa nhất là 31/03/2027.
+        when(serviceTerms.findFirstByLocationIdOrderByEndDateDescIdDesc(LOCATION)).thenReturn(Optional.of(
+                ServiceTerm.builder().locationId(LOCATION).startDate(LocalDate.of(2026, 4, 1))
+                        .endDate(LocalDate.of(2027, 3, 31)).build()));
+
+        assertThat(service.lastBookablePackageDate(LOCATION, TODAY)).isEqualTo(LocalDate.of(2027, 3, 31));
+        assertThat(service.preview(player, custom(
+                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 3, 31), null, 1080, 1140)), NOW)
+                .getTotalSessions()).isEqualTo(2);
+        assertThatThrownBy(() -> service.preview(player, custom(
+                session(DEC_1, null, 1080, 1140), session(LocalDate.of(2027, 4, 1), null, 1080, 1140)), NOW))
+                .hasMessageContaining("muộn nhất ngày 31/03/2027").hasMessageContaining("(MSG115)");
+    }
+
+    @Test
+    void serviceTermLaterThanOneYearDoesNotExtendTheLimit() {
+        assertThat(PackageService.lastBookablePackageDate(TODAY, LocalDate.of(2028, 11, 6)))
+                .isEqualTo(LocalDate.of(2027, 11, 6));
+        assertThat(PackageService.lastBookablePackageDate(TODAY, null)).isEqualTo(LocalDate.of(2027, 11, 6));
     }
 
     @Test

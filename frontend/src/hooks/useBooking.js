@@ -17,7 +17,6 @@ import {
   getMyPointsAtFacility,
   getPackageDetailApi,
   getPackageSessionsApi,
-  getPublicBatchOffers,
   getRescheduleDeadlineApi,
   getRescheduleRequestsApi,
   previewBookingApi,
@@ -45,7 +44,6 @@ import {
 const BOOKING_ACTIONS = Object.freeze({
   getMyPointsAtFacility,
   getMyOwnedTeams,
-  getPublicBatchOffers,
   getCheckoutVouchers,
   applyVoucher: applyVoucherApi,
   applyVoucherApi,

@@ -100,6 +100,7 @@ export function UserMenu({ user: userProp }) {
         <button
           type="button"
           className={styles.userTrigger}
+          aria-label={displayName}
           aria-expanded={open}
           aria-haspopup="menu"
           onClick={() => setOpen((prev) => !prev)}

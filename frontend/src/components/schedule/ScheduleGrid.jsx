@@ -164,7 +164,7 @@ const verticalColors = {
   closed: verticalStyles.slotClosed, past: verticalStyles.slotPast,
 }
 
-function VerticalScheduleGrid({ schedule, selected = [], allowBooking, showBooker, onSlot, onInspect, initialTime }) {
+function VerticalScheduleGrid({ schedule, selected = [], allowBooking, showBooker, onSlot, onInspect, initialTime, isOriginalSlot }) {
   const viewportRef = useRef(null)
   const initialRowRef = useRef(null)
   useLayoutEffect(() => {
@@ -178,7 +178,11 @@ function VerticalScheduleGrid({ schedule, selected = [], allowBooking, showBooke
   const slotsByCourt = schedule.courts.map((court) =>
     new Map(court.slots.map((slot, index) => [slot.time, { slot, index }])))
 
-  return <div ref={viewportRef} className={`${verticalStyles.tableWrapper} ${verticalStyles.rescheduleGridViewport}`}
+  return <>
+    {isOriginalSlot && <ul className={styles.legend} aria-label="Chú thích màu">
+      <li><i className={`${styles.swatch} ${styles.originalSlot}`} />Lịch cũ của bạn</li>
+    </ul>}
+    <div ref={viewportRef} className={`${verticalStyles.tableWrapper} ${verticalStyles.rescheduleGridViewport}`}
     role="region" aria-label="Bảng chọn khung giờ" tabIndex={0}>
     <table className={`${verticalStyles.scheduleTable} ${verticalStyles.scheduleCourtsAsColumns}`}>
       <thead><tr>
@@ -194,20 +198,24 @@ function VerticalScheduleGrid({ schedule, selected = [], allowBooking, showBooke
           const info = showBooker ? slot.bookingInfo : null
           const bookable = allowBooking && isBookable(slot)
           const chosen = selected.some((item) => item.courtId === court.court_id && item.time === slot.time)
+          const original = isOriginalSlot?.(court, slot)
           const status = chosen ? 'Đã chọn' : label[slot.status] || 'Không khả dụng'
+          const slotClass = chosen ? verticalStyles.slotSelected : verticalColors[slot.status]
+          const description = [court.court_name, slot.time, original && 'Lịch cũ của bạn', status].filter(Boolean)
           const price = slot.price == null ? '—' : money.format(slot.price) + ' đ'
           return <td key={court.court_id}>
             <button type="button"
-              className={verticalStyles.slotBtn + ' ' + (chosen ? verticalStyles.slotSelected : verticalColors[slot.status] || '')}
-              aria-label={court.court_name + ', ' + slot.time + ', ' + status + ', ' + price}
+              className={`${verticalStyles.slotBtn} ${slotClass || ''} ${original ? (chosen ? styles.selectedOriginalSlot : styles.originalSlot) : ''}`}
+              aria-label={[...description, price].join(', ')}
               aria-pressed={bookable ? chosen : undefined} disabled={!bookable && !info}
               onClick={() => info ? onInspect?.({ ...info, time: slot.time, courtName: court.court_name }) : onSlot(court, slot, index)}>
-              <span>{status}</span><small className="block">{price}</small>
+              <span>{original && !chosen ? 'Lịch cũ' : status}</span><small className="block">{price}</small>
               {info && <small className="block">{info.name} · {info.phone}</small>}
             </button>
           </td>
         })}
       </tr>)}</tbody>
     </table>
-  </div>
+    </div>
+  </>
 }

@@ -21,7 +21,7 @@ import lombok.Setter;
 public class CreateStaffRequest {
 
     @NotBlank(message = "Họ và tên không được để trống")
-    @Size(min = 2, max = 50)
+    @Size(min = 2, max = 50, message = "Họ và tên phải có từ 2 đến 50 ký tự")
     @Pattern(regexp = ValidationRules.NAME, message = "Họ tên chỉ được chứa chữ và khoảng trắng")
     private String fullName;
 

@@ -185,15 +185,27 @@ public class CancellationService {
         AffectedBooking a=find(id);Booking b=support.booking(a.getBookingId());em.refresh(a,LockModeType.PESSIMISTIC_WRITE);
         if(a.getStatus()==AffectedStatus.PENDING && !support.start(b).isAfter(LocalDateTime.now())) settle(a,b,AffectedChoice.POINTS,true);
     }
-    /** F2 approval hook: only intersecting confirmed bookings are affected. */
+    /** Cùng một tập booking cho xem trước MSG15 và xử lý UC22.
+     * Lúc duyệt khóa cả booking đang chờ trong khoảng ngày, tránh đổi trạng thái giữa kiểm tra và xử lý.
+     */
+    public List<Booking> maintenanceImpact(Maintenance m, boolean lock) {
+        var query = em.createQuery("select b from Booking b where b.courtId=:c and b.playDate between :first and :last order by b.id", Booking.class)
+                .setParameter("c",m.getCourtId()).setParameter("first",m.getStartAt().toLocalDate())
+                .setParameter("last",m.getEndAt().toLocalDate());
+        if (lock) query.setLockMode(LockModeType.PESSIMISTIC_WRITE);
+        List<Booking> candidates = query.getResultList();
+        if (lock) candidates.forEach(b -> em.refresh(b, LockModeType.PESSIMISTIC_WRITE));
+        LocalDateTime now = LocalDateTime.now();
+        return candidates.stream().filter(b -> b.getStatus()==BookingStatus.CONFIRMED
+                && support.start(b).isAfter(now) && support.start(b).isBefore(m.getEndAt())
+                && b.getPlayDate().atStartOfDay().plusMinutes(b.getEndMinute()).isAfter(m.getStartAt())).toList();
+    }
+    /** Giữ đường gọi cũ cho các luồng nội bộ; API F2 xác nhận danh sách trước khi gọi bản overload. */
     public void maintenanceApproved(Maintenance m,Long actor) {
-        List<Booking> candidates=em.createQuery("select b from Booking b where b.courtId=:c and b.status=:s order by b.id",Booking.class)
-                .setParameter("c",m.getCourtId()).setParameter("s",BookingStatus.CONFIRMED).getResultList();
-        for(Booking candidate:candidates) {
-            Booking b=support.booking(candidate.getId());
-            LocalDateTime end=b.getPlayDate().atStartOfDay().plusMinutes(b.getEndMinute());
-            if(support.start(b).isBefore(m.getEndAt()) && end.isAfter(m.getStartAt())) mark(b,AffectedCause.MAINTENANCE,m.getId(),actor,"Sân bảo trì");
-        }
+        maintenanceApproved(m, actor, maintenanceImpact(m, true));
+    }
+    public void maintenanceApproved(Maintenance m,Long actor,List<Booking> confirmedImpact) {
+        for (Booking b : confirmedImpact) mark(b,AffectedCause.MAINTENANCE,m.getId(),actor,"Sân bảo trì");
     }
     public void courtDisabled(Long courtId,Long actor) {
         for(Long id:em.createQuery("select b.id from Booking b where b.courtId=:c and b.status=:s order by b.id",Long.class)

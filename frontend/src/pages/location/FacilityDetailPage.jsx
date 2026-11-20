@@ -29,12 +29,12 @@ export default function FacilityDetailPage() {
   </div>;
 
   return (
-    <div className={styles.pageWrapper + ' cw-workspace'}>
+    <div className={styles.pageWrapper + " cw-workspace"}>
       <PublicHeader user={currentUser} />
 
       <main className={styles.mainContainer}>
         <div className={styles.breadcrumb}>
-          <Link to="/" className={styles.breadcrumbLink}>Tìm sân</Link>
+          <Link to="/locations" className={styles.breadcrumbLink}>Tìm sân</Link>
           <span className={styles.breadcrumbSep}>/</span>
           <span className={styles.breadcrumbCurrent}>{facility.facility_name}</span>
         </div>

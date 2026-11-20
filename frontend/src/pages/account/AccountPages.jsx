@@ -54,7 +54,6 @@ function EditProfileDialog({ account, onClose, onSaved }) {
   const isPlayer = account.role === 'PLAYER';
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
-  const skillOptions = ['', ...SKILL_LEVELS];
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -76,8 +75,12 @@ function EditProfileDialog({ account, onClose, onSaved }) {
       onSaved(updated);
     } catch (error) {
       const response = error.response?.data;
-      setErrors(response?.errors?.fullName
-        ? { fullName: response.errors.fullName }
+      const byField = Object.fromEntries(
+        ['fullName', 'skillLevel']
+          .filter((name) => response?.errors?.[name])
+          .map((name) => [name, response.errors[name]])
+      );
+      setErrors(Object.keys(byField).length ? byField
         : { form: response?.message || 'Không thể lưu hồ sơ. Vui lòng thử lại.' });
       setBusy(false);
     }
@@ -101,10 +104,12 @@ function EditProfileDialog({ account, onClose, onSaved }) {
             />
           </FormField>
           {isPlayer && (
-            <FormField htmlFor={skillId} label="Trình độ chơi">
-              <Select id={skillId} name="skillLevel" defaultValue={SKILL_LEVELS.includes(account.skillLevel) ? account.skillLevel : ''}>
-                {skillOptions.map((option) => (
-                  <option key={option} value={option}>{option || 'Chưa chọn'}</option>
+            <FormField htmlFor={skillId} label="Trình độ chơi" error={errors.skillLevel}>
+              <Select id={skillId} name="skillLevel" defaultValue={SKILL_LEVELS.includes(account.skillLevel) ? account.skillLevel : ''}
+                invalid={Boolean(errors.skillLevel)} aria-describedby={errors.skillLevel ? `${skillId}-error` : undefined}>
+                <option value="" disabled hidden />
+                {SKILL_LEVELS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
                 ))}
               </Select>
             </FormField>
@@ -322,17 +327,10 @@ function AdminAccount({ id, reload }) {
     (signal) => api.get('/admin/accounts/' + id, { signal }).then((response) => response.data.data),
     [id]
   );
-  const loadAudit = useCallback(
-    (signal) => getAllPages('/admin/account-audits', { signal, params: { targetAccountId: id } }),
-    [id]
-  );
   const detail = useResource(loadDetail, id);
-  const audit = useResource(loadAudit, id);
   const account = detail.data;
   const canChange = ['ACTIVE', 'LOCKED'].includes(account?.status) && account.role !== 'ADMIN';
   const unlocking = account?.status === 'LOCKED';
-  const signIns = audit.data?.filter((entry) => entry.action === 'LOGIN');
-  const changes = audit.data?.filter((entry) => entry.action !== 'LOGIN');
   return (
     <>
       <Section title="Chi tiết tài khoản" resource={detail}>
@@ -359,31 +357,10 @@ function AdminAccount({ id, reload }) {
             }
             after={() => {
               detail.reload();
-              audit.reload();
               reload();
             }}
           />
         )}
-      </Section>
-      <Section title="Lịch sử đăng nhập" resource={audit}>
-        {signIns?.length === 0 && <p>Chưa có lượt đăng nhập.</p>}
-        <ul>
-          {signIns?.map((entry) => (
-            <li key={entry.id}>
-              <time dateTime={entry.createdAt}>{formatAccountDate(entry.createdAt)}</time>
-            </li>
-          ))}
-        </ul>
-      </Section>
-      <Section title="Nhật ký tài khoản" resource={audit}>
-        {changes?.length === 0 && <p>Chưa có thay đổi tài khoản.</p>}
-        <ul>
-          {changes?.map((entry) => (
-            <li key={entry.id}>
-              {formatAccountDate(entry.createdAt)} · {entry.action} · {entry.reason || '—'}
-            </li>
-          ))}
-        </ul>
       </Section>
     </>
   );

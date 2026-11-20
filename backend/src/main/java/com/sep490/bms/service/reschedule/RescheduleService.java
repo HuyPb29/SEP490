@@ -51,7 +51,7 @@ public class RescheduleService {
     private final int cutoffHours=6;
     private final int cutoffPercent=50;
     private final int bufferMinutes=60;
-    private final int holdMinutes=5;
+    private final int holdMinutes=10; // D171: báo chuyển khoản phụ thu trong 10 phút.
 
     @jakarta.annotation.PostConstruct
     void validatePolicy() {
@@ -75,16 +75,26 @@ public class RescheduleService {
 
     public List<Payment> staffPayments(UserPrincipal u,PaymentStatus status) {
         Long location=access.selectedLocation(u).getId();
-        return em.createQuery("select p from Payment p where p.locationId=:l and p.rescheduleRequestId is not null and p.status=:s order by p.submittedAt,p.id",Payment.class)
+        List<Payment> list=em.createQuery("select p from Payment p where p.locationId=:l and p.rescheduleRequestId is not null and p.status=:s order by p.submittedAt,p.id",Payment.class)
                 .setParameter("l",location).setParameter("s",status==null?PaymentStatus.AWAITING_CONFIRMATION:status).getResultList();
+        // FR120, BR58: đánh dấu giao dịch đã chuyển cho chủ sân để màn Staff khóa nút xử lý.
+        LocalDateTime now=LocalDateTime.now();
+        list.forEach(p -> p.setTransferredToOwner(transferPolicy.transferredToOwner(p, now)));
+        return list;
     }
     public PaymentView payment(UserPrincipal u,Long id) {
         Payment p=em.find(Payment.class,id);
         if(p==null) throw new AppException("Không tìm thấy thanh toán",HttpStatus.NOT_FOUND);
         if(p.getRescheduleRequestId()==null) throw new AppException("Không tìm thấy thanh toán phụ thu đổi lịch",HttpStatus.NOT_FOUND);
         RescheduleRequest r=find(p.getRescheduleRequestId());Booking b=support.booking(r.getBookingId());
-        if(u.getRole()==Role.PLAYER) support.player(u,b);
-        else if(!access.selectedLocation(u).getId().equals(b.getLocationId())) throw new AppException("Sai địa điểm",HttpStatus.FORBIDDEN);
+        if (u.getRole() == Role.PLAYER) {
+            support.player(u, b);
+        } else {
+            if (!access.selectedLocation(u).getId().equals(b.getLocationId())) {
+                throw new AppException("Sai địa điểm", HttpStatus.FORBIDDEN);
+            }
+            p.setTransferredToOwner(transferPolicy.transferredToOwner(p, LocalDateTime.now()));
+        }
         return new PaymentView(p,em.createQuery("select p from PaymentProof p where p.paymentId=:id order by p.id",PaymentProof.class).setParameter("id",id).getResultList());
     }
 
@@ -209,7 +219,7 @@ public class RescheduleService {
                 throw blocked("OUTSIDE_PACKAGE","slot mới nằm ngoài thời hạn gói.",HttpStatus.BAD_REQUEST);
         } else if (slot.date().isAfter(LocalDate.now().plusDays(l.getAdvanceBookingDays())))
             throw blocked("ADVANCE_LIMIT","slot mới vượt hạn đặt trước.",HttpStatus.BAD_REQUEST);
-        var problem=availability.findProblem(l.getId(),c.getId(),slot.date(),slot.startMinute(),slot.endMinute());
+        var problem=availability.findProblem(l.getId(),c.getId(),slot.date(),slot.startMinute(),slot.endMinute(),b.getId());
         if(problem.isPresent()) {
             throw switch(problem.get()) {
                 case TAKEN -> changeError("MSG28","SLOT_TAKEN","Slot vừa có người giữ hoặc đặt. Vui lòng chọn slot khác.",HttpStatus.CONFLICT);
@@ -234,9 +244,16 @@ public class RescheduleService {
                 .status(RescheduleStatus.PENDING_PAYMENT).holdExpiresAt(hold).approveDeadline(q.approveDeadline()).build();
         em.persist(r); em.flush();
         Map<Integer,BigDecimal> slotPrices=prices.slotPrices(List.of(slot.courtId()),slot.date()).get(slot.courtId());
+        Set<Integer> originalStarts = new HashSet<>(em.createQuery("""
+                select s.slotStartMinute from BookingSlot s
+                where s.bookingId=:booking and s.courtId=:court and s.slotDate=:date and s.active=true
+                """, Integer.class).setParameter("booking", b.getId()).setParameter("court", slot.courtId())
+                .setParameter("date", slot.date()).getResultList());
+        // Phần giao nhau vẫn do lịch cũ giữ cho tới khi yêu cầu được duyệt.
         for(int m=slot.startMinute();m<slot.endMinute();m+=30)
             em.persist(BookingSlot.builder().bookingId(b.getId()).courtId(slot.courtId()).slotDate(slot.date())
-                    .slotStartMinute(m).price(slotPrices.get(m)).rescheduleRequestId(r.getId()).build());
+                    .slotStartMinute(m).price(slotPrices.get(m)).rescheduleRequestId(r.getId())
+                    .active(!originalStarts.contains(m)).build());
         em.flush();
         if(q.extraAmount().signum()==0) approve(r,b);
         return r;
@@ -245,6 +262,9 @@ public class RescheduleService {
         // Preserve target holds; release every previous active slot, including prior successful reschedules.
         for(var s:em.createQuery("select s from BookingSlot s where s.bookingId=:id and s.active=true",BookingSlot.class)
                 .setParameter("id",b.getId()).getResultList()) if(!r.getId().equals(s.getRescheduleRequestId())) s.setActive(false);
+        em.flush(); // Nhả slot cũ trước khi kích hoạt phần giao nhau, tránh vi phạm ux_slot_active.
+        for (BookingSlot target : em.createQuery("select s from BookingSlot s where s.rescheduleRequestId=:request", BookingSlot.class)
+                .setParameter("request", r.getId()).getResultList()) target.setActive(true);
         b.setCourtId(r.getNewCourtId()); b.setPlayDate(r.getNewDate()); b.setStartMinute(r.getNewStartMinute()); b.setEndMinute(r.getNewEndMinute());
         // Keep the original booking-time list price and all payment/discount snapshots (BR08/BR30).
         if(!r.isFree()) b.setRescheduleCount(b.getRescheduleCount()+1);
