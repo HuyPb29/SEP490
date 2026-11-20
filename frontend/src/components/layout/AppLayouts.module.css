@@ -359,9 +359,14 @@
 }
 
 .sidebar {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
-  min-height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 18px 14px;
   background: var(--color-sidebar-bg);
   color: var(--color-sidebar-text);
