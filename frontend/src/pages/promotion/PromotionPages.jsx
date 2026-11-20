@@ -59,15 +59,15 @@ function PersonalRewards() {
     .filter((entry) => !voucherLocation || String(entry.voucher.locationId) === voucherLocation)
   return <>
     <div className="cw-tabs" role="group" aria-label="Ví ưu đãi">
-      <button type="button" aria-pressed={tab === 'vouchers'} onClick={() => setTab('vouchers')}>Voucher</button>
+      <button type="button" aria-pressed={tab === 'vouchers'} onClick={() => setTab('vouchers')}>Phiếu ưu đãi</button>
       <button type="button" aria-pressed={tab === 'points'} onClick={() => setTab('points')}>Điểm và lịch sử</button>
     </div>
-    {tab === 'vouchers' ? <Section title="Voucher của tôi" resource={vouchers}>
+    {tab === 'vouchers' ? <Section title="phiếu ưu đãi của tôi" resource={vouchers}>
       <Field label="Địa điểm" value={voucherLocation} onChange={(event) => setVoucherLocation(event.target.value)}
         options={[[ '', 'Tất cả địa điểm' ], ...voucherLocationIds.map((id) => [id, name(id)])]} />
       <Field label="Trạng thái" value={voucherFilter} onChange={(event) => setVoucherFilter(event.target.value)}
         options={[[ 'all', 'Tất cả' ], ...Object.entries(grantLabels)]} />
-      {visibleVouchers?.length === 0 && <EmptyState>Không có voucher trong mục này.</EmptyState>}
+      {visibleVouchers?.length === 0 && <EmptyState>Không có phiếu ưu đãi trong mục này.</EmptyState>}
       <div className="cw-columns">{visibleVouchers?.map((entry) => <article key={entry.grantId} className="cw-voucher">
         <VoucherDescription voucher={entry.voucher} showCampaign={false} />
         <p>{name(entry.voucher.locationId)}</p>
@@ -94,7 +94,7 @@ function PersonalRewards() {
         <ul className="cw-records">{history.data?.map((item) => <li className="cw-record" key={item.id}>
           <div><p className="cw-record-title">{pointTypes[item.type] ?? item.type} · {name(locationByBalance.get(item.balanceId))}</p>
             <small>{item.createdAt?.replace('T', ' ')}{item.reason && ' · ' + item.reason}
-              {item.bookingId && ' · Booking #' + item.bookingId}{item.packageId && ' · Gói #' + item.packageId}
+              {item.bookingId && " · Mã đặt sân #" + item.bookingId}{item.packageId && ' · Gói #' + item.packageId}
               {item.earningRate && ' · ' + money(item.earningRate) + '/điểm'}</small></div>
           <div><strong>{item.points > 0 ? '+' : ''}{item.points} điểm</strong><small className="block">Số dư sau giao dịch {item.balanceAfter} điểm</small></div>
         </li>)}</ul>
@@ -112,7 +112,7 @@ function VoucherForm({ voucher, refresh }) {
   const [discountType, setDiscountType] = useState(voucher?.discountType || 'AMOUNT')
   const [startDate, setStartDate] = useState(voucher?.validFrom ?? today())
   const campaignPath = '/owner/vouchers'
-  return <ActionForm label={voucher ? 'Lưu voucher' : 'Tạo bản nháp'} after={refresh}
+  return <ActionForm label={voucher ? "Lưu phiếu ưu đãi" : 'Tạo bản nháp'} after={refresh}
     successMessage="Đã lưu thay đổi." action={(form) => {
     const payload = {
       ...form, code: form.code?.trim().toUpperCase() || null, discountValue: Number(form.discountValue),
@@ -125,11 +125,11 @@ function VoucherForm({ voucher, refresh }) {
       : api.post(campaignPath, payload)
   }}>
     {(errors) => <>
-    <Field label="Tên voucher" name="name" defaultValue={voucher?.name} maxLength={100} required error={errors.name} />
+    <Field label="Tên phiếu ưu đãi" name="name" defaultValue={voucher?.name} maxLength={100} required error={errors.name} />
     <Field label="Đối tượng" name="targetGroup" value={target} onChange={(event) => setTarget(event.target.value)} options={[
-      ['ALL_PLAYERS', 'Tất cả Player'], ['NEW_PLAYERS', 'Player mới'], ['SPECIFIED', 'Player chỉ định'],
+      ['ALL_PLAYERS', "Tất cả người chơi"], ['NEW_PLAYERS', "người chơi mới"], ['SPECIFIED', "người chơi chỉ định"],
     ]} error={errors.targetGroup} />
-    {target !== 'SPECIFIED' && <Field label="Mã voucher" name="code" defaultValue={voucher?.code || ''} maxLength={20}
+    {target !== 'SPECIFIED' && <Field label="Mã phiếu ưu đãi" name="code" defaultValue={voucher?.code || ''} maxLength={20}
       pattern="[A-Za-z0-9_\u002D]+" required error={errors.code || errors.codeValid} />}
     <Field label="Kiểu giảm" name="discountType" value={discountType} onChange={(event) => setDiscountType(event.target.value)}
       options={[[ 'AMOUNT', 'Số tiền (VND)' ], [ 'PERCENT', 'Phần trăm' ]]} error={errors.discountType} />
@@ -141,7 +141,7 @@ function VoucherForm({ voucher, refresh }) {
     <Field label="Từ ngày" name="validFrom" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required error={errors.validFrom} />
     <Field label="Đến ngày" name="validTo" type="date" min={startDate > today() ? startDate : today()}
       defaultValue={voucher?.validTo} required error={errors.validTo || errors.dateRangeValid} />
-    {target === 'SPECIFIED' && <Field label="Hạn voucher cá nhân (ngày)" name="grantValidDays" type="number" min={1} max={3650}
+    {target === 'SPECIFIED' && <Field label="Hạn phiếu ưu đãi cá nhân (ngày)" name="grantValidDays" type="number" min={1} max={3650}
       defaultValue={voucher?.grantValidDays} error={errors.grantValidDays} />}
     <Field label="Lượt mỗi người" name="maxUsesPerPlayer" type="number" min={1} required defaultValue={voucher?.maxUsesPerPlayer} error={errors.maxUsesPerPlayer} />
     <Field label="Tổng lượt" name="maxTotalUses" type="number" min={1} required defaultValue={voucher?.maxTotalUses} error={errors.maxTotalUses} />
@@ -151,9 +151,9 @@ function VoucherForm({ voucher, refresh }) {
 }
 
 function Campaigns({ campaigns }) {
-  return <Section title="Chiến dịch voucher" resource={campaigns}>
-    <details><summary>Tạo chiến dịch voucher</summary><VoucherForm refresh={campaigns.reload} /></details>
-    {campaigns.data?.length === 0 && <EmptyState>Chưa có chiến dịch voucher.</EmptyState>}
+  return <Section title="Chiến dịch phiếu ưu đãi" resource={campaigns}>
+    <details><summary>Tạo chiến dịch phiếu ưu đãi</summary><VoucherForm refresh={campaigns.reload} /></details>
+    {campaigns.data?.length === 0 && <EmptyState>Chưa có chiến dịch phiếu ưu đãi.</EmptyState>}
     {campaigns.data?.map((item) => <details className="space-y-3 border-t py-3" key={item.id}>
       <summary>{item.name} · {voucherStatus[item.status] ?? item.status}</summary>
       <VoucherDescription voucher={item} />
@@ -162,15 +162,15 @@ function Campaigns({ campaigns }) {
         <VoucherForm key={item.version} voucher={item} refresh={campaigns.reload} />}
       {item.source === 'CAMPAIGN' && item.status === 'DRAFT' && <ActionForm label="Phát hành"
         action={() => api.post('/owner/vouchers/' + item.id + '/publish')} after={campaigns.reload} />}
-      {item.status === 'PUBLISHED' && <ActionForm label="Dừng voucher" tone="danger"
-        confirmation="Dừng mã và ngừng cấp mới voucher này? Voucher đã cấp vẫn sử dụng được trong thời hạn."
+      {item.status === 'PUBLISHED' && <ActionForm label="Dừng phiếu ưu đãi" tone="danger"
+        confirmation="Dừng mã và ngừng cấp mới phiếu ưu đãi này? phiếu ưu đãi đã cấp vẫn sử dụng được trong thời hạn."
         successMessage="Đã dừng voucher."
         action={() => api.post('/owner/vouchers/' + item.id + '/stop')} after={campaigns.reload} />}
       {item.source === 'CAMPAIGN' && item.targetGroup === 'SPECIFIED' && item.status === 'PUBLISHED' &&
-        <ActionForm label="Cấp voucher" action={(form) => api.post('/owner/vouchers/' + item.id + '/grants', {
+        <ActionForm label="Cấp phiếu ưu đãi" action={(form) => api.post('/owner/vouchers/' + item.id + '/grants', {
           playerIds: [...new Set(form.playerIds.trim().split(/[\s,]+/).map(Number))],
         })} after={campaigns.reload}>
-          <Field label="ID Player, cách nhau bằng dấu phẩy" name="playerIds" required pattern="[0-9]+([ ,]+[0-9]+)*" />
+          <Field label="ID người chơi, cách nhau bằng dấu phẩy" name="playerIds" required pattern="[0-9]+([ ,]+[0-9]+)*" />
         </ActionForm>}
     </details>)}
   </Section>
@@ -188,8 +188,8 @@ function BatchOfferForm({ offer, eligible, refresh }) {
     <Field label="Kết thúc" name="endDate" type="date" defaultValue={offer?.endDate} required />
     <Field label="Số tiền thực trả tối thiểu (VND)" name="minPackageAmount" type="number" min={1}
       defaultValue={offer?.minPackageAmount} required />
-    <Field label="Voucher tặng" name="voucherId" defaultValue={selectedVoucher} required
-      options={[[ '', 'Chọn voucher đã phát hành' ], ...eligible.map((voucher) => [voucher.id, voucher.name])]} />
+    <Field label="phiếu ưu đãi tặng" name="voucherId" defaultValue={selectedVoucher} required
+      options={[[ '', "Chọn phiếu ưu đãi đã phát hành" ], ...eligible.map((voucher) => [voucher.id, voucher.name])]} />
   </ActionForm>
 }
 
@@ -198,11 +198,11 @@ function BatchOffers({ vouchers }) {
   const eligible = vouchers.filter((voucher) => voucher.status === 'PUBLISHED' && voucher.targetGroup === 'SPECIFIED')
   return <div id="batch-offers"><Section title="Ưu đãi đặt theo lô" resource={offers}>
     {eligible.length ? <BatchOfferForm eligible={eligible} refresh={offers.reload} /> :
-      <p>Phát hành voucher cho Player chỉ định trước khi tạo ưu đãi cho gói.</p>}
+      <p>Phát hành phiếu ưu đãi cho người chơi chỉ định trước khi tạo ưu đãi cho gói.</p>}
     {offers.data?.length === 0 && <p>Chưa có ưu đãi đặt theo lô.</p>}
     {offers.data?.map((offer) => <details key={offer.id} className="space-y-3 border-t py-3">
       <summary>{offer.name} · {offer.active ? 'Trong thời gian áp dụng' : 'Ngoài thời gian áp dụng'}</summary>
-      <p>Gói thực trả từ {money(offer.minPackageAmount)} · Voucher {offer.voucherName || '—'} · {offer.startDate} – {offer.endDate}</p>
+      <p>Gói thực trả từ {money(offer.minPackageAmount)} · Phiếu ưu đãi {offer.voucherName || '—'} · {offer.startDate} – {offer.endDate}</p>
       {eligible.length > 0 && <BatchOfferForm offer={offer} eligible={eligible} refresh={offers.reload} />}
       <ActionForm label="Xóa ưu đãi" tone="danger" confirmation="Xóa ưu đãi đặt theo lô này?"
         action={() => api.delete('/owner/batch-offers/' + offer.id)} after={offers.reload} />
@@ -224,10 +224,10 @@ function MilestoneForm({ milestone, save, afterSave, beforeSave }) {
       }, form.active === 'true')
     }}>
     {(errors) => <>
-      <Field label="Tên voucher thưởng" name="name" defaultValue={milestone?.voucher.name} maxLength={100} required error={errors.name} />
+      <Field label="Tên phiếu ưu đãi thưởng" name="name" defaultValue={milestone?.voucher.name} maxLength={100} required error={errors.name} />
       <Field label="Mốc chi tiêu (VND)" name="milestoneAmount" type="number" min={1} max={99999999999999}
         defaultValue={milestone?.milestoneAmount} required error={errors.milestoneAmount} />
-      <Field label="Giá trị voucher (VND)" name="rewardValue" type="number" min={1} max={999999999999}
+      <Field label="Giá trị phiếu ưu đãi (VND)" name="rewardValue" type="number" min={1} max={999999999999}
         defaultValue={milestone?.voucher.discountValue} required error={errors.rewardValue} />
       <Field label="Hạn dùng (ngày)" name="voucherValidDays" type="number" min={1} max={3650}
         defaultValue={milestone?.voucher.grantValidDays} required error={errors.voucherValidDays} />
@@ -242,7 +242,7 @@ function Milestones({ locationId }) {
   const [saved, setSaved] = useState(false)
   const afterSave = () => { setSaved(true); milestones.reload() }
   const beforeSave = () => setSaved(false)
-  return <Section title="Mốc chi tiêu nhận voucher" resource={milestones}>
+  return <Section title="Mốc chi tiêu nhận phiếu ưu đãi" resource={milestones}>
     {saved && <Feedback tone="success">Đã lưu thay đổi.</Feedback>}
     <details><summary>Thêm mốc chi tiêu</summary><MilestoneForm save={save} beforeSave={beforeSave} afterSave={afterSave} /></details>
     {milestones.data?.length === 0 && <EmptyState>Chưa thiết lập mốc chi tiêu.</EmptyState>}

@@ -7,19 +7,19 @@ import styles from './OwnerPlaceholderPage.module.css'
 
 /** Map URL segment → human-readable title */
 const TITLES = {
-  reports:     'Reports',
-  courts:      'Courts & Pricing',
-  hours:       'Opening Hours',
-  vouchers:    'Vouchers & Offers',
-  complaints:  'Complaints',
-  refunds:     'Refunds',
-  maintenance: 'Maintenance Approval',
-  reviews:     'Reviews',
+  reports:     "Báo cáo",
+  courts:      "Sân và bảng giá",
+  hours:       "Giờ mở cửa",
+  vouchers:    "Phiếu ưu đãi và chương trình ưu đãi",
+  complaints:  "Khiếu nại",
+  refunds:     "Hoàn tiền",
+  maintenance: "Duyệt yêu cầu bảo trì",
+  reviews:     "Đánh giá",
 }
 
 export default function OwnerPlaceholderPage({ tab }) {
   const { id } = useParams()
-  const title = tab ? (TITLES[tab] ?? tab) : 'This page'
+  const title = tab ? (TITLES[tab] ?? tab) : "Trang này"
 
   return (
     <div className={styles.page}>
@@ -27,9 +27,9 @@ export default function OwnerPlaceholderPage({ tab }) {
         <span className={styles.icon} aria-hidden="true">🚧</span>
         <h1 className={styles.title}>{title}</h1>
         <p className={styles.sub}>
-          Location <strong>#{id}</strong> · This section is under development.
+          Địa điểm <strong>#{id}</strong> · Chức năng đang được phát triển.
         </p>
-        <p className={styles.note}>Coming soon in the next sprint.</p>
+        <p className={styles.note}>Chức năng sẽ sớm được cập nhật.</p>
       </div>
     </div>
   )

@@ -75,7 +75,7 @@ export default function ManagementLayout({
   const ownerMenu = [
     { to: '/owner/workspace', label: 'Tổng quan & Vận hành', end: true },
     { to: '/owner/courts-pricing', label: 'Sân & Bảng giá' },
-    { to: '/owner/opening-hours', label: 'Giờ mở cửa & Slot' },
+    { to: '/owner/opening-hours', label: "Giờ mở cửa & khung giờ" },
     { to: '/owner/facility-settings', label: 'Hồ sơ địa điểm' },
     { to: '/owner/workspace?tab=reviews', label: 'Đánh giá' },
     { to: '/staff/confirm-payments', label: 'Xác nhận thanh toán' },
@@ -146,7 +146,7 @@ export default function ManagementLayout({
     });
 
   return (
-    <div className={`${styles.managementShell} cw-workspace`}>
+    <div className={`${styles.managementShell} cw-khu vực quản lý`}>
       <a href="#management-main" className={styles.skipLink}>
         Đến nội dung chính
       </a>

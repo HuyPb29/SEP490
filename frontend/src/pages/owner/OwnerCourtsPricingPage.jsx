@@ -9,7 +9,7 @@ import {
   getBatchOffers,
   getCourtPriceRules,
   getOwnerLocations,
-  getPublishedVouchers,
+  getBatchOfferVouchers,
   getStoredLocationId,
   storeLocationId,
   updateBatchOffer,
@@ -21,13 +21,13 @@ import CourtExpansionPanel from './CourtExpansionPanel'
 import styles from './OwnerCourtsPricingPage.module.css'
 
 const WEEK_DAYS = [
-  { value: 1, short: 'Mon', label: 'Monday' },
-  { value: 2, short: 'Tue', label: 'Tuesday' },
-  { value: 3, short: 'Wed', label: 'Wednesday' },
-  { value: 4, short: 'Thu', label: 'Thursday' },
-  { value: 5, short: 'Fri', label: 'Friday' },
-  { value: 6, short: 'Sat', label: 'Saturday' },
-  { value: 7, short: 'Sun', label: 'Sunday' },
+  { value: 1, short: "T2", label: "Thứ Hai" },
+  { value: 2, short: "T3", label: "Thứ Ba" },
+  { value: 3, short: "T4", label: "Thứ Tư" },
+  { value: 4, short: "T5", label: "Thứ Năm" },
+  { value: 5, short: "T6", label: "Thứ Sáu" },
+  { value: 6, short: "T7", label: "Thứ Bảy" },
+  { value: 7, short: "CN", label: "Chủ nhật" },
 ]
 
 const WEEKDAY_VALUES = [1, 2, 3, 4, 5]
@@ -68,7 +68,7 @@ function emptyOfferForm() {
 
 function formatPrice(price) {
   if (price === '' || price === null || price === undefined) return ''
-  return Number(price).toLocaleString('en-US')
+  return Number(price).toLocaleString('vi-VN')
 }
 
 function formatDate(value) {
@@ -79,10 +79,10 @@ function formatDate(value) {
 
 function daySummary(days) {
   if (!days || days.length === 0) return '—'
-  if (days.length === 7) return 'Every day'
+  if (days.length === 7) return "Hằng ngày"
   const sorted = [...days].sort((a, b) => a - b)
-  if (sorted.length === 5 && WEEKDAY_VALUES.every((day) => sorted.includes(day))) return 'Mon – Fri'
-  if (sorted.length === 2 && WEEKEND_VALUES.every((day) => sorted.includes(day))) return 'Sat, Sun'
+  if (sorted.length === 5 && WEEKDAY_VALUES.every((day) => sorted.includes(day))) return "Thứ Hai – Thứ Sáu"
+  if (sorted.length === 2 && WEEKEND_VALUES.every((day) => sorted.includes(day))) return "Thứ Bảy, Chủ nhật"
   return sorted.map((day) => DAY_LOOKUP[day]?.short ?? day).join(', ')
 }
 
@@ -116,6 +116,10 @@ export default function OwnerCourtsPricingPage() {
   const [offerForm, setOfferForm] = useState(emptyOfferForm)
   const [editingOfferId, setEditingOfferId] = useState(null)
   const [vouchers, setVouchers] = useState([])
+  const [voucherError, setVoucherError] = useState('')
+  const eligibleVouchers = vouchers.filter((voucher) =>
+    (!offerForm.startDate || !voucher.validFrom || voucher.validFrom <= offerForm.startDate)
+    && (!offerForm.endDate || !voucher.validTo || voucher.validTo >= offerForm.endDate))
 
   const selectedLocation =
     locations.find((location) => String(location.id) === String(selectedLocationId)) || null
@@ -188,17 +192,18 @@ export default function OwnerCourtsPricingPage() {
     }
   }
 
-  // Chỉ voucher PUBLISHED mới gắn được vào ưu đãi (backend chặn ở BatchOfferService).
+  // BR47: cùng điều kiện loại/trạng thái với BatchOfferService.
   const loadVouchers = async (locationId) => {
     if (!locationId) {
       setVouchers([])
       return
     }
     try {
-      setVouchers(await getPublishedVouchers(locationId))
-    } catch {
-      // Voucher là feature khác; lỗi ở đây không được làm hỏng trang bảng giá.
+      setVouchers(await getBatchOfferVouchers(locationId))
+      setVoucherError('')
+    } catch (err) {
       setVouchers([])
+      setVoucherError(apiErrorMessage(err))
     }
   }
 
@@ -227,12 +232,12 @@ export default function OwnerCourtsPricingPage() {
   // ---------------------------------------------------------------- UC07: sân
 
   const handleEditCourt = async (court) => {
-    const name = window.prompt('Court name', court.name)
+    const name = window.prompt("Tên sân", court.name)
     if (name === null) return
-    const description = window.prompt('Court description', court.description ?? '')
+    const description = window.prompt("Mô tả sân", court.description ?? '')
     if (description === null) return
     if (!name.trim()) {
-      setActionError('Enter a court name.')
+      setActionError("Vui lòng nhập tên sân.")
       return
     }
     setSaving(true)
@@ -240,7 +245,7 @@ export default function OwnerCourtsPricingPage() {
       await updateCourt(court.id, { name: name.trim(), description: description.trim() }, selectedLocation?.id)
       await loadLocations()
       setActionError('')
-      setStatusMessage(`Court "${name.trim()}" updated.`)
+      setStatusMessage(`Sân "${name.trim()}" đã được cập nhật.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -250,13 +255,13 @@ export default function OwnerCourtsPricingPage() {
   }
 
   const handleCourtStatus = async (court) => {
-    if (court.active && !window.confirm('This change affects confirmed bookings. Customers will be notified to choose a resolution (free reschedule, refund, or compensation points). Continue?')) return
+    if (court.active && !window.confirm("Thay đổi này ảnh hưởng các lượt đặt sân đã xác nhận. Khách sẽ được thông báo để chọn đổi lịch miễn phí, hoàn tiền hoặc điểm bồi hoàn. Tiếp tục?")) return
     setSaving(true)
     try {
       await updateCourt(court.id, { isActive: !court.active }, selectedLocation?.id)
       await loadLocations()
       setActionError('')
-      setStatusMessage(`Court "${court.name}" ${court.active ? 'disabled' : 'enabled'}.`)
+      setStatusMessage(`Sân "${court.name}" ${court.active ? 'disabled' : 'enabled'}.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -291,16 +296,16 @@ export default function OwnerCourtsPricingPage() {
   const handleSavePriceRule = async (event) => {
     event.preventDefault()
     if (ruleTimeInvalid) {
-      setActionError('The end time must be later than the start time.')
+      setActionError("Giờ kết thúc phải sau giờ bắt đầu.")
       return
     }
     if (ruleForm.days.length === 0) {
-      setActionError('Select at least one applicable day.')
+      setActionError("Chọn ít nhất một ngày áp dụng.")
       return
     }
     const price = Number(ruleForm.price)
     if (!Number.isFinite(price) || price <= 0) {
-      setActionError('Enter a valid price greater than zero.')
+      setActionError("Nhập giá hợp lệ lớn hơn 0.")
       return
     }
     const payload = {
@@ -315,16 +320,16 @@ export default function OwnerCourtsPricingPage() {
     try {
       if (editingRuleId) {
         await updatePriceRule(editingRuleId, payload, selectedLocationId)
-        setStatusMessage('Price rule updated.')
+        setStatusMessage("Đã cập nhật quy tắc giá.")
       } else if (ruleForm.courtId === 'all') {
         // Bảng giá lưu theo từng sân, nên "All courts" = tạo lần lượt cho mọi sân.
         for (const court of courts) {
           await createPriceRule(court.id, payload, selectedLocationId)
         }
-        setStatusMessage(`Price rule added for ${courts.length} court(s).`)
+        setStatusMessage(`Đã thêm quy tắc giá cho ${courts.length} sân.`)
       } else {
         await createPriceRule(ruleForm.courtId, payload, selectedLocationId)
-        setStatusMessage('Price rule added.')
+        setStatusMessage("Đã thêm quy tắc giá.")
       }
       resetRuleForm()
       await loadPriceRules(selectedLocationId, courts)
@@ -353,14 +358,14 @@ export default function OwnerCourtsPricingPage() {
   }
 
   const handleDeletePriceRule = async (rule) => {
-    if (!window.confirm(`Delete the ${rule.startTime} – ${rule.endTime} rule of "${rule.courtName}"?`)) return
+    if (!window.confirm(`Xóa ${rule.startTime} – ${rule.endTime} của sân "${rule.courtName}"?`)) return
     setSaving(true)
     try {
       await deletePriceRule(rule.id, selectedLocationId)
       if (editingRuleId === rule.id) resetRuleForm()
       await loadPriceRules(selectedLocationId, courts)
       setActionError('')
-      setStatusMessage('Price rule deleted.')
+      setStatusMessage("Đã xóa quy tắc giá.")
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -384,23 +389,23 @@ export default function OwnerCourtsPricingPage() {
     event.preventDefault()
     const minPackageAmount = Number(offerForm.minPackageAmount)
     if (!offerForm.name.trim()) {
-      setActionError('Enter an offer name.')
+      setActionError('Vui lòng nhập tên ưu đãi.')
       return
     }
     if (!offerForm.startDate || !offerForm.endDate) {
-      setActionError('Enter both the start and end date.')
+      setActionError('Vui lòng nhập ngày bắt đầu và ngày kết thúc.')
       return
     }
     if (offerForm.endDate < offerForm.startDate) {
-      setActionError('The end date must be on or after the start date.')
+      setActionError('Ngày kết thúc phải từ ngày bắt đầu trở đi.')
       return
     }
     if (!Number.isFinite(minPackageAmount) || minPackageAmount <= 0) {
-      setActionError('Enter a valid minimum package amount.')
+      setActionError('Vui lòng nhập số tiền gói tối thiểu hợp lệ.')
       return
     }
-    if (!offerForm.voucherId) {
-      setActionError('Select a voucher to apply.')
+    if (!eligibleVouchers.some((voucher) => String(voucher.id) === String(offerForm.voucherId))) {
+      setActionError("Hãy chọn phiếu ưu đãi đã phát hành dành cho người chơi chỉ định, có hiệu lực bao phủ toàn bộ thời gian ưu đãi.")
       return
     }
     const payload = {
@@ -414,10 +419,10 @@ export default function OwnerCourtsPricingPage() {
     try {
       if (editingOfferId) {
         await updateBatchOffer(editingOfferId, payload, selectedLocationId)
-        setStatusMessage('Bulk offer updated.')
+        setStatusMessage("Đã cập nhật ưu đãi đặt theo lô.")
       } else {
         await createBatchOffer(payload, selectedLocationId)
-        setStatusMessage('Bulk offer created.')
+        setStatusMessage("Đã tạo ưu đãi đặt theo lô.")
       }
       resetOfferForm()
       await loadOffers(selectedLocationId)
@@ -444,14 +449,14 @@ export default function OwnerCourtsPricingPage() {
   }
 
   const handleDeleteOffer = async (offer) => {
-    if (!window.confirm(`Delete the bulk offer "${offer.name}"?`)) return
+    if (!window.confirm(`Xóa ưu đãi đặt theo lô "${offer.name}"?`)) return
     setSaving(true)
     try {
       await deleteBatchOffer(offer.id, selectedLocationId)
       if (editingOfferId === offer.id) resetOfferForm()
       await loadOffers(selectedLocationId)
       setActionError('')
-      setStatusMessage('Bulk offer deleted.')
+      setStatusMessage("Đã xóa ưu đãi đặt theo lô.")
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -486,19 +491,19 @@ export default function OwnerCourtsPricingPage() {
 
         <section className={`${styles.panel} ${styles.courtPanel}`} aria-labelledby="court-list-heading">
           <div className={styles.panelHeader}>
-            <h2 id="court-list-heading">Court List ({courts.length})</h2>
+            <h2 id="court-list-heading">Danh sách sân ({courts.length})</h2>
             <button className={styles.primaryButton} type="button" disabled={!selectedLocation || locked}
               onClick={() => navigate({ pathname: routeLocation.pathname, search: routeLocation.search, hash: '#court-expansion' })}>
               + Đăng ký thêm sân
             </button>
           </div>
           <p>Thêm giá cho tất cả giờ mở cửa trước khi bật bán sân mới.</p>
-          {loading && <p className={styles.emptyState}>Loading courts…</p>}
+          {loading && <p className={styles.emptyState}>Đang tải danh sách sân…</p>}
           {!loading && !selectedLocation && (
-            <p className={styles.emptyState}>No facility is assigned to this account.</p>
+            <p className={styles.emptyState}>Tài khoản này chưa được gán địa điểm.</p>
           )}
           {!loading && selectedLocation && courts.length === 0 && (
-            <p className={styles.emptyState}>Địa điểm chưa có sân. Gửi yêu cầu thêm sân để Admin kiểm tra và xét duyệt.</p>
+            <p className={styles.emptyState}>Địa điểm chưa có sân. Gửi yêu cầu thêm sân để quản trị viên kiểm tra và xét duyệt.</p>
           )}
           {selectedLocation && expansionOpen && <CourtExpansionPanel key={selectedLocation.id}
             locationId={selectedLocation.id} locked={locked} onClose={closeExpansion} />}
@@ -508,17 +513,17 @@ export default function OwnerCourtsPricingPage() {
                 <div className={styles.courtCardHeader}>
                   <h3>{court.name}</h3>
                   <span className={`${styles.statusBadge} ${court.active ? styles.statusActive : styles.statusDisabled}`}>
-                    {court.active ? 'Active' : 'Disabled'}
+                    {court.active ? "Đang hoạt động" : "Đã tắt"}
                   </span>
                 </div>
                 {court.availableFrom && <p>Kỳ hạn thêm sân: {formatDate(court.availableFrom)} → {formatDate(court.availableUntil)}; các kỳ gia hạn áp dụng theo địa điểm.</p>}
-                <p className={styles.courtDescription}>{court.description || 'No description'}</p>
+                <p className={styles.courtDescription}>{court.description || "Chưa có mô tả"}</p>
                 <div className={styles.courtActions}>
                   <button className={styles.secondaryButton} type="button" onClick={() => handleEditCourt(court)} disabled={saving || locked}>
-                    Edit
+                    Sửa
                   </button>
                   <button className={styles.secondaryButton} type="button" onClick={() => handleCourtStatus(court)} disabled={saving || locked}>
-                    {court.active ? 'Disable' : 'Enable'}
+                    {court.active ? "Tắt" : "Bật"}
                   </button>
                 </div>
               </article>
@@ -528,17 +533,17 @@ export default function OwnerCourtsPricingPage() {
 
         <div className={styles.pricingGrid}>
           <section className={`${styles.panel} ${styles.rulesPanel}`} aria-labelledby="price-rules-heading">
-            <h2 id="price-rules-heading">Price Rules ({priceRules.length})</h2>
+            <h2 id="price-rules-heading">Quy tắc giá ({priceRules.length})</h2>
             <div className={styles.tableScroller}>
               <table className={styles.rulesTable}>
                 <thead>
                   <tr>
-                    <th scope="col">Court</th>
-                    <th scope="col">Days</th>
-                    <th scope="col">Time Range</th>
-                    <th scope="col">Price / slot</th>
-                    <th scope="col">Effective</th>
-                    <th scope="col">Actions</th>
+                    <th scope="col">Sân</th>
+                    <th scope="col">Ngày áp dụng</th>
+                    <th scope="col">Khung giờ</th>
+                    <th scope="col">Price / khung giờ</th>
+                    <th scope="col">Hiệu lực</th>
+                    <th scope="col">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -547,18 +552,18 @@ export default function OwnerCourtsPricingPage() {
                       <td>{rule.courtName}</td>
                       <td>{daySummary(rule.days)}</td>
                       <td>{rule.startTime} – {rule.endTime}</td>
-                      <td><strong>{formatPrice(rule.pricePerSlot)} VND</strong></td>
+                      <td><strong>{formatPrice(rule.pricePerSlot)} đồng</strong></td>
                       <td>
                         {formatDate(rule.validFrom)} – {rule.validTo ? formatDate(rule.validTo) : 'open'}
-                        {rule.active === false && <span className={styles.expiredTag}>expired</span>}
+                        {rule.active === false && <span className={styles.expiredTag}>hết hạn</span>}
                       </td>
                       <td>
                         <div className={styles.rowActions}>
                           <button className={styles.linkButton} type="button" onClick={() => handleEditPriceRule(rule)} disabled={saving || locked}>
-                            Edit
+                            Sửa
                           </button>
                           <button className={styles.linkButton} type="button" onClick={() => handleDeletePriceRule(rule)} disabled={saving || locked}>
-                            Delete
+                            Xóa
                           </button>
                         </div>
                       </td>
@@ -567,29 +572,29 @@ export default function OwnerCourtsPricingPage() {
                 </tbody>
               </table>
             </div>
-            {rulesLoading && <p className={styles.emptyState}>Loading price rules…</p>}
+            {rulesLoading && <p className={styles.emptyState}>Đang tải quy tắc giá…</p>}
             {!rulesLoading && selectedLocation && priceRules.length === 0 && (
-              <p className={styles.emptyState}>No price rule yet. Add the first one on the right.</p>
+              <p className={styles.emptyState}>Chưa có quy tắc giá. Hãy thêm quy tắc đầu tiên ở biểu mẫu bên cạnh.</p>
             )}
           </section>
 
           <section className={`${styles.panel} ${styles.formPanel}`} aria-labelledby="add-rule-heading">
-            <h2 id="add-rule-heading">{editingRuleId ? 'Edit Price Rule' : 'Add Price Rule'}</h2>
+            <h2 id="add-rule-heading">{editingRuleId ? "Sửa quy tắc giá" : "Thêm quy tắc giá"}</h2>
             <form onSubmit={handleSavePriceRule}>
               <label className={styles.field}>
-                <span>Court</span>
+                <span>Sân</span>
                 <select
                   value={ruleForm.courtId}
                   onChange={(event) => updateRuleForm('courtId', event.target.value)}
                   disabled={Boolean(editingRuleId)}
                 >
-                  {!editingRuleId && <option value="all">All courts</option>}
+                  {!editingRuleId && <option value="all">Tất cả sân</option>}
                   {courts.map((court) => <option key={court.id} value={court.id}>{court.name}</option>)}
                 </select>
               </label>
 
               <div className={styles.field}>
-                <span>Applicable Days</span>
+                <span>Ngày áp dụng</span>
                 <div className={styles.dayPicker}>
                   {WEEK_DAYS.map((day) => (
                     <button
@@ -608,7 +613,7 @@ export default function OwnerCourtsPricingPage() {
 
               <div className={styles.timeFields}>
                 <label className={styles.field}>
-                  <span>From</span>
+                  <span>Từ</span>
                   <select
                     className={ruleTimeInvalid ? styles.invalidInput : ''}
                     value={ruleForm.startTime}
@@ -619,7 +624,7 @@ export default function OwnerCourtsPricingPage() {
                   </select>
                 </label>
                 <label className={styles.field}>
-                  <span>To</span>
+                  <span>Đến</span>
                   <select
                     className={ruleTimeInvalid ? styles.invalidInput : ''}
                     value={ruleForm.endTime}
@@ -632,10 +637,10 @@ export default function OwnerCourtsPricingPage() {
                   </select>
                 </label>
               </div>
-              {ruleTimeInvalid && <p className={styles.overlapMessage} role="alert">The end time must be later than the start time.</p>}
+              {ruleTimeInvalid && <p className={styles.overlapMessage} role="alert">Giờ kết thúc phải sau giờ bắt đầu.</p>}
 
               <label className={styles.field}>
-                <span>Price per slot (VND)</span>
+                <span>Giá mỗi khung giờ (đồng)</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -646,7 +651,7 @@ export default function OwnerCourtsPricingPage() {
 
               <div className={styles.timeFields}>
                 <label className={styles.field}>
-                  <span>Valid from</span>
+                  <span>Có hiệu lực từ</span>
                   <input
                     type="date"
                     value={ruleForm.validFrom}
@@ -654,7 +659,7 @@ export default function OwnerCourtsPricingPage() {
                   />
                 </label>
                 <label className={styles.field}>
-                  <span>Valid to</span>
+                  <span>Có hiệu lực đến</span>
                   <input
                     type="date"
                     value={ruleForm.validTo}
@@ -664,11 +669,11 @@ export default function OwnerCourtsPricingPage() {
               </div>
 
               <button className={styles.saveButton} type="submit" disabled={saving || locked || ruleTimeInvalid || !selectedLocation}>
-                {editingRuleId ? 'Update Price Rule' : 'Save Price Rule'}
+                {editingRuleId ? "Cập nhật quy tắc giá" : "Lưu quy tắc giá"}
               </button>
               {editingRuleId && (
                 <button className={styles.cancelButton} type="button" onClick={resetRuleForm} disabled={saving}>
-                  Cancel edit
+                  Hủy chỉnh sửa
                 </button>
               )}
             </form>
@@ -677,11 +682,11 @@ export default function OwnerCourtsPricingPage() {
 
         <section className={`${styles.panel} ${styles.offerSection}`} aria-labelledby="bulk-offer-heading">
           <div className={styles.panelHeader}>
-            <h2 id="bulk-offer-heading">Bulk Booking Offers ({offers.length})</h2>
+            <h2 id="bulk-offer-heading">Ưu đãi đặt theo lô ({offers.length})</h2>
           </div>
           <p className={styles.offerHint}>
-            A package reaching the minimum amount gets the attached voucher. The voucher must be PUBLISHED and its
-            validity must cover the offer dates.
+            Gói đạt số tiền tối thiểu được tặng phiếu ưu đãi. Chỉ chọn phiếu ưu đãi đã phát hành dành cho người chơi chỉ định,
+            có hiệu lực bao phủ toàn bộ thời gian ưu đãi.
           </p>
 
           <div className={styles.offerList}>
@@ -690,44 +695,44 @@ export default function OwnerCourtsPricingPage() {
                 <div className={styles.offerCardBody}>
                   <h3>{offer.name}</h3>
                   <p className={styles.offerMeta}>
-                    {formatDate(offer.startDate)} – {formatDate(offer.endDate)} · from{' '}
-                    {formatPrice(offer.minPackageAmount)} VND · voucher {offer.voucherCode ?? '—'} (
+                    {formatDate(offer.startDate)} – {formatDate(offer.endDate)} · từ{' '}
+                    {formatPrice(offer.minPackageAmount)} đồng · phiếu ưu đãi {offer.voucherCode ?? '—'} (
                     {discountLabel(offer)})
                   </p>
                 </div>
                 <div className={styles.offerCardActions}>
                   <span className={`${styles.statusBadge} ${offer.active ? styles.statusActive : styles.statusDisabled}`}>
-                    {offer.active ? 'Running' : 'Scheduled / ended'}
+                    {offer.active ? "Đang diễn ra" : 'Scheduled / ended'}
                   </span>
                   <button className={styles.secondaryButton} type="button" onClick={() => handleEditOffer(offer)} disabled={saving || locked}>
-                    Edit
+                    Sửa
                   </button>
                   <button className={styles.secondaryButton} type="button" onClick={() => handleDeleteOffer(offer)} disabled={saving || locked}>
-                    Delete
+                    Xóa
                   </button>
                 </div>
               </article>
             ))}
           </div>
-          {offersLoading && <p className={styles.emptyState}>Loading offers…</p>}
+          {offersLoading && <p className={styles.emptyState}>Đang tải ưu đãi…</p>}
           {!offersLoading && offers.length === 0 && (
-            <p className={styles.emptyState}>No bulk offer yet for this facility.</p>
+            <p className={styles.emptyState}>Địa điểm chưa có ưu đãi đặt theo lô.</p>
           )}
 
           <form className={styles.offerForm} onSubmit={handleSaveOffer}>
             <label className={styles.field}>
-              <span>Offer name</span>
+              <span>Tên ưu đãi</span>
               <input
                 type="text"
                 maxLength={100}
                 value={offerForm.name}
                 onChange={(event) => updateOfferForm('name', event.target.value)}
-                placeholder="Weekend bulk booking"
+                placeholder="Ưu đãi đặt theo lô cuối tuần"
               />
             </label>
             <div className={styles.timeFields}>
               <label className={styles.field}>
-                <span>Start date</span>
+                <span>Ngày bắt đầu</span>
                 <input
                   type="date"
                   value={offerForm.startDate}
@@ -735,7 +740,7 @@ export default function OwnerCourtsPricingPage() {
                 />
               </label>
               <label className={styles.field}>
-                <span>End date</span>
+                <span>Ngày kết thúc</span>
                 <input
                   type="date"
                   value={offerForm.endDate}
@@ -744,7 +749,7 @@ export default function OwnerCourtsPricingPage() {
               </label>
             </div>
             <label className={styles.field}>
-              <span>Minimum package amount (VND)</span>
+              <span>Số tiền gói tối thiểu (đồng)</span>
               <input
                 type="text"
                 inputMode="numeric"
@@ -753,26 +758,30 @@ export default function OwnerCourtsPricingPage() {
               />
             </label>
             <label className={styles.field}>
-              <span>Voucher (PUBLISHED only)</span>
+              <span>phiếu ưu đãi tặng cho người chơi chỉ định</span>
               <select value={offerForm.voucherId} onChange={(event) => updateOfferForm('voucherId', event.target.value)}>
-                <option value="">{vouchers.length === 0 ? 'Địa điểm chưa có voucher đã phát hành' : 'Chọn voucher tặng'}</option>
-                {vouchers.map((voucher) => (
+                <option value="">{eligibleVouchers.length === 0 ? "Chưa có phiếu ưu đãi phù hợp với điều kiện và ngày ưu đãi" : "Chọn phiếu ưu đãi tặng"}</option>
+                {eligibleVouchers.map((voucher) => (
                   <option key={voucher.id} value={voucher.id}>
-                    {voucher.code} · {voucher.name} ({voucher.discountType === 'PERCENT'
+                    {voucher.code ? `${voucher.code} · ` : ''}{voucher.name} ({voucher.discountType === 'PERCENT'
                       ? `${voucher.discountValue}%`
-                      : `${formatPrice(voucher.discountValue)} VND`})
+                      : `${formatPrice(voucher.discountValue)} đồng`})
                     {voucher.validTo && ` · Hạn dùng ${formatDate(voucher.validTo)}`}
                   </option>
                 ))}
               </select>
-              <Link to="/owner/workspace?tab=rewards">Cấu hình giá trị và hạn dùng voucher</Link>
+              <span>Chọn đối tượng “người chơi chỉ định”, phát hành phiếu ưu đãi rồi quay lại tạo ưu đãi.</span>
+              <Link to="/owner/workspace?tab=rewards">Quản lý và phát hành phiếu ưu đãi</Link>
             </label>
+            {voucherError && <p className={styles.actionError} role="alert">Không tải được phiếu ưu đãi: {voucherError}</p>}
+            <button className={styles.secondaryButton} type="button" disabled={saving || locked || !selectedLocation}
+              onClick={() => loadVouchers(selectedLocationId)}>Tải lại danh sách phiếu ưu đãi</button>
             <button className={styles.saveButton} type="submit" disabled={saving || locked || !selectedLocation}>
-              {editingOfferId ? 'Update Offer' : 'Create Offer'}
+              {editingOfferId ? "Cập nhật ưu đãi" : "Tạo ưu đãi"}
             </button>
             {editingOfferId && (
               <button className={styles.cancelButton} type="button" onClick={resetOfferForm} disabled={saving}>
-                Cancel edit
+                Hủy chỉnh sửa
               </button>
             )}
           </form>

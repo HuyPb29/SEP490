@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { uiMessage } from '../utils/formatters'
 import { clearSession, getSavedUser, getToken, getSelectedLocation } from './session'
 
 const api = axios.create({ baseURL: '/api' })
@@ -49,12 +50,12 @@ export function apiErrorMessage(err, fallback = 'Đã có lỗi xảy ra. Vui l�
   const data = err?.response?.data
   if (data?.errors && typeof data.errors === 'object' && !/^MSG\d+$/.test(data.errors.code)) {
     const first = Object.values(data.errors)[0]
-    if (first) return String(first)
+    if (first) return uiMessage(String(first))
   }
-  if (data?.message && data.message !== 'No message available') return data.message
+  if (data?.message && data.message !== 'No message available') return uiMessage(data.message)
   if (err?.response?.status === 401) return 'Vui lòng đăng nhập lại.'
   if (err?.response?.status === 403) return 'Bạn không có quyền thực hiện thao tác này.'
-  return err?.message || fallback
+  return uiMessage(err?.message || fallback)
 }
 
 /**

@@ -64,7 +64,7 @@ function AppContent() {
         />
       )}
       <div className="fixed bottom-3 right-3 text-[11px] font-mono text-slate-500 bg-white/80 backdrop-blur px-2 py-1 rounded shadow-sm border border-slate-200 z-50 pointer-events-none">
-        BE: {status}
+        Máy chủ: {status === 'UP' ? 'Đã kết nối' : status === 'checking...' ? 'Đang kiểm tra…' : 'Mất kết nối'}
       </div>
 
       <AppRoutes />

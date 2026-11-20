@@ -403,7 +403,7 @@ export default function OpenMatchesPage() {
               {hostedError && <p role="alert">{hostedError}</p>}
               {!hostedError && hostedMatches.length === 0 && (
                 <p className={styles.noRequests}>
-                  Bạn chưa có kèo đang mở. Mở kèo từ chi tiết booking đã xác nhận đặt dưới tên đội của bạn.
+                  Bạn chưa có kèo đang mở. Mở kèo từ chi tiết đặt sân đã xác nhận đặt dưới tên đội của bạn.
                 </p>
               )}
               {hostedMatches.map(({ match, requests, approved }) => (

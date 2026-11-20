@@ -52,7 +52,7 @@ export default function AdminLayout({
     ));
 
   return (
-    <div className={`${styles.managementShell} cw-workspace`}>
+    <div className={`${styles.managementShell} cw-khu vực quản lý`}>
       <a href="#admin-main" className={styles.skipLink}>
         Đến nội dung chính
       </a>

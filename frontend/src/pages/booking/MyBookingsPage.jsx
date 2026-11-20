@@ -30,7 +30,7 @@ const AFFECTED_CAUSES = {
   HOURS_CHANGED: 'Địa điểm đổi giờ mở cửa',
 };
 const AFFECTED_CHOICES = {
-  RESCHEDULE: 'Đã đổi slot miễn phí',
+  RESCHEDULE: "Đã đổi khung giờ miễn phí",
   REFUND: 'Đã chọn hoàn tiền',
   POINTS: 'Đã nhận điểm bồi hoàn',
 };
@@ -67,7 +67,7 @@ const formatDeadline = (value) => new Date(serverTimestamp(value))
 
 /** UC21: "Sân A · 2026-11-20 · 17:30–19:00" cho slot cũ (from) hoặc slot mới (to) của một lần đổi lịch. */
 const describeSlot = (change, side) => [
-  change[side + 'CourtName'], change[side + 'Date'],
+  change[side + 'CourtName'], change[side + "Ngày"],
   change[side + 'StartTime'] + '–' + change[side + 'EndTime'],
 ].filter(Boolean).join(' · ');
 
@@ -201,7 +201,7 @@ export default function MyBookingsPage() {
       } catch (error) {
         if (!controller.signal.aborted) {
           setAffectedReady(false);
-          setAffectedError(error.response?.data?.message || 'Không tải được booking bị ảnh hưởng.');
+          setAffectedError(error.response?.data?.message || "Không tải được đặt sân bị ảnh hưởng.");
         }
       } finally {
         if (!controller.signal.aborted) timer = setTimeout(refreshAffected, 12_000);
@@ -454,8 +454,8 @@ export default function MyBookingsPage() {
           const orderPkgId = isWholeOrder ? cancelTarget.booking_id : cancelTarget.package_id;
           setCancelTarget(null);
           setFeedbackBanner(cancelTarget.status === 'holding'
-            ? 'Đã hủy đơn giữ chỗ, nhả lịch và trả lại điểm, voucher đã dùng.'
-            : 'Đã hủy các lịch chưa đến giờ chơi trong đơn. Tiền, điểm và voucher đã dùng không được hoàn lại.');
+            ? "Đã hủy đơn giữ chỗ, nhả lịch và trả lại điểm, phiếu ưu đãi đã dùng."
+            : "Đã hủy các lịch chưa đến giờ chơi trong đơn. Tiền, điểm và phiếu ưu đãi đã dùng không được hoàn lại.");
           const [items, sessions] = await Promise.all([
             getMyBookingsApi(),
             getPackageSessionsApi(orderPkgId).catch(() => []),
@@ -477,7 +477,7 @@ export default function MyBookingsPage() {
           )
         );
         setFeedbackBanner(
-          `Đã hủy ${cancelTarget.booking_code}. Tiền, điểm và voucher đã dùng không được hoàn lại.`
+          `Đã hủy ${cancelTarget.booking_code}. Tiền, điểm và phiếu ưu đãi đã dùng không được hoàn lại.`
         );
         setCancelTarget(null);
       }
@@ -534,7 +534,7 @@ export default function MyBookingsPage() {
     setNewPlayDate(playDate);
     clearRescheduleSlot();
     setRsSchedule(null);
-    if (!booking.location_id) setQuoteError('Không xác định được địa điểm của booking này.');
+    if (!booking.location_id) setQuoteError("Không xác định được địa điểm của đặt sân này.");
   };
 
   const beginAffectedAction = async (booking, affectedId, choice) => {
@@ -546,14 +546,14 @@ export default function MyBookingsPage() {
       const affected = await getAffectedBookingApi(affectedId);
       setAffectedByBooking((current) => ({ ...current, [booking.booking_id]: affected }));
       if (affected.status !== 'PENDING') {
-        setFeedbackBanner('Booking bị ảnh hưởng đã được xử lý.');
+        setFeedbackBanner("đặt sân bị ảnh hưởng đã được xử lý.");
       } else if (choice === 'RESCHEDULE') {
         openRescheduleModal(booking, affected);
       } else {
         setChoiceTarget({ booking, affected, choice });
       }
     } catch (error) {
-      setFeedbackBanner(error.response?.data?.message || 'Không tải được chi tiết booking bị ảnh hưởng.');
+      setFeedbackBanner(error.response?.data?.message || "Không tải được chi tiết đặt sân bị ảnh hưởng.");
     } finally {
       setAffectedLoading(false);
     }
@@ -586,7 +586,7 @@ export default function MyBookingsPage() {
       const result = await previewRescheduleApi(rescheduleTarget.booking.booking_id, slot, controller.signal);
       if (!controller.signal.aborted) setQuote(result);
     } catch (err) {
-      if (!controller.signal.aborted) setQuoteError(err.response?.data?.message || 'Slot mới không hợp lệ hoặc không khả dụng.');
+      if (!controller.signal.aborted) setQuoteError(err.response?.data?.message || "khung giờ mới không hợp lệ hoặc không khả dụng.");
     } finally {
       if (!controller.signal.aborted) setQuoteLoading(false);
     }
@@ -609,7 +609,7 @@ export default function MyBookingsPage() {
         // UC22: Đổi slot miễn phí cho booking bị ảnh hưởng
         const result = await submitAffectedChoiceApi(rescheduleTarget.affected.id, 'RESCHEDULE', slot);
         setFeedbackBanner(result.choice === 'RESCHEDULE'
-          ? `Booking ${rescheduleTarget.booking.booking_code} đã được đổi slot miễn phí.`
+          ? `Đặt sân ${rescheduleTarget.booking.booking_code} đã được đổi khung giờ miễn phí.`
           : `Đã quá giờ chơi. Hệ thống tự cộng ${result.compensationPoints ?? 0} điểm bồi hoàn.`);
         closeRescheduleModal();
         setAffectedByBooking((current) => ({ ...current, [result.bookingId]: result }));
@@ -619,7 +619,7 @@ export default function MyBookingsPage() {
         // UC21: Đổi lịch bình thường
         const req = await createRescheduleApi(rescheduleTarget.booking.booking_id, slot);
         if (req.status === 'APPROVED') {
-          setFeedbackBanner(`Đổi lịch thành công cho booking ${rescheduleTarget.booking.booking_code}!`);
+          setFeedbackBanner(`Đổi lịch thành công cho đặt sân ${rescheduleTarget.booking.booking_code}!`);
           closeRescheduleModal();
           const items = await getMyBookingsApi();
           setExpandedPackages([]);
@@ -629,7 +629,7 @@ export default function MyBookingsPage() {
           navigate('/booking/payment?rescheduleId=' + req.id);
         } else {
           setQuote(null);
-          setQuoteError('Đổi lịch không thành công. Booking giữ giờ cũ.');
+          setQuoteError("Đổi lịch không thành công. đặt sân giữ giờ cũ.");
         }
       }
     } catch (err) {
@@ -662,7 +662,7 @@ export default function MyBookingsPage() {
         )
       );
       const done = result.choice === 'POINTS'
-        ? `Đã cộng ${result.compensationPoints ?? ''} điểm bồi hoàn. Điểm và voucher đã dùng được trả lại.`
+        ? `Đã cộng ${result.compensationPoints ?? ''} điểm bồi hoàn. Điểm và phiếu ưu đãi đã dùng được trả lại.`
         : 'Đã ghi nhận yêu cầu hoàn tiền. Chủ sân sẽ chuyển khoản cho bạn.';
       setFeedbackBanner(booking.booking_code + ' · ' + done + (result.defaultChoice ? ' (đã quá giờ chơi, hệ thống tự cấp điểm)' : ''));
       setAffectedRevision((value) => value + 1);
@@ -700,7 +700,7 @@ export default function MyBookingsPage() {
   if (!isPlayer) return <p role="alert">Chỉ tài khoản Người chơi xem được lịch sử đặt sân cá nhân.</p>;
 
   return (
-    <div className={`${styles.pageWrapper} cw-workspace`}>
+    <div className={`${styles.pageWrapper} cw-khu vực quản lý`}>
       <PublicHeader user={user} />
 
       <main className={styles.mainContainer}>
@@ -783,7 +783,7 @@ export default function MyBookingsPage() {
 
         {fetchError && <Feedback tone="error">{uiMessage(fetchError)}<button className="cw-secondary" type="button" onClick={() => { setFetchError(''); setLoading(true); setReload((value) => value + 1); }}>Thử lại</button></Feedback>}
         {affectedError && <Feedback tone="error">{uiMessage(affectedError)}{' '}
-          <button className="cw-secondary" type="button" onClick={() => setAffectedRevision((value) => value + 1)}>Tải lại booking bị ảnh hưởng</button>
+          <button className="cw-secondary" type="button" onClick={() => setAffectedRevision((value) => value + 1)}>Tải lại đặt sân bị ảnh hưởng</button>
         </Feedback>}
 
         {/* Danh sách các thẻ Booking */}
@@ -809,8 +809,8 @@ export default function MyBookingsPage() {
                 secondaryLine = 'Nhân viên yêu cầu gửi lại chứng từ.';
               } else if (affectedPending) {
                 secondaryLine = canChooseAffected
-                  ? `Booking ${item.booking_code} bị ảnh hưởng do ${AFFECTED_CAUSES[affected.cause] || affected.cause}. Chọn đổi slot miễn phí, hoàn tiền hoặc điểm bồi hoàn trước ${item.start_time} ngày ${item.booking_date}. Nếu không chọn, bạn sẽ nhận điểm bồi hoàn.`
-                  : 'Booking bị ảnh hưởng. Hệ thống tự cấp điểm bồi hoàn khi quá giờ chơi.';
+                  ? `Đặt sân ${item.booking_code} bị ảnh hưởng do ${AFFECTED_CAUSES[affected.cause] || affected.cause}. Chọn đổi khung giờ miễn phí, hoàn tiền hoặc điểm bồi hoàn trước ${item.start_time} ngày ${item.booking_date}. Nếu không chọn, bạn sẽ nhận điểm bồi hoàn.`
+                  : "đặt sân bị ảnh hưởng. Hệ thống tự cấp điểm bồi hoàn khi quá giờ chơi.";
               } else if (affected?.status === 'RESOLVED') {
                 secondaryLine = `${AFFECTED_CAUSES[affected.cause] || affected.cause} · ${AFFECTED_CHOICES[affected.choice] || affected.choice}`
                   + (affected.choice === 'POINTS' && affected.compensationPoints != null ? ` (+${affected.compensationPoints} điểm)` : '')
@@ -1021,7 +1021,7 @@ export default function MyBookingsPage() {
         <Modal labelledBy="reschedule-title" className={styles.rescheduleModal} busy={rescheduleSubmitting} onDismiss={closeRescheduleModal}>
           <div className={styles.modalCard}>
             <h3 id="reschedule-title" className={styles.modalTitle}>
-              {rescheduleTarget.affected ? 'Đổi slot miễn phí' : 'Đổi lịch đặt sân'} — {rescheduleTarget.booking.booking_code}
+              {rescheduleTarget.affected ? "Đổi khung giờ miễn phí" : 'Đổi lịch đặt sân'} — {rescheduleTarget.booking.booking_code}
             </h3>
             <p className={styles.modalBody} style={{ marginBottom: 14 }}>
               Lịch hiện tại tại <strong>{originalBooking.facility_name}</strong> · {originalBooking.court_name}
@@ -1057,9 +1057,9 @@ export default function MyBookingsPage() {
 
               <p className={styles.modalBody} aria-live="polite" style={{ margin: '0 0 12px' }}>
                 {rsSelected.length > 0
-                  ? <>Slot mới: <strong>{rsSelected[0].courtName} · {formatSlotTime(startMin)}–{formatSlotTime(endMin)}</strong>
+                  ? <>khung giờ mới: <strong>{rsSelected[0].courtName} · {formatSlotTime(startMin)}–{formatSlotTime(endMin)}</strong>
                     {' '}({(endMin - startMin)} phút · giá niêm yết {formatVnd(rsSelected.reduce((sum, s) => sum + s.price, 0))})</>
-                  : 'Bấm vào ô trống trên bảng để chọn slot mới. Bấm các ô liền kề cùng sân để kéo dài thời gian.'}
+                  : "Bấm vào ô trống trên bảng để chọn khung giờ mới. Bấm các ô liền kề cùng sân để kéo dài thời gian."}
               </p>
               {missingSlots > 0 && !rescheduleTarget.affected && (
                 <p className={styles.rescheduleWarning} role="status">
@@ -1089,11 +1089,11 @@ export default function MyBookingsPage() {
             {quote && (
               <div className={styles.quoteBox}>
                 <div className={styles.quoteRow}>
-                  <span>Giá slot cũ:</span>
+                  <span>Giá khung giờ cũ:</span>
                   <strong>{formatVnd(Number(quote.oldListAmount || 0))}</strong>
                 </div>
                 <div className={styles.quoteRow}>
-                  <span>Giá slot mới:</span>
+                  <span>Giá khung giờ mới:</span>
                   <strong>{formatVnd(Number(quote.newListAmount || 0))}</strong>
                 </div>
                 <div className={styles.quoteRow}>
@@ -1108,7 +1108,7 @@ export default function MyBookingsPage() {
                 </div>
                 {quote.noDifferenceRefund && (
                   <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
-                    Slot mới có giá thấp hơn. Phần chênh lệch không được hoàn lại.
+                    khung giờ mới có giá thấp hơn. Phần chênh lệch không được hoàn lại.
                   </p>
                 )}
                 {quote.extraAmount > 0 && (
@@ -1162,11 +1162,11 @@ export default function MyBookingsPage() {
               {choiceTarget.choice === 'REFUND' ? 'Yêu cầu hoàn tiền' : 'Nhận điểm bồi hoàn'} cho {choiceTarget.booking.booking_code}?
             </h3>
             <p className={styles.modalBody}>
-              Booking {choiceTarget.booking.booking_code} ({choiceTarget.booking.facility_name} · {choiceTarget.booking.court_name},{' '}
-              {choiceTarget.booking.time_range}) sẽ chuyển sang <strong>Sân hủy</strong> và slot được giải phóng. Điểm và voucher
+              Đặt sân {choiceTarget.booking.booking_code} ({choiceTarget.booking.facility_name} · {choiceTarget.booking.court_name},{' '}
+              {choiceTarget.booking.time_range}) sẽ chuyển sang <strong>Sân hủy</strong> và khung giờ được giải phóng. Điểm và phiếu ưu đãi
               đã dùng được trả lại.{' '}
               {choiceTarget.choice === 'REFUND'
-                ? 'Chủ sân sẽ chuyển khoản thủ công số tiền đã thanh toán; điểm đã tích từ booking này bị thu hồi tương ứng.'
+                ? "Chủ sân sẽ chuyển khoản thủ công số tiền đã thanh toán; điểm đã tích từ đặt sân này bị thu hồi tương ứng."
                 : 'Bạn nhận điểm bồi hoàn tương ứng số tiền đã thanh toán (1 điểm = 500đ) tại địa điểm này.'}{' '}
               Không thể đổi lựa chọn sau khi xác nhận.
             </p>
@@ -1202,10 +1202,10 @@ export default function MyBookingsPage() {
             </h3>
             <p className={styles.modalBody}>
               {cancelTarget.single_order && cancelTarget.status === 'holding'
-                ? 'Các khung giờ trong đơn sẽ được nhả. Điểm và voucher đã dùng sẽ được trả lại.'
+                ? "Các khung giờ trong đơn sẽ được nhả. Điểm và phiếu ưu đãi đã dùng sẽ được trả lại."
                 : cancelTarget.single_order
-                ? 'Tất cả booking chưa đến giờ chơi trong đơn sẽ bị hủy. Tiền, điểm và voucher đã dùng không được hoàn lại.'
-                : `Hủy lịch ${cancelTarget.booking_code} (${cancelTarget.facility_name} · ${cancelTarget.court_name}, ${cancelTarget.time_range})? Tiền, điểm và voucher đã dùng không được hoàn lại.`}
+                ? "Tất cả đặt sân chưa đến giờ chơi trong đơn sẽ bị hủy. Tiền, điểm và phiếu ưu đãi đã dùng không được hoàn lại."
+                : `Hủy lịch ${cancelTarget.booking_code} (${cancelTarget.facility_name} · ${cancelTarget.court_name}, ${cancelTarget.time_range})? Tiền, điểm và phiếu ưu đãi đã dùng không được hoàn lại.`}
             </p>
             <div className={styles.modalActions}>
               <button

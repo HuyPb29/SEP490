@@ -9,7 +9,7 @@ import styles from './StaffDashboardPage.module.css'
 
 const dateFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' })
-const expiredMessage = 'Đã hết thời gian giữ chỗ. Slot đã được nhả. (MSG33)'
+const expiredMessage = "Đã hết thời gian giữ chỗ. khung giờ đã được nhả. (MSG33)"
 const timeLabel = (minute) =>
   String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0')
 const isFree = (slot) => slot.status === 'AVAILABLE' && slot.price != null

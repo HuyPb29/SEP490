@@ -7,7 +7,7 @@ import { today, useResource } from '../workspaceSupport'
 
 const staffPath = '/staff/complaints'
 const ownerPath = '/owner/complaints'
-const labels = { SUBMITTED: 'Chờ Staff chuyển', PENDING_OWNER: 'Chờ Owner xử lý', RESOLVED: 'Đã xử lý', REJECTED: 'Đã từ chối' }
+const labels = { SUBMITTED: "Chờ nhân viên chuyển", PENDING_OWNER: "Chờ chủ sân xử lý", RESOLVED: 'Đã xử lý', REJECTED: 'Đã từ chối' }
 const resultLabels = {
   REFUND: 'Đã tạo yêu cầu hoàn tiền',
   POINTS: 'Cộng điểm bồi hoàn',
@@ -36,13 +36,13 @@ function WalkInComplaintForm({ refresh }) {
     : [], [date])
   const bookings = useResource(loadWalkIns, date)
   return <Section title="Lập khiếu nại thay khách tại quầy" resource={bookings}>
-    <p className="cw-muted">Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của booking. Staff kiểm tra rồi chuyển chủ sân quyết định.</p>
+    <p className="cw-muted">Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của đặt sân. nhân viên kiểm tra rồi chuyển chủ sân quyết định.</p>
     <Field label="Ngày đặt sân" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-    {bookings.data?.length === 0 && <p>Không có booking tại quầy trong ngày này.</p>}
+    {bookings.data?.length === 0 && <p>Không có đặt sân tại quầy trong ngày này.</p>}
     {bookings.data?.length > 0 && <ActionForm key={date} label="Lập khiếu nại" after={refresh}
       action={(form) => api.post(staffPath, { ...form, bookingId: Number(form.bookingId) })}>
-      <Field label="Booking tại quầy" name="bookingId" required options={[
-        ['', 'Chọn booking'], ...bookings.data.map((item) => [item.id, item.bookingCode + ' · ' + item.customerName + ' · '
+      <Field label="đặt sân tại quầy" name="bookingId" required options={[
+        ['', "Chọn đặt sân"], ...bookings.data.map((item) => [item.id, item.bookingCode + ' · ' + item.customerName + ' · '
           + item.startTime + ' · ' + (walkInStatusLabels[item.status] ?? item.status)]),
       ]} />
       <Field label="Loại khiếu nại" name="complaintType" required options={walkInTypes} />
@@ -109,14 +109,14 @@ function CaseDetails({ id, role, refreshList }) {
         {' · Gửi lúc ' + formatCreatedAt(item.createdAt)}
       </p>
       <p>{item.content}</p>
-      {item.staffNote && <p>Ghi chú của Staff: {item.staffNote}</p>}
+      {item.staffNote && <p>Ghi chú của nhân viên: {item.staffNote}</p>}
       {item.rejectReason && <p>Lý do từ chối: {item.rejectReason}</p>}
       {item.result && <p>Kết quả: {resultLabels[item.result] ?? item.result}
         {item.result === 'POINTS' && item.compensationPoints ? ' (' + item.compensationPoints + ' điểm)' : ''}</p>}
       {owner && item.result === 'REFUND' && <Link className="underline" to={'/owner/workspace?tab=refund&complaintId=' + item.id}>Mở yêu cầu hoàn tiền</Link>}
-      {role === 'staff' && item.status === 'SUBMITTED' && <ActionForm label="Chuyển Owner" after={refresh}
+      {role === 'staff' && item.status === 'SUBMITTED' && <ActionForm label="Chuyển chủ sân" after={refresh}
         action={(form) => api.post(staffPath + '/' + id + '/forward', form)}>
-        <Field label="Ghi chú khi chuyển Owner" name="staffNote" required maxLength={1000} />
+        <Field label="Ghi chú khi chuyển chủ sân" name="staffNote" required maxLength={1000} />
       </ActionForm>}
       {owner && item.status === 'PENDING_OWNER' && item.complaintType === 'LATE_PAYMENT_CONFIRMATION' &&
         <p><Link className="underline" to={`/staff/confirm-payments?paymentId=${item.paymentId}${item.reschedulePayment ? '&type=reschedule' : ''}`}>
@@ -159,7 +159,7 @@ function CaseList({ role = 'staff' }) {
   return <>
     <Section title={role === 'player' ? 'Khiếu nại của tôi' : 'Khiếu nại tại địa điểm'} resource={cases}>
       {role === 'owner' && <p className="cw-muted">
-        Khiếu nại của người chơi hiện ở đây sau khi Staff kiểm tra và chuyển lên; khiếu nại xác nhận thanh toán trễ đến thẳng chủ sân.
+        Khiếu nại của người chơi hiện ở đây sau khi nhân viên kiểm tra và chuyển lên; khiếu nại xác nhận thanh toán trễ đến thẳng chủ sân.
       </p>}
       <Field label="Trạng thái" value={status} options={[[ '', 'Tất cả' ], ...statusOptions]}
         onChange={(event) => { setStatus(event.target.value); setId('') }} />
@@ -170,7 +170,7 @@ function CaseList({ role = 'staff' }) {
             style={selected ? { borderColor: 'var(--cw-accent, #059669)', borderWidth: 2, display: 'block' } : undefined}>
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px 14px' }}>
               <div>
-                <div className="cw-record-title">#{item.id} · {item.bookingCode || 'Booking #' + item.bookingId}</div>
+                <div className="cw-record-title">#{item.id} · {item.bookingCode || "Mã đặt sân #" + item.bookingId}</div>
                 <small>
                   {typeLabels[item.complaintType] ?? item.complaintType}
                   {role !== 'player' && item.playerName && ' · ' + item.playerName}
@@ -219,13 +219,13 @@ function PlayerComplaintForm({ bookingId, paymentId, refresh }) {
     return isLatePaymentEligible(bookingId, targetPaymentId, signal)
   }, [bookingId, targetPaymentId])
   const eligibility = useResource(loadEligibility, targetPaymentId)
-  if (eligibility.data) types.push(['LATE_PAYMENT_CONFIRMATION', 'Xác nhận thanh toán trễ · nhận voucher 10.000 đ'])
+  if (eligibility.data) types.push(['LATE_PAYMENT_CONFIRMATION', "Xác nhận thanh toán trễ · nhận phiếu ưu đãi 10.000 đ"])
 
   return <Section title="Gửi khiếu nại" resource={booking}>
     {item && <>
       <p>{item.bookingCode} · {item.playDate}</p>
       <p className="cw-muted">
-        Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của booking. Nhân viên sân kiểm tra rồi chuyển chủ sân quyết định.
+        Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của đặt sân. Nhân viên sân kiểm tra rồi chuyển chủ sân quyết định.
       </p>
       <ActionForm label="Gửi khiếu nại" after={() => { eligibility.reload(); refresh() }} action={(form) => api.post('/complaints', {
         ...form, bookingId: item.id ?? Number(bookingId),

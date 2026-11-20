@@ -157,7 +157,7 @@ export default function LocationSearchPage() {
                   <div className={`${styles.cardThumb} ${idx === 0 ? styles.thumbBlue : styles.thumbGreen}`}>
                     {item.available_slots != null && (
                       <span className={styles.slotBadge}>
-                        <span className={styles.dot} /> Còn {item.available_slots} slot trống hôm nay
+                        <span className={styles.dot} /> Còn {item.available_slots} khung giờ trống hôm nay
                       </span>
                     )}
                     <svg viewBox="0 0 200 110" className={styles.courtSvg}>

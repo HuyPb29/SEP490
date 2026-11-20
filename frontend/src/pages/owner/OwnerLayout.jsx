@@ -14,16 +14,16 @@ import { getOwnerLocations, MOCK_OWNER_LOCATIONS } from '../../api/ownerApi'
 import styles from './OwnerLayout.module.css'
 
 const NAV_ITEMS = [
-  { label: 'Reports',              segment: 'reports'      },
-  { label: 'Courts & Pricing',     segment: 'courts'       },
-  { label: 'Opening Hours',        segment: 'hours'        },
-  { label: 'Staff',                segment: 'staff'        },
-  { label: 'Vouchers & Offers',    segment: 'vouchers'     },
-  { label: 'Complaints',           segment: 'complaints'   },
-  { label: 'Refunds',              segment: 'refunds'      },
-  { label: 'Maintenance Approval', segment: 'maintenance'  },
-  { label: 'Reviews',              segment: 'reviews'      },
-  { label: 'Location Settings',    segment: 'settings'     },
+  { label: "Báo cáo",              segment: 'reports'      },
+  { label: "Sân và bảng giá",     segment: 'courts'       },
+  { label: "Giờ mở cửa",        segment: 'hours'        },
+  { label: "Nhân viên",                segment: 'staff'        },
+  { label: "Phiếu ưu đãi và chương trình ưu đãi",    segment: 'vouchers'     },
+  { label: "Khiếu nại",           segment: 'complaints'   },
+  { label: "Hoàn tiền",              segment: 'refunds'      },
+  { label: "Duyệt yêu cầu bảo trì", segment: 'maintenance'  },
+  { label: "Đánh giá",              segment: 'reviews'      },
+  { label: "Cài đặt địa điểm",    segment: 'settings'     },
 ]
 
 export default function OwnerLayout() {
@@ -61,7 +61,7 @@ export default function OwnerLayout() {
         <aside className={styles.sidebar}>
           <div className={styles.locationSelectorSection}>
             <label className={styles.facilityLabel} htmlFor="owner-location-select">
-              Location
+              Địa điểm
             </label>
             <select
               className={styles.facilitySelect}
@@ -77,7 +77,7 @@ export default function OwnerLayout() {
             </select>
           </div>
 
-          <nav className={styles.navigation} aria-label="Owner navigation">
+          <nav className={styles.navigation} aria-label="Điều hướng chủ sân">
             {NAV_ITEMS.map((item) => (
               <NavLink
                 key={item.segment}

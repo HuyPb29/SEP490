@@ -49,17 +49,17 @@ export default function PointGrantForm({ locationId }) {
       {(errors) => <>
         <Lookup title="Người nhận" label="Tìm theo họ tên hoặc tên đăng nhập"
           search={playerSearch} onSearch={(search) => { setPlayerSearch(search); selectPlayer('') }}
-          resource={players} empty="Không có Player phù hợp tại địa điểm này.">
-          <Field label="Player nhận điểm" name="playerId" required value={playerId}
+          resource={players} empty="Không có người chơi phù hợp tại địa điểm này.">
+          <Field label="người chơi nhận điểm" name="playerId" required value={playerId}
             onChange={(event) => selectPlayer(event.target.value)}
-            options={[[ '', 'Chọn Player' ], ...playerOptions]} error={errors.playerId} />
+            options={[[ '', "Chọn người chơi" ], ...playerOptions]} error={errors.playerId} />
         </Lookup>
-        {playerId && <Lookup title="Lịch đặt sân" label="Tìm theo mã booking"
+        {playerId && <Lookup title="Lịch đặt sân" label="Tìm theo mã đặt sân"
           search={bookingSearch} onSearch={(search) => { setBookingSearch(search); setBookingId('') }}
-          resource={bookings} empty="Không có booking phù hợp cho Player này.">
-          <Field label="Booking liên quan" name="bookingId" required value={bookingId}
+          resource={bookings} empty="Không có đặt sân phù hợp cho người chơi này.">
+          <Field label="đặt sân liên quan" name="bookingId" required value={bookingId}
             onChange={(event) => setBookingId(event.target.value)}
-            options={[[ '', 'Chọn booking' ], ...bookingOptions]} error={errors.bookingId} />
+            options={[[ '', "Chọn đặt sân" ], ...bookingOptions]} error={errors.bookingId} />
         </Lookup>}
         <Field label="Điểm cộng" name="points" type="number" min={1} max={2147483647} required error={errors.points} />
         <Field label="Lý do" name="reason" maxLength={255} required error={errors.reason} />

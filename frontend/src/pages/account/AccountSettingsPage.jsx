@@ -30,26 +30,26 @@ export default function AccountSettingsPage() {
     setError('');
     setNotice('');
     if (newPassword !== confirmPassword) {
-      setError('New Password and Confirm New Password must match.');
+      setError("Mật khẩu mới và xác nhận mật khẩu phải trùng nhau.");
       return;
     }
     if (
       newPassword.length < 8 || newPassword.length > 32 ||
       !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword) || /\s/.test(newPassword)
     ) {
-      setError('Password must be 8-32 characters, include at least one letter and one number, and contain no spaces.');
+      setError("Mật khẩu phải có 8–32 ký tự, gồm ít nhất một chữ cái và một chữ số, không chứa khoảng trắng.");
       return;
     }
 
     setSaving(true);
     try {
       const response = await changePasswordApi({ currentPassword, newPassword });
-      setNotice(response.message || 'MSG114: Password changed successfully.');
+      setNotice(response.message || "Đổi mật khẩu thành công.");
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (requestError) {
-      setError(requestError.response?.data?.message || requestError.message || 'Could not change the password.');
+      setError(requestError.response?.data?.message || requestError.message || "Không thể đổi mật khẩu.");
     } finally {
       setSaving(false);
     }
@@ -65,31 +65,31 @@ export default function AccountSettingsPage() {
           <span className={styles.brandName}>Courtly</span>
         </div>
         <div className={styles.heroCopy}>
-          <h1 className={styles.heroHeading}>Account Settings</h1>
-          <p className={styles.heroDescription}>Manage your sign-in credentials.</p>
+          <h1 className={styles.heroHeading}>Cài đặt tài khoản</h1>
+          <p className={styles.heroDescription}>Quản lý thông tin đăng nhập của bạn.</p>
         </div>
       </aside>
 
       <main className={styles.rightPanel}>
         <section className={styles.authCard}>
-          <h2 className={styles.cardTitle}>Change Password</h2>
-          {userInfo && <p className={styles.stepDescription}>Signed in as {userInfo.username || userInfo.email}</p>}
+          <h2 className={styles.cardTitle}>Đổi mật khẩu</h2>
+          {userInfo && <p className={styles.stepDescription}>Đang đăng nhập bằng tài khoản {userInfo.username || userInfo.email}</p>}
 
           {!userInfo && (
             <div className={styles.infoBanner} role="status">
-              Sign in to manage your account. <Link className={styles.greenLinkBold} to="/login">Sign in</Link>
+              Đăng nhập để quản lý tài khoản. <Link className={styles.greenLinkBold} to="/login">Đăng nhập</Link>
             </div>
           )}
 
           {isStaff && (
             <div className={styles.infoBanner} role="note">
-              Staff accounts cannot change passwords here. Please contact your Location Owner to issue a new password.
+              Tài khoản nhân viên không thể đổi mật khẩu tại đây. Vui lòng liên hệ chủ sân để được cấp mật khẩu mới.
             </div>
           )}
 
           {userInfo && !isStaff && !canChangePassword && (
             <div className={styles.infoBanner} role="note">
-              Password changes are available to Player and Owner accounts.
+              Chức năng đổi mật khẩu dành cho người chơi và chủ sân.
             </div>
           )}
 
@@ -97,7 +97,7 @@ export default function AccountSettingsPage() {
             <form className={styles.formContainer} onSubmit={handleSubmit}>
               {notice && <div className={styles.infoBanner} role="status">{notice}</div>}
               <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="current-password">Current Password</label>
+                <label className={styles.label} htmlFor="current-password">Mật khẩu hiện tại</label>
                 <input
                   id="current-password"
                   className={`${styles.input} ${error ? styles.inputError : ''}`}
@@ -109,7 +109,7 @@ export default function AccountSettingsPage() {
                 />
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="new-password">New Password</label>
+                <label className={styles.label} htmlFor="new-password">Mật khẩu mới</label>
                 <input
                   id="new-password"
                   className={`${styles.input} ${error ? styles.inputError : ''}`}
@@ -121,7 +121,7 @@ export default function AccountSettingsPage() {
                 />
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="confirm-password">Confirm New Password</label>
+                <label className={styles.label} htmlFor="confirm-password">Xác nhận mật khẩu mới</label>
                 <input
                   id="confirm-password"
                   className={`${styles.input} ${error ? styles.inputError : ''}`}
@@ -134,11 +134,11 @@ export default function AccountSettingsPage() {
               </div>
               {error && <p className={styles.errorText} role="alert">{error}</p>}
               <button className={styles.primaryBtn} type="submit" disabled={saving}>
-                {saving ? 'Updating password...' : 'Change Password'}
+                {saving ? "Đang đổi mật khẩu…" : "Đổi mật khẩu"}
               </button>
             </form>
           )}
-          <p className={styles.cardFooterText}><Link className={styles.greenLinkBold} to="/">Back to locations</Link></p>
+          <p className={styles.cardFooterText}><Link className={styles.greenLinkBold} to="/">Quay lại tìm địa điểm</Link></p>
         </section>
       </main>
       </div>

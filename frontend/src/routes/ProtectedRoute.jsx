@@ -3,6 +3,8 @@ import { Navigate, useLocation, useNavigate, Outlet } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 
+const roleLabels = { PLAYER: 'Người chơi', OWNER: 'Chủ sân', STAFF: 'Nhân viên', ADMIN: 'Quản trị viên', ANY: 'Mọi vai trò' }
+
 export default function ProtectedRoute({ allowedRoles = [], children }) {
   const { user, isAuthenticated, role, isLoading, login } = useAuth()
   const location = useLocation()
@@ -10,7 +12,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
 
   // 1. Never redirect while loading to prevent F5 logout bug
   if (isLoading) {
-    return <LoadingSpinner message="Verifying session and authorization..." />
+    return <LoadingSpinner message="Đang kiểm tra phiên đăng nhập và quyền truy cập…" />
   }
 
   // 2. If not authenticated, redirect to login with return path
@@ -63,10 +65,10 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
               color: '#0f172a',
             }}
           >
-            Access Denied
+            Không có quyền truy cập
           </h1>
           <p style={{ margin: '0 0 16px', fontSize: '14px', color: '#64748b', lineHeight: 1.5 }}>
-            Your account (<strong>{user?.username || user?.email || 'Current user'}</strong>) with role{' '}
+            Tài khoản của bạn (<strong>{user?.username || user?.email || "Người dùng hiện tại"}</strong>) có vai trò{' '}
             <span
               style={{
                 display: 'inline-block',
@@ -78,13 +80,13 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
                 fontSize: '12px',
               }}
             >
-              {normalizedUserRole || 'PLAYER'}
+              {roleLabels[normalizedUserRole] || 'Người chơi'}
             </span>{' '}
-            does not have permission to access this portal.
+            không có quyền truy cập khu vực này.
           </p>
 
           <p style={{ margin: '0 0 24px', fontSize: '13px', color: '#475569' }}>
-            Required role: <strong>{allowedRoles.join(' or ')}</strong>
+            Vai trò được phép: <strong>{normalizedAllowedRoles.map((value) => roleLabels[value] || value).join(' hoặc ')}</strong>
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -104,7 +106,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
                   cursor: 'pointer',
                 }}
               >
-                Back to Home
+                Về trang chủ
               </button>
               <button
                 type="button"
@@ -121,7 +123,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
                   cursor: 'pointer',
                 }}
               >
-                Switch Account
+                Đổi tài khoản
               </button>
             </div>
 
@@ -143,7 +145,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
                   letterSpacing: '0.5px',
                 }}
               >
-                Quick Demo Role Switch (Testing Mode)
+                Đổi nhanh vai trò (chế độ kiểm thử)
               </p>
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
                 {allowedRoles.map((r) => (
@@ -154,7 +156,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
                       const demoUser = {
                         id: 999,
                         username: `demo_${r.toLowerCase()}`,
-                        full_name: `Demo ${r.charAt(0) + r.slice(1).toLowerCase()}`,
+                        full_name: `Minh họa ${r.charAt(0) + r.slice(1).toLowerCase()}`,
                         email: `demo_${r.toLowerCase()}@courtly.com`,
                         role: r,
                         role_code: r,
@@ -172,7 +174,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
                       cursor: 'pointer',
                     }}
                   >
-                    Act as {r}
+                    Chuyển sang vai trò {r}
                   </button>
                 ))}
               </div>

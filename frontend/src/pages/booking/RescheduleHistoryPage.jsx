@@ -90,7 +90,7 @@ function RequestList({ bookingId }) {
     {requests.data?.map((item) => <article key={item.id} className="cw-record flex-col !items-start">
       <h3 className="font-semibold">Yêu cầu #{item.id} <StatusPill tone={item.status === 'APPROVED' ? 'positive' : 'neutral'}>
         {requestStatus[item.status] ?? item.status}</StatusPill></h3>
-      <p>Slot yêu cầu: {item.newDate} · Sân #{item.newCourtId} · {clock(item.newStartMinute)}–{clock(item.newEndMinute)}</p>
+      <p>khung giờ yêu cầu: {item.newDate} · Sân #{item.newCourtId} · {clock(item.newStartMinute)}–{clock(item.newEndMinute)}</p>
       <p>{item.free ? 'Đổi miễn phí do sân hủy' : 'Phụ thu ' + money(item.extraAmount)}</p>
       {item.extraAmount > 0 && <Link className="cw-secondary" to={'/booking/payment?rescheduleId=' + item.id}>
         {item.status === 'PENDING_PAYMENT' ? 'Thanh toán phụ thu' : 'Xem tình trạng và chứng từ phụ thu'}

@@ -26,7 +26,7 @@ export function bookingStartsAfter(playDate, startTime, now) {
 }
 
 export const affectedBookingActions = [
-  ['RESCHEDULE', 'Đổi slot miễn phí'],
+  ['RESCHEDULE', "Đổi khung giờ miễn phí"],
   ['REFUND', 'Nhận hoàn tiền'],
   ['POINTS', 'Nhận điểm bồi hoàn'],
 ]

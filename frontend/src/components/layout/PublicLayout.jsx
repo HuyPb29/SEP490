@@ -10,10 +10,10 @@ function getPublicMenuItems(roleCode) {
   if (roleCode === 'player') {
     return [
       ['/', 'Tìm địa điểm'],
-      ['/my-bookings', 'Booking của tôi'],
+      ['/my-bookings', "Lịch đặt sân của tôi"],
       ['/open-matches', 'Kèo'],
       ['/teams', 'Đội của tôi'],
-      ['/my-rewards', 'Voucher & Điểm'],
+      ['/my-rewards', "Ưu đãi & Điểm"],
       ['/my-complaints', 'Khiếu nại'],
     ];
   }
@@ -167,7 +167,7 @@ export default function PublicLayout({
   children,
 }) {
   return (
-    <div className={`${styles.publicShell} cw-workspace ${className}`.trim()}>
+    <div className={`${styles.publicShell} cw-khu vực quản lý ${className}`.trim()}>
       <a href="#public-main" className={styles.skipLink}>
         Đến nội dung chính
       </a>

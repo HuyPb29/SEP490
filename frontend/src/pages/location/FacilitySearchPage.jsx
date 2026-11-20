@@ -17,11 +17,11 @@ const FEATURED_LIMIT = 6;
 const NEARBY_LIMIT = 4;
 const vnd = new Intl.NumberFormat('vi-VN');
 
-const HIGHLIGHTS = ['Giá niêm yết rõ ràng', 'Xem giờ trống theo ngày', 'Tích điểm, dùng voucher'];
+const HIGHLIGHTS = ['Giá niêm yết rõ ràng', 'Xem giờ trống theo ngày', "Tích điểm, dùng phiếu ưu đãi"];
 
 const FEATURES = [
   { icon: 'pin', title: 'Tìm sân gần bạn', text: 'Sắp xếp sân từ gần đến xa theo vị trí' },
-  { icon: 'clock', title: 'Đặt sân online', text: 'Chủ động đặt lịch bất cứ lúc nào' },
+  { icon: 'clock', title: "Đặt sân trực tuyến", text: 'Chủ động đặt lịch bất cứ lúc nào' },
   { icon: 'card', title: 'Thanh toán chuyển khoản', text: 'Quét QR, tải biên lai, sân xác nhận' },
   { icon: 'receipt', title: 'Giá cả minh bạch', text: 'Biết chính xác chi phí trước khi đặt' },
 ];
@@ -157,7 +157,7 @@ export default function FacilitySearchPage() {
   };
 
   const rewardsLink = roleCode === 'player'
-    ? { to: '/my-rewards', label: 'Xem điểm & voucher' }
+    ? { to: '/my-rewards', label: "Xem điểm & phiếu ưu đãi" }
     : !user ? { to: '/login?mode=register', label: 'Đăng ký để tích điểm' } : null;
 
   return (
@@ -321,7 +321,7 @@ export default function FacilitySearchPage() {
               <span className={styles.promoTag}>Dành cho người chơi</span>
               <h2 id="rewards-title" className={styles.promoTitle}>Tích điểm sau mỗi lần đặt sân</h2>
               <p className={styles.promoText}>
-                Đặt sân là được cộng điểm tại cụm sân đó. Dùng điểm và voucher để giảm giá cho lần đặt tiếp theo.
+                Đặt sân là được cộng điểm tại cụm sân đó. Dùng điểm và phiếu ưu đãi để giảm giá cho lần đặt tiếp theo.
               </p>
               <Link to={rewardsLink.to} className={styles.promoBtn}>
                 {rewardsLink.label}

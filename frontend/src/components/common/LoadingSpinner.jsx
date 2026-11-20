@@ -1,4 +1,4 @@
-export default function LoadingSpinner({ message = 'Loading...' }) {
+export default function LoadingSpinner({ message = "Đang tải…" }) {
   return (
     <div
       style={{

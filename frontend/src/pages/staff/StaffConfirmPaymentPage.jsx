@@ -231,7 +231,7 @@ function PaymentDesk({ role, surcharge }) {
         const excess = isOverpaid ? ' Đã thông báo Chủ sân về khoản chuyển thừa.' : '';
         if (result.status === 'EXPIRED') setMessage('Đã hết hạn thanh toán.');
         else if (surcharge && result.status !== 'APPROVED') {
-          setErrorMessage('Đổi lịch không thành công. Booking giữ giờ cũ.');
+          setErrorMessage("Đổi lịch không thành công. đặt sân giữ giờ cũ.");
         } else setMessage('Đã xác nhận thanh toán cho ' + label + '.' + receipt + excess);
       } else if (action === 'request-resubmission') {
         result = await submit(id, action, { reason: reason.text, playerAtFault: reason.playerAtFault,
@@ -495,7 +495,7 @@ function PaymentDesk({ role, surcharge }) {
                             <div>
                               <dt>Khách hàng / SĐT</dt>
                               <dd>
-                                {activeDetail?.customerName || 'Khách đặt online'}
+                                {activeDetail?.customerName || "Khách đặt trực tuyến"}
                                 {activeDetail?.customerPhone ? ` · ${activeDetail.customerPhone}` : ''}
                               </dd>
                             </div>

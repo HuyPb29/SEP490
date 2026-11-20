@@ -171,7 +171,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
             <DetailRow label="Đặt cho">{detail.teamName || 'Cá nhân'}</DetailRow>
             <DetailRow label="Ghi chú cho chủ sân">{detail.note}</DetailRow>
             <DetailRow label="Giá niêm yết">{currency.format(detail.listAmount ?? 0)}</DetailRow>
-            {detail.voucherDiscount > 0 && <DetailRow label="Giảm bằng voucher">{currency.format(detail.voucherDiscount)}</DetailRow>}
+            {detail.voucherDiscount > 0 && <DetailRow label="Giảm bằng phiếu ưu đãi">{currency.format(detail.voucherDiscount)}</DetailRow>}
             {detail.pointDiscount > 0 && <DetailRow label="Giảm bằng điểm">{currency.format(detail.pointDiscount)}</DetailRow>}
             <DetailRow label="Thành tiền">{currency.format(detail.finalAmount ?? 0)}</DetailRow>
             <DetailRow label="Mã biên nhận">{detail.receiptNo}</DetailRow>
