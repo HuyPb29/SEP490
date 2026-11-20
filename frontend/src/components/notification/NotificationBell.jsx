@@ -137,6 +137,14 @@ export default function NotificationBell() {
       setSelectedVenue(item.refId);
       setOpen(false);
       navigate('/staff/confirm-payments?type=reschedule');
+    } else if (item.type === 'PAYMENT_ESCALATED_TO_OWNER' && item.refId && upperRole === 'OWNER') {
+      // FR120: giao dịch chờ quá 15 phút đã chuyển cho chủ sân (MSG119).
+      setOpen(false);
+      navigate('/staff/confirm-payments?paymentId=' + item.refId
+        + (item.refType === 'RESCHEDULE_PAYMENT' ? '&type=reschedule' : ''));
+    } else if (item.type === 'PAYMENT_ESCALATED' && upperRole === 'STAFF') {
+      setOpen(false);
+      navigate('/staff/dashboard');
     } else if (item.refType === 'LOCATION') {
       setOpen(false);
       navigate(upperRole === 'ADMIN' ? '/admin/facilities' : '/owner/courts');
