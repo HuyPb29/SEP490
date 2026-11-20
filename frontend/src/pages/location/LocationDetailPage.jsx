@@ -21,10 +21,12 @@ function localDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function getThreeMonthLimit() {
-  const maxDate = new Date();
-  maxDate.setMonth(maxDate.getMonth() + 3);
-  return localDateKey(maxDate);
+// D175: buổi của gói xa nhất 1 năm kể từ hôm nay, tính cả hôm nay; hạn dịch vụ của địa điểm do backend kiểm (MSG115)
+const PACKAGE_LIMIT_MESSAGE = 'MSG115: Chỉ đặt được các buổi trong vòng 1 năm kể từ hôm nay và trong thời hạn sử dụng dịch vụ của địa điểm.';
+
+function getPackageDateLimit() {
+  const now = new Date();
+  return localDateKey(new Date(now.getFullYear() + 1, now.getMonth(), now.getDate() - 1));
 }
 
 function toMinutes(time) {
@@ -206,11 +208,9 @@ export default function LocationDetailPage() {
         setRuleMessage('MSG92: Gói phải có ít nhất 2 buổi nằm trong ít nhất 2 ngày khác nhau.');
         return;
       }
-      const maxDate = new Date();
-      maxDate.setMonth(maxDate.getMonth() + 3);
-      const latestDate = localDateKey(maxDate);
+      const latestDate = getPackageDateLimit();
       if (sessions.some((session) => session.date > latestDate)) {
-        setRuleMessage('MSG115: Buổi đặt không được vượt quá 3 tháng kể từ ngày đặt.');
+        setRuleMessage(PACKAGE_LIMIT_MESSAGE);
         return;
       }
       packagePayload = {
@@ -227,8 +227,8 @@ export default function LocationDetailPage() {
         setRuleMessage('The recurring end date must be on or after the start date.');
         return;
       }
-      if (packageEndDate > getThreeMonthLimit()) {
-        setRuleMessage('MSG115: Buổi đặt không được vượt quá 3 tháng kể từ ngày đặt.');
+      if (packageEndDate > getPackageDateLimit()) {
+        setRuleMessage(PACKAGE_LIMIT_MESSAGE);
         return;
       }
       const sessions = groupSlotsIntoSessions(selectedSlots.filter((slot) => slot.date === selectedSlots[0].date));
@@ -345,11 +345,11 @@ export default function LocationDetailPage() {
               <button type="button" className={styles.navArrowBtn} onClick={() => changeDay(1)}>›</button>
               {mode === 'recurring' ? (
                 <>
-                  <input type="date" aria-label="Recurring start date" className={styles.dateInput} value={packageStartDate} max={getThreeMonthLimit()} onChange={(e) => setPackageStartDate(e.target.value)} />
-                  <input type="date" aria-label="Recurring end date" className={styles.dateInput} value={packageEndDate} min={packageStartDate} max={getThreeMonthLimit()} onChange={(e) => setPackageEndDate(e.target.value)} />
+                  <input type="date" aria-label="Recurring start date" className={styles.dateInput} value={packageStartDate} max={getPackageDateLimit()} onChange={(e) => setPackageStartDate(e.target.value)} />
+                  <input type="date" aria-label="Recurring end date" className={styles.dateInput} value={packageEndDate} min={packageStartDate} max={getPackageDateLimit()} onChange={(e) => setPackageEndDate(e.target.value)} />
                 </>
               ) : (
-                <input type="date" className={styles.dateInput} value={playDate} max={getThreeMonthLimit()} onChange={(e) => setPlayDate(e.target.value)} />
+                <input type="date" className={styles.dateInput} value={playDate} max={getPackageDateLimit()} onChange={(e) => setPlayDate(e.target.value)} />
               )}
             </div>
           </div>

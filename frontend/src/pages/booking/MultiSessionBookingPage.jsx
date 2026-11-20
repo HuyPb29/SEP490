@@ -68,8 +68,11 @@ const formatCurrency = formatVnd;
 const sessionKey = (session) => `${session.date}|${session.courtId}|${session.startMinute}`;
 
 const TODAY_DATE = getTodayStr();
-// D162: mọi buổi nằm trong 3 tháng kể từ hôm nay, tính cả hôm nay (đặt 07/11 thì xa nhất 06/02)
-const MAX_ALLOWED_DATE = addMonths(TODAY_DATE, 3, 1);
+// D175: gói định kỳ dài 1–12 tháng; mọi buổi nằm trong 1 năm kể từ hôm nay, tính cả hôm nay
+// (đặt 20/11/2026 thì xa nhất 19/11/2027), và không quá hạn dịch vụ của địa điểm (lấy từ backend, xem packageMaxDate)
+const MAX_PACKAGE_MONTHS = 12;
+const PACKAGE_MONTH_OPTIONS = Array.from({ length: MAX_PACKAGE_MONTHS }, (_, index) => index + 1);
+const MAX_ALLOWED_DATE = addMonths(TODAY_DATE, MAX_PACKAGE_MONTHS, 1);
 const shiftDay = (dateKey, offset) => {
   const date = parseDateKey(dateKey);
   return toDateKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset));
@@ -79,7 +82,7 @@ const formatDay = (dateKey) => {
   return `${['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][date.getDay()]}, ${dateKey.slice(8)}/${dateKey.slice(5, 7)}/${dateKey.slice(0, 4)}`;
 };
 
-// Lịch sân một ngày để chọn buổi trên bảng slot; Player xem được tới hết 3 tháng của gói (forPackage)
+// Lịch sân một ngày để chọn buổi trên bảng slot; Player xem được tới ngày xa nhất đặt được của gói (forPackage)
 function useDaySchedule(facilityId, date, enabled, load) {
   const [result, setResult] = useState(null);
   useEffect(() => {
@@ -129,7 +132,9 @@ export default function MultiSessionBookingPage() {
   const facilityId = Number(id || location.state?.facilityId) || null;
 
   const today = TODAY_DATE;
-  const maxAllowedDate = MAX_ALLOWED_DATE;
+  // Ngày xa nhất backend cho chọn buổi của gói (mốc 1 năm, không quá hạn dịch vụ của địa điểm, D175)
+  const [packageMaxDate, setPackageMaxDate] = useState(null);
+  const maxAllowedDate = packageMaxDate && packageMaxDate < MAX_ALLOWED_DATE ? packageMaxDate : MAX_ALLOWED_DATE;
 
   // Quay lại từ trang tóm tắt gói thì khôi phục lịch đã chọn, kể cả buổi bỏ và slot bù
   const [draft] = useState(() => readPackageDraft(facilityId));
@@ -183,17 +188,32 @@ export default function MultiSessionBookingPage() {
       .catch((err) => setPreviewError(apiErrorMessage(err, 'Không tải được danh sách sân.')));
   }, [facilityId, getLocationCourts]);
 
+  useEffect(() => {
+    if (!facilityId) return undefined;
+    const controller = new AbortController();
+    getVenueSchedule(facilityId, today, controller.signal, undefined, { forPackage: true })
+      .then((data) => { if (!controller.signal.aborted && data?.max_date) setPackageMaxDate(data.max_date); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [facilityId, today, getVenueSchedule]);
+
   const resetConflictAdjustments = () => {
     setRemovedKeys([]);
     setReplacements({});
   };
 
-  // ---- Định kỳ: thời gian gói 1–3 tháng từ ngày bắt đầu (BR27), mọi buổi trong 3 tháng kể từ hôm nay (D162)
+  // ---- Định kỳ: thời gian gói 1–12 tháng từ ngày bắt đầu (BR27), mọi buổi không quá maxAllowedDate (D175)
   const monthEnd = (count) => addMonths(fromDate, count, 1);
   const monthAllowed = (count) => monthEnd(count) <= maxAllowedDate;
-  const effectiveMonths = monthAllowed(months) ? months : ([3, 2, 1].find(monthAllowed) ?? 1);
+  const effectiveMonths = monthAllowed(months) ? months
+    : ([...PACKAGE_MONTH_OPTIONS].reverse().find(monthAllowed) ?? 1);
   const toDate = monthEnd(effectiveMonths);
-  const latestFromDate = addMonths(today, 2, 0);
+  // Ngày bắt đầu muộn nhất để gói 1 tháng vẫn kết thúc trước maxAllowedDate
+  // (lùi thêm vài ngày khi tháng trước ngắn hơn, ví dụ 31/03 lùi 1 tháng thành 03/03 thì quá)
+  let latestFromDate = addMonths(shiftDay(maxAllowedDate, 1), -1, 0);
+  while (latestFromDate > today && addMonths(latestFromDate, 1, 1) > maxAllowedDate) {
+    latestFromDate = shiftDay(latestFromDate, -1);
+  }
 
   const timeKey = perDayTimes ? (selectedWeekdays.includes(timeTab) ? timeTab : selectedWeekdays[0]) : 'all';
   const recurringPattern = useMemo(() => {
@@ -623,7 +643,7 @@ export default function MultiSessionBookingPage() {
                 <em className={styles.fieldLabelValue}>{formatDay(fromDate).slice(4, 9)} – {formatDay(toDate).slice(4, 9)}</em>
               </span>
               <div className={styles.monthRow} role="group" aria-label="Thời gian gói">
-                {[1, 2, 3].map((count) => (
+                {PACKAGE_MONTH_OPTIONS.map((count) => (
                   <button key={count} type="button" aria-pressed={effectiveMonths === count} disabled={!monthAllowed(count)}
                     className={`${styles.weekdayBtn} ${effectiveMonths === count ? styles.weekdayBtnActive : ''}`}
                     onClick={() => { resetConflictAdjustments(); setMonths(count); }}>
@@ -681,7 +701,8 @@ export default function MultiSessionBookingPage() {
             </div>}
 
             <p className={styles.ruleHintText}>
-              Định kỳ: tối thiểu 1 buổi/tuần, kéo dài từ 1 đến 3 tháng. Tất cả các buổi phải nằm trong vòng 3 tháng kể từ hôm nay.
+              Định kỳ: tối thiểu 1 buổi/tuần, kéo dài từ 1 đến 12 tháng. Tất cả các buổi phải nằm trong vòng 1 năm
+              kể từ hôm nay và trong thời hạn sử dụng dịch vụ của địa điểm, muộn nhất {formatDay(maxAllowedDate)}.
             </p>
           </aside>
 
