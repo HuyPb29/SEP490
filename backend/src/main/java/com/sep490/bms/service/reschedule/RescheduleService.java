@@ -46,6 +46,7 @@ public class RescheduleService {
     private final FileStorageService storage;
     private final MatchService matches;
     private final AccountRepository accounts;
+    private final com.sep490.bms.service.payment.PaymentEscalation escalation;
     // SRS parameter table P02/P03/P04/P05/P25: fixed values, no Owner settings.
     private final int cutoffHours=6;
     private final int cutoffPercent=50;
@@ -74,8 +75,12 @@ public class RescheduleService {
 
     public List<Payment> staffPayments(UserPrincipal u,PaymentStatus status) {
         Long location=access.selectedLocation(u).getId();
-        return em.createQuery("select p from Payment p where p.locationId=:l and p.rescheduleRequestId is not null and p.status=:s order by p.submittedAt,p.id",Payment.class)
+        List<Payment> list=em.createQuery("select p from Payment p where p.locationId=:l and p.rescheduleRequestId is not null and p.status=:s order by p.submittedAt,p.id",Payment.class)
                 .setParameter("l",location).setParameter("s",status==null?PaymentStatus.AWAITING_CONFIRMATION:status).getResultList();
+        // FR120, BR58: đánh dấu giao dịch đã chuyển cho chủ sân để màn Staff khóa nút xử lý.
+        LocalDateTime now=LocalDateTime.now();
+        list.forEach(p->p.setEscalatedToOwner(escalation.escalated(p,now)));
+        return list;
     }
     public PaymentView payment(UserPrincipal u,Long id) {
         Payment p=em.find(Payment.class,id);
@@ -396,6 +401,7 @@ public class RescheduleService {
         if(expire(r,b)) return r;
         if(r.getStatus()!=RescheduleStatus.AWAITING_CONFIRMATION || p.getStatus()!=PaymentStatus.AWAITING_CONFIRMATION)
             throw new AppException("Thanh toán đã được xử lý",HttpStatus.CONFLICT);
+        escalation.requireStaffMayDecide(u,p,LocalDateTime.now()); // FR120, BR58
         if(confirm) {
             support.confirmed(b);
             Court target=support.lock(Court.class,r.getNewCourtId());
