@@ -47,6 +47,7 @@ import com.sep490.bms.entity.notification.Notification;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.payment.PaymentProof;
 import com.sep490.bms.exception.AppException;
+import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.notification.NotificationRepository;
 import com.sep490.bms.repository.payment.PaymentProofRepository;
 import com.sep490.bms.repository.payment.PaymentRepository;
@@ -55,6 +56,7 @@ import com.sep490.bms.security.LocationAccessService;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.booking.BookingService;
 import com.sep490.bms.service.booking.PackageService;
+import com.sep490.bms.service.booking.SlotAvailabilityService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
@@ -83,8 +85,11 @@ class PaymentConfirmationTests {
     private final LoyaltyPointService points = mock(LoyaltyPointService.class);
     private final NotificationRepository notifications = mock(NotificationRepository.class);
     private final PackageService packages = mock(PackageService.class);
+    private final SlotAvailabilityService availability = mock(SlotAvailabilityService.class);
+    private final BookingRepository bookingRepository = mock(BookingRepository.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings,
-            mock(LocationQueryService.class), files, access, vouchers, points, notifications, packages, mock(RescheduleRequestRepository.class));
+            mock(LocationQueryService.class), files, access, vouchers, points, notifications, packages,
+            mock(RescheduleRequestRepository.class), new PaymentEscalation(availability, bookingRepository));
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
     private final UserPrincipal owner = UserPrincipal.builder().id(OWNER).role(Role.OWNER).build();
@@ -237,6 +242,54 @@ class PaymentConfirmationTests {
             assertThat(n.getRecipientId()).isEqualTo(PLAYER);
             assertThat(n.getContent()).isEqualTo("Thanh toán booking BK000030 đã được xác nhận. Xem biên nhận.");
         });
+    }
+
+    // ---------- FR120, BR58 (D174): giao dịch chờ quá P24 đã chuyển cho chủ sân ----------
+
+    private void waitedPastP24() {
+        when(availability.exceededOpeningTime(eq(LOCATION), eq(payment.getSubmittedAt()), any(),
+                eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+        when(bookingRepository.findById(BOOKING)).thenReturn(Optional.of(booking));
+    }
+
+    @Test
+    void staffCannotDecidePaymentEscalatedToOwner() {
+        waitedPastP24();
+        String msg118 = "Giao dịch BK000030 đã chờ quá 15 phút mà chưa được xác nhận nên đã được chuyển cho chủ sân xử lý.";
+
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW))
+                .isInstanceOf(AppException.class).hasMessage(msg118)
+                .satisfies(e -> assertThat(((AppException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+        assertThatThrownBy(() -> service.requestResubmission(staff, PAYMENT,
+                new ResubmitRequest("Ảnh mờ", true, null), NOW)).hasMessage(msg118);
+        assertThatThrownBy(() -> service.reject(staff, PAYMENT, new RejectPaymentRequest("Tiền không về")))
+                .hasMessage(msg118);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.AWAITING_CONFIRMATION);
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.AWAITING_CONFIRMATION);
+        verify(bookings, never()).lockForPayment(any());
+    }
+
+    @Test
+    void ownerStillConfirmsPaymentEscalatedToOwner() {
+        waitedPastP24();
+
+        service.confirm(owner, PAYMENT, null, NOW);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(payment.getConfirmedBy()).isEqualTo(OWNER);
+    }
+
+    @Test
+    void pendingListFlagsPaymentEscalatedToOwner() {
+        waitedPastP24();
+        when(payments.findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
+                LOCATION, PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<>(List.of(payment), PageRequest.of(0, 20), 1));
+        when(bookings.getByIds(anyCollection())).thenReturn(Map.of(BOOKING, booking));
+
+        assertThat(service.listPending(staff, 0, 20).getContent())
+                .singleElement().satisfies(item -> assertThat(item.isEscalatedToOwner()).isTrue());
     }
 
     @Test
