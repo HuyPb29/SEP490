@@ -51,6 +51,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     List<Payment> findByLocationIdAndStatusOrderBySubmittedAtAscIdAsc(Long locationId, PaymentStatus status);
 
+    /** UC37 #7, FR120: giao dịch đang chờ đã gửi trước một mốc, để job xét chuyển cho chủ sân. */
+    List<Payment> findByStatusAndSubmittedAtBefore(PaymentStatus status, LocalDateTime submittedBefore);
+
     @Query("""
             SELECT p.id FROM Payment p
             WHERE p.status IN :statuses AND EXISTS (
