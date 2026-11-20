@@ -111,10 +111,7 @@
 }
 
 .cw-voucher { display: grid; gap: 8px; min-width: 0; border: 1px solid #cbded1; border-left: 4px solid #519170; border-radius: 12px; padding: 15px; background: #f7fbf8; overflow-wrap: anywhere; }
-.cw-voucher-heading, .cw-voucher-meta { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.cw-voucher-heading > strong { color: var(--cw-primary); font-size: 1.2rem; letter-spacing: -.02em; }
-.cw-voucher-heading code { font-size: .82rem; color: var(--cw-primary); }
-.cw-voucher-meta { font-size: .82rem; color: var(--cw-muted); }
+.cw-voucher-meta { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: .82rem; color: var(--cw-muted); }
 .cw-section details[open] > summary { margin-bottom: 12px; }
 .cw-section details > .cw-form { margin-block: 8px 0; }
 .cw-edit-row { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 12px; border: 1px solid var(--cw-border); border-radius: 10px; }
