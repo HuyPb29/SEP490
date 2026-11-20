@@ -88,6 +88,7 @@ public class PaymentService {
     private final NotificationRepository notificationRepository;
     private final PackageService packageService;
     private final RescheduleRequestRepository rescheduleRequests;
+    private final PaymentEscalation escalation;
 
     /** UC18 #1, FR55: số tiền, tài khoản nhận, mã QR và giờ hết giữ chỗ. Không thay đổi gì. */
     @Transactional(readOnly = true)
@@ -381,9 +382,14 @@ public class PaymentService {
                 result.stream().map(Payment::getBookingId).filter(Objects::nonNull).toList());
         Map<Long, BookingPackage> packages = packageService.getByIds(
                 result.stream().map(Payment::getPackageId).filter(Objects::nonNull).toList());
-        return PageResponse.from(result.map(payment -> payment.getPackageId() != null
-                ? PaymentResponse.from(payment, packages.get(payment.getPackageId()))
-                : PaymentResponse.from(payment, bookings.get(payment.getBookingId()))));
+        LocalDateTime now = LocalDateTime.now();
+        return PageResponse.from(result.map(payment -> {
+            PaymentResponse item = payment.getPackageId() != null
+                    ? PaymentResponse.from(payment, packages.get(payment.getPackageId()))
+                    : PaymentResponse.from(payment, bookings.get(payment.getBookingId()));
+            item.setEscalatedToOwner(escalation.escalated(payment, now));
+            return item;
+        }));
     }
 
     /**
@@ -483,6 +489,7 @@ public class PaymentService {
     PaymentResponse confirm(UserPrincipal user, Long paymentId, ConfirmPaymentRequest request, LocalDateTime now) {
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
+        escalation.requireStaffMayDecide(user, payment, now);
         BigDecimal received = request == null || request.receivedAmount() == null
                 ? payment.getAmountDue() : request.receivedAmount();
         if (received.compareTo(payment.getAmountDue()) < 0) {
@@ -526,6 +533,7 @@ public class PaymentService {
     PaymentResponse requestResubmission(UserPrincipal user, Long paymentId, ResubmitRequest request, LocalDateTime now) {
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
+        escalation.requireStaffMayDecide(user, payment, now);
         if (payment.getPackageId() != null) {
             return requestPackageResubmission(payment, request, now);
         }
@@ -559,6 +567,7 @@ public class PaymentService {
     public PaymentResponse reject(UserPrincipal user, Long paymentId, RejectPaymentRequest request) {
         Location location = locationAccessService.selectedLocation(user);
         Payment payment = lockInLocation(location, paymentId);
+        escalation.requireStaffMayDecide(user, payment, LocalDateTime.now());
         if (payment.getPackageId() != null) {
             BookingPackage pkg = lockPackageOf(payment);
             rejectLockedPackage(payment, pkg, request.reason().trim());
