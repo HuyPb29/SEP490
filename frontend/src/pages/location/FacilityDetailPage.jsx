@@ -29,7 +29,7 @@ export default function FacilityDetailPage() {
   </div>;
 
   return (
-    <div className={styles.pageWrapper + ' cw-workspace'}>
+    <div className={styles.pageWrapper + " cw-workspace"}>
       <PublicHeader user={currentUser} />
 
       <main className={styles.mainContainer}>

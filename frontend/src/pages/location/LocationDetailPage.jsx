@@ -8,13 +8,13 @@ import BookingSelectionSummary from '../../components/booking/BookingSelectionSu
 import styles from './LocationDetailPage.module.css';
 
 const WEEKDAYS = [
-  { value: 1, label: 'Mon' },
-  { value: 2, label: 'Tue' },
-  { value: 3, label: 'Wed' },
-  { value: 4, label: 'Thu' },
-  { value: 5, label: 'Fri' },
-  { value: 6, label: 'Sat' },
-  { value: 0, label: 'Sun' },
+  { value: 1, label: "T2" },
+  { value: 2, label: "T3" },
+  { value: 3, label: "T4" },
+  { value: 4, label: "T5" },
+  { value: 5, label: "T6" },
+  { value: 6, label: "T7" },
+  { value: 0, label: "CN" },
 ];
 
 function localDateKey(date) {
@@ -82,7 +82,7 @@ export default function LocationDetailPage() {
 
   // Type: [{ courtId, courtName, timeIdx, time, price }]
   const [selectedSlots, setSelectedSlots] = useState([]);
-  const [ruleMessage, setRuleMessage] = useState('Select available slots to build your booking.');
+  const [ruleMessage, setRuleMessage] = useState("Chọn các khung giờ trống để đặt sân.");
 
   useEffect(() => {
     const loadData = async () => {
@@ -114,7 +114,7 @@ export default function LocationDetailPage() {
         });
       } else {
         setFacility(null);
-        setLoadError(res?.error || 'Could not load location details.');
+        setLoadError(res?.error || "Không tải được thông tin địa điểm.");
       }
     };
     loadData();
@@ -132,22 +132,22 @@ export default function LocationDetailPage() {
       setSelectedSlots(selectedSlots.filter((s) => !(
         s.courtId === court.court_id && s.timeIdx === timeIdx && (mode === 'recurring' || s.date === playDate)
       )));
-      setRuleMessage('Select available slots to build your booking.');
+      setRuleMessage("Chọn các khung giờ trống để đặt sân.");
       return;
     }
 
     if (mode === 'single' && selectedSlots.some((selected) => selected.date !== playDate)) {
-      setRuleMessage('MSG30: Các slot phải liền nhau trên cùng một sân (trong cùng một ngày).');
+      setRuleMessage("MSG30: Các khung giờ phải liền nhau trên cùng một sân (trong cùng một ngày).");
       return;
     }
 
     if (mode === 'recurring' && selectedSlots.some((selected) => selected.courtId !== court.court_id)) {
-      setRuleMessage('Recurring sessions must use the same court.');
+      setRuleMessage("Các buổi định kỳ phải cùng một sân.");
       return;
     }
 
     if (mode === 'recurring' && selectedSlots.some((selected) => selected.date !== playDate)) {
-      setRuleMessage('Choose recurring time ranges from one schedule date.');
+      setRuleMessage("Chọn các khung giờ định kỳ trong cùng một ngày trên lịch sân.");
       return;
     }
 
@@ -159,14 +159,14 @@ export default function LocationDetailPage() {
       time: slot.time,
       price: slot.price,
     }]);
-    setRuleMessage('Select available slots to build your booking.');
+    setRuleMessage("Chọn các khung giờ trống để đặt sân.");
   };
 
   const handleModeChange = (nextMode) => {
     if (nextMode === mode) return;
     setMode(nextMode);
     setSelectedSlots([]);
-    setRuleMessage('Select available slots to build your booking.');
+    setRuleMessage("Chọn các khung giờ trống để đặt sân.");
     setPackageStartDate(playDate);
   };
 
@@ -180,7 +180,7 @@ export default function LocationDetailPage() {
   const formatDateLabel = (dateStr) => {
     const [y, m, day] = dateStr.split('-').map(Number);
     const d = new Date(y, m - 1, day);
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const days = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
     return `${days[d.getDay()]}, ${String(m).padStart(2, '0')}/${String(day).padStart(2, '0')}/${y}`;
   };
 
@@ -194,7 +194,7 @@ export default function LocationDetailPage() {
     let packagePayload = null;
     if (mode === 'single') {
       if (selectedSlots.some((slot) => slot.date !== playDate)) {
-        setRuleMessage('MSG30: Các slot phải liền nhau trên cùng một sân (trong cùng một ngày).');
+        setRuleMessage("MSG30: Các khung giờ phải liền nhau trên cùng một sân (trong cùng một ngày).");
         return;
       }
     } else if (mode === 'custom') {
@@ -220,11 +220,11 @@ export default function LocationDetailPage() {
       };
     } else {
       if (selectedWeekdays.length === 0) {
-        setRuleMessage('Select at least one weekday for recurring booking.');
+        setRuleMessage("Chọn ít nhất một thứ trong tuần để đặt sân định kỳ.");
         return;
       }
       if (packageEndDate < packageStartDate) {
-        setRuleMessage('The recurring end date must be on or after the start date.');
+        setRuleMessage("Ngày kết thúc lịch định kỳ phải từ ngày bắt đầu trở đi.");
         return;
       }
       if (packageEndDate > getPackageDateLimit()) {
@@ -255,14 +255,14 @@ export default function LocationDetailPage() {
     if (loadError) {
       return (
         <div className={styles.loadingScreen}>
-          <p>Failed to load location details: {loadError}</p>
+          <p>Không tải được thông tin địa điểm: {loadError}</p>
           <button type="button" className={styles.backButton} onClick={() => navigate('/')}>
-            Back to search
+            Quay lại tìm kiếm
           </button>
         </div>
       );
     }
-    return <div className={styles.loadingScreen}>Loading location details...</div>;
+    return <div className={styles.loadingScreen}>Đang tải thông tin địa điểm…</div>;
   }
 
   return (
@@ -271,10 +271,10 @@ export default function LocationDetailPage() {
 
       <main className={styles.mainContainer}>
         <button type="button" className={styles.backButton} onClick={() => navigate('/')}>
-          ← Back
+          ← Quay lại
         </button>
         <div className={styles.breadcrumb}>
-          <Link to="/" className={styles.breadcrumbLink}>Find Court</Link>
+          <Link to="/" className={styles.breadcrumbLink}>Tìm sân</Link>
           <span className={styles.breadcrumbSep}>/</span>
           <span className={styles.breadcrumbCurrent}>{facility.facility_name}</span>
         </div>
@@ -299,14 +299,14 @@ export default function LocationDetailPage() {
               <div className={styles.ratingRow}>
                 <span className={styles.starIcon}>★</span>
                 <strong>{String(facility.rating).replace(',', '.')}</strong>
-                <span className={styles.reviewCount}>({facility.review_count} reviews)</span>
+                <span className={styles.reviewCount}>({facility.review_count} đánh giá)</span>
               </div>
             )}
             <p className={styles.infoLine}>{facility.address}</p>
             <p className={styles.infoLine}>
-              Open hours: {facility.open_hours} · {facility.courts_count} courts
+              Giờ mở cửa: {facility.open_hours} · {facility.courts_count} sân
             </p>
-            <p className={styles.infoLine}>Contact: {facility.contact_phone}</p>
+            <p className={styles.infoLine}>Liên hệ: {facility.contact_phone}</p>
 
             <div className={styles.bookingActions}>
               <button
@@ -317,7 +317,7 @@ export default function LocationDetailPage() {
                   scheduleRef.current?.scrollIntoView({ behavior: 'smooth' });
                 }}
               >
-                View schedule &amp; book
+                Xem lịch và đặt sân
               </button>
               <button
                 type="button"
@@ -327,7 +327,7 @@ export default function LocationDetailPage() {
                   scheduleRef.current?.scrollIntoView({ behavior: 'smooth' });
                 }}
               >
-                Custom Multi-Session
+                Đặt nhiều buổi tùy chọn
               </button>
             </div>
           </div>
@@ -338,15 +338,15 @@ export default function LocationDetailPage() {
         {/* UC13: Shared court schedule for all booking modes. */}
         <section ref={scheduleRef} className={styles.scheduleCard}>
           <div className={styles.scheduleHeader}>
-            <h2 className={styles.sectionTitle}>Court Schedule</h2>
+            <h2 className={styles.sectionTitle}>Lịch sân</h2>
             <div className={styles.dateControls}>
               <button type="button" className={styles.navArrowBtn} onClick={() => changeDay(-1)}>‹</button>
               <span className={styles.dateDisplay}>{formatDateLabel(playDate)}</span>
               <button type="button" className={styles.navArrowBtn} onClick={() => changeDay(1)}>›</button>
               {mode === 'recurring' ? (
                 <>
-                  <input type="date" aria-label="Recurring start date" className={styles.dateInput} value={packageStartDate} max={getPackageDateLimit()} onChange={(e) => setPackageStartDate(e.target.value)} />
-                  <input type="date" aria-label="Recurring end date" className={styles.dateInput} value={packageEndDate} min={packageStartDate} max={getPackageDateLimit()} onChange={(e) => setPackageEndDate(e.target.value)} />
+                  <input type="date" aria-label="Ngày bắt đầu lịch định kỳ" className={styles.dateInput} value={packageStartDate} max={getPackageDateLimit()} onChange={(e) => setPackageStartDate(e.target.value)} />
+                  <input type="date" aria-label="Ngày kết thúc lịch định kỳ" className={styles.dateInput} value={packageEndDate} min={packageStartDate} max={getPackageDateLimit()} onChange={(e) => setPackageEndDate(e.target.value)} />
                 </>
               ) : (
                 <input type="date" className={styles.dateInput} value={playDate} max={getPackageDateLimit()} onChange={(e) => setPlayDate(e.target.value)} />
@@ -357,10 +357,10 @@ export default function LocationDetailPage() {
           {(mode === 'custom' || mode === 'recurring') && (
             <div className={styles.packageModeControls}>
               {mode === 'custom' ? (
-                <p className={styles.packageModeHint}>Choose a date above, then select session ranges. Your selections remain saved as you move between dates.</p>
+                <p className={styles.packageModeHint}>Chọn ngày ở trên, sau đó chọn các khung giờ chơi. Các khung đã chọn được giữ lại khi bạn chuyển ngày.</p>
               ) : (
-                <div className={styles.weekdayPicker} aria-label="Recurring weekdays">
-                  <span>Repeat on</span>
+                <div className={styles.weekdayPicker} aria-label="Các thứ đặt sân định kỳ">
+                  <span>Lặp lại vào</span>
                   {WEEKDAYS.map((day) => (
                     <button
                       key={day.value}
@@ -381,19 +381,19 @@ export default function LocationDetailPage() {
 
           <div className={styles.legendRow}>
             <span className={styles.legendItem}>
-              <i className={`${styles.legendBox} ${styles.boxAvailable}`} /> Available
+              <i className={`${styles.legendBox} ${styles.boxAvailable}`} /> Còn trống
             </span>
             <span className={styles.legendItem}>
-              <i className={`${styles.legendBox} ${styles.boxSelected}`} /> Selected
+              <i className={`${styles.legendBox} ${styles.boxSelected}`} /> Đã chọn
             </span>
             <span className={styles.legendItem}>
-              <i className={`${styles.legendBox} ${styles.boxHolding}`} /> Holding
+              <i className={`${styles.legendBox} ${styles.boxHolding}`} /> Đang giữ chỗ
             </span>
             <span className={styles.legendItem}>
-              <i className={`${styles.legendBox} ${styles.boxBooked}`} /> Booked
+              <i className={`${styles.legendBox} ${styles.boxBooked}`} /> Đã đặt
             </span>
             <span className={styles.legendItem}>
-              <i className={`${styles.legendBox} ${styles.boxMaintenance}`} /> Maintenance
+              <i className={`${styles.legendBox} ${styles.boxMaintenance}`} /> Bảo trì
             </span>
           </div>
 
@@ -418,13 +418,13 @@ export default function LocationDetailPage() {
 
         <section className={styles.bottomGrid}>
           <div className={styles.bottomCard}>
-            <h2 className={styles.sectionTitle}>Price Table</h2>
+            <h2 className={styles.sectionTitle}>Bảng giá</h2>
             <table className={styles.priceTable}>
               <thead>
                 <tr>
-                  <th>Time Range</th>
-                  <th>Mon – Fri</th>
-                  <th>Sat, Sun</th>
+                  <th>Khung giờ</th>
+                  <th>Thứ Hai – Thứ Sáu</th>
+                  <th>Thứ Bảy, Chủ nhật</th>
                 </tr>
               </thead>
               <tbody>
@@ -440,7 +440,7 @@ export default function LocationDetailPage() {
           </div>
 
           <div className={styles.bottomCard}>
-            <h2 className={styles.sectionTitle}>Reviews</h2>
+            <h2 className={styles.sectionTitle}>Đánh giá</h2>
             <div className={styles.reviewList}>
               {facility.reviews.map((rev) => (
                 <div key={rev.review_id} className={styles.reviewItem}>

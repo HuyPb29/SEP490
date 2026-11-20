@@ -189,7 +189,7 @@ export default function ServiceRegistrationPage() {
       const { Geocoder } = await maps.importLibrary('geocoding');
       const { results } = await new Geocoder().geocode(request);
       const result = results[0];
-      if (!result?.formatted_address) throw new Error('No matching address');
+      if (!result?.formatted_address) throw new Error("Không tìm thấy địa chỉ phù hợp");
       setMapAddress(result.formatted_address);
     } catch {
       setMapAddressError('Google Maps chưa tra được địa chỉ tại điểm ghim. Vị trí bạn chọn vẫn được giữ.');
@@ -354,7 +354,7 @@ export default function ServiceRegistrationPage() {
   return (
     <PublicLayout
       title={isOwner ? 'Đăng ký thêm địa điểm' : 'Đăng ký dịch vụ sân'}
-      subtitle={isOwner ? 'Địa điểm mới sẽ được gắn với tài khoản của bạn sau khi Admin duyệt.' : 'Đưa địa điểm cầu lông của bạn lên Courtly'}
+      subtitle={isOwner ? "Địa điểm mới sẽ được gắn với tài khoản của bạn sau khi quản trị viên duyệt." : 'Đưa địa điểm cầu lông của bạn lên Courtly'}
     >
       <div className={styles.container}>
         {/* Banner giới thiệu */}
@@ -371,7 +371,7 @@ export default function ServiceRegistrationPage() {
           <div className={`${styles.alertBox} ${styles.alertWarning}`}>
             <div>
               <strong>Thông báo vai trò:</strong> Bạn đang đăng nhập với tài khoản người chơi/nhân viên. Chỉ tài khoản{' '}
-              <strong>Chủ sân (Owner)</strong> mới có quyền gửi đơn đăng ký mở cụm sân mới. Hãy đăng xuất để gửi đơn bằng email chưa có tài khoản.
+              <strong>Chủ sân (chủ sân)</strong> mới có quyền gửi đơn đăng ký mở cụm sân mới. Hãy đăng xuất để gửi đơn bằng email chưa có tài khoản.
             </div>
           </div>
         )}
@@ -606,7 +606,7 @@ export default function ServiceRegistrationPage() {
                   id="contactEmail"
                   type="email"
                   maxLength={100}
-                  placeholder="VD: owner@example.com"
+                  placeholder="VD: chủ sân@example.com"
                   className={`${styles.input} ${fieldErrors.contactEmail ? styles.inputError : ''}`}
                   value={formData.contactEmail}
                   onChange={(e) => handleChange('contactEmail', e.target.value)}

@@ -119,12 +119,19 @@ export async function deleteBatchOffer(offerId, locationId) {
   await api.delete(`/owner/batch-offers/${offerId}`, ownerConfig(locationId))
 }
 
-/** GET /api/owner/vouchers — chỉ lấy voucher PUBLISHED để gắn vào ưu đãi. */
-export async function getPublishedVouchers(locationId) {
-  const { data } = await api.get('/owner/vouchers', ownerConfig(locationId, {
-    params: { status: 'PUBLISHED', page: 0, size: 100 },
-  }))
-  return data?.data?.content ?? []
+/** BR47: chỉ voucher PUBLISHED/SPECIFIED; duyệt đủ trang để không bỏ sót voucher hợp lệ. */
+export async function getBatchOfferVouchers(locationId) {
+  const eligible = []
+  for (let page = 0; ; page += 1) {
+    const { data } = await api.get('/owner/vouchers', ownerConfig(locationId, {
+      params: { status: 'PUBLISHED', page, size: 100 },
+    }))
+    const result = data?.data
+    const items = result?.content ?? []
+    eligible.push(...items.filter((voucher) => voucher.status === 'PUBLISHED' && voucher.targetGroup === 'SPECIFIED'))
+    if (items.length === 0 || page + 1 >= (result?.totalPages ?? 1)) break
+  }
+  return eligible
 }
 
 // ------------------------------------------------------------ UC06: Admin quản lý địa điểm
@@ -258,9 +265,16 @@ export async function cancelMaintenanceRequest(requestId, reason, locationId) {
   return data?.data
 }
 
-/** POST /api/owner/maintenance-requests/{id}/approve — không có body. */
-export async function approveMaintenanceRequest(requestId, locationId) {
-  const { data } = await api.post(`/owner/maintenance-requests/${requestId}/approve`, null, ownerConfig(locationId))
+/** GET MSG15: booking đã xác nhận bị ảnh hưởng trước khi duyệt bảo trì. */
+export async function getMaintenanceImpact(requestId, locationId) {
+  const { data } = await api.get(`/owner/maintenance-requests/${requestId}/impact`, ownerConfig(locationId))
+  return data.data
+}
+
+/** POST: xác nhận đúng phiên bản danh sách booking Owner đã xem. */
+export async function approveMaintenanceRequest(requestId, locationId, bookings = []) {
+  const expectedBookings = bookings.map(({ id, version }) => ({ id, version }))
+  const { data } = await api.post(`/owner/maintenance-requests/${requestId}/approve`, { expectedBookings }, ownerConfig(locationId))
   return data?.data
 }
 

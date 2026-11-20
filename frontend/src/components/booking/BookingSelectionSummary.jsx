@@ -3,7 +3,7 @@ export default function BookingSelectionSummary({ count, totalPrice, message, di
     <div className={styles.summaryBar}>
       <div>
         <div className={styles.summaryMainText}>
-          {count} {count === 1 ? 'slot' : 'slots'} selected · {totalPrice.toLocaleString('en-US')} VND
+          {count} khung giờ đã chọn · {totalPrice.toLocaleString('vi-VN')} đồng
         </div>
         <div className={styles.summarySubText} role="status">{message}</div>
       </div>
@@ -13,7 +13,7 @@ export default function BookingSelectionSummary({ count, totalPrice, message, di
         disabled={disabled}
         onClick={onContinue}
       >
-        Review booking
+        Xem lại thông tin đặt sân
       </button>
     </div>
   )

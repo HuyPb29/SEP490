@@ -55,12 +55,12 @@ export default function PointGrantForm({ locationId }) {
             onChange={(event) => selectPlayer(event.target.value)}
             options={[[ '', 'Chọn người chơi' ], ...playerOptions]} error={errors.playerId} />}
         </Lookup>
-        {playerId && <Lookup title="Lịch đặt sân" label="Tìm theo mã booking"
+        {playerId && <Lookup title="Lịch đặt sân" label="Tìm theo mã đặt sân"
           search={bookingSearch} onSearch={(search) => { setBookingSearch(search); setBookingId('') }}
-          resource={bookings} empty="Không có booking phù hợp cho Player này.">
-          <Field label="Booking liên quan" name="bookingId" required value={bookingId}
+          resource={bookings} empty="Không có lịch đặt sân phù hợp cho người chơi này.">
+          <Field label="Lịch đặt sân liên quan" name="bookingId" required value={bookingId}
             onChange={(event) => setBookingId(event.target.value)}
-            options={[[ '', 'Chọn booking' ], ...bookingOptions]} error={errors.bookingId} />
+            options={[[ '', 'Chọn lịch đặt sân' ], ...bookingOptions]} error={errors.bookingId} />
         </Lookup>}
         <Field label="Điểm cộng" name="points" type="number" min={1} max={2147483647} required error={errors.points} />
         <Field label="Lý do" name="reason" maxLength={255} required error={errors.reason} />

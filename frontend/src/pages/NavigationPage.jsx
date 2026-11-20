@@ -48,7 +48,7 @@ function NavigationContent({ kind }) {
 
   return (
     <WorkspaceLayout title={titles[kind]} role={kind === 'reviews' ? 'admin' : 'player'}>
-      {kind === 'reschedules' && <p className="mb-3">Chọn một booking để xem các yêu cầu đổi lịch của booking đó.</p>}
+      {kind === 'reschedules' && <p className="mb-3">Chọn một đặt sân để xem các yêu cầu đổi lịch của đặt sân đó.</p>}
       {resource.loading ? <LoadingState /> : resource.error ? (
         <ErrorState message={resource.error} onRetry={resource.reload} />
       ) : rows.length === 0 ? <EmptyState title="Chưa có dữ liệu." /> : (

@@ -491,7 +491,7 @@ export default function StaffDashboardPage() {
                         {item.status === 'HOLDING' && item.holdExpiresAt && (
                           <small className={expiredHold ? styles.overdueText : ''} style={{ color: expiredHold ? '#b91c1c' : '#b45309', fontWeight: 700 }}>
                             {expiredHold
-                              ? 'Đã hết thời gian giữ chỗ. Slot đã được nhả. (MSG33)'
+                              ? "Đã hết thời gian giữ chỗ. khung giờ đã được nhả. (MSG33)"
                               : `Đang giữ chỗ 10 phút · Còn lại: ${formatRemaining(remainingMs)}`}
                           </small>
                         )}

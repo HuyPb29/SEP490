@@ -15,7 +15,7 @@ export function useCheckoutVouchers(locationId, orderAmount) {
       .then((items) => { if (!controller.signal.aborted) setResult({ key, items }); })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setResult({ key, error: 'Không tải được voucher. Bạn vẫn có thể kiểm tra mã đã biết.' });
+          setResult({ key, error: "Không tải được phiếu ưu đãi. Bạn vẫn có thể kiểm tra mã đã biết." });
         }
       });
     return () => controller.abort();
@@ -58,11 +58,11 @@ export function useCheckoutVoucherSelection(locationId, orderAmount) {
   async function apply(choice, label) {
     if (checking || !(orderAmount > 0)) return;
     if (applied) {
-      setError('Đơn này đã có voucher. Bỏ voucher đang dùng trước khi chọn mã khác. (MSG35)');
+      setError("Đơn này đã có phiếu ưu đãi. Bỏ phiếu ưu đãi đang dùng trước khi chọn mã khác. (MSG35)");
       return;
     }
     if (!choice.code && !choice.grantId) {
-      setError('Vui lòng nhập mã hoặc chọn voucher để áp dụng. (MSG01)');
+      setError("Vui lòng nhập mã hoặc chọn phiếu ưu đãi để áp dụng. (MSG01)");
       return;
     }
     setError('');

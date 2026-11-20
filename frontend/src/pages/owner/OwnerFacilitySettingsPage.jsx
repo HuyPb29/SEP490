@@ -8,6 +8,7 @@ import {
   uploadOwnerLocationQr,
 } from '../../api/locationApi'
 import ManagementLayout from '../../components/layout/ManagementLayout'
+import { FileInput } from '../../components/common/FileInput'
 import LocationMap from '../../components/map/LocationMap'
 import styles from './OwnerFacilitySettingsPage.module.css'
 
@@ -513,8 +514,7 @@ export default function OwnerFacilitySettingsPage() {
 
               <label className={`${styles.field} ${styles.fieldWide}`}>
                 <span>Ảnh QR chuyển khoản (JPG/PNG, tối đa 5 MB)</span>
-                <input
-                  type="file"
+                <FileInput
                   accept="image/jpeg,image/png"
                   onChange={handleQrUpload}
                   disabled={uploadingQr || saving || locked || !selectedLocationId}
@@ -561,7 +561,7 @@ export default function OwnerFacilitySettingsPage() {
         <section className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
-              <h2 className={styles.cardTitle}>Thông tin do Admin quản lý</h2>
+              <h2 className={styles.cardTitle}>Thông tin do quản trị viên quản lý</h2>
               <p className={styles.cardHint}>Chỉ xem, không sửa ở đây.</p>
             </div>
           </div>

@@ -122,7 +122,7 @@ function Cancellations() {
     ? api.get('/owner/bookings/cancellable', { params: { playDate: date }, signal }).then((response) => response.data.data)
     : Promise.resolve([]), [date])
   const bookings = useResource(load, date)
-  return <Section title="Hủy booking tại địa điểm" resource={bookings}>
+  return <Section title="Hủy đặt sân tại địa điểm" resource={bookings}>
     <Field label="Ngày chơi" type="date" min={today()} value={date} onChange={(event) => setDate(event.target.value)} />
     {bookings.data?.length === 0 && <EmptyState>Ngày này không có lịch đặt sân có thể hủy.</EmptyState>}
     {!bookings.loading && bookings.data?.map((item) => <details className="space-y-2 border-t py-3" key={item.id}>
@@ -132,9 +132,9 @@ function Cancellations() {
           return `Hủy ${item.bookingCode} theo yêu cầu của khách? Khoản đã thanh toán không được hoàn lại.`
         }
         if (item.bookingType === 'WALK_IN') {
-          return `Sân hủy booking tại quầy ${item.bookingCode}. Nhân viên cần lập khiếu nại cho khách. Tiếp tục?`
+          return `Sân hủy đặt sân tại quầy ${item.bookingCode}. Nhân viên cần lập khiếu nại cho khách. Tiếp tục?`
         }
-        return `Thay đổi này ảnh hưởng 1 booking đã xác nhận (${item.bookingCode}). Khách sẽ được thông báo để chọn cách xử lý. Tiếp tục? (MSG15)`
+        return `Thay đổi này ảnh hưởng 1 đặt sân đã xác nhận (${item.bookingCode}). Khách sẽ được thông báo để chọn cách xử lý. Tiếp tục? (MSG15)`
       }} action={(form) => api.post('/owner/bookings/' + item.id + '/cancel', {
         ...form, cause: form.cause || 'OWNER_CANCELLED',
       })} after={bookings.reload}>

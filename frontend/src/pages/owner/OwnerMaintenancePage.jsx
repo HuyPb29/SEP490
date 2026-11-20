@@ -21,7 +21,7 @@ import {
 } from '../../api/ownerApi'
 import styles from './OwnerMaintenancePage.module.css'
 
-const FILTER_TABS = ['All', 'Pending', 'Approved', 'Rejected']
+const FILTER_TABS = ["Tất cả", "Chờ duyệt", "Đã duyệt", "Đã từ chối"]
 
 export default function OwnerMaintenancePage() {
   const { id: locationId } = useParams()
@@ -29,7 +29,7 @@ export default function OwnerMaintenancePage() {
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [pageError, setPageError] = useState('')
-  const [activeFilter, setActiveFilter] = useState('All')
+  const [activeFilter, setActiveFilter] = useState("Tất cả")
   const [toastMessage, setToastMessage] = useState('')
   const [processingId, setProcessingId] = useState(null)
 
@@ -47,7 +47,7 @@ export default function OwnerMaintenancePage() {
         if (!isCancelled) setRequests(Array.isArray(data) ? data : [])
       })
       .catch((err) => {
-        if (!isCancelled) setPageError(err?.response?.data?.message || err?.message || 'Failed to load maintenance requests.')
+        if (!isCancelled) setPageError(err?.response?.data?.message || err?.message || "Không tải được yêu cầu bảo trì.")
       })
       .finally(() => {
         if (!isCancelled) setLoading(false)
@@ -66,13 +66,13 @@ export default function OwnerMaintenancePage() {
 
   const countByStatus = {
     All: requests.length,
-    Pending: requests.filter((r) => r.status === 'Pending').length,
-    Approved: requests.filter((r) => r.status === 'Approved').length,
-    Rejected: requests.filter((r) => r.status === 'Rejected').length,
+    Pending: requests.filter((r) => r.status === "Chờ duyệt").length,
+    Approved: requests.filter((r) => r.status === "Đã duyệt").length,
+    Rejected: requests.filter((r) => r.status === "Đã từ chối").length,
   }
 
   const filteredRequests = requests.filter((r) => {
-    if (activeFilter === 'All') return true
+    if (activeFilter === "Tất cả") return true
     return r.status === activeFilter
   })
 
@@ -93,19 +93,19 @@ export default function OwnerMaintenancePage() {
     try {
       await approveMaintenanceRequestApi(locationId, requestId)
       setRequests((prev) =>
-        prev.map((item) => (item.id === requestId ? { ...item, status: 'Approved' } : item))
+        prev.map((item) => (item.id === requestId ? { ...item, status: "Đã duyệt" } : item))
       )
       setApproveConfirmTarget(null)
 
       if (hadAffectedBookings) {
         showToast(
-          '[MSG19] Maintenance request approved. Court slots are locked and affected customers have been notified (MSG67).'
+          "Đã duyệt yêu cầu bảo trì, khóa các khung giờ và thông báo cho khách bị ảnh hưởng."
         )
       } else {
-        showToast('[MSG19] Maintenance request approved and court slots locked successfully.')
+        showToast("Đã duyệt yêu cầu bảo trì và khóa các khung giờ thành công.")
       }
     } catch (err) {
-      showToast(err?.response?.data?.message || err?.message || 'Failed to approve maintenance request.')
+      showToast(err?.response?.data?.message || err?.message || "Không duyệt được yêu cầu bảo trì.")
     } finally {
       setProcessingId(null)
     }
@@ -126,14 +126,14 @@ export default function OwnerMaintenancePage() {
       setRequests((prev) =>
         prev.map((item) =>
           item.id === rejectTarget.id
-            ? { ...item, status: 'Rejected', rejection_note: rejectionNote }
+            ? { ...item, status: "Đã từ chối", rejection_note: rejectionNote }
             : item
         )
       )
       setRejectTarget(null)
-      showToast('[MSG19] Maintenance request rejected. Court schedule remains unchanged.')
+      showToast("Đã từ chối yêu cầu bảo trì. Lịch sân được giữ nguyên.")
     } catch (err) {
-      showToast(err?.response?.data?.message || err?.message || 'Failed to reject maintenance request.')
+      showToast(err?.response?.data?.message || err?.message || "Không từ chối được yêu cầu bảo trì.")
     } finally {
       setProcessingId(null)
     }
@@ -158,12 +158,12 @@ export default function OwnerMaintenancePage() {
         >
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
-              <h2 id="approve-modal-title">Confirm Maintenance Approval</h2>
+              <h2 id="approve-modal-title">Xác nhận duyệt bảo trì</h2>
               <button
                 className={styles.closeBtn}
                 type="button"
                 onClick={() => setApproveConfirmTarget(null)}
-                aria-label="Close"
+                aria-label="Đóng"
               >
                 ×
               </button>
@@ -172,14 +172,14 @@ export default function OwnerMaintenancePage() {
               <div className={styles.warningAlert} role="alert">
                 <span className={styles.alertIcon} aria-hidden="true">⚠️</span>
                 <p className={styles.alertText}>
-                  [MSG15] This change affects {approveConfirmTarget.affected_bookings_count} confirmed booking(s). Customers will be notified (MSG67) to choose a resolution. Do you want to continue?
+                  Thay đổi này ảnh hưởng {approveConfirmTarget.affected_bookings_count} lượt đặt sân đã xác nhận. Khách sẽ được thông báo để chọn cách xử lý. Bạn có muốn tiếp tục?
                 </p>
               </div>
 
               <div className={styles.targetSummary}>
-                <div><strong>Court:</strong> {approveConfirmTarget.court_name}</div>
-                <div><strong>Date & Time:</strong> {approveConfirmTarget.maintenance_date} ({approveConfirmTarget.start_time} – {approveConfirmTarget.end_time})</div>
-                <div><strong>Reason:</strong> {approveConfirmTarget.reason}</div>
+                <div><strong>Sân:</strong> {approveConfirmTarget.court_name}</div>
+                <div><strong>Ngày và giờ:</strong> {approveConfirmTarget.maintenance_date} ({approveConfirmTarget.start_time} – {approveConfirmTarget.end_time})</div>
+                <div><strong>Lý do:</strong> {approveConfirmTarget.reason}</div>
               </div>
 
               <div className={styles.modalActions}>
@@ -189,7 +189,7 @@ export default function OwnerMaintenancePage() {
                   onClick={() => setApproveConfirmTarget(null)}
                   disabled={processingId === approveConfirmTarget.id}
                 >
-                  Cancel
+                  Hủy
                 </button>
                 <button
                   className={styles.confirmApproveBtn}
@@ -197,7 +197,7 @@ export default function OwnerMaintenancePage() {
                   onClick={() => executeApproval(approveConfirmTarget.id, true)}
                   disabled={processingId === approveConfirmTarget.id}
                 >
-                  {processingId === approveConfirmTarget.id ? 'Approving…' : 'Confirm Approval'}
+                  {processingId === approveConfirmTarget.id ? "Đang duyệt…" : "Xác nhận duyệt"}
                 </button>
               </div>
             </div>
@@ -215,30 +215,30 @@ export default function OwnerMaintenancePage() {
         >
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
-              <h2 id="reject-modal-title">Reject Maintenance Request</h2>
+              <h2 id="reject-modal-title">Từ chối yêu cầu bảo trì</h2>
               <button
                 className={styles.closeBtn}
                 type="button"
                 onClick={() => setRejectTarget(null)}
-                aria-label="Close"
+                aria-label="Đóng"
               >
                 ×
               </button>
             </div>
             <div className={styles.modalBody}>
               <p className={styles.modalSub}>
-                Rejecting maintenance request for <strong>{rejectTarget.court_name}</strong> on {rejectTarget.maintenance_date} ({rejectTarget.start_time} – {rejectTarget.end_time}).
+                Từ chối yêu cầu bảo trì cho <strong>{rejectTarget.court_name}</strong> vào {rejectTarget.maintenance_date} ({rejectTarget.start_time} – {rejectTarget.end_time}).
               </p>
 
               <div className={styles.field}>
                 <label htmlFor="rejection-note" className={styles.fieldLabel}>
-                  Rejection Note (optional)
+                  Ghi chú từ chối (không bắt buộc)
                 </label>
                 <textarea
                   id="rejection-note"
                   className={styles.textarea}
                   rows={3}
-                  placeholder="Explain why this maintenance request was rejected..."
+                  placeholder="Nhập lý do từ chối yêu cầu bảo trì…"
                   value={rejectionNote}
                   onChange={(e) => setRejectionNote(e.target.value)}
                 />
@@ -251,7 +251,7 @@ export default function OwnerMaintenancePage() {
                   onClick={() => setRejectTarget(null)}
                   disabled={processingId === rejectTarget.id}
                 >
-                  Cancel
+                  Hủy
                 </button>
                 <button
                   className={styles.confirmRejectBtn}
@@ -259,7 +259,7 @@ export default function OwnerMaintenancePage() {
                   onClick={handleConfirmReject}
                   disabled={processingId === rejectTarget.id}
                 >
-                  {processingId === rejectTarget.id ? 'Rejecting…' : 'Confirm Rejection'}
+                  {processingId === rejectTarget.id ? "Đang từ chối…" : "Xác nhận từ chối"}
                 </button>
               </div>
             </div>
@@ -270,9 +270,9 @@ export default function OwnerMaintenancePage() {
       {/* Page Header */}
       <div className={styles.header}>
         <div>
-          <h1 className={styles.title}>Maintenance Approval</h1>
+          <h1 className={styles.title}>Duyệt yêu cầu bảo trì</h1>
           <p className={styles.sub}>
-            Location #{locationId} · Review court maintenance requests and resolve booking conflicts
+            Mã địa điểm #{locationId} · Kiểm tra yêu cầu bảo trì và xử lý xung đột lịch đặt sân
           </p>
         </div>
       </div>
@@ -280,7 +280,7 @@ export default function OwnerMaintenancePage() {
       {pageError && <p className={styles.pageError} role="alert">{pageError}</p>}
 
       {/* Filter Tabs */}
-      <nav className={styles.filterTabs} aria-label="Maintenance status filter">
+      <nav className={styles.filterTabs} aria-label="Lọc trạng thái bảo trì">
         {FILTER_TABS.map((tab) => (
           <button
             key={tab}
@@ -296,25 +296,25 @@ export default function OwnerMaintenancePage() {
 
       {/* Table Content */}
       {loading ? (
-        <p className={styles.loading}>Loading maintenance requests…</p>
+        <p className={styles.loading}>Đang tải yêu cầu bảo trì…</p>
       ) : filteredRequests.length === 0 ? (
         <div className={styles.emptyCard}>
           <span className={styles.emptyIcon} aria-hidden="true">🛠️</span>
-          <p className={styles.emptyText}>No {activeFilter !== 'All' ? activeFilter.toLowerCase() : ''} maintenance requests found.</p>
+          <p className={styles.emptyText}>Không {activeFilter !== "Tất cả" ? activeFilter.toLowerCase() : ''} yêu cầu bảo trì.</p>
         </div>
       ) : (
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th scope="col">Court</th>
-                <th scope="col">Date</th>
-                <th scope="col">Time Slot</th>
-                <th scope="col">Reason</th>
-                <th scope="col">Requested By</th>
-                <th scope="col">Affected Bookings</th>
-                <th scope="col">Status</th>
-                <th scope="col">Actions</th>
+                <th scope="col">Sân</th>
+                <th scope="col">Ngày</th>
+                <th scope="col">Khung giờ</th>
+                <th scope="col">Lý do</th>
+                <th scope="col">Người gửi</th>
+                <th scope="col">Lượt đặt sân bị ảnh hưởng</th>
+                <th scope="col">Trạng thái</th>
+                <th scope="col">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -331,9 +331,9 @@ export default function OwnerMaintenancePage() {
                   </td>
                   <td className={styles.reasonCol}>
                     <p className={styles.reasonText}>{req.reason}</p>
-                    {req.status === 'Rejected' && req.rejection_note && (
+                    {req.status === "Đã từ chối" && req.rejection_note && (
                       <p className={styles.rejectionNoteText}>
-                        <strong>Rejection note:</strong> {req.rejection_note}
+                        <strong>Ghi chú từ chối:</strong> {req.rejection_note}
                       </p>
                     )}
                   </td>
@@ -341,10 +341,10 @@ export default function OwnerMaintenancePage() {
                   <td className={styles.affectedCol}>
                     {req.affected_bookings_count > 0 ? (
                       <span className={styles.affectedWarning}>
-                        {req.affected_bookings_count} booking(s) affected
+                        {req.affected_bookings_count} lượt đặt sân bị ảnh hưởng
                       </span>
                     ) : (
-                      <span className={styles.affectedZero}>0 (No conflict)</span>
+                      <span className={styles.affectedZero}>0 (Không trùng lịch)</span>
                     )}
                   </td>
                   <td>
@@ -357,7 +357,7 @@ export default function OwnerMaintenancePage() {
                     </span>
                   </td>
                   <td>
-                    {req.status === 'Pending' ? (
+                    {req.status === "Chờ duyệt" ? (
                       <div className={styles.actionButtonGroup}>
                         <button
                           className={styles.approveBtn}
@@ -365,7 +365,7 @@ export default function OwnerMaintenancePage() {
                           onClick={() => handleApproveClick(req)}
                           disabled={processingId === req.id}
                         >
-                          Approve
+                          Duyệt
                         </button>
                         <button
                           className={styles.rejectBtn}
@@ -373,13 +373,13 @@ export default function OwnerMaintenancePage() {
                           onClick={() => handleRejectClick(req)}
                           disabled={processingId === req.id}
                         >
-                          Reject
+                          Từ chối
                         </button>
                       </div>
-                    ) : req.status === 'Approved' ? (
-                      <span className={styles.approvedNotice}>Slots Locked</span>
+                    ) : req.status === "Đã duyệt" ? (
+                      <span className={styles.approvedNotice}>Đã khóa khung giờ</span>
                     ) : (
-                      <span className={styles.rejectedNotice}>Unchanged</span>
+                      <span className={styles.rejectedNotice}>Giữ nguyên</span>
                     )}
                   </td>
                 </tr>

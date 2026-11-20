@@ -374,7 +374,7 @@ export default function BookingPaymentPage() {
           <div className={styles.expiredBanner}>
             <span>{bookingData.resubmitting
                 ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ.'
-                : 'Đã hết thời gian giữ chỗ. Slot đã được nhả.'}</span>
+                : "Đã hết thời gian giữ chỗ. khung giờ đã được nhả."}</span>
             <span className={styles.countdownText}>00:00</span>
           </div>
         ) : deadlineElapsed ? (

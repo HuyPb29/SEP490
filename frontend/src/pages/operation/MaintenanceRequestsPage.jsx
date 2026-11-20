@@ -5,6 +5,7 @@ import {
   cancelMaintenanceRequest,
   createMaintenanceRequest,
   getMaintenanceRequests,
+  getMaintenanceImpact,
   getOwnerLocations,
   getStaffCourts,
   getStoredLocationId,
@@ -78,6 +79,7 @@ export default function MaintenanceRequestsPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [rejectTarget, setRejectTarget] = useState(null);
+  const [approveTarget, setApproveTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [actionError, setActionError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -206,15 +208,43 @@ export default function MaintenanceRequestsPage() {
     setActionError('');
     setStatusMessage('');
     try {
-      await approveMaintenanceRequest(id, ownerLocationId);
+      const impact = await getMaintenanceImpact(id, ownerLocationId);
+      if (impact.affectedCount > 0) {
+        setApproveTarget(impact);
+        return;
+      }
+      await approveMaintenanceRequest(id, ownerLocationId, impact.bookings);
       await loadRequests(statusFilter);
       setStatusMessage('Đã duyệt yêu cầu bảo trì.');
     } catch (err) {
-      if (err.response?.status === 409) await loadRequests(statusFilter);
+      if (err.response?.status === 409) {
+        await loadRequests(statusFilter);
+        try { setApproveTarget(await getMaintenanceImpact(id, ownerLocationId)); }
+        catch { setApproveTarget(null); }
+      }
       setActionError(apiErrorMessage(err));
     } finally {
       setSaving(false);
     }
+  };
+
+  const confirmApprove = async () => {
+    if (!approveTarget || saving) return;
+    setSaving(true);
+    setActionError('');
+    try {
+      await approveMaintenanceRequest(approveTarget.maintenanceId, ownerLocationId, approveTarget.bookings);
+      setApproveTarget(null);
+      await loadRequests(statusFilter);
+      setStatusMessage("Đã duyệt bảo trì và xử lý các đặt sân bị ảnh hưởng.");
+    } catch (err) {
+      if (err.response?.status === 409) {
+        await loadRequests(statusFilter);
+        try { setApproveTarget(await getMaintenanceImpact(approveTarget.maintenanceId, ownerLocationId)); }
+        catch { setApproveTarget(null); }
+      }
+      setActionError(apiErrorMessage(err));
+    } finally { setSaving(false); }
   };
 
   const handleCancel = async (id) => {
@@ -252,6 +282,7 @@ export default function MaintenanceRequestsPage() {
     } catch (err) {
       if (err.response?.status === 409) {
         setRejectTarget(null);
+        setApproveTarget(null);
         setRejectReason('');
         await loadRequests(statusFilter);
       }
@@ -267,7 +298,7 @@ export default function MaintenanceRequestsPage() {
     return (
       <ManagementLayout role="staff" title="Yêu cầu bảo trì">
         <div className="cw-card text-center py-8">
-          <p className="cw-muted">Trang này chỉ dành cho Chủ địa điểm (Owner) hoặc Nhân viên (Staff).</p>
+          <p className="cw-muted">Trang này chỉ dành cho Chủ địa điểm (chủ sân) hoặc Nhân viên (nhân viên).</p>
         </div>
       </ManagementLayout>
     );
@@ -290,6 +321,7 @@ export default function MaintenanceRequestsPage() {
         storeLocationId(nextId);
         setRequests([]);
         setRejectTarget(null);
+        setApproveTarget(null);
         setRejectReason('');
         setForm(emptyForm());
         setLoading(Boolean(nextId));
@@ -477,6 +509,26 @@ export default function MaintenanceRequestsPage() {
           )}
         </section>
 
+        {approveTarget && (
+          <Modal title="Xác nhận duyệt bảo trì" busy={saving} onClose={() => setApproveTarget(null)}>
+            <p className="mb-3 font-semibold">Sân: {approveTarget.courtName}</p>
+            {actionError && <p role="alert" className="mb-3 text-rose-700">{actionError}</p>}
+            <p className="mb-3">Thay đổi này ảnh hưởng <strong>{approveTarget.affectedCount} đặt sân đã xác nhận</strong>. Khách sẽ được thông báo để chọn cách xử lý. Tiếp tục?</p>
+            <ul className="mb-4 max-h-64 space-y-2 overflow-y-auto">
+              {approveTarget.bookings.map((booking) => (
+                <li key={booking.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+                  <strong>{booking.bookingCode}</strong><br />
+                  {formatDateTime(`${booking.playDate}T${booking.startTime}`)} – {booking.endTime}
+                  {booking.bookingType === 'WALK_IN' && <p className="text-amber-700">Đơn tại quầy sẽ chuyển Sân hủy để nhân viên tiếp nhận xử lý cho khách.</p>}
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" disabled={saving} onClick={() => setApproveTarget(null)}>Quay lại</Button>
+              <Button type="button" variant="danger" loading={saving} onClick={confirmApprove}>Xác nhận duyệt bảo trì</Button>
+            </div>
+          </Modal>
+        )}
         {rejectTarget && (
           <Modal
             isOpen={true}

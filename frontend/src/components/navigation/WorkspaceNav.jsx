@@ -9,41 +9,41 @@ import styles from './WorkspaceNav.module.css';
  */
 const SCREENS = {
   admin: [
-    { to: '/admin/workspace', label: 'Admin Workspace' },
-    { to: '/admin/facilities', label: 'Facilities & Registration' },
-    { to: '/notifications', label: 'Notifications' },
+    { to: '/admin/workspace', label: "Quản trị hệ thống" },
+    { to: '/admin/facilities', label: "Địa điểm và đăng ký dịch vụ" },
+    { to: '/notifications', label: "Thông báo" },
   ],
   owner: [
-    { to: '/owner/workspace', label: 'Owner Workspace' },
-    { to: '/owner/courts-pricing', label: 'Courts & Pricing' },
-    { to: '/owner/opening-hours', label: 'Opening Hours' },
-    { to: '/owner/facility-settings', label: 'Facility Settings' },
-    { to: '/maintenance', label: 'Maintenance Approval' },
-    { to: '/owner/reports', label: 'Reports' },
-    { to: '/notifications', label: 'Notifications' },
+    { to: '/owner/workspace', label: "Quản lý của chủ sân" },
+    { to: '/owner/courts-pricing', label: "Sân và bảng giá" },
+    { to: '/owner/opening-hours', label: "Giờ mở cửa" },
+    { to: '/owner/facility-settings', label: "Cài đặt địa điểm" },
+    { to: '/maintenance', label: "Duyệt yêu cầu bảo trì" },
+    { to: '/owner/reports', label: "Báo cáo" },
+    { to: '/notifications', label: "Thông báo" },
   ],
   staff: [
-    { to: '/staff/dashboard', label: 'Staff Dashboard' },
-    { to: '/staff/confirm-payments', label: 'Confirm Payments' },
-    { to: '/staff/complaints', label: 'Complaints' },
-    { to: '/maintenance', label: 'Maintenance Requests' },
-    { to: '/notifications', label: 'Notifications' },
+    { to: '/staff/dashboard', label: "Bảng điều hành nhân viên" },
+    { to: '/staff/confirm-payments', label: "Xác nhận thanh toán" },
+    { to: '/staff/complaints', label: "Khiếu nại" },
+    { to: '/maintenance', label: "Yêu cầu bảo trì" },
+    { to: '/notifications', label: "Thông báo" },
   ],
   player: [
-    { to: '/facilities', label: 'Find Court' },
-    { to: '/open-matches', label: 'Open Matches' },
-    { to: '/my-bookings', label: 'My Bookings' },
-    { to: '/my-rewards', label: 'Rewards & Points' },
-    { to: '/account', label: 'Account Profile' },
-    { to: '/notifications', label: 'Notifications' },
+    { to: '/facilities', label: "Tìm sân" },
+    { to: '/open-matches', label: "Kèo đang mở" },
+    { to: '/my-bookings', label: "Lịch đặt sân của tôi" },
+    { to: '/my-rewards', label: "Ưu đãi và điểm thưởng" },
+    { to: '/account', label: "Hồ sơ tài khoản" },
+    { to: '/notifications', label: "Thông báo" },
   ],
 };
 
 const ROLE_LABEL = {
-  admin: 'Administrator',
-  owner: 'Facility Owner',
-  staff: 'Facility Staff',
-  player: 'Player',
+  admin: "Quản trị viên",
+  owner: "Chủ địa điểm",
+  staff: "Nhân viên địa điểm",
+  player: "Người chơi",
 };
 
 export default function WorkspaceNav() {
@@ -129,7 +129,7 @@ export default function WorkspaceNav() {
         type="button"
         className={`${styles.trigger} ${open ? styles.triggerOpen : ''}`}
         aria-expanded={open}
-        aria-label="Open management menu"
+        aria-label="Mở menu quản lý"
         onClick={() => setOpen((value) => !value)}
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -140,7 +140,7 @@ export default function WorkspaceNav() {
             strokeLinecap="round"
           />
         </svg>
-        <span>Workspace</span>
+        <span>Khu vực quản lý</span>
       </button>
     </div>
   );

@@ -116,13 +116,13 @@ export default function AdminFacilitiesPage() {
   // --------------------------------------------------- UC05: duyệt / từ chối đơn đăng ký
 
   const handleApprove = async (request) => {
-    if (!window.confirm(`Approve "${request.locationName}"? Courts and default opening hours (06:00–24:00) will be created.`)) return
+    if (!window.confirm(`Duyệt "${request.locationName}"? Hệ thống sẽ tạo sân và giờ mở cửa mặc định (06:00–24:00).`)) return
     setSaving(true)
     try {
       await approveServiceRegistration(request.id)
       await loadAll()
       setActionError('')
-      setStatusMessage(`Approved "${request.locationName}". Courts and default opening hours were created.`)
+      setStatusMessage(`Đã duyệt "${request.locationName}". Đã tạo sân và giờ mở cửa mặc định.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -140,7 +140,7 @@ export default function AdminFacilitiesPage() {
   const handleConfirmRejection = async (event) => {
     event.preventDefault()
     if (!modal?.reason.trim()) {
-      setActionError('A rejection reason is required.')
+      setActionError("Vui lòng nhập lý do từ chối.")
       return
     }
     setSaving(true)
@@ -149,7 +149,7 @@ export default function AdminFacilitiesPage() {
       await loadAll()
       setModal(null)
       setActionError('')
-      setStatusMessage(`Rejected "${modal.locationName}".`)
+      setStatusMessage(`Đã từ chối "${modal.locationName}".`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
     } finally {
@@ -161,7 +161,7 @@ export default function AdminFacilitiesPage() {
 
   const handleLock = async (facility) => {
     const confirmed = window.confirm(
-      `Lock "${facility.name}"? The facility will stop appearing in search and will not accept new bookings.`,
+      `Khóa địa điểm "${facility.name}"? Địa điểm sẽ không hiển thị trong tìm kiếm và không nhận lượt đặt sân mới.`,
     )
     if (!confirmed) return
     setSaving(true)
@@ -169,7 +169,7 @@ export default function AdminFacilitiesPage() {
       await updateLocationStatus(facility.id, 'LOCKED')
       await loadAll()
       setActionError('')
-      setStatusMessage(`"${facility.name}" has been locked.`)
+      setStatusMessage(`"${facility.name}" đã được khóa.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -190,7 +190,7 @@ export default function AdminFacilitiesPage() {
       await updateLocationStatus(facility.id, 'ACTIVE')
       await loadAll()
       setActionError('')
-      setStatusMessage(`"${facility.name}" has been reopened.`)
+      setStatusMessage(`"${facility.name}" đã được mở lại.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -239,7 +239,7 @@ export default function AdminFacilitiesPage() {
   const handleConfirmExtension = async (event) => {
     event.preventDefault()
     if (!modal?.startDate) {
-      setActionError('Choose a start date for the new service period.')
+      setActionError("Chọn ngày bắt đầu kỳ hạn dịch vụ mới.")
       return
     }
     const endDate = endDateForMonths(modal.startDate, Number(modal.months))
@@ -253,8 +253,8 @@ export default function AdminFacilitiesPage() {
       setModal(null)
       setActionError('')
       setStatusMessage(modal.reopening
-        ? `"${modal.facilityName}" extended to ${formatDate(endDate)} and reopened.`
-        : `"${modal.facilityName}" service extended to ${formatDate(endDate)}.`)
+        ? `"${modal.facilityName}" đã gia hạn đến ${formatDate(endDate)} và đã được mở lại.`
+        : `"${modal.facilityName}" đã gia hạn dịch vụ đến ${formatDate(endDate)}.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
     } finally {
@@ -308,7 +308,7 @@ export default function AdminFacilitiesPage() {
         {(statusMessage || (actionError && !modal)) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
             <span>{actionError || statusMessage}</span>
-            <button type="button" aria-label="Dismiss message" onClick={clearStatus}>×</button>
+            <button type="button" aria-label="Đóng thông báo" onClick={clearStatus}>×</button>
           </div>
         )}
 

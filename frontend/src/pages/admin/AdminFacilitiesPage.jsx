@@ -17,6 +17,7 @@ import {
 } from '../../api/locationApi'
 import AdminLayout from '../../components/layout/AdminLayout'
 import AdminCourtExpansions from './AdminCourtExpansions'
+import { FileInput } from '../../components/common/FileInput'
 import { formatVnd } from '../location/serviceRegistrationTerms'
 import styles from './AdminFacilitiesPage.module.css'
 
@@ -226,7 +227,7 @@ export default function AdminFacilitiesPage() {
       `Duyệt "${request.locationName}"?\n`
       + `Chỉ duyệt khi đã thấy ${formatVnd(request.rentalAmount)} về tài khoản của bên vận hành.\n`
       + `Hệ thống sẽ tạo địa điểm, ghi thời hạn ${request.rentalYears} năm từ hôm nay`
-      + `${request.requesterId ? '' : ', tạo tài khoản Owner'} và gửi email kết quả tới ${request.contactEmail}.`,
+      + `${request.requesterId ? '' : ", tạo tài khoản chủ sân"} và gửi email kết quả tới ${request.contactEmail}.`,
     )
     if (!confirmed) return
     setSaving(true)
@@ -273,7 +274,7 @@ export default function AdminFacilitiesPage() {
 
   const handleLock = async (facility) => {
     const confirmed = window.confirm(
-      `Lock "${facility.name}"? The facility will stop appearing in search and will not accept new bookings.`,
+      `Khóa địa điểm "${facility.name}"? Địa điểm sẽ không hiển thị trong tìm kiếm và không nhận lượt đặt sân mới.`,
     )
     if (!confirmed) return
     setSaving(true)
@@ -281,7 +282,7 @@ export default function AdminFacilitiesPage() {
       await updateLocationStatus(facility.id, 'LOCKED')
       await loadAll()
       setActionError('')
-      setStatusMessage(`"${facility.name}" has been locked.`)
+      setStatusMessage(`"${facility.name}" đã được khóa.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -302,7 +303,7 @@ export default function AdminFacilitiesPage() {
       await updateLocationStatus(facility.id, 'ACTIVE')
       await loadAll()
       setActionError('')
-      setStatusMessage(`"${facility.name}" has been reopened.`)
+      setStatusMessage(`"${facility.name}" đã được mở lại.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
@@ -351,7 +352,7 @@ export default function AdminFacilitiesPage() {
   const handleConfirmExtension = async (event) => {
     event.preventDefault()
     if (!modal?.startDate) {
-      setActionError('Choose a start date for the new service period.')
+      setActionError("Chọn ngày bắt đầu kỳ hạn dịch vụ mới.")
       return
     }
     const endDate = endDateForMonths(modal.startDate, Number(modal.months))
@@ -365,8 +366,8 @@ export default function AdminFacilitiesPage() {
       setModal(null)
       setActionError('')
       setStatusMessage(modal.reopening
-        ? `"${modal.facilityName}" extended to ${formatDate(endDate)} and reopened.`
-        : `"${modal.facilityName}" service extended to ${formatDate(endDate)}.`)
+        ? `"${modal.facilityName}" đã gia hạn đến ${formatDate(endDate)} và đã được mở lại.`
+        : `"${modal.facilityName}" đã gia hạn dịch vụ đến ${formatDate(endDate)}.`)
     } catch (err) {
       setActionError(apiErrorMessage(err))
     } finally {
@@ -440,7 +441,7 @@ export default function AdminFacilitiesPage() {
                     <span className={styles.requestType}>{request.courtCount} sân</span>
                     <span className={styles.requestType}>{request.rentalYears} năm</span>
                     <span className={styles.requestType}>{formatVnd(request.rentalAmount)}</span>
-                    <span className={styles.requestType}>{request.requesterId ? 'Owner thêm địa điểm' : 'Chủ sân mới'}</span>
+                    <span className={styles.requestType}>{request.requesterId ? "chủ sân thêm địa điểm" : 'Chủ sân mới'}</span>
                   </div>
                   <p className={styles.requestAddress}>{request.address || 'Chưa có địa chỉ'}</p>
                   <p className={styles.requestMeta}>
@@ -499,8 +500,7 @@ export default function AdminFacilitiesPage() {
                 />
                 <label className={styles.modalField} style={{ marginTop: 8 }}>
                   <span>Thay ảnh QR (JPG/PNG, tối đa 5 MB)</span>
-                  <input
-                    type="file"
+                  <FileInput
                     accept="image/jpeg,image/png"
                     disabled={saving}
                     onChange={(event) => { handleOperatorQr(event.target.files?.[0]); event.target.value = '' }}

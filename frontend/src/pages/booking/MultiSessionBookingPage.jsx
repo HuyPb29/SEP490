@@ -44,7 +44,7 @@ const DURATIONS = Array.from({ length: 10 }, (_, index) => (index + 1) * 30);
 const durationLabel = (minutes) => {
   const hours = Math.floor(minutes / 60);
   const text = [hours ? `${hours} giờ` : '', minutes % 60 ? '30 phút' : ''].filter(Boolean).join(' ');
-  return `${text} (${minutes / 30} slot)`;
+  return `${text} (${minutes / 30} khung giờ)`;
 };
 const shortPrice = (price) => (price == null ? '' : `${Math.round(Number(price) / 1000)}k`);
 
@@ -405,7 +405,7 @@ export default function MultiSessionBookingPage() {
   const removeAllConflicts = () => {
     const remaining = new Set(sessions.filter((session) => !session.conflict).map((session) => session.date));
     if (remaining.size < 2) {
-      setNotice('Gói phải có buổi trong ít nhất 2 ngày khác nhau. Vui lòng chọn slot bù thay vì bỏ. (MSG92)');
+      setNotice("Gói phải có buổi trong ít nhất 2 ngày khác nhau. Vui lòng chọn khung giờ bù thay vì bỏ. (MSG92)");
       return;
     }
     const keys = conflictedSessions.map(originalKeyOf);
@@ -469,7 +469,7 @@ export default function MultiSessionBookingPage() {
       date: compensationDate, courtId: court.court_id, courtName: court.court_name,
       startMinute: startAt, endMinute: startAt + duration,
     } }));
-    setCompensationMessage({ error: false, text: `Slot bù: ${formatDay(compensationDate)} · ${court.court_name} · ${toTimeLabel(startAt)}–${toTimeLabel(startAt + duration)}` });
+    setCompensationMessage({ error: false, text: `khung giờ bù: ${formatDay(compensationDate)} · ${court.court_name} · ${toTimeLabel(startAt)}–${toTimeLabel(startAt + duration)}` });
   };
 
   // Áp dụng cùng sân, cùng giờ bắt đầu cho các buổi trùng còn lại, mỗi buổi giữ ngày của mình (xử lý hàng loạt, D49)
@@ -496,7 +496,7 @@ export default function MultiSessionBookingPage() {
     });
     setReplacements(next);
     setShowCompensation(false);
-    setNotice(`Đã áp dụng slot bù cho ${entries.length} buổi trùng.`);
+    setNotice(`Đã áp dụng khung giờ bù cho ${entries.length} buổi trùng.`);
   };
 
   // Sang trang tóm tắt gói; chưa tạo gói, chưa giữ chỗ (giữ chỗ khi bấm xác nhận ở trang tóm tắt)
@@ -507,7 +507,7 @@ export default function MultiSessionBookingPage() {
       return;
     }
     if (conflictedSessions.length > 0) {
-      setNotice('Vui lòng xử lý tất cả các buổi trùng (chọn slot bù hoặc bỏ buổi trùng) trước khi tiếp tục.');
+      setNotice("Vui lòng xử lý tất cả các buổi trùng (chọn khung giờ bù hoặc bỏ buổi trùng) trước khi tiếp tục.");
       return;
     }
     savePackageDraft({
@@ -535,7 +535,7 @@ export default function MultiSessionBookingPage() {
     return { day, text, missing: time?.start == null };
   });
   const conflictHint = conflictedSessions.length > 0
-    ? `Còn ${conflictedSessions.length} buổi trùng: chọn slot bù hoặc bỏ buổi trùng ở lịch phía trên.` : null;
+    ? `Còn ${conflictedSessions.length} buổi trùng: chọn khung giờ bù hoặc bỏ buổi trùng ở lịch phía trên.` : null;
   const summaryTitle = mode === 'custom'
     ? customRanges.length
       ? `${summaryCount} buổi · ${preview ? distinctDays : customDates.length} ngày · ${formatCurrency(summaryAmount)}`
@@ -555,7 +555,7 @@ export default function MultiSessionBookingPage() {
 
   if (!facilityId) {
     return (
-      <div className={styles.pageWrapper + ' cw-workspace'}>
+      <div className={styles.pageWrapper + " cw-workspace"}>
         <PublicHeader user={user} />
         <main className={styles.mainContainer}>
           <h1 className={styles.pageTitle}>Đặt lịch nhiều buổi</h1>
@@ -568,7 +568,7 @@ export default function MultiSessionBookingPage() {
   }
 
   return (
-    <div className={styles.pageWrapper + ' cw-workspace'}>
+    <div className={styles.pageWrapper + " cw-workspace"}>
       <PublicHeader user={user} />
 
       <main className={styles.mainContainer}>
@@ -694,7 +694,7 @@ export default function MultiSessionBookingPage() {
             {mode === 'custom' && <div className={styles.fieldGroup}>
               <span className={styles.fieldLabel}>Các buổi đã chọn ({customRanges.length} buổi · {customDates.length} ngày)</span>
               <p className={styles.customModeHint}>
-                Bấm một ngày trên lịch tháng để mở bảng slot của ngày đó, rồi bấm các ô trống để thêm buổi.
+                Bấm một ngày trên lịch tháng để mở bảng khung giờ của ngày đó, rồi bấm các ô trống để thêm buổi.
                 Ô liền nhau trên cùng sân là một buổi; một ngày có thể có nhiều buổi, nhiều sân.
                 Các buổi đã chọn hiện ở thanh tóm tắt dưới bảng.
               </p>
@@ -755,7 +755,7 @@ export default function MultiSessionBookingPage() {
                       ? <>Đang chọn <strong>{toTimeLabel(currentTime.start)}–{toTimeLabel(currentTime.end)}</strong>
                         {currentTime.end - currentTime.start < currentDuration ? ` (rút ngắn vì ${toTimeLabel(closeMinute)} đóng cửa)` : ''}.
                         {' '}Bấm ô khác để đổi giờ bắt đầu; đổi thời lượng ở ô bên phải.</>
-                      : 'Bấm một ô để chọn giờ bắt đầu, rồi chọn thời lượng ở ô bên phải (tối thiểu 1 slot = 30 phút).'}
+                      : "Bấm một ô để chọn giờ bắt đầu, rồi chọn thời lượng ở ô bên phải (tối thiểu 1 khung giờ = 30 phút)."}
                 </p>
 
                 {selectedWeekdays.length > 0 && !timeGrid && <p role="status">Đang tải giờ mở cửa…</p>}
@@ -871,7 +871,7 @@ export default function MultiSessionBookingPage() {
                       key={day.dateKey}
                       disabled={mode !== 'custom' || isOutOfWindow}
                       aria-current={mode === 'custom' && day.dateKey === gridDate ? 'date' : undefined}
-                      aria-label={`${day.day}${day.isConflicted ? ', trùng lịch' : day.isSelected ? ', có buổi' : ''}${mode === 'custom' ? ', xem bảng slot ngày này' : ''}`}
+                      aria-label={`${day.day}${day.isConflicted ? ', trùng lịch' : day.isSelected ? ', có buổi' : ''}${mode === 'custom' ? ", xem bảng khung giờ ngày này" : ''}`}
                       className={className}
                       onClick={() => chooseGridDate(day.dateKey)}
                     >
@@ -897,7 +897,7 @@ export default function MultiSessionBookingPage() {
                   </strong>
                   <div className={styles.conflictActionRow}>
                     <button type="button" className={styles.compensateBtn} onClick={openCompensation}>
-                      Chọn slot bù
+                      Chọn khung giờ bù
                     </button>
                     <button type="button" className={styles.removeConflictsBtn} onClick={removeAllConflicts}>
                       Bỏ tất cả buổi trùng
@@ -914,13 +914,13 @@ export default function MultiSessionBookingPage() {
             </section>
 
             {mode === 'custom' && (
-              <section className={styles.gridCard} aria-label="Bảng slot của ngày đang chọn">
+              <section className={styles.gridCard} aria-label="Bảng khung giờ của ngày đang chọn">
                 <div className={styles.gridHeader}>
-                  <h2 className={styles.gridTitle}>Bảng slot {formatDay(gridDate)}</h2>
+                  <h2 className={styles.gridTitle}>Bảng khung giờ {formatDay(gridDate)}</h2>
                   <div className={styles.gridDateNav}>
                     <button type="button" className={styles.navBtn} aria-label="Ngày trước"
                       disabled={gridDate <= today} onClick={() => chooseGridDate(shiftDay(gridDate, -1))}>‹</button>
-                    <input type="date" className={styles.dateInput} aria-label="Chọn ngày xem bảng slot"
+                    <input type="date" className={styles.dateInput} aria-label="Chọn ngày xem bảng khung giờ"
                       min={today} max={maxAllowedDate} value={gridDate}
                       onChange={(event) => {
                         chooseGridDate(event.target.value);
@@ -968,7 +968,7 @@ export default function MultiSessionBookingPage() {
         <div className={styles.modalOverlay} role="presentation" onClick={() => setShowCompensation(false)}>
           <section className={`${styles.modalCard} ${styles.modalWide}`} role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={(event) => event.stopPropagation()}>
             <button type="button" className={styles.modalClose} aria-label="Đóng" onClick={() => setShowCompensation(false)}>×</button>
-            <h2 id="modal-title" className={styles.modalTitle}>Chọn slot bù cho buổi trùng</h2>
+            <h2 id="modal-title" className={styles.modalTitle}>Chọn khung giờ bù cho buổi trùng</h2>
             <p className={styles.modalSub}>
               Chọn buổi trùng cần bù, rồi bấm ô bắt đầu trên bảng: hệ thống tự lấy đủ thời lượng buổi. Đổi được sang ngày khác trong thời gian gói.
             </p>
@@ -1001,7 +1001,7 @@ export default function MultiSessionBookingPage() {
               <div className={styles.gridDateNav}>
                 <button type="button" className={styles.navBtn} aria-label="Ngày trước"
                   disabled={compensationDate <= compensationMinDate} onClick={() => chooseCompensationDate(shiftDay(compensationDate, -1))}>‹</button>
-                <input type="date" className={styles.dateInput} aria-label="Ngày của slot bù"
+                <input type="date" className={styles.dateInput} aria-label="Ngày của khung giờ bù"
                   min={compensationMinDate} max={compensationMaxDate} value={compensationDate}
                   onChange={(event) => chooseCompensationDate(event.target.value)} />
                 <button type="button" className={styles.navBtn} aria-label="Ngày sau"
@@ -1038,7 +1038,7 @@ export default function MultiSessionBookingPage() {
               <button type="button" className={styles.removeConflictsBtn} onClick={() => setShowCompensation(false)}>Hủy</button>
               <button type="button" className={styles.confirmScheduleBtn} disabled={!Object.keys(compensationPicks).length}
                 onClick={applyCompensation}>
-                Áp dụng slot bù ({Object.keys(compensationPicks).length}/{conflictedSessions.length})
+                Áp dụng khung giờ bù ({Object.keys(compensationPicks).length}/{conflictedSessions.length})
               </button>
             </div>
           </section>

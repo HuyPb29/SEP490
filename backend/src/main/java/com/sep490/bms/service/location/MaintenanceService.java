@@ -16,6 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.sep490.bms.dto.location.CancelMaintenanceRequest;
 import com.sep490.bms.dto.location.CreateMaintenanceRequest;
 import com.sep490.bms.dto.location.MaintenanceRequestDto;
+import com.sep490.bms.dto.location.MaintenanceImpactDto;
+import com.sep490.bms.common.MinuteTime;
+import com.sep490.bms.entity.booking.Booking;
 import com.sep490.bms.dto.location.RejectMaintenanceRequest;
 import com.sep490.bms.entity.account.Account;
 import com.sep490.bms.entity.location.Location;
@@ -122,17 +125,38 @@ public class MaintenanceService {
 
     /** UC10 - Owner duyệt yêu cầu bảo trì đang chờ. */
     @Transactional
-    public MaintenanceRequestDto approve(UserPrincipal user, Long maintenanceId) {
+    public MaintenanceRequestDto approve(UserPrincipal user, Long maintenanceId, MaintenanceImpactDto.Approval confirmation) {
         Location location = lockSelectedLocation(user);
         requireActiveLocation(location, "duyệt yêu cầu bảo trì");
         Maintenance entity = requireRequestForUpdate(location.getId(), maintenanceId);
         requirePending(entity);
 
+        List<Booking> impacted = cancellations.maintenanceImpact(entity, true);
+        var expected = confirmation == null || confirmation.expectedBookings() == null
+                ? List.<MaintenanceImpactDto.Reference>of() : confirmation.expectedBookings().stream()
+                        .sorted(java.util.Comparator.comparing(MaintenanceImpactDto.Reference::id)).toList();
+        var actual = impacted.stream().map(b -> new MaintenanceImpactDto.Reference(b.getId(), b.getVersion())).toList();
+        if (!actual.equals(expected)) {
+            throw new AppException("Danh sách booking bị ảnh hưởng đã thay đổi. Vui lòng xem lại và xác nhận trước khi duyệt (MSG15)", HttpStatus.CONFLICT);
+        }
+
         entity.setStatus(ApprovalStatus.APPROVED);
         entity.setApprovedBy(user == null ? null : user.getId());
         entity.setDecidedAt(LocalDateTime.now());
-        cancellations.maintenanceApproved(entity, user.getId());
+        cancellations.maintenanceApproved(entity, user.getId(), impacted);
         return toDto(maintenanceRepository.save(entity));
+    }
+
+    @Transactional(readOnly = true)
+    public MaintenanceImpactDto impact(UserPrincipal user, Long maintenanceId) {
+        Location location = locationAccessService.selectedLocation(user);
+        Maintenance entity = requireRequestInLocation(location.getId(), maintenanceId);
+        requirePending(entity);
+        Court court = requireCourtInLocation(location.getId(), entity.getCourtId());
+        var bookings = cancellations.maintenanceImpact(entity, false).stream().map(b ->
+                new MaintenanceImpactDto.BookingItem(b.getId(), b.getVersion(), b.getBookingCode(), b.getPlayDate(),
+                        MinuteTime.format(b.getStartMinute()), MinuteTime.format(b.getEndMinute()), b.getBookingType().name())).toList();
+        return new MaintenanceImpactDto(entity.getId(), location.getId(), court.getName(), bookings.size(), bookings);
     }
 
     /** UC10 - Owner từ chối yêu cầu bảo trì, bắt buộc ghi lý do. */

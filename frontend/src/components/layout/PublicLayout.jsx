@@ -11,10 +11,10 @@ function getPublicMenuItems(roleCode) {
   if (roleCode === 'player') {
     return [
       ['/locations', 'Tìm sân'],
-      ['/my-bookings', 'Booking của tôi'],
+      ['/my-bookings', 'Lịch đặt sân của tôi'],
       ['/open-matches', 'Kèo'],
       ['/teams', 'Đội của tôi'],
-      ['/my-rewards', 'Voucher & Điểm'],
+      ['/my-rewards', "Ưu đãi & Điểm"],
       ['/my-complaints', 'Khiếu nại'],
     ];
   }

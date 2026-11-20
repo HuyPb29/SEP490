@@ -86,7 +86,7 @@ export default function AdminCourtExpansions() {
   const pending = items.filter((item) => item.status === 'PENDING').length
   return <>
     <section className={styles.summary}>
-      <div><h2>Yêu cầu thêm sân</h2><p>{pending} yêu cầu đang chờ Admin xét duyệt</p></div>
+      <div><h2>Yêu cầu thêm sân</h2><p>{pending} yêu cầu đang chờ quản trị viên xét duyệt</p></div>
       <button type="button" onClick={() => navigate({ pathname: location.pathname, search: location.search, hash: '#court-expansions' })}>
         Xem yêu cầu thêm sân{pending > 0 ? ` (${pending})` : ''}
       </button>
@@ -100,7 +100,7 @@ export default function AdminCourtExpansions() {
       </header>
       <div id="court-expansions">
         <p>Phí tính theo số tháng còn lại của thời hạn sử dụng dịch vụ, chốt lúc chủ sân gửi đơn; duyệt muộn không tính lại.</p>
-        <p className={styles.hint}>Admin đối chiếu số tiền thực nhận và ghi nhận hoàn đủ tiền thừa trước khi xác nhận. Thời hạn đã hết thì chỉ từ chối và hoàn tiền được.</p>
+        <p className={styles.hint}>quản trị viên đối chiếu số tiền thực nhận và ghi nhận hoàn đủ tiền thừa trước khi xác nhận. Thời hạn đã hết thì chỉ từ chối và hoàn tiền được.</p>
         <button type="button" className="my-2 underline" disabled={processing} onClick={reload}>Làm mới danh sách yêu cầu</button>
         {error && <p role="alert" className="text-red-700">{error}</p>}
         {!items.length && !error && <p>Chưa có yêu cầu thêm sân.</p>}

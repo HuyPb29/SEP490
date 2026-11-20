@@ -16,6 +16,7 @@ import com.sep490.bms.common.ApiResponse;
 import com.sep490.bms.dto.location.CancelMaintenanceRequest;
 import com.sep490.bms.dto.location.CreateMaintenanceRequest;
 import com.sep490.bms.dto.location.MaintenanceRequestDto;
+import com.sep490.bms.dto.location.MaintenanceImpactDto;
 import com.sep490.bms.dto.location.RejectMaintenanceRequest;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.MaintenanceService;
@@ -128,9 +129,16 @@ public class MaintenanceRequestController {
     @PostMapping("/api/owner/maintenance-requests/{id}/approve")
     public ResponseEntity<ApiResponse<MaintenanceRequestDto>> postOwnerMaintenanceRequestsByIdApprove(
             @AuthenticationPrincipal UserPrincipal currentUser,
-            @PathVariable("id") Long id) {
-        MaintenanceRequestDto approved = maintenanceService.approve(currentUser, id);
+            @PathVariable("id") Long id,
+            @Valid @RequestBody(required = false) MaintenanceImpactDto.Approval confirmation) {
+        MaintenanceRequestDto approved = maintenanceService.approve(currentUser, id, confirmation);
         return ResponseEntity.ok(ApiResponse.success("Đã duyệt yêu cầu bảo trì", approved));
+    }
+
+    @GetMapping("/api/owner/maintenance-requests/{id}/impact")
+    public ResponseEntity<ApiResponse<MaintenanceImpactDto>> getOwnerMaintenanceImpact(
+            @AuthenticationPrincipal UserPrincipal currentUser, @PathVariable("id") Long id) {
+        return ResponseEntity.ok(ApiResponse.success(maintenanceService.impact(currentUser, id)));
     }
 
     /**

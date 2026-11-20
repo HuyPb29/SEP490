@@ -1,0 +1,5 @@
+.picker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; max-width: 100%; padding: 8px 0; }
+.picker > button { flex-shrink: 0; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; padding: 8px 12px; color: #065f46; font: inherit; cursor: pointer; }
+.picker > button:disabled { cursor: not-allowed; opacity: .5; }
+.picker:focus-within { outline: 2px solid #10b981; outline-offset: 3px; border-radius: 8px; }
+.filename { overflow-wrap: anywhere; color: #64748b; font-size: 13px; }

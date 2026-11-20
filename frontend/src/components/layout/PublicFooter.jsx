@@ -11,9 +11,9 @@ const PRODUCT_LINKS = [
 ];
 
 const PLAYER_LINKS = [
-  ['/my-bookings', 'Booking của tôi'],
+  ['/my-bookings', "Lịch đặt sân của tôi"],
   ['/teams', 'Đội của tôi'],
-  ['/my-rewards', 'Voucher & Điểm'],
+  ['/my-rewards', "Ưu đãi & Điểm"],
   ['/my-complaints', 'Khiếu nại'],
   ['/account', 'Hồ sơ của tôi'],
 ];
