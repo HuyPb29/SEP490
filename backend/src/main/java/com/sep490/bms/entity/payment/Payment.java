@@ -15,6 +15,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -95,6 +96,13 @@ public class Payment {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * FR120, BR58: chờ xác nhận quá P24 nên đã chuyển cho chủ sân. Không lưu DB, tính theo thời gian
+     * (PaymentEscalation) khi trả danh sách phụ thu đổi lịch cho Staff.
+     */
+    @Transient
+    private boolean escalatedToOwner;
 
     /**
      * Player đã gửi lại chứng từ (UC18 #4): chờ Staff xem lại. Tính lại thời điểm gửi để
