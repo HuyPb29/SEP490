@@ -142,7 +142,9 @@ function PaymentDesk({ role, surcharge }) {
   const payment = detail?.payment || detail;
   const activeDetail = !loadingQueue && selectedId && payment?.id === selectedId ? detail : null;
   const activePayment = activeDetail ? payment : null;
-  const canDecide = activePayment?.status === 'AWAITING_CONFIRMATION';
+  // FR120, BR58: chờ quá 15 phút trong giờ mở cửa thì đã chuyển cho chủ sân; Staff chỉ xem, Owner vẫn xử lý.
+  const handedToOwner = role !== 'owner' && Boolean(queue.find(({ id }) => id === selectedId)?.escalatedToOwner);
+  const canDecide = activePayment?.status === 'AWAITING_CONFIRMATION' && !handedToOwner;
   const proofs = surcharge ? (activeDetail?.proofs ?? []).slice().reverse() : activeDetail?.proofs ?? [];
   const activeProofId = proofs.some(({ id }) => id === selectedProofId) ? selectedProofId : null;
   const proofKey = selectedId && activeProofId ? selectedId + ':' + activeProofId : '';
@@ -367,6 +369,7 @@ function PaymentDesk({ role, surcharge }) {
                 <span className={styles.waiting}>
                   {item.submittedAt ? `Gửi lúc ${item.submittedAt.replace('T', ' ')}` : 'Đang chờ xác nhận'}
                 </span>
+                {item.escalatedToOwner && <span className={styles.overdue}>Đã chuyển cho chủ sân</span>}
               </button>
             ))}
 
@@ -565,6 +568,12 @@ function PaymentDesk({ role, surcharge }) {
                       )}
                     </div>
                   </div>
+
+                  {handedToOwner && (
+                    <p className={styles.escalatedNotice} role="status">
+                      Giao dịch {formatPaymentLabel(activePayment)} đã chờ quá 15 phút mà chưa được xác nhận nên đã được chuyển cho chủ sân xử lý. Bạn chỉ xem được giao dịch này.
+                    </p>
+                  )}
 
                   {canDecide && <section className={styles.reasonBox}>
                     <label htmlFor="payment-reason">
