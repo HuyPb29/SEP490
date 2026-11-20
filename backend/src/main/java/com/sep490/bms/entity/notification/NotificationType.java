@@ -20,6 +20,10 @@ public final class NotificationType {
     /** Khiếu nại chờ Owner quá 3 giờ trong giờ mở cửa (P33, MSG111). */
     public static final String COMPLAINT_OVERDUE = "COMPLAINT_OVERDUE";
 
+    /** Giao dịch chờ xác nhận quá P24 đã chuyển cho chủ sân: báo Staff (MSG118) và Owner (MSG119), FR120. */
+    public static final String PAYMENT_ESCALATED = "PAYMENT_ESCALATED";
+    public static final String PAYMENT_ESCALATED_TO_OWNER = "PAYMENT_ESCALATED_TO_OWNER";
+
     private NotificationType() {
     }
 }
