@@ -410,6 +410,131 @@ class AuthAndUserApiTests {
         mockMvc.perform(get("/swagger-ui")).andExpect(status().is3xxRedirection());
     }
 
+    @Test
+    void ownerCanUpdateOwnNameWithoutChangingIdentityAndRecordsAudit() throws Exception {
+        Account owner = fixtureAccount("owner_" + UUID.randomUUID().toString().substring(0, 8), Role.OWNER);
+        String username = owner.getUsername();
+        String email = owner.getEmail();
+        String phone = owner.getPhone();
+        String token = jwtTokenProvider.generateToken(owner);
+
+        mockMvc.perform(patch("/api/users/me").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"fullName\":\"Nguyễn Văn Chủ\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.fullName").value("Nguyễn Văn Chủ"));
+        entityManager.flush();
+        entityManager.clear();
+        Account saved = accountRepository.findById(owner.getId()).orElseThrow();
+        assertThat(saved.getFullName()).isEqualTo("Nguyễn Văn Chủ");
+        assertThat(saved.getUsername()).isEqualTo(username);
+        assertThat(saved.getEmail()).isEqualTo(email);
+        assertThat(saved.getPhone()).isEqualTo(phone);
+        assertThat(saved.getRole()).isEqualTo(Role.OWNER);
+        assertThat(saved.getSkillLevel()).isNull();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from account_audit where actor_id=? and target_account_id=? and action='PROFILE_UPDATED'",
+                Integer.class, owner.getId(), owner.getId())).isEqualTo(1);
+        mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.fullName").value("Nguyễn Văn Chủ"));
+    }
+
+    @Test
+    void ownerProfileRejectsInvalidNameAndPlayerOnlySkillWithoutPartialUpdate() throws Exception {
+        Account owner = fixtureAccount("owner_" + UUID.randomUUID().toString().substring(0, 8), Role.OWNER);
+        String token = jwtTokenProvider.generateToken(owner);
+        String originalName = owner.getFullName();
+        for (String body : new String[] {
+                "{\"fullName\":\"An123\"}",
+                "{\"fullName\":\"Nguyễn Văn Chủ\",\"skillLevel\":\"Khá\"}" }) {
+            mockMvc.perform(patch("/api/users/me").header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        entityManager.clear();
+        Account saved = accountRepository.findById(owner.getId()).orElseThrow();
+        assertThat(saved.getFullName()).isEqualTo(originalName);
+        assertThat(saved.getSkillLevel()).isNull();
+    }
+
+    @Test
+    void profileUpdatesStillRejectGuestsStaffAndAdmins() throws Exception {
+        String body = "{\"fullName\":\"Nguyễn Văn An\"}";
+        mockMvc.perform(patch("/api/users/me").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+        for (Role role : new Role[] { Role.STAFF, Role.ADMIN }) {
+            String username = "denied_" + UUID.randomUUID().toString().substring(0, 8);
+            Account account;
+            if (role == Role.STAFF) {
+                Account owner = fixtureAccount("owner_" + UUID.randomUUID().toString().substring(0, 8), Role.OWNER);
+                account = accountRepository.saveAndFlush(Account.builder().username(username)
+                        .fullName("Nhân Viên Thử").passwordHash(passwordEncoder.encode("Password123"))
+                        .role(Role.STAFF).status(AccountStatus.ACTIVE)
+                        .locationId(fixtureLocation(owner).getId()).build());
+            } else {
+                account = fixtureAccount(username, role);
+            }
+            mockMvc.perform(patch("/api/users/me")
+                    .header("Authorization", "Bearer " + jwtTokenProvider.generateToken(account))
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test
+    void profileValidationIdentifiesTheFieldAndBrokenRule() throws Exception {
+        Account player = fixtureAccount("player_" + UUID.randomUUID().toString().substring(0, 8), Role.PLAYER);
+        String token = jwtTokenProvider.generateToken(player);
+        for (String name : new String[] { "A", "A".repeat(51) }) {
+            mockMvc.perform(patch("/api/users/me").header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(UpdateProfileRequest.builder().fullName(name).build())))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors.fullName").value("Họ và tên phải có từ 2 đến 50 ký tự"));
+        }
+        mockMvc.perform(patch("/api/users/me").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"fullName\":\"An123\",\"skillLevel\":\"Sai\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.fullName").value("Họ và tên chỉ được chứa chữ và khoảng trắng, không chứa số hoặc ký tự đặc biệt"))
+                .andExpect(jsonPath("$.errors.skillLevel").value("Trình độ chơi phải là Mới chơi, Trung bình, Khá hoặc Nâng cao"));
+    }
+
+    @Test
+    void incorrectCurrentPasswordReturnsAnErrorForItsInput() throws Exception {
+        Account owner = fixtureAccount("owner_" + UUID.randomUUID().toString().substring(0, 8), Role.OWNER);
+        mockMvc.perform(post("/api/users/me/password")
+                .header("Authorization", "Bearer " + jwtTokenProvider.generateToken(owner))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"Wrong12345\",\"newPassword\":\"Changed123\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.currentPassword").value("Mật khẩu hiện tại không đúng. Vui lòng nhập lại."));
+        assertThat(passwordEncoder.matches("Password123", owner.getPasswordHash())).isTrue();
+    }
+
+    @Test
+    void passwordFormsIdentifyInvalidInputsAndRejectUnchangedPassword() throws Exception {
+        Account owner = fixtureAccount("owner_" + UUID.randomUUID().toString().substring(0, 8), Role.OWNER);
+        String token = jwtTokenProvider.generateToken(owner);
+        mockMvc.perform(post("/api/users/me/password").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"currentPassword\":\"\",\"newPassword\":\"abc\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.currentPassword").value("Vui lòng nhập mật khẩu hiện tại"))
+                .andExpect(jsonPath("$.errors.newPassword").value("Mật khẩu mới phải có 8–32 ký tự, có chữ và số, không chứa khoảng trắng"));
+        mockMvc.perform(post("/api/auth/reset-password").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"test@example.test\",\"otp\":\"123456\",\"newPassword\":\"abc\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.newPassword").value("Mật khẩu mới phải có 8–32 ký tự, có chữ và số, không chứa khoảng trắng"));
+        mockMvc.perform(post("/api/users/me/password").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"Password123\",\"newPassword\":\"Password123\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.newPassword").value("Mật khẩu mới phải khác mật khẩu hiện tại."));
+        entityManager.clear();
+        Account saved = accountRepository.findById(owner.getId()).orElseThrow();
+        assertThat(passwordEncoder.matches("Password123", saved.getPasswordHash())).isTrue();
+        assertThat(saved.getTokenVersion()).isEqualTo(owner.getTokenVersion());
+    }
+
     private Account fixtureAccount(String username, Role role) {
         return accountRepository.saveAndFlush(Account.builder().username(username).email(username + "@example.com")
                 .phone("09" + (10000000 + new java.security.SecureRandom().nextInt(90000000)))

@@ -28,6 +28,6 @@ public class ResetPasswordRequest {
     private String otp;
 
     @NotBlank(message = "Mật khẩu mới không được để trống")
-    @Pattern(regexp = ValidationRules.PASSWORD, message = ValidationRules.PASSWORD_MESSAGE)
+    @Pattern(regexp = ValidationRules.PASSWORD, message = "Mật khẩu mới phải có 8–32 ký tự, có chữ và số, không chứa khoảng trắng")
     private String newPassword;
 }

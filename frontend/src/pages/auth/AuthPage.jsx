@@ -197,8 +197,16 @@ export default function AuthPage() {
       setLoginNotice(resettingPassword ? messages.reset : messages.verified);
       setActiveTab('login');
     } catch (error) {
-      const message = error.response?.data?.message || 'Không thể xác minh mã. Vui lòng thử lại.';
-      setOtpError(message);
+      const response = error.response?.data;
+      const message = response?.message || 'Không thể xác minh mã. Vui lòng thử lại.';
+      const byField = Object.fromEntries(
+        Object.entries({ email: 'email', otp: 'otp', newPassword: 'password' })
+          .filter(([name]) => response?.errors?.[name])
+          .map(([name, target]) => [target, response.errors[name]])
+      );
+      if (!Object.keys(byField).length && /MSG96|mã xác (minh|thực)/i.test(message)) byField.otp = message;
+      setOtpFields(byField);
+      setOtpError(Object.keys(byField).length ? '' : message);
       if (!resettingPassword && message.includes('Vui lòng đăng ký lại')) {
         setRegistrationExpired(true);
         setPendingRegistrationEmail('');
@@ -243,7 +251,9 @@ export default function AuthPage() {
       setCooldowns((current) => ({ ...current, [otpKey]: sentAt + 60_000 }));
     } catch (error) {
       const message = otpSendError(error);
-      setSendError(message);
+      const emailError = error.response?.data?.errors?.email;
+      if (emailError) setOtpFields((current) => ({ ...current, email: emailError }));
+      setSendError(emailError ? '' : message);
       if (!resettingPassword && message.includes('Vui lòng đăng ký lại')) {
         setRegistrationExpired(true);
         setPendingRegistrationEmail('');

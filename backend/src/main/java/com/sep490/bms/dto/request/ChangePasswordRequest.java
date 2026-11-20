@@ -10,8 +10,8 @@ import lombok.*;
  */
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ChangePasswordRequest {
-    @NotBlank private String currentPassword;
-    @NotBlank
-    @Pattern(regexp = ValidationRules.PASSWORD, message = ValidationRules.PASSWORD_MESSAGE)
+    @NotBlank(message = "Vui lòng nhập mật khẩu hiện tại") private String currentPassword;
+    @NotBlank(message = "Vui lòng nhập mật khẩu mới")
+    @Pattern(regexp = ValidationRules.PASSWORD, message = "Mật khẩu mới phải có 8–32 ký tự, có chữ và số, không chứa khoảng trắng")
     private String newPassword;
 }

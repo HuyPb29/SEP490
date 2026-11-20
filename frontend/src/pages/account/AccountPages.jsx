@@ -54,7 +54,6 @@ function EditProfileDialog({ account, onClose, onSaved }) {
   const isPlayer = account.role === 'PLAYER';
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
-  const skillOptions = ['', ...SKILL_LEVELS];
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -76,8 +75,12 @@ function EditProfileDialog({ account, onClose, onSaved }) {
       onSaved(updated);
     } catch (error) {
       const response = error.response?.data;
-      setErrors(response?.errors?.fullName
-        ? { fullName: response.errors.fullName }
+      const byField = Object.fromEntries(
+        ['fullName', 'skillLevel']
+          .filter((name) => response?.errors?.[name])
+          .map((name) => [name, response.errors[name]])
+      );
+      setErrors(Object.keys(byField).length ? byField
         : { form: response?.message || 'Không thể lưu hồ sơ. Vui lòng thử lại.' });
       setBusy(false);
     }
@@ -101,10 +104,12 @@ function EditProfileDialog({ account, onClose, onSaved }) {
             />
           </FormField>
           {isPlayer && (
-            <FormField htmlFor={skillId} label="Trình độ chơi">
-              <Select id={skillId} name="skillLevel" defaultValue={SKILL_LEVELS.includes(account.skillLevel) ? account.skillLevel : ''}>
-                {skillOptions.map((option) => (
-                  <option key={option} value={option}>{option || 'Chưa chọn'}</option>
+            <FormField htmlFor={skillId} label="Trình độ chơi" error={errors.skillLevel}>
+              <Select id={skillId} name="skillLevel" defaultValue={SKILL_LEVELS.includes(account.skillLevel) ? account.skillLevel : ''}
+                invalid={Boolean(errors.skillLevel)} aria-describedby={errors.skillLevel ? `${skillId}-error` : undefined}>
+                <option value="" disabled hidden />
+                {SKILL_LEVELS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
                 ))}
               </Select>
             </FormField>
