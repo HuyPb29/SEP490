@@ -176,7 +176,7 @@ class BookingChangeApiTests {
             Court c=Court.builder().locationId(location.getId()).name("Test court").active(true).build();em.persist(c);em.flush();court=c.getId();
             for(int day=1;day<=7;day++) em.persist(OpeningHour.builder().locationId(location.getId()).dayOfWeek(day).openMinute(0).closeMinute(1440).build());
             em.persist(PriceRule.builder().courtId(court).startMinute(0).endMinute(1440).pricePerSlot(new BigDecimal("60000"))
-                    .applyDays("1111111").validFrom(LocalDate.now()).validTo(LocalDate.now().plusMonths(4)).build());
+                    .applyDays("1111111").validFrom(LocalDate.now()).validTo(LocalDate.now().plusMonths(13)).build());
             booking=Booking.builder().bookingCode("C"+UUID.randomUUID().toString().substring(0,12)).bookingType(BookingType.SINGLE)
                     .locationId(location.getId()).courtId(court).playerId(player.getId()).playDate(LocalDate.now().plusDays(2)).startMinute(600).endMinute(660)
                     .listAmount(new BigDecimal("100000")).finalAmount(new BigDecimal("90000")).voucherDiscount(new BigDecimal("10000"))
