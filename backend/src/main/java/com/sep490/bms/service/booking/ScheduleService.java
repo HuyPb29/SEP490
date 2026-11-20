@@ -49,8 +49,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ScheduleService {
 
-    /** Owner, Staff xem được 3 tháng tới để thấy các buổi trong gói đặt nhiều buổi (FR32). */
-    private static final int MANAGER_VIEW_MONTHS = 3;
+    /** Owner, Staff xem được 12 tháng tới để thấy các buổi trong gói đặt nhiều buổi (FR32, D175). */
+    private static final int MANAGER_VIEW_MONTHS = 12;
     /** Booking đã thanh toán; các trạng thái còn lại mà slot vẫn hiệu lực là đang giữ chỗ chờ thanh toán. */
     private static final Set<BookingStatus> PAID =
             EnumSet.of(BookingStatus.CONFIRMED, BookingStatus.IN_USE, BookingStatus.COMPLETED);
@@ -63,6 +63,7 @@ public class ScheduleService {
     private final BookingRepository bookingRepository;
     private final AccountRepository accountRepository;
     private final BookingPackageRepository bookingPackageRepository;
+    private final PackageService packageService;
 
     /** date không gửi thì lấy hôm nay (UC13 #1). viewer là null khi Guest xem. */
     @Transactional(readOnly = true)
@@ -80,8 +81,9 @@ public class ScheduleService {
     }
 
     /**
-     * forPackage: Player đang chọn buổi cho gói đặt nhiều buổi (UC15) hoặc slot bù, được xem lịch tới hết
-     * 3 tháng kể từ hôm nay như giới hạn của gói (BR27, D162), không theo giới hạn đặt lẻ BR02.
+     * forPackage: Player đang chọn buổi cho gói đặt nhiều buổi (UC15) hoặc slot bù, được xem lịch đúng tới ngày
+     * xa nhất đặt được của gói (1 năm, không quá hạn dịch vụ; BR27, D175), không theo giới hạn đặt lẻ BR02.
+     * maxDate trả về là ngày đó, FE dùng để chặn lịch chọn buổi.
      */
     @Transactional(readOnly = true)
     public ScheduleResponse schedule(Long locationId, LocalDate date, UserPrincipal viewer, Long bookingId,
@@ -109,8 +111,8 @@ public class ScheduleService {
         if (packageEnd != null && packageEnd.isAfter(maxDate)) {
             maxDate = packageEnd;
         }
-        LocalDate packageLimit = packageBookingLimit(viewer, today, forPackage);
-        if (packageLimit != null && packageLimit.isAfter(maxDate)) {
+        LocalDate packageLimit = packageBookingLimit(locationId, viewer, today, forPackage);
+        if (packageLimit != null) {
             maxDate = packageLimit;
         }
         if (day.isBefore(today) || day.isAfter(maxDate)) {
@@ -256,14 +258,14 @@ public class ScheduleService {
     }
 
     /**
-     * Ngày xa nhất Player xem được khi chọn buổi cho gói: cùng mốc với PackageService (3 tháng tính cả hôm nay,
-     * D162). Trả null khi không phải Player hoặc không xem cho gói.
+     * Ngày xa nhất Player xem được khi chọn buổi cho gói: cùng mốc với PackageService (1 năm tính cả hôm nay,
+     * không quá hạn dịch vụ của địa điểm, D175). Trả null khi không phải Player hoặc không xem cho gói.
      */
-    private static LocalDate packageBookingLimit(UserPrincipal viewer, LocalDate today, boolean forPackage) {
+    private LocalDate packageBookingLimit(Long locationId, UserPrincipal viewer, LocalDate today, boolean forPackage) {
         if (!forPackage || viewer == null || viewer.getRole() != Role.PLAYER) {
             return null;
         }
-        return today.plusMonths(PackageService.MAX_MONTHS).minusDays(1);
+        return packageService.lastBookablePackageDate(locationId, today);
     }
 
     private static LocalDate maxDate(Location location, LocalDate today, boolean manager) {

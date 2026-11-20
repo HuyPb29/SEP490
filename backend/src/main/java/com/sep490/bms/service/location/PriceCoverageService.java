@@ -55,7 +55,10 @@ public class PriceCoverageService {
                 .collect(Collectors.toMap(OpeningException::getExceptionDate, Function.identity()));
         LocalDate today = LocalDate.now();
         LocalDate lastBookableDay = today.plusDays(location.getAdvanceBookingDays());
-        LocalDate lastPackageDay = PackageService.lastBookablePackageDate(today);
+        // D175: kiểm giá tới ngày xa nhất đặt được buổi của gói (1 năm, không quá hạn dịch vụ của địa điểm)
+        LocalDate lastPackageDay = PackageService.lastBookablePackageDate(today,
+                terms.findFirstByLocationIdOrderByEndDateDescIdDesc(location.getId())
+                        .map(com.sep490.bms.entity.location.ServiceTerm::getEndDate).orElse(null));
         if (lastPackageDay.isAfter(lastBookableDay)) {
             lastBookableDay = lastPackageDay;
         }

@@ -64,7 +64,7 @@ export async function getPublicVenue(id, signal) {
 }
 
 // bookingId (tùy chọn): booking đang đổi lịch; buổi trong gói được xem tới hết thời hạn gói (BR31)
-// forPackage: Player chọn buổi cho gói đặt nhiều buổi, xem được tới hết 3 tháng (BR27, D162)
+// forPackage: Player chọn buổi cho gói đặt nhiều buổi, xem được tới ngày xa nhất đặt được của gói (1 năm, không quá hạn dịch vụ; BR27, D175)
 export async function getVenueSchedule(id, date, signal, bookingId, { forPackage = false } = {}) {
   const params = { date, bookingId, ...(forPackage ? { forPackage: true } : {}) }
   const response = await api.get('/locations/' + id + '/schedules', { params, signal })

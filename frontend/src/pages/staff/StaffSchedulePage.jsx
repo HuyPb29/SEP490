@@ -9,7 +9,7 @@ import styles from '../location/FacilityDetailPage.module.css'
 /**
  * UC13 – Xem lịch sân, màn của Staff: hình sân và thông tin địa điểm → bảng giá → lịch theo ngày.
  * Staff chỉ xem, không đặt ở đây (đặt tại quầy nằm ở bảng điều hành, UC16).
- * Staff thấy tên và SĐT người đặt trên slot đã có booking, xem trước tới 3 tháng (D110, D140, FR32, FR34).
+ * Staff thấy tên và SĐT người đặt trên slot đã có booking, xem trước tới 12 tháng (D110, D175, FR32, FR34).
  */
 
 const dayFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })

@@ -54,6 +54,7 @@ import com.sep490.bms.repository.booking.BookingPackageRepository;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.location.BatchOfferRepository;
 import com.sep490.bms.repository.location.CourtRepository;
+import com.sep490.bms.repository.location.ServiceTermRepository;
 import com.sep490.bms.repository.promotion.VoucherRepository;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.location.LocationQueryService;
@@ -71,9 +72,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PackageService {
 
-    /** BR27: định kỳ kéo dài từ 1 đến 3 tháng; tự chọn trong vòng tối đa 3 tháng. */
+    /** BR27 (D175): định kỳ kéo dài từ 1 đến 12 tháng; tự chọn trong vòng tối đa 12 tháng. */
     static final int MIN_MONTHS = 1;
-    static final int MAX_MONTHS = 3;
+    static final int MAX_MONTHS = 12;
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     /** Loại thông báo khi tặng voucher của chương trình theo lô (FR124). */
     static final String BATCH_OFFER_VOUCHER = "BATCH_OFFER_VOUCHER";
@@ -91,6 +92,7 @@ public class PackageService {
     private final BookingRepository bookingRepository;
     private final BookingCodeGenerator bookingCodeGenerator;
     private final NotificationService notificationService;
+    private final ServiceTermRepository serviceTermRepository;
 
     /**
      * UC15 #9, FR44: chương trình ưu đãi đặt theo lô đang diễn ra của một địa điểm, công khai.
@@ -642,8 +644,8 @@ public class PackageService {
     /**
      * Danh sách buổi của gói theo ngày giờ chơi. Định kỳ: luôn kiểm mẫu ban đầu (MSG41); Player gửi danh sách
      * đã xử lý buổi trùng thì dùng danh sách đó, các buổi phải nằm trong thời gian của mẫu. Tự chọn: các buổi
-     * Player chọn, nằm trong ít nhất 2 ngày khác nhau (D163), trong vòng 3 tháng (MSG91). Cả hai cách: buổi xa
-     * nhất không quá 3 tháng kể từ hôm nay (D162).
+     * Player chọn, nằm trong ít nhất 2 ngày khác nhau (D163), trong vòng 12 tháng (MSG91). Cả hai cách: buổi xa
+     * nhất không quá 1 năm kể từ hôm nay và không quá ngày hết thời hạn sử dụng dịch vụ (D175).
      */
     List<Planned> plan(PackageRequest request, Court court, LocalDate today) {
         List<Planned> sessions;
@@ -680,29 +682,46 @@ public class PackageService {
         if (sessions.isEmpty()) {
             throw tooFewSessions();
         }
-        requireWithinBookingWindow(sessions.get(sessions.size() - 1).date(), today);
+        requireWithinBookingWindow(court.getLocationId(), sessions.get(sessions.size() - 1).date(), today);
         return sessions;
     }
 
     /**
-     * D162, BR27, MSG115: mọi buổi của gói nằm trong 3 tháng kể từ hôm nay (tính cả hôm nay, như cách đếm của BR27), khớp với
-     * lịch 3 tháng Owner/Staff xem được (D140). Hôm nay 07/11 thì buổi xa nhất là 06/02 năm sau.
+     * D175, BR27: mốc 1 năm kể từ hôm nay, tính cả hôm nay (như cách đếm của BR27), khớp với lịch 1 năm
+     * Owner/Staff xem được (FR32). Hôm nay 20/11/2026 thì xa nhất là 19/11/2027. Chưa tính thời hạn dịch vụ.
      */
     public static LocalDate lastBookablePackageDate(LocalDate today) {
         return today.plusMonths(MAX_MONTHS).minusDays(1);
     }
 
-    private static void requireWithinBookingWindow(LocalDate lastDate, LocalDate today) {
-        LocalDate latest = lastBookablePackageDate(today);
+    /**
+     * D175, BR27, MSG115: ngày xa nhất đặt được buổi của gói = mốc 1 năm, nhưng không quá ngày hết thời hạn
+     * sử dụng dịch vụ xa nhất của địa điểm (FR12). Địa điểm chưa có thời hạn nào thì chỉ theo mốc 1 năm.
+     */
+    public LocalDate lastBookablePackageDate(Long locationId, LocalDate today) {
+        LocalDate termEnd = serviceTermRepository.findFirstByLocationIdOrderByEndDateDescIdDesc(locationId)
+                .map(term -> term.getEndDate())
+                .orElse(null);
+        return lastBookablePackageDate(today, termEnd);
+    }
+
+    /** Như trên khi đã có sẵn ngày hết hạn dịch vụ xa nhất (null = địa điểm chưa có thời hạn). */
+    public static LocalDate lastBookablePackageDate(LocalDate today, LocalDate latestTermEnd) {
+        LocalDate yearLimit = lastBookablePackageDate(today);
+        return latestTermEnd != null && latestTermEnd.isBefore(yearLimit) ? latestTermEnd : yearLimit;
+    }
+
+    private void requireWithinBookingWindow(Long locationId, LocalDate lastDate, LocalDate today) {
+        LocalDate latest = lastBookablePackageDate(locationId, today);
         if (lastDate.isAfter(latest)) {
-            throw new AppException("Chỉ đặt được các buổi trong vòng 3 tháng kể từ hôm nay, muộn nhất ngày "
-                    + latest.format(DATE) + ". (MSG115)");
+            throw new AppException("Chỉ đặt được các buổi trong vòng 1 năm kể từ hôm nay và trong thời hạn sử dụng "
+                    + "dịch vụ của địa điểm, muộn nhất ngày " + latest.format(DATE) + ". (MSG115)");
         }
     }
 
     /**
      * UC15 #2, BR27 (a): sinh các buổi từ mẫu định kỳ, mỗi ngày trong khoảng [startDate, endDate] trùng thứ
-     * của một dòng mẫu là một buổi. Mẫu phải có ít nhất 1 buổi/tuần và kéo dài 1–3 tháng (MSG41); điều kiện
+     * của một dòng mẫu là một buổi. Mẫu phải có ít nhất 1 buổi/tuần và kéo dài 1–12 tháng (MSG41); điều kiện
      * này chỉ kiểm trên mẫu ban đầu, không kiểm lại sau khi bỏ buổi trùng (D50).
      */
     List<Planned> generateRecurring(PackageRequest request, Court court, LocalDate today) {
@@ -924,8 +943,8 @@ public class PackageService {
             .thenComparing(p -> p.court().getId());
 
     /**
-     * BR27: từ 1 đến 3 tháng, tính cả ngày cuối (cùng cách đếm với hạn dịch vụ DR29):
-     * 01/12–31/12 là đủ 1 tháng, 01/12–28/02 là 3 tháng.
+     * BR27: từ 1 đến 12 tháng, tính cả ngày cuối (cùng cách đếm với hạn dịch vụ DR29):
+     * 01/12–31/12 là đủ 1 tháng, 01/12–28/02 là 3 tháng, 01/12–30/11 năm sau là 12 tháng.
      */
     static boolean isWithinMonths(LocalDate start, LocalDate end) {
         LocalDate dayAfterEnd = end.plusDays(1);
@@ -965,7 +984,7 @@ public class PackageService {
 
     private static AppException invalidCustom() {
         return new AppException(
-                "Đặt tự chọn cần các buổi nằm trong ít nhất 2 ngày khác nhau, trong vòng tối đa 3 tháng. (MSG91)");
+                "Đặt tự chọn cần các buổi nằm trong ít nhất 2 ngày khác nhau, trong vòng tối đa 12 tháng. (MSG91)");
     }
 
     static AppException tooFewSessions() {
@@ -974,7 +993,7 @@ public class PackageService {
     }
 
     private static AppException invalidRecurring() {
-        return new AppException("Đặt định kỳ cần ít nhất 1 buổi mỗi tuần, thời gian từ 1 đến 3 tháng. (MSG41)");
+        return new AppException("Đặt định kỳ cần ít nhất 1 buổi mỗi tuần, thời gian từ 1 đến 12 tháng. (MSG41)");
     }
 
     private static BigDecimal sum(List<Priced> sessions) {
