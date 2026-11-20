@@ -1,18 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   apiErrorMessage,
-  createBatchOffer,
   createPriceRule,
-  deleteBatchOffer,
   deletePriceRule,
-  getBatchOffers,
   getCourtPriceRules,
   getOwnerLocations,
-  getBatchOfferVouchers,
   getStoredLocationId,
   storeLocationId,
-  updateBatchOffer,
   updateCourt,
   updatePriceRule,
 } from '../../api/locationApi'
@@ -56,16 +51,6 @@ function emptyRuleForm() {
   }
 }
 
-function emptyOfferForm() {
-  return {
-    name: '',
-    startDate: todayIso(),
-    endDate: '',
-    minPackageAmount: '1000000',
-    voucherId: '',
-  }
-}
-
 function formatPrice(price) {
   if (price === '' || price === null || price === undefined) return ''
   return Number(price).toLocaleString('vi-VN')
@@ -86,12 +71,6 @@ function daySummary(days) {
   return sorted.map((day) => DAY_LOOKUP[day]?.short ?? day).join(', ')
 }
 
-function discountLabel(offer) {
-  if (offer.discountValue === null || offer.discountValue === undefined) return '—'
-  if (offer.discountType === 'PERCENT') return `${offer.discountValue}%`
-  return `${formatPrice(offer.discountValue)} VND`
-}
-
 export default function OwnerCourtsPricingPage() {
   const routeLocation = useLocation()
   const navigate = useNavigate()
@@ -109,17 +88,6 @@ export default function OwnerCourtsPricingPage() {
   const [rulesLoading, setRulesLoading] = useState(false)
   const [ruleForm, setRuleForm] = useState(emptyRuleForm)
   const [editingRuleId, setEditingRuleId] = useState(null)
-
-  // UC09 — ưu đãi đặt theo lô
-  const [offers, setOffers] = useState([])
-  const [offersLoading, setOffersLoading] = useState(false)
-  const [offerForm, setOfferForm] = useState(emptyOfferForm)
-  const [editingOfferId, setEditingOfferId] = useState(null)
-  const [vouchers, setVouchers] = useState([])
-  const [voucherError, setVoucherError] = useState('')
-  const eligibleVouchers = vouchers.filter((voucher) =>
-    (!offerForm.startDate || !voucher.validFrom || voucher.validFrom <= offerForm.startDate)
-    && (!offerForm.endDate || !voucher.validTo || voucher.validTo >= offerForm.endDate))
 
   const selectedLocation =
     locations.find((location) => String(location.id) === String(selectedLocationId)) || null
@@ -177,46 +145,12 @@ export default function OwnerCourtsPricingPage() {
     }
   }
 
-  const loadOffers = async (locationId) => {
-    if (!locationId) {
-      setOffers([])
-      return
-    }
-    setOffersLoading(true)
-    try {
-      setOffers(await getBatchOffers(locationId))
-    } catch (err) {
-      setActionError(apiErrorMessage(err))
-    } finally {
-      setOffersLoading(false)
-    }
-  }
-
-  // BR47: cùng điều kiện loại/trạng thái với BatchOfferService.
-  const loadVouchers = async (locationId) => {
-    if (!locationId) {
-      setVouchers([])
-      return
-    }
-    try {
-      setVouchers(await getBatchOfferVouchers(locationId))
-      setVoucherError('')
-    } catch (err) {
-      setVouchers([])
-      setVoucherError(apiErrorMessage(err))
-    }
-  }
-
   useEffect(() => {
     if (!selectedLocationId) {
       setPriceRules([])
-      setOffers([])
-      setVouchers([])
       return
     }
     loadPriceRules(selectedLocationId, courts)
-    loadOffers(selectedLocationId)
-    loadVouchers(selectedLocationId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocationId, selectedLocation?.id, courts.length])
 
@@ -226,7 +160,6 @@ export default function OwnerCourtsPricingPage() {
     setActionError('')
     setStatusMessage('')
     resetRuleForm()
-    resetOfferForm()
   }
 
   // ---------------------------------------------------------------- UC07: sân
@@ -374,102 +307,11 @@ export default function OwnerCourtsPricingPage() {
     }
   }
 
-  // ------------------------------------------------------ UC09: ưu đãi theo lô
-
-  function resetOfferForm() {
-    setOfferForm(emptyOfferForm())
-    setEditingOfferId(null)
-  }
-
-  const updateOfferForm = (field, value) => {
-    setOfferForm((currentForm) => ({ ...currentForm, [field]: value }))
-  }
-
-  const handleSaveOffer = async (event) => {
-    event.preventDefault()
-    const minPackageAmount = Number(offerForm.minPackageAmount)
-    if (!offerForm.name.trim()) {
-      setActionError('Vui lòng nhập tên ưu đãi.')
-      return
-    }
-    if (!offerForm.startDate || !offerForm.endDate) {
-      setActionError('Vui lòng nhập ngày bắt đầu và ngày kết thúc.')
-      return
-    }
-    if (offerForm.endDate < offerForm.startDate) {
-      setActionError('Ngày kết thúc phải từ ngày bắt đầu trở đi.')
-      return
-    }
-    if (!Number.isFinite(minPackageAmount) || minPackageAmount <= 0) {
-      setActionError('Vui lòng nhập số tiền gói tối thiểu hợp lệ.')
-      return
-    }
-    if (!eligibleVouchers.some((voucher) => String(voucher.id) === String(offerForm.voucherId))) {
-      setActionError("Hãy chọn phiếu ưu đãi đã phát hành dành cho người chơi chỉ định, có hiệu lực bao phủ toàn bộ thời gian ưu đãi.")
-      return
-    }
-    const payload = {
-      name: offerForm.name.trim(),
-      startDate: offerForm.startDate,
-      endDate: offerForm.endDate,
-      minPackageAmount,
-      voucherId: Number(offerForm.voucherId),
-    }
-    setSaving(true)
-    try {
-      if (editingOfferId) {
-        await updateBatchOffer(editingOfferId, payload, selectedLocationId)
-        setStatusMessage("Đã cập nhật ưu đãi đặt theo lô.")
-      } else {
-        await createBatchOffer(payload, selectedLocationId)
-        setStatusMessage("Đã tạo ưu đãi đặt theo lô.")
-      }
-      resetOfferForm()
-      await loadOffers(selectedLocationId)
-      setActionError('')
-    } catch (err) {
-      setActionError(apiErrorMessage(err))
-      setStatusMessage('')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleEditOffer = (offer) => {
-    setEditingOfferId(offer.id)
-    setOfferForm({
-      name: offer.name ?? '',
-      startDate: offer.startDate ?? todayIso(),
-      endDate: offer.endDate ?? '',
-      minPackageAmount: String(offer.minPackageAmount ?? ''),
-      voucherId: String(offer.voucherId ?? ''),
-    })
-    setActionError('')
-    setStatusMessage('')
-  }
-
-  const handleDeleteOffer = async (offer) => {
-    if (!window.confirm(`Xóa ưu đãi đặt theo lô "${offer.name}"?`)) return
-    setSaving(true)
-    try {
-      await deleteBatchOffer(offer.id, selectedLocationId)
-      if (editingOfferId === offer.id) resetOfferForm()
-      await loadOffers(selectedLocationId)
-      setActionError('')
-      setStatusMessage("Đã xóa ưu đãi đặt theo lô.")
-    } catch (err) {
-      setActionError(apiErrorMessage(err))
-      setStatusMessage('')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
     <ManagementLayout
       role="owner"
       title="Sân & Bảng giá"
-      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name}` : 'Quản lý danh sách sân, bảng giá giờ chơi và ưu đãi theo lô'}
+      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name}` : 'Quản lý danh sách sân và bảng giá giờ chơi'}
       locations={locations}
       locationId={selectedLocationId}
       onLocationChange={handleFacilityChange}
@@ -680,112 +522,6 @@ export default function OwnerCourtsPricingPage() {
           </section>
         </div>
 
-        <section className={`${styles.panel} ${styles.offerSection}`} aria-labelledby="bulk-offer-heading">
-          <div className={styles.panelHeader}>
-            <h2 id="bulk-offer-heading">Ưu đãi đặt theo lô ({offers.length})</h2>
-          </div>
-          <p className={styles.offerHint}>
-            Gói đạt số tiền tối thiểu được tặng phiếu ưu đãi. Chỉ chọn phiếu ưu đãi đã phát hành dành cho người chơi chỉ định,
-            có hiệu lực bao phủ toàn bộ thời gian ưu đãi.
-          </p>
-
-          <div className={styles.offerList}>
-            {offers.map((offer) => (
-              <article className={styles.offerCard} key={offer.id}>
-                <div className={styles.offerCardBody}>
-                  <h3>{offer.name}</h3>
-                  <p className={styles.offerMeta}>
-                    {formatDate(offer.startDate)} – {formatDate(offer.endDate)} · từ{' '}
-                    {formatPrice(offer.minPackageAmount)} đồng · phiếu ưu đãi {offer.voucherCode ?? '—'} (
-                    {discountLabel(offer)})
-                  </p>
-                </div>
-                <div className={styles.offerCardActions}>
-                  <span className={`${styles.statusBadge} ${offer.active ? styles.statusActive : styles.statusDisabled}`}>
-                    {offer.active ? "Đang diễn ra" : 'Scheduled / ended'}
-                  </span>
-                  <button className={styles.secondaryButton} type="button" onClick={() => handleEditOffer(offer)} disabled={saving || locked}>
-                    Sửa
-                  </button>
-                  <button className={styles.secondaryButton} type="button" onClick={() => handleDeleteOffer(offer)} disabled={saving || locked}>
-                    Xóa
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-          {offersLoading && <p className={styles.emptyState}>Đang tải ưu đãi…</p>}
-          {!offersLoading && offers.length === 0 && (
-            <p className={styles.emptyState}>Địa điểm chưa có ưu đãi đặt theo lô.</p>
-          )}
-
-          <form className={styles.offerForm} onSubmit={handleSaveOffer}>
-            <label className={styles.field}>
-              <span>Tên ưu đãi</span>
-              <input
-                type="text"
-                maxLength={100}
-                value={offerForm.name}
-                onChange={(event) => updateOfferForm('name', event.target.value)}
-                placeholder="Ưu đãi đặt theo lô cuối tuần"
-              />
-            </label>
-            <div className={styles.timeFields}>
-              <label className={styles.field}>
-                <span>Ngày bắt đầu</span>
-                <input
-                  type="date"
-                  value={offerForm.startDate}
-                  onChange={(event) => updateOfferForm('startDate', event.target.value)}
-                />
-              </label>
-              <label className={styles.field}>
-                <span>Ngày kết thúc</span>
-                <input
-                  type="date"
-                  value={offerForm.endDate}
-                  onChange={(event) => updateOfferForm('endDate', event.target.value)}
-                />
-              </label>
-            </div>
-            <label className={styles.field}>
-              <span>Số tiền gói tối thiểu (đồng)</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formatPrice(offerForm.minPackageAmount)}
-                onChange={(event) => updateOfferForm('minPackageAmount', event.target.value.replace(/\D/g, ''))}
-              />
-            </label>
-            <label className={styles.field}>
-              <span>phiếu ưu đãi tặng cho người chơi chỉ định</span>
-              <select value={offerForm.voucherId} onChange={(event) => updateOfferForm('voucherId', event.target.value)}>
-                <option value="">{eligibleVouchers.length === 0 ? "Chưa có phiếu ưu đãi phù hợp với điều kiện và ngày ưu đãi" : "Chọn phiếu ưu đãi tặng"}</option>
-                {eligibleVouchers.map((voucher) => (
-                  <option key={voucher.id} value={voucher.id}>
-                    {voucher.code ? `${voucher.code} · ` : ''}{voucher.name} ({voucher.discountType === 'PERCENT'
-                      ? `${voucher.discountValue}%`
-                      : `${formatPrice(voucher.discountValue)} đồng`})
-                    {voucher.validTo && ` · Hạn dùng ${formatDate(voucher.validTo)}`}
-                  </option>
-                ))}
-              </select>
-              <span>Chọn đối tượng “người chơi chỉ định”, phát hành phiếu ưu đãi rồi quay lại tạo ưu đãi.</span>
-              <Link to="/owner/workspace?tab=rewards">Quản lý và phát hành phiếu ưu đãi</Link>
-            </label>
-            {voucherError && <p className={styles.actionError} role="alert">Không tải được phiếu ưu đãi: {voucherError}</p>}
-            <button className={styles.secondaryButton} type="button" disabled={saving || locked || !selectedLocation}
-              onClick={() => loadVouchers(selectedLocationId)}>Tải lại danh sách phiếu ưu đãi</button>
-            <button className={styles.saveButton} type="submit" disabled={saving || locked || !selectedLocation}>
-              {editingOfferId ? "Cập nhật ưu đãi" : "Tạo ưu đãi"}
-            </button>
-            {editingOfferId && (
-              <button className={styles.cancelButton} type="button" onClick={resetOfferForm} disabled={saving}>
-                Hủy chỉnh sửa
-              </button>
-            )}
-          </form>
-        </section>
         <span className={styles.facilityContext} aria-live="polite">{selectedLocation?.name}</span>
       </div>
     </ManagementLayout>

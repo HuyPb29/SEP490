@@ -25,11 +25,6 @@ export async function getMyOwnedTeams() {
     .map((team) => ({ ...team, team_id: team.id, team_name: team.name }));
 }
 
-export async function getPublicBatchOffers(locationId, signal) {
-  const { data } = await api.get('/locations/' + locationId + '/batch-offers', { signal, skipAuth: true });
-  return data.data;
-}
-
 const venueDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
 
 export function voucherGrantState({ voucher, grantStatus, expiresAt }, now = new Date()) {

@@ -1,7 +1,6 @@
 export {
   getMyPointsAtFacility,
   getMyOwnedTeams,
-  getPublicBatchOffers,
   getCheckoutVouchers,
   applyVoucherApi,
   previewBookingApi,

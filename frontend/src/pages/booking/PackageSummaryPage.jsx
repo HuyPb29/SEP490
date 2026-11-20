@@ -337,12 +337,6 @@ export default function PackageSummaryPage() {
                 <strong className={styles.totalValue}>{formatVnd(preview.finalAmount)}</strong>
               </div>
 
-              {preview.batchOffer && (
-                <p className={`${own.batchNote} ${preview.batchOffer.reached ? '' : own.batchNoteMuted}`}>
-                  🎁 {preview.batchOffer.name}: {preview.batchOffer.message}
-                </p>
-              )}
-
               {loading && <p role="status" className={styles.holdNotice}>Đang cập nhật giá gói…</p>}
               {previewError && <p role="alert" className={styles.errorText}>{previewError}</p>}
               {submitError && <p role="alert" className={styles.errorText}>{submitError}</p>}

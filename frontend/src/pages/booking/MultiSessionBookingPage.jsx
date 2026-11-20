@@ -707,13 +707,6 @@ export default function MultiSessionBookingPage() {
           </aside>
 
           <div className={styles.rightColumn}>
-            {preview?.batchOffer && (
-              <div className={styles.promoBanner}>
-                <strong>🎁 {preview.batchOffer.name}</strong>
-                <span>{preview.batchOffer.message}</span>
-              </div>
-            )}
-
             {mode === 'recurring' && (
               <section className={styles.gridCard} aria-label="Khung giờ chơi hằng tuần">
                 <div className={styles.gridHeader}>

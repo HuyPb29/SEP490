@@ -94,46 +94,6 @@ export async function deletePriceRule(priceRuleId, locationId) {
   await api.delete(`/owner/price-rules/${priceRuleId}`, ownerConfig(locationId))
 }
 
-// --------------------------------------------------------- UC09: ưu đãi đặt theo lô
-
-/** GET /api/owner/batch-offers — ưu đãi của địa điểm đang chọn (X-Location-Id). */
-export async function getBatchOffers(locationId) {
-  const { data } = await api.get('/owner/batch-offers', ownerConfig(locationId))
-  return data?.data ?? []
-}
-
-/** POST /api/owner/batch-offers */
-export async function createBatchOffer(payload, locationId) {
-  const { data } = await api.post('/owner/batch-offers', payload, ownerConfig(locationId))
-  return data?.data
-}
-
-/** PATCH /api/owner/batch-offers/{id} */
-export async function updateBatchOffer(offerId, payload, locationId) {
-  const { data } = await api.patch(`/owner/batch-offers/${offerId}`, payload, ownerConfig(locationId))
-  return data?.data
-}
-
-/** DELETE /api/owner/batch-offers/{id} */
-export async function deleteBatchOffer(offerId, locationId) {
-  await api.delete(`/owner/batch-offers/${offerId}`, ownerConfig(locationId))
-}
-
-/** BR47: chỉ voucher PUBLISHED/SPECIFIED; duyệt đủ trang để không bỏ sót voucher hợp lệ. */
-export async function getBatchOfferVouchers(locationId) {
-  const eligible = []
-  for (let page = 0; ; page += 1) {
-    const { data } = await api.get('/owner/vouchers', ownerConfig(locationId, {
-      params: { status: 'PUBLISHED', page, size: 100 },
-    }))
-    const result = data?.data
-    const items = result?.content ?? []
-    eligible.push(...items.filter((voucher) => voucher.status === 'PUBLISHED' && voucher.targetGroup === 'SPECIFIED'))
-    if (items.length === 0 || page + 1 >= (result?.totalPages ?? 1)) break
-  }
-  return eligible
-}
-
 // ------------------------------------------------------------ UC06: Admin quản lý địa điểm
 
 /** GET /api/admin/locations?status=ACTIVE|LOCKED — AdminLocationDto[]. */

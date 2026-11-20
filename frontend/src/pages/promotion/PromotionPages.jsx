@@ -12,7 +12,6 @@ import styles from './PromotionPages.module.css'
 
 const loadPersonalVouchers = (signal) => getAllPages('/me/vouchers', { signal })
 const loadBalances = (signal) => getAllPages('/me/loyalty-balances', { signal })
-const loadBatchOffers = (signal) => api.get('/owner/batch-offers', { signal }).then((response) => response.data.data)
 const loadPublicLocations = async (signal) => (await searchFacilities({ signal })).data.items
 const optionalNumber = (value) => value === '' || value == null ? null : Number(value)
 const locationName = (locations, id) =>
@@ -258,40 +257,6 @@ function Campaigns({ campaigns }) {
   </Section>
 }
 
-function BatchOfferForm({ offer, eligible, refresh }) {
-  const selectedVoucher = eligible.some((voucher) => voucher.id === offer?.voucherId)
-    ? offer.voucherId : ''
-  return <ActionForm label={offer ? 'Lưu ưu đãi' : 'Tạo ưu đãi'} after={refresh} action={(form) => {
-    const payload = { ...form, minPackageAmount: Number(form.minPackageAmount), voucherId: Number(form.voucherId) }
-    return offer ? api.patch('/owner/batch-offers/' + offer.id, payload) : api.post('/owner/batch-offers', payload)
-  }}>
-    <Field label="Tên ưu đãi" name="name" defaultValue={offer?.name} maxLength={100} required />
-    <Field label="Bắt đầu" name="startDate" type="date" defaultValue={offer?.startDate ?? today()} required />
-    <Field label="Kết thúc" name="endDate" type="date" defaultValue={offer?.endDate} required />
-    <Field label="Số tiền thực trả tối thiểu (VND)" name="minPackageAmount" type="number" min={1}
-      defaultValue={offer?.minPackageAmount} required />
-    <Field label="Phiếu ưu đãi tặng" name="voucherId" defaultValue={selectedVoucher} required
-      options={[[ '', "Chọn phiếu ưu đãi đã phát hành" ], ...eligible.map((voucher) => [voucher.id, voucher.name])]} />
-  </ActionForm>
-}
-
-function BatchOffers({ vouchers }) {
-  const offers = useResource(loadBatchOffers)
-  const eligible = vouchers.filter((voucher) => voucher.status === 'PUBLISHED' && voucher.targetGroup === 'SPECIFIED')
-  return <div id="batch-offers"><Section title="Ưu đãi đặt theo lô" resource={offers}>
-    {eligible.length ? <BatchOfferForm eligible={eligible} refresh={offers.reload} /> :
-      <p>Phát hành phiếu ưu đãi cho người chơi chỉ định trước khi tạo ưu đãi cho gói.</p>}
-    {offers.data?.length === 0 && <p>Chưa có ưu đãi đặt theo lô.</p>}
-    {offers.data?.map((offer) => <details key={offer.id} className="space-y-3 border-t py-3">
-      <summary>{offer.name} · {offer.active ? 'Trong thời gian áp dụng' : 'Ngoài thời gian áp dụng'}</summary>
-      <p>Gói thực trả từ {money(offer.minPackageAmount)} · Phiếu ưu đãi {offer.voucherName || '—'} · {offer.startDate} – {offer.endDate}</p>
-      {eligible.length > 0 && <BatchOfferForm offer={offer} eligible={eligible} refresh={offers.reload} />}
-      <ActionForm label="Xóa ưu đãi" tone="danger" confirmation="Xóa ưu đãi đặt theo lô này?"
-        action={() => api.delete('/owner/batch-offers/' + offer.id)} after={offers.reload} />
-    </details>)}
-  </Section></div>
-}
-
 function MilestoneForm({ milestone, save, afterSave, beforeSave }) {
   return <ActionForm label={milestone ? 'Lưu mốc' : 'Thêm mốc'} after={afterSave} successMessage={false}
     mapFieldErrors={(error) => {
@@ -339,7 +304,6 @@ export function OwnerPromotions({ location, refreshLocation }) {
   const campaigns = useVoucherCampaigns(location.id)
   return <>
     <Campaigns campaigns={campaigns} />
-    <BatchOffers vouchers={campaigns.data ?? []} />
     <Section title="Điểm thưởng">
       <ActionForm key={location.id} label="Lưu cấu hình điểm" action={(form) => api.patch('/owner/locations/' + location.id, {
         pointEarningRate: Number(form.pointEarningRate),
