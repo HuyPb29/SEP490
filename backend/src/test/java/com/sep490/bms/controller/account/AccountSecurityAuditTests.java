@@ -247,21 +247,15 @@ class AccountSecurityAuditTests {
         assertThat(locked.getCreatedAt()).isNotNull();
     }
 
-    @Test void auditApiIsAdminOnlyFilteredPaginatedAndContainsNoCredentials() throws Exception {
+    @Test void adminAuditApiIsNotExposedUnderD148() throws Exception {
         assertThat(call("PATCH", "/api/users/me", token(player), "{\"fullName\":\"Nguyễn Văn An\"}", null).statusCode()).isEqualTo(200);
         String path = "/api/admin/account-audits?targetAccountId=" + player.getId() + "&action=PROFILE_UPDATED&size=1";
         assertThat(call("GET", path, null, null, null).statusCode()).isEqualTo(401);
         for (Account a : List.of(player, owner, staff)) assertThat(call("GET", path, token(a), null, null).statusCode()).isEqualTo(403);
         var response = call("GET", path, token(admin), null, null);
-        assertThat(response.statusCode()).isEqualTo(200);
-        JsonNode data = json.readTree(response.body()).path("data");
-        assertThat(data.path("totalElements").asInt()).isEqualTo(1);
-        assertThat(data.at("/content/0/actorId").asLong()).isEqualTo(player.getId());
+        assertThat(response.statusCode()).isEqualTo(404);
         assertThat(response.body()).doesNotContain("Original123", "passwordHash", "tokenVersion", "otp", "Bearer");
-        assertThat(call("GET", path + "&actorId=" + other.getId(), token(admin), null, null).body()).contains("\"totalElements\":0");
-        for (String query : List.of("page=-1", "size=101", "action=UNKNOWN", "targetAccountId=0")) {
-            assertThat(call("GET", "/api/admin/account-audits?" + query, token(admin), null, null).statusCode()).isEqualTo(400);
-        }
+        assertThat(history(player)).hasSize(1);
     }
 
     @Test void rollbackRestoresPasswordTokenGenerationAndAuditTogether() {

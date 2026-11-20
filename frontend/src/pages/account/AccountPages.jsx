@@ -327,17 +327,10 @@ function AdminAccount({ id, reload }) {
     (signal) => api.get('/admin/accounts/' + id, { signal }).then((response) => response.data.data),
     [id]
   );
-  const loadAudit = useCallback(
-    (signal) => getAllPages('/admin/account-audits', { signal, params: { targetAccountId: id } }),
-    [id]
-  );
   const detail = useResource(loadDetail, id);
-  const audit = useResource(loadAudit, id);
   const account = detail.data;
   const canChange = ['ACTIVE', 'LOCKED'].includes(account?.status) && account.role !== 'ADMIN';
   const unlocking = account?.status === 'LOCKED';
-  const signIns = audit.data?.filter((entry) => entry.action === 'LOGIN');
-  const changes = audit.data?.filter((entry) => entry.action !== 'LOGIN');
   return (
     <>
       <Section title="Chi tiết tài khoản" resource={detail}>
@@ -364,31 +357,10 @@ function AdminAccount({ id, reload }) {
             }
             after={() => {
               detail.reload();
-              audit.reload();
               reload();
             }}
           />
         )}
-      </Section>
-      <Section title="Lịch sử đăng nhập" resource={audit}>
-        {signIns?.length === 0 && <p>Chưa có lượt đăng nhập.</p>}
-        <ul>
-          {signIns?.map((entry) => (
-            <li key={entry.id}>
-              <time dateTime={entry.createdAt}>{formatAccountDate(entry.createdAt)}</time>
-            </li>
-          ))}
-        </ul>
-      </Section>
-      <Section title="Nhật ký tài khoản" resource={audit}>
-        {changes?.length === 0 && <p>Chưa có thay đổi tài khoản.</p>}
-        <ul>
-          {changes?.map((entry) => (
-            <li key={entry.id}>
-              {formatAccountDate(entry.createdAt)} · {entry.action} · {entry.reason || '—'}
-            </li>
-          ))}
-        </ul>
       </Section>
     </>
   );
