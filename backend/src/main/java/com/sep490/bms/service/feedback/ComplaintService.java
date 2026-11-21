@@ -67,14 +67,20 @@ import lombok.RequiredArgsConstructor;
 /**
  * F8 – UC33 Gửi và xử lý khiếu nại.
  * Luồng: Player gửi (SUBMITTED) → Staff ghi chú và chuyển (PENDING_OWNER) → Owner xử lý (RESOLVED/REJECTED).
- * Khiếu nại LATE_PAYMENT_CONFIRMATION (BR49) đi cùng luồng, bắt buộc có paymentId.
+ * Khiếu nại LATE_PAYMENT_CONFIRMATION (BR58) đến thẳng Owner, bắt buộc có paymentId; voucher bồi thường
+ * chỉ tặng khi Owner chọn LATE_PAYMENT_CONFIRMED (D176).
  */
 @Service
 @RequiredArgsConstructor
 public class ComplaintService {
 
     private static final int MAX_PAGE_SIZE = 50;
+    /** P28: giá trị voucher bồi thường khi Owner xác nhận đúng là chậm xác nhận thanh toán (BR58, D176). */
     private static final BigDecimal LATE_PAYMENT_VOUCHER_VALUE = BigDecimal.valueOf(10_000);
+    private static final String LATE_PAYMENT_VOUCHER_LABEL = "10.000 đ";
+    /** MSG88 (D176): Player gửi khiếu nại chậm xác nhận, voucher chỉ tặng sau khi Owner xác nhận. */
+    public static final String MSG88 = "Đã gửi khiếu nại tới chủ sân. Nếu chủ sân xác nhận đúng là thanh toán bị chậm, "
+            + "bạn sẽ được tặng một mã giảm giá bồi thường.";
     /** P23: thời hạn gửi khiếu nại, tính từ giờ kết thúc của booking (BR49). */
     private static final java.time.Duration COMPLAINT_WINDOW = java.time.Duration.ofHours(24);
     private static final Set<String> PLAYER_TYPES = Set.of("PAYMENT_ISSUE", "COURT_SERVICE", "OTHER", Complaint.TYPE_LATE_PAYMENT_CONFIRMATION);
@@ -103,12 +109,10 @@ public class ComplaintService {
         String type = request.getComplaintType().trim().toUpperCase();
         Complaint complaint = complaintRepository.saveAndFlush(buildPlayerComplaint(user, type, request));
         if (Complaint.TYPE_LATE_PAYMENT_CONFIRMATION.equals(type)) {
-            grantLatePaymentVoucher(complaint);
+            // D176: voucher bồi thường chỉ tặng khi Owner xác nhận đúng là chậm (resolve), không tặng lúc gửi.
             Long owner = locationRepository.findById(complaint.getLocationId()).orElseThrow().getOwnerId();
             notify(owner, "COMPLAINT_SUBMITTED", "Khiếu nại chậm xác nhận thanh toán",
                     truncate(complaint.getContent(), 500), complaint);
-            notifyRequester(complaint, "LATE_PAYMENT_VOUCHER", "Đã nhận voucher bồi thường",
-                    "Đã gửi khiếu nại trực tiếp tới Owner và tặng voucher 10.000 đ (MSG88).");
             return toResponses(List.of(complaint)).get(0);
         }
 
@@ -307,7 +311,11 @@ public class ComplaintService {
         switch (result) {
             case REFUND -> createRefundRequest(complaint, request, note);
             case POINTS -> grantCompensationPoints(owner.getId(), complaint, request.getCompensationPoints(), note);
-            case LATE_PAYMENT_CONFIRMED -> confirmLatePayment(owner, complaint);
+            case LATE_PAYMENT_CONFIRMED -> {
+                confirmLatePayment(owner, complaint);
+                // BR58, FR116 (D176): Owner xác nhận đúng là chậm thì tặng, kể cả khi tiền đã được xác nhận trước đó.
+                grantLatePaymentVoucher(complaint);
+            }
             default -> { }
         }
 
@@ -320,6 +328,9 @@ public class ComplaintService {
         complaintRepository.save(complaint);
 
         String content = "Khiếu nại #" + complaint.getId() + " đã được xử lý: " + describe(result)
+                + (result == ComplaintResult.LATE_PAYMENT_CONFIRMED
+                        ? ". Bạn được tặng voucher bồi thường " + LATE_PAYMENT_VOUCHER_LABEL + ", xem ở mục Ưu đãi của tôi"
+                        : "")
                 + (note == null ? "" : ". " + note);
         notifyRequester(complaint, "COMPLAINT_RESOLVED", "Khiếu nại đã được xử lý", content);
         return toResponses(List.of(complaint)).get(0);

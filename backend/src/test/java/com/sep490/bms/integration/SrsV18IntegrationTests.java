@@ -11,6 +11,7 @@ import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.*;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.feedback.Complaint;
+import com.sep490.bms.service.feedback.ComplaintService;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.reschedule.RefundRequest;
 import com.sep490.bms.repository.operation.OperationQueryRepository;
@@ -133,7 +134,8 @@ class SrsV18IntegrationTests {
         assertThat(wallet().getTotalPaid()).isEqualByComparingTo("18000");
     }
 
-    @Test void latePaymentGoesToOwnerAndGrantsVoucherExactlyOnce() throws Exception {
+    /** BR58, FR116 (D176): voucher bồi thường chỉ tặng khi Owner xác nhận đúng là chậm, không tặng lúc gửi. */
+    @Test void latePaymentGoesToOwnerAndGrantsVoucherOnlyAfterOwnerConfirms() throws Exception {
         long orderId = createPackage();
         long bookingId = packages.sessionsOf(orderId).get(0).getId();
         var proof = new MockMultipartFile("proof", "proof.png", "image/png", new byte[]{1, 2});
@@ -157,20 +159,47 @@ class SrsV18IntegrationTests {
                 "complaintType", "LATE_PAYMENT_CONFIRMATION", "content", "Đã chờ xác nhận thanh toán"));
         var result = mvc.perform(post("/api/complaints").header("Authorization", token(player))
                 .contentType("application/json").content(body)).andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.status").value("PENDING_OWNER")).andReturn();
+                .andExpect(jsonPath("$.data.status").value("PENDING_OWNER"))
+                .andExpect(jsonPath("$.message").value(ComplaintService.MSG88)).andReturn();
         long complaintId = json.readTree(result.getResponse().getContentAsString()).at("/data/id").asLong();
         mvc.perform(post("/api/complaints").header("Authorization", token(player))
                 .contentType("application/json").content(body)).andExpect(status().isConflict());
-        assertThat(em.createQuery("""
-                select v.discountValue from VoucherGrant g, Voucher v
-                where g.voucherId = v.id and g.playerId = :player and v.source = :source and v.targetGroup = :target
-                """, BigDecimal.class).setParameter("player", player.getId()).setParameter("source", VoucherSource.COMPENSATION)
-                .setParameter("target", VoucherTargetGroup.SPECIFIED).getResultList()).singleElement()
-                .satisfies(value -> assertThat(value).isEqualByComparingTo("10000"));
+        assertThat(compensationVouchers()).isEmpty();
         mvc.perform(post("/api/owner/complaints/" + complaintId + "/resolve").header("Authorization", token(owner))
                 .header("X-Location-Id", location.getId()).contentType("application/json")
                 .content("{\"result\":\"LATE_PAYMENT_CONFIRMED\"}")).andExpect(status().isOk());
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(compensationVouchers()).singleElement()
+                .satisfies(value -> assertThat(value).isEqualByComparingTo("10000"));
+    }
+
+    /** D176: Owner từ chối khiếu nại chậm xác nhận thì không tặng voucher. */
+    @Test void rejectedLatePaymentComplaintGrantsNoVoucher() throws Exception {
+        long orderId = createPackage();
+        long bookingId = packages.sessionsOf(orderId).get(0).getId();
+        var proof = new MockMultipartFile("proof", "proof.png", "image/png", new byte[]{1, 2});
+        var submitted = mvc.perform(multipart("/api/booking-packages/" + orderId + "/payments")
+                .file(proof).header("Authorization", token(player))).andExpect(status().isCreated()).andReturn();
+        long paymentId = json.readTree(submitted.getResponse().getContentAsString()).at("/data/id").asLong();
+        em.find(Payment.class, paymentId).setSubmittedAt(LocalDateTime.now().minusMinutes(16));
+        var created = mvc.perform(post("/api/complaints").header("Authorization", token(player))
+                .contentType("application/json").content(json.writeValueAsString(Map.of("bookingId", bookingId,
+                        "paymentId", paymentId, "complaintType", "LATE_PAYMENT_CONFIRMATION", "content", "Đã chờ xác nhận"))))
+                .andExpect(status().isCreated()).andReturn();
+        long complaintId = json.readTree(created.getResponse().getContentAsString()).at("/data/id").asLong();
+        mvc.perform(post("/api/owner/complaints/" + complaintId + "/reject").header("Authorization", token(owner))
+                .header("X-Location-Id", location.getId()).contentType("application/json")
+                .content("{\"reason\":\"Chưa thấy tiền về\"}")).andExpect(status().isOk());
+        assertThat(compensationVouchers()).isEmpty();
+    }
+
+    private java.util.List<BigDecimal> compensationVouchers() {
+        em.flush();
+        return em.createQuery("""
+                select v.discountValue from VoucherGrant g, Voucher v
+                where g.voucherId = v.id and g.playerId = :player and v.source = :source and v.targetGroup = :target
+                """, BigDecimal.class).setParameter("player", player.getId()).setParameter("source", VoucherSource.COMPENSATION)
+                .setParameter("target", VoucherTargetGroup.SPECIFIED).getResultList();
     }
 
     @Test void unrecordedTransferCanBeRefundedWithoutRevenueOrPointChanges() throws Exception {
