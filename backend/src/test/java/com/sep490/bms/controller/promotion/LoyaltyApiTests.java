@@ -187,17 +187,17 @@ class LoyaltyApiTests {
         });
 
         String path = "/api/owner/locations/" + location.getId();
-        String rates = "{\"pointEarningRate\":5000,\"pointRedemptionValue\":1500}";
+        String rates = "{\"pointEarningRate\":5000}";
         mvc.perform(patch(path).header("Authorization", token(account(Role.ADMIN)))
                 .contentType(MediaType.APPLICATION_JSON).content(rates)).andExpect(status().isForbidden());
         mvc.perform(patch(path).header("Authorization", token(owner))
                 .contentType(MediaType.APPLICATION_JSON).content(rates))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.pointRedemptionValue").value(1500));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.pointRedemptionValue").value(500));
 
         Booking next = booking(20000);
         tx.executeWithoutResult(s -> {
             assertThat(points.redeemForBooking(existing.getId(), 2)).isEqualByComparingTo("1000");
-            assertThat(points.redeemForBooking(next.getId(), 1)).isEqualByComparingTo("1500");
+            assertThat(points.redeemForBooking(next.getId(), 1)).isEqualByComparingTo("500");
         });
 
         Payment confirmed = payment(tx.execute(s -> em.find(Booking.class, existing.getId())));

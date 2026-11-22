@@ -134,9 +134,10 @@ public class LocationManagementService {
         if (request.getPointEarningRate() != null) {
             location.setPointEarningRate(request.getPointEarningRate());
         }
-        if (request.getPointRedemptionValue() != null) {
-            location.setPointRedemptionValue(request.getPointRedemptionValue());
+        if (request.getPointRedemptionValue() != null && request.getPointRedemptionValue() != 500) {
+            throw new AppException("P10 cố định: 1 điểm = 500 đồng");
         }
+        location.setPointRedemptionValue(500);
         location.setUpdatedAt(LocalDateTime.now());
 
         Location saved = locationRepository.save(location);
