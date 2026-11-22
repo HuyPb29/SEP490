@@ -59,8 +59,9 @@ class ScheduleServiceTests {
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final AccountRepository accounts = mock(AccountRepository.class);
     private final BookingPackageRepository packages = mock(BookingPackageRepository.class);
+    private final PackageService packageService = mock(PackageService.class);
     private final ScheduleService service = new ScheduleService(
-            locations, courts, availability, prices, slots, bookings, accounts, packages);
+            locations, courts, availability, prices, slots, bookings, accounts, packages, packageService);
 
     private final Location location = Location.builder().id(LOCATION).ownerId(OWNER).build();
 
@@ -229,10 +230,10 @@ class ScheduleServiceTests {
     }
 
     @Test
-    void managerCanSeeThreeMonthsAhead() {
+    void managerCanSeeTwelveMonthsAhead() {
         location.setAdvanceBookingDays((short) 30);
         UserPrincipal owner = user(OWNER, Role.OWNER, null);
-        LocalDate limit = TODAY.plusMonths(3);
+        LocalDate limit = TODAY.plusMonths(12);
 
         assertThat(service.schedule(LOCATION, limit, owner, NOW).getMaxDate()).isEqualTo(limit);
         assertThatThrownBy(() -> service.schedule(LOCATION, limit.plusDays(1), owner, NOW))
@@ -241,10 +242,10 @@ class ScheduleServiceTests {
 
     @Test
     void managerKeepsLongerAdvanceBookingDays() {
-        location.setAdvanceBookingDays((short) 120);
+        location.setAdvanceBookingDays((short) 400);
 
         assertThat(service.schedule(LOCATION, null, user(OWNER, Role.OWNER, null), NOW).getMaxDate())
-                .isEqualTo(TODAY.plusDays(120));
+                .isEqualTo(TODAY.plusDays(400));
     }
 
     @Test
@@ -280,15 +281,27 @@ class ScheduleServiceTests {
     }
 
     @Test
-    void playerChoosingPackageSessionsSeesThreeMonthsIncludingToday() {
+    void playerChoosingPackageSessionsSeesUntilLastBookablePackageDate() {
         location.setAdvanceBookingDays((short) 30);
         UserPrincipal player = user(7L, Role.PLAYER, null);
-        // D162: hôm nay 30/10 thì buổi xa nhất là 29/01
-        LocalDate limit = LocalDate.of(2027, 1, 29);
+        // D175: ngày xa nhất do PackageService tính (1 năm, không quá hạn dịch vụ); ở đây hạn dịch vụ là 31/03/2027
+        LocalDate limit = LocalDate.of(2027, 3, 31);
+        when(packageService.lastBookablePackageDate(LOCATION, TODAY)).thenReturn(limit);
 
         assertThat(service.schedule(LOCATION, limit, player, null, true, NOW).getMaxDate()).isEqualTo(limit);
         assertThatThrownBy(() -> service.schedule(LOCATION, limit.plusDays(1), player, null, true, NOW))
                 .isInstanceOf(AppException.class);
+    }
+
+    @Test
+    void packageViewEndsAtServiceTermEvenBeforeAdvanceBookingDays() {
+        // Hạn dịch vụ còn 10 ngày: lịch chọn buổi cho gói chỉ tới đó, dù đặt lẻ được xem 30 ngày.
+        location.setAdvanceBookingDays((short) 30);
+        LocalDate termEnd = TODAY.plusDays(10);
+        when(packageService.lastBookablePackageDate(LOCATION, TODAY)).thenReturn(termEnd);
+
+        assertThat(service.schedule(LOCATION, null, user(7L, Role.PLAYER, null), null, true, NOW).getMaxDate())
+                .isEqualTo(termEnd);
     }
 
     @Test

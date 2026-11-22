@@ -22,6 +22,7 @@ import com.sep490.bms.entity.location.*;
 import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.repository.location.*;
 import com.sep490.bms.security.JwtTokenProvider;
+import com.sep490.bms.service.booking.PackageService;
 
 @SpringBootTest(properties={"bms.job.enabled=false", "app.booking-change.jobs-enabled=false", "bms.scheduler.match-sweep.enabled=false", "app.upload.dir=target/renewal-test-uploads"})
 @Transactional
@@ -34,6 +35,7 @@ class ServiceRenewalApiTests {
     @Autowired CourtRepository courts;
     @Autowired ServiceTermRepository terms;
     @Autowired JwtTokenProvider jwt;
+    @Autowired PackageService packages;
     MockMvc mvc;
     Account owner, admin;
     Location location;
@@ -80,6 +82,7 @@ class ServiceRenewalApiTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.startDate").value(old.plusDays(1).toString()));
         assertThat(terms.findAllByLocationId(location.getId())).hasSize(2);
         assertThat(courts.findAllByLocationIdOrderByNameAsc(location.getId())).hasSize(1);
+        assertThat(packages.lastBookablePackageDate(location.getId(),LocalDate.now())).isEqualTo(LocalDate.now().plusYears(1).minusDays(1));
         mvc.perform(post("/api/admin/service-renewals/"+id+"/approve").header("Authorization",token(admin))
                 .contentType("application/json").content("{\"paymentConfirmed\":true}")) .andExpect(status().isConflict());
     }
