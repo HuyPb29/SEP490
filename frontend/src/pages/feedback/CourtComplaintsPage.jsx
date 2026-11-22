@@ -12,7 +12,7 @@ const resultLabels = {
   REFUND: 'Đã tạo yêu cầu hoàn tiền',
   POINTS: 'Cộng điểm bồi hoàn',
   NO_COMPENSATION: 'Ghi nhận, không bồi thường',
-  LATE_PAYMENT_CONFIRMED: 'Đã xác nhận thanh toán trễ',
+  LATE_PAYMENT_CONFIRMED: 'Đã xác nhận thanh toán trễ, tặng phiếu ưu đãi 10.000 đ',
 }
 const loadStaffCases = (signal) => getAllPages(staffPath, { signal })
 const loadOwnerCases = (signal) => getAllPages(ownerPath, { signal })
@@ -54,7 +54,8 @@ function WalkInComplaintForm({ refresh }) {
 function OwnerDecision({ complaint, refresh }) {
   const latePayment = complaint.complaintType === 'LATE_PAYMENT_CONFIRMATION'
   const [result, setResult] = useState(latePayment ? 'LATE_PAYMENT_CONFIRMED' : 'REFUND')
-  const results = latePayment ? [['LATE_PAYMENT_CONFIRMED', 'Xác nhận thanh toán trễ']] :
+  // BR58, FR116 (D176): chọn phương án này thì hệ thống tặng người chơi phiếu ưu đãi bồi thường.
+  const results = latePayment ? [['LATE_PAYMENT_CONFIRMED', 'Xác nhận thanh toán trễ · tặng người chơi phiếu ưu đãi 10.000 đ']] :
     [['REFUND', 'Tạo yêu cầu hoàn tiền'], ...(complaint.playerId ? [['POINTS', 'Cộng điểm bồi hoàn']] : []),
       ['NO_COMPENSATION', 'Ghi nhận không bồi thường']]
 
@@ -219,7 +220,7 @@ function PlayerComplaintForm({ bookingId, paymentId, refresh }) {
     return isLatePaymentEligible(bookingId, targetPaymentId, signal)
   }, [bookingId, targetPaymentId])
   const eligibility = useResource(loadEligibility, targetPaymentId)
-  if (eligibility.data) types.push(['LATE_PAYMENT_CONFIRMATION', "Xác nhận thanh toán trễ · nhận phiếu ưu đãi 10.000 đ"])
+  if (eligibility.data) types.push(['LATE_PAYMENT_CONFIRMATION', "Xác nhận thanh toán trễ · chủ sân xác nhận thì nhận phiếu ưu đãi 10.000 đ"])
 
   return <Section title="Gửi khiếu nại" resource={booking}>
     {item && <>

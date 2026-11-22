@@ -51,7 +51,9 @@ public class ComplaintController {
             @AuthenticationPrincipal UserPrincipal currentUser,
             @Valid @RequestBody CreateComplaintRequest request) {
         ComplaintResponse complaint = complaintService.createComplaint(currentUser, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Đã gửi khiếu nại", complaint));
+        String message = com.sep490.bms.entity.feedback.Complaint.TYPE_LATE_PAYMENT_CONFIRMATION.equals(complaint.getComplaintType())
+                ? ComplaintService.MSG88 : "Đã gửi khiếu nại";
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(message, complaint));
     }
 
     @GetMapping("/api/complaints/late-payment-eligibility")

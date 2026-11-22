@@ -53,7 +53,7 @@ public class AccountAndBookingChangeOpenApiConfig {
         return GroupedOpenApi.builder().group("f5-booking-changes")
                 .pathsToMatch("/api/bookings/*/reschedule-deadline", "/api/bookings/*/reschedule-requests/**",
                         "/api/reschedule-requests/**",
-                        "/api/reschedule-payments/**", "/api/staff/reschedule-payments/**", "/api/bookings/*/cancel",
+                        "/api/reschedule-payments/**", "/api/staff/reschedule-payments/**",
                         "/api/owner/bookings/cancellable", "/api/owner/bookings/*/cancel", "/api/staff/bookings/*/cancel", "/api/me/affected-bookings",
                         "/api/affected-bookings/**", "/api/owner/refunds/**", "/api/matches/*/keep-after-reschedule",
                         "/api/matches/*/cancel")

@@ -159,6 +159,7 @@
 
 .requestHeading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -204,12 +205,16 @@
 
 .requestActions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
   flex: 0 0 auto;
   align-items: center;
   gap: 7px;
 }
 
 .rejectButton,
+.proofButton,
 .approveButton,
 .extendButton,
 .lockButton,
@@ -464,6 +469,7 @@
 }
 
 .extendButton,
+.proofButton,
 .cancelButton {
   color: #425169;
   background: #fff;
@@ -545,6 +551,10 @@
 }
 
 .modal {
+  box-sizing: border-box;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
   width: min(100%, 410px);
   padding: 22px;
   background: #fff;
@@ -584,7 +594,9 @@
 }
 
 .modalField select,
+.modalField textarea,
 .modalField input {
+  box-sizing: border-box;
   width: 100%;
   height: 40px;
   padding: 0 10px;
@@ -602,9 +614,39 @@
 
 .modalActions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 20px;
+}
+
+.modalField textarea {
+  height: auto;
+  min-height: 100px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.requestAddress,
+.requestMeta {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.requestActions button:disabled,
+.modalActions button:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+@media (max-width: 1100px) {
+  .requestRow {
+    flex-wrap: wrap;
+  }
+
+  .requestActions {
+    margin-left: auto;
+  }
 }
 
 .visuallyHidden {

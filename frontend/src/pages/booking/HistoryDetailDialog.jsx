@@ -3,26 +3,46 @@ import { Link } from 'react-router-dom'
 import api, { apiErrorMessage } from '../../api'
 import { affectedBookingActions, blocksNormalBookingActions, bookingStatusLabels, bookingStartsAfter, canPayHistoryEntry, canRescheduleBooking, getHistoryDetail, withBookingDeadlines } from '../../api/bookingHistory'
 import { createMatch } from '../../api/matchApi'
+import { getMyTeams } from '../../api/teamApi'
+import { isSkillLevel, NO_SKILL_LABEL, SKILL_LEVELS } from '../../utils/skillLevels'
 import { formatVnd, uiMessage } from '../../utils/formatters'
 import styles from './MyBookingsPage.module.css'
 
 /** D60: tối đa 8 người tính cả chủ kèo — chủ kèo khai số đang có và số cần thêm. */
 const MATCH_MAX_PLAYERS = 8
 
-function CreateMatchForm({ bookingId, onCreated }) {
+function CreateMatchForm({ bookingId, teamId, onCreated }) {
   const [currentPlayers, setCurrentPlayers] = useState(4)
   const [neededPlayers, setNeededPlayers] = useState(2)
+  // Trình độ của kèo: mặc định theo trình độ của đội; '' = Không yêu cầu. Chỉ là nhãn, không chặn ai xin vào.
+  const [skillLevel, setSkillLevel] = useState('')
+  const [skillTouched, setSkillTouched] = useState(false)
+  const [phoneConsent, setPhoneConsent] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (skillTouched) return undefined
+    const controller = new AbortController()
+    getMyTeams(controller.signal).then((teams) => {
+      const team = teams.find((item) => item.id === teamId)
+      if (isSkillLevel(team?.skillLevel)) setSkillLevel(team.skillLevel)
+    }).catch(() => {})
+    return () => controller.abort()
+  }, [teamId, skillTouched])
 
   const submit = async () => {
     if (currentPlayers + neededPlayers > MATCH_MAX_PLAYERS) {
       setError(`Tổng số người tối đa là ${MATCH_MAX_PLAYERS} (kể cả chủ kèo).`)
       return
     }
+    if (!phoneConsent) {
+      setError('Vui lòng đồng ý chia sẻ số điện thoại với người được duyệt vào kèo.')
+      return
+    }
     setSaving(true)
     try {
-      await createMatch({ bookingId, currentPlayers, neededPlayers })
+      await createMatch({ bookingId, currentPlayers, neededPlayers, skillLevel, phoneConsent })
       onCreated()
     } catch (cause) {
       setError(apiErrorMessage(cause, 'Không mở được kèo.'))
@@ -45,12 +65,26 @@ function CreateMatchForm({ bookingId, onCreated }) {
   return (
     <div className="mt-4 rounded-lg border border-gray-200 p-4">
       <h4 className="mb-2 font-semibold">Mở kèo tìm người chơi</h4>
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-4">
         {numberField('Số người đã có (kể cả bạn)', currentPlayers, setCurrentPlayers)}
         {numberField('Số người cần thêm', neededPlayers, setNeededPlayers)}
+        <label className="flex flex-col gap-1 text-sm">
+          <span>Trình độ của kèo</span>
+          <select value={skillLevel} className="rounded border border-gray-300 px-2 py-1"
+            onChange={(event) => { setSkillLevel(event.target.value); setSkillTouched(true); setError('') }}>
+            {SKILL_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
+            <option value="">{NO_SKILL_LABEL}</option>
+          </select>
+        </label>
       </div>
+      <p className="mt-1 text-xs text-gray-500">Trình độ chỉ để người chơi lọc kèo; ai cũng gửi được yêu cầu, bạn là người duyệt.</p>
+      <label className="mt-3 flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-1" checked={phoneConsent}
+          onChange={(event) => { setPhoneConsent(event.target.checked); setError('') }} />
+        <span>Tôi đồng ý cho người chơi được duyệt vào kèo xem số điện thoại của tôi.</span>
+      </label>
       {error && <p className="mt-2 text-sm text-red-600" role="alert">{uiMessage(error)}</p>}
-      <button type="button" disabled={saving} onClick={submit}
+      <button type="button" disabled={saving || !phoneConsent} onClick={submit}
         className="mt-3 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
         {saving ? 'Đang mở kèo…' : 'Mở kèo'}
       </button>
@@ -71,7 +105,7 @@ function DetailRow({ label, children }) {
 }
 
 export default function HistoryDetailDialog({ item, now, onClose, onPayment, onReschedule, affected, affectedReady,
-  affectedLoading, canCancel, onCancelBooking, onAffected }) {
+  affectedLoading, onAffected }) {
   const ref = useRef(null)
   const [detail, setDetail] = useState(null)
   const [payment, setPayment] = useState(null)
@@ -211,6 +245,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
       {canCreateMatch && matchFormOpen && (
         <CreateMatchForm
           bookingId={detail.id}
+          teamId={detail.teamId}
           onCreated={() => { setMatchFormOpen(false); setMatchCreated(true) }}
         />
       )}
@@ -224,10 +259,6 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
         <button type="button" className={styles.outlineActionBtn} onClick={onClose}>Đóng</button>
         {showReschedule && <button type="button" className={styles.outlineActionBtn} onClick={() => onReschedule(target)}>
           {detail.reschedule.pendingRequestId ? 'Xem phụ thu đổi lịch' : 'Đổi lịch'}
-        </button>}
-        {target && !error && canCancel(target) && <button type="button"
-          className={styles.outlineActionBtn} onClick={() => onCancelBooking(target)}>
-          {target.single_order ? 'Hủy đơn' : 'Hủy lịch'}
         </button>}
         {showAffected && affectedBookingActions.map(([choice, label]) => <button key={choice} type="button"
           disabled={affectedLoading} className={styles.outlineActionBtn} onClick={() => onAffected(target, affected.id, choice)}>

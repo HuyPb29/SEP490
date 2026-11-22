@@ -32,7 +32,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             SELECT n.id AS notificationId,
                    COALESCE(b.location_id, bp.location_id, p.location_id, c.location_id,
                             r.location_id, st.location_id, v.location_id, sr.location_id,
-                            mb.location_id, mc.location_id, ct.location_id,
+                            mb.location_id, mc.location_id, ct.location_id, srr.location_id,
                             CASE WHEN n.ref_type = 'LOCATION' THEN n.ref_id END) AS locationId,
                    COALESCE(b.id, p.booking_id, c.booking_id, r.booking_id, mb.id) AS bookingId,
                    COALESCE(bp.id, p.package_id) AS packageId,
@@ -51,6 +51,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             LEFT JOIN maintenance mt ON n.ref_type = 'MAINTENANCE' AND n.ref_id = mt.id
             LEFT JOIN court mc ON mc.id = mt.court_id
             LEFT JOIN court ct ON n.ref_type = 'COURT' AND n.ref_id = ct.id
+            LEFT JOIN service_renewal_request srr ON n.ref_type = 'SERVICE_RENEWAL' AND n.ref_id = srr.id
             WHERE n.recipient_id = :recipientId AND n.id IN (:ids)
             """, nativeQuery = true)
     List<ReferenceDetails> findReferenceDetails(@Param("recipientId") Long recipientId, @Param("ids") List<Long> ids);

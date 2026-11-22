@@ -157,7 +157,9 @@ CREATE TABLE location (
     CONSTRAINT ck_location_phone_digits CHECK (contact_phone IS NULL OR (LEN(contact_phone) = 10 AND contact_phone COLLATE Latin1_General_BIN NOT LIKE '%[^0-9]%')),
     CONSTRAINT ck_location_advance CHECK (advance_booking_days > 0),
     CONSTRAINT ck_location_rate CHECK (point_earning_rate BETWEEN 1000 AND 100000),
-    CONSTRAINT ck_location_point_redemption_value CHECK (point_redemption_value BETWEEN 1 AND 100000)
+    CONSTRAINT ck_location_point_redemption_value CHECK (point_redemption_value BETWEEN 1 AND 100000),
+    -- P10 cố định 1 điểm = 500 đồng (D82, D154); cùng tên với script 20261122_service_renewal_and_fixed_p10.sql.
+    CONSTRAINT ck_location_fixed_p10 CHECK (point_redemption_value = 500)
 );
 CREATE INDEX ix_location_owner ON location (owner_id);
 
@@ -233,6 +235,28 @@ CREATE TABLE court_expansion_request (
     CONSTRAINT ck_expansion_rejected CHECK(status<>'REJECTED' OR (reject_reason IS NOT NULL AND final_amount=0))
 );
 CREATE UNIQUE INDEX ux_expansion_pending ON court_expansion_request(location_id) WHERE status='PENDING';
+
+-- Yêu cầu gia hạn dịch vụ: Owner gửi kèm chứng từ, Admin duyệt thì thêm service_term và mở khóa địa điểm.
+-- Giống script 20261122_service_renewal_and_fixed_p10.sql.
+CREATE TABLE service_renewal_request (
+    id BIGINT IDENTITY PRIMARY KEY,
+    location_id BIGINT NOT NULL REFERENCES location(id),
+    owner_id BIGINT NOT NULL REFERENCES account(id),
+    rental_years INT NOT NULL CHECK (rental_years BETWEEN 1 AND 10),
+    court_count INT NOT NULL CHECK (court_count > 0),
+    previous_end DATE NULL,
+    quoted_start DATE NOT NULL,
+    quoted_end DATE NOT NULL,
+    amount DECIMAL(12,0) NOT NULL CHECK (amount > 0),
+    proof_path VARCHAR(255) NOT NULL,
+    status VARCHAR(10) NOT NULL CHECK (status IN ('PENDING','APPROVED','REJECTED')),
+    reject_reason NVARCHAR(500) NULL,
+    service_term_id BIGINT NULL REFERENCES service_term(id),
+    created_at DATETIME2 NOT NULL,
+    processed_at DATETIME2 NULL,
+    processed_by BIGINT NULL REFERENCES account(id)
+);
+CREATE UNIQUE INDEX ux_renewal_pending_location ON service_renewal_request(location_id) WHERE status='PENDING';
 
 -- opening_hour: Giờ mở cửa theo thứ trong tuần (FR18). Không có dòng = ngày đó đóng cửa.
 CREATE TABLE opening_hour (
@@ -766,9 +790,12 @@ CREATE TABLE match (
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_match_created_at DEFAULT SYSDATETIME(),
     closed_at DATETIME2(0) NULL,
     reschedule_pending BIT NOT NULL CONSTRAINT df_match_reschedule_pending DEFAULT 0,
+    -- Trình độ chủ kèo chọn khi mở kèo; NULL = Không yêu cầu (migration v8).
+    skill_level NVARCHAR(30) NULL,
     CONSTRAINT pk_match PRIMARY KEY (id),
     CONSTRAINT ck_match_players CHECK (current_players >= 1 AND needed_players >= 0 AND current_players + needed_players <= 8),
-    CONSTRAINT ck_match_status CHECK (status IN ('OPEN','CLOSED','CANCELLED','EXPIRED'))
+    CONSTRAINT ck_match_status CHECK (status IN ('OPEN','CLOSED','CANCELLED','EXPIRED')),
+    CONSTRAINT ck_match_skill_level CHECK (skill_level IS NULL OR skill_level IN (N'Mới chơi', N'Trung bình', N'Khá', N'Nâng cao'))
 );
 CREATE UNIQUE INDEX ux_match_booking_active ON match (booking_id) WHERE status IN ('OPEN','CLOSED');
 

@@ -13,7 +13,9 @@ export function notificationDestination(item, userRole) {
   const fallback = `${inbox}#notification-${item.id}`;
 
   if (type === 'RESCHEDULE_PROOF_SUBMITTED' && ['owner', 'staff'].includes(role)) {
-    return '/staff/confirm-payments?type=reschedule';
+    // Thông báo mới tham chiếu đúng giao dịch phụ thu; thông báo cũ (ref LOCATION) mở hàng chờ phụ thu.
+    const paymentId = refType === 'RESCHEDULE_PAYMENT' ? refId : null;
+    return '/staff/confirm-payments?type=reschedule' + (paymentId ? `&paymentId=${paymentId}` : '');
   }
   const paymentTransferred = ['PAYMENT_TRANSFERRED_TO_OWNER', 'PAYMENT_ESCALATED', 'PAYMENT_ESCALATED_TO_OWNER'];
   if (role === 'staff' && paymentTransferred.includes(type)) return '/staff/dashboard';
@@ -36,6 +38,11 @@ export function notificationDestination(item, userRole) {
   if (refType === 'MATCH' && refId) return `/open-matches?matchId=${refId}`;
   if (refType === 'TEAM') return '/teams';
   if (refType === 'VOUCHER') return role === 'owner' ? '/owner/workspace?tab=rewards' : '/my-rewards';
+  if (refType === 'SERVICE_RENEWAL') {
+    if (role === 'admin') return '/admin/facilities#service-renewal';
+    // Owner có nhiều địa điểm: mở đúng địa điểm của yêu cầu gia hạn, không theo địa điểm đang chọn.
+    return '/owner/facility-settings' + (locationId ? `?locationId=${locationId}` : '') + '#service-renewal';
+  }
   if (refType === 'SERVICE_TERM') return role === 'admin' ? '/admin/facilities' : '/owner/workspace';
   if (type.startsWith('COURT_EXPANSION_')) {
     return role === 'admin' ? '/admin/facilities#court-expansions' : '/owner/courts-pricing#court-expansion';

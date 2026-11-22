@@ -218,11 +218,13 @@
 }
 
 .secondaryBtn {
+  max-width: 100%;
+  white-space: normal;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 36px;
+  min-height: 36px;
   padding: 0 12px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
@@ -241,11 +243,13 @@
 }
 
 .primaryBtn {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 46px;
   min-height: 46px;
   padding: 0 24px;
   margin-top: 10px;
@@ -257,6 +261,16 @@
   font-weight: 700;
   cursor: pointer;
   transition: background-color 0.15s ease;
+}
+
+.container,
+.card,
+.formGroup {
+  min-width: 0;
+}
+
+.card {
+  overflow-wrap: anywhere;
 }
 
 .primaryBtn:hover:not(:disabled) {

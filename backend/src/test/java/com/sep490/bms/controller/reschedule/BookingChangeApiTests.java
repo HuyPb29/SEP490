@@ -20,10 +20,10 @@ import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.location.*;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.reschedule.*;
-import com.sep490.bms.entity.team.*;
 import com.sep490.bms.repository.account.AccountRepository;
 import com.sep490.bms.repository.location.LocationRepository;
 import com.sep490.bms.security.*;
+import com.sep490.bms.service.booking.PackageService;
 import com.sep490.bms.service.reschedule.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.*;
@@ -178,7 +178,10 @@ class BookingChangeApiTests {
 
     private void assertProofRecipients(Long... recipients) {
         assertThat(jdbc.queryForList(
-                "select recipient_id from notification where type='RESCHEDULE_PROOF_SUBMITTED' and ref_type='LOCATION' and ref_id=?",
+                """
+                select n.recipient_id from notification n join payment p on p.id = n.ref_id
+                where n.type='RESCHEDULE_PROOF_SUBMITTED' and n.ref_type='RESCHEDULE_PAYMENT'
+                  and p.reschedule_request_id is not null and p.location_id=?""",
                 Long.class, location.getId())).containsExactlyInAnyOrder(recipients);
     }
     @Test
@@ -238,6 +241,7 @@ class BookingChangeApiTests {
     @Autowired JwtTokenProvider jwt;
     @Autowired ObjectMapper json;
     @Autowired RescheduleService reschedules;
+    @Autowired PackageService packages;
     @Autowired CancellationService cancellations;
     MockMvc mvc; TransactionTemplate tx;
     Account owner,player,other; Location location; Long court; Booking booking;
@@ -329,7 +333,7 @@ class BookingChangeApiTests {
         }
         for(Long id:accountIds) accounts.deleteById(id);accountIds.clear();
     }
-    @Test void cancellingUnpaidDayOrderReleasesEverySlotAndReturnsPoints() throws Exception {
+    @Test void unpaidDayOrderExpiresAndRestoresPointsWithoutPlayerCancellation() throws Exception {
         jdbc.update("insert into player_location_balance (player_id, location_id, point_balance, total_paid) values (?, ?, 10, 0)",
                 player.getId(), location.getId());
         LocalDate date = LocalDate.now().plusDays(3);
@@ -348,11 +352,12 @@ class BookingChangeApiTests {
                 .andExpect(jsonPath("$.data.content[0].daySessions[0].courtName").value("Test court"))
                 .andExpect(jsonPath("$.data.content[0].daySessions[1].endTime").value("12:00"));
         String cancel = "/api/booking-orders/" + orderId + "/cancel";
-        mvc.perform(post(cancel).header("Authorization", token(other))).andExpect(status().isForbidden());
-        mvc.perform(post(cancel).header("Authorization", token(player))).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").value(2));
+        mvc.perform(post(cancel).header("Authorization", token(player))).andExpect(status().isNotFound());
         assertThat(jdbc.queryForList("select status from booking where package_id=?", String.class, orderId))
-                .containsExactly("CANCELLED_BY_PLAYER", "CANCELLED_BY_PLAYER");
+                .containsExactly("HOLDING", "HOLDING");
+        assertThat(packages.expireHold(orderId, LocalDateTime.now().plusMinutes(11))).isTrue();
+        assertThat(jdbc.queryForList("select status from booking where package_id=?", String.class, orderId))
+                .containsExactly("EXPIRED", "EXPIRED");
         assertThat(jdbc.queryForObject("""
                 select count(*) from booking_slot s join booking b on b.id=s.booking_id
                 where b.package_id=? and s.is_active=1
@@ -361,7 +366,7 @@ class BookingChangeApiTests {
                 Integer.class, location.getId())).isEqualTo(10);
         assertThat(jdbc.queryForObject("select count(*) from point_transaction where package_id=? and type='RETURN'",
                 Integer.class, orderId)).isEqualTo(1);
-        mvc.perform(post(cancel).header("Authorization", token(player))).andExpect(status().isConflict());
+        assertThat(packages.expireHold(orderId, LocalDateTime.now().plusMinutes(11))).isFalse();
     }
 
     @Test void previewUsesStoredListPriceAndDoesNotHoldSlots() throws Exception {
@@ -432,14 +437,14 @@ class BookingChangeApiTests {
         assertThat(jdbc.queryForObject("select status from payment where reschedule_request_id=?",String.class,id)).isEqualTo("REJECTED");
         assertThat(active(booking.getPlayDate())).isEqualTo(2);
     }
-    @Test void playerCancelKeepsDiscountsAndExpiresMatch() throws Exception {
-        tx.executeWithoutResult(s->{Match m=Match.builder().bookingId(booking.getId()).currentPlayers(1).neededPlayers(1).build();em.persist(m);em.flush();
-            em.persist(MatchJoinRequest.builder().matchId(m.getId()).playerId(other.getId()).phoneConsent(true).build());});
-        mvc.perform(post("/api/bookings/"+booking.getId()+"/cancel").header("Authorization",token(player))).andExpect(status().isOk());
-        assertThat(bookingStatus()).isEqualTo("CANCELLED_BY_PLAYER");assertThat(active(booking.getPlayDate())).isZero();
-        assertThat(jdbc.queryForObject("select status from [match] where booking_id=?",String.class,booking.getId())).isEqualTo("EXPIRED");
-        assertThat(jdbc.queryForObject("select count(*) from refund_request where booking_id=?",Integer.class,booking.getId())).isZero();
-        assertThat(jdbc.queryForObject("select voucher_discount from booking where id=?",BigDecimal.class,booking.getId())).isEqualByComparingTo("10000");
+    @Test void playerCannotCancelConfirmedBooking() throws Exception {
+        int activeSlots = active(booking.getPlayDate());
+        mvc.perform(post("/api/bookings/" + booking.getId() + "/cancel")
+                .header("Authorization", token(player))).andExpect(status().isNotFound());
+        assertThat(bookingStatus()).isEqualTo("CONFIRMED");
+        assertThat(active(booking.getPlayDate())).isEqualTo(activeSlots);
+        assertThat(jdbc.queryForObject("select count(*) from refund_request where booking_id=?", Integer.class,
+                booking.getId())).isZero();
     }
     @Test void affectedRefundAndManualRecordAreAtomicAndScoped() throws Exception {
         Long id=mark();assertThat(bookingStatus()).isEqualTo("CONFIRMED");choice(id,"REFUND");

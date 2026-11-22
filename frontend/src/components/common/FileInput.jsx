@@ -6,7 +6,7 @@ export function FileInput({ onChange, disabled, ...props }) {
   const input = useRef(null)
   const [filename, setFilename] = useState('')
   return <span className={styles.picker}>
-    <input {...props} ref={input} type="file" disabled={disabled} className="sr-only" onChange={(event) => {
+    <input {...props} ref={input} type="file" disabled={disabled} className={styles.nativeInput} onChange={(event) => {
       setFilename(Array.from(event.target.files || []).map((file) => file.name).join(', '))
       onChange?.(event)
     }} />

@@ -178,7 +178,7 @@ class LoyaltyApiTests {
         assertThat(balance().getPointBalance()).isEqualTo(8);
     }
 
-    @Test void ownerChangesVenueRatesAndExistingOrderKeepsItsPointSnapshot() throws Exception {
+    @Test void ownerChangesOnlyEarningRateAndRedemptionStaysFixedAt500() throws Exception {
         seed(10);
         Booking existing = booking(20000);
         tx.executeWithoutResult(s -> {
@@ -192,12 +192,18 @@ class LoyaltyApiTests {
                 .contentType(MediaType.APPLICATION_JSON).content(rates)).andExpect(status().isForbidden());
         mvc.perform(patch(path).header("Authorization", token(owner))
                 .contentType(MediaType.APPLICATION_JSON).content(rates))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.pointRedemptionValue").value(1500));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.pointRedemptionValue").isString());
+        mvc.perform(patch(path).header("Authorization", token(owner))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"pointEarningRate\":5000,\"pointRedemptionValue\":500}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pointEarningRate").value(5000))
+                .andExpect(jsonPath("$.data.pointRedemptionValue").value(500));
 
         Booking next = booking(20000);
         tx.executeWithoutResult(s -> {
             assertThat(points.redeemForBooking(existing.getId(), 2)).isEqualByComparingTo("1000");
-            assertThat(points.redeemForBooking(next.getId(), 1)).isEqualByComparingTo("1500");
+            assertThat(points.redeemForBooking(next.getId(), 2)).isEqualByComparingTo("1000");
         });
 
         Payment confirmed = payment(tx.execute(s -> em.find(Booking.class, existing.getId())));

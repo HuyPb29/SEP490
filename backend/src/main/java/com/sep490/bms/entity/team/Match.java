@@ -56,6 +56,10 @@ public class Match {
     @Column(name = "reschedule_pending", nullable = false)
     private boolean reschedulePending;
 
+    /** Trình độ chủ kèo chọn khi mở kèo (DR33); null = Không yêu cầu. Chỉ là nhãn, không chặn người xin vào. */
+    @Column(name = "skill_level", length = 30)
+    private String skillLevel;
+
     @PrePersist
     public void prePersist() {
         if (this.createdAt == null) {

@@ -47,24 +47,32 @@ export default function GoogleLocationPicker({ point, onPick, disabled, fallback
   const selection = useRef({ point, onPick, disabled })
   const mapRef = useRef(null)
   const markerRef = useRef(null)
+  const userPick = useRef('')
   const [state, setState] = useState('loading')
 
   useEffect(() => {
     selection.current = { point, onPick, disabled }
+    if (markerRef.current) markerRef.current.gmpDraggable = !disabled
+  }, [point, onPick, disabled])
+
+  const latitude = point?.lat
+  const longitude = point?.lng
+  useEffect(() => {
+    const point = latitude == null || longitude == null ? null : { lat: latitude, lng: longitude }
     if (mapRef.current && markerRef.current) {
       markerRef.current.position = point
       markerRef.current.map = point ? mapRef.current : null
-      if (point) {
+      if (point && `${point.lat.toFixed(6)},${point.lng.toFixed(6)}` !== userPick.current) {
         mapRef.current.panTo(point)
         if (mapRef.current.getZoom() < 15) mapRef.current.setZoom(15)
       }
     }
-  }, [point, onPick, disabled])
+  }, [latitude, longitude])
 
   useEffect(() => {
     if (!API_KEY) return undefined
     let active = true
-    let listener
+    const listeners = []
     const previousAuthFailure = window.gm_authFailure
     const onAuthFailure = () => {
       if (active) setState('error')
@@ -90,17 +98,24 @@ export default function GoogleLocationPicker({ point, onPick, disabled, fallback
           map: center ? map : null,
           position: center,
           title: 'Vị trí địa điểm',
+          gmpDraggable: !selection.current.disabled,
         })
-        listener = map.addListener('click', ({ latLng }) => {
-          if (latLng && !selection.current.disabled) selection.current.onPick?.(latLng.lat(), latLng.lng())
-        })
+        const pick = (latLng) => {
+          if (!latLng || selection.current.disabled) return
+          const lat = latLng.lat()
+          const lng = ((latLng.lng() + 180) % 360 + 360) % 360 - 180
+          userPick.current = `${lat.toFixed(6)},${lng.toFixed(6)}`
+          selection.current.onPick?.(lat, lng)
+        }
+        listeners.push(map.addListener('click', ({ latLng }) => pick(latLng)))
+        listeners.push(markerRef.current.addListener('dragend', ({ latLng }) => pick(latLng)))
         setState('ready')
       })
       .catch(onAuthFailure)
 
     return () => {
       active = false
-      listener?.remove()
+      listeners.forEach((listener) => listener.remove())
       if (markerRef.current) markerRef.current.map = null
       markerRef.current = null
       mapRef.current = null

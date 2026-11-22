@@ -59,7 +59,7 @@ export function Inbox({ title = 'Hộp thư' }) {
     {visible?.map((item) => <article key={item.id} id={`notification-${item.id}`} tabIndex={-1} className={'cw-record flex-col !items-start' + (item.read ? '' : ' cw-notification--new')}>
       <Link className="block w-full rounded hover:bg-emerald-50 focus-visible:outline focus-visible:outline-emerald-700"
         to={notificationDestination(item, role)} onClick={() => openNotification(item)}>
-      <h3 className="font-semibold">{notificationMessage(item.title) || 'Thông báo'} {!item.read && <StatusPill tone="positive">Chưa đọc</StatusPill>}</h3>
+      <h3 className="font-semibold">{notificationMessage(item.title) || 'Thông báo'} {item.type === 'RESCHEDULE_PROOF_SUBMITTED' && <StatusPill tone="pending">Phụ thu đổi lịch</StatusPill>} {!item.read && <StatusPill tone="positive">Chưa đọc</StatusPill>}</h3>
       <p>{notificationMessage(item.content)}</p>
       <time dateTime={item.createdAt} className="cw-muted text-sm">{dateTime(item.createdAt)}</time>
       </Link>

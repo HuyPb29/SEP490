@@ -115,13 +115,23 @@ class ServiceRegistrationApiTests {
         long locationId = json.readTree(approved.getResponse().getContentAsString()).at("/data/locationId").asLong();
 
         ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> password = ArgumentCaptor.forClass(String.class);
         LocalDate today = LocalDate.now();
         String end = today.plusYears(2).minusDays(1).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
         verify(mail).sendServiceRegistrationApproved(eq(email), eq("Sân thử D168 " + suffix), eq(4),
-                eq("8.889.000"), anyString(), eq(end), username.capture(), anyString());
+                eq("8.889.000"), anyString(), eq(end), username.capture(), password.capture());
         Account owner = accounts.findByUsername(username.getValue()).orElseThrow();
         assertThat(owner.getRole()).isEqualTo(Role.OWNER);
         assertThat(owner.getEmail()).isEqualTo(email);
+        mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content(json.writeValueAsString(Map.of("email",username.getValue(),"password",password.getValue()))))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/users/me/password").header("Authorization",token(owner)).contentType("application/json")
+                .content(json.writeValueAsString(Map.of("currentPassword",password.getValue(),"newPassword","NewOwnerPass123"))))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content(json.writeValueAsString(Map.of("email",username.getValue(),"password","NewOwnerPass123"))))
+                .andExpect(status().isOk());
         // FR12: thời hạn từ ngày duyệt theo số năm thuê trong đơn (2 năm), không còn cứng 12 tháng.
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM service_term WHERE location_id = ? "
                 + "AND start_date = ? AND end_date = ?", Integer.class,
@@ -163,11 +173,59 @@ class ServiceRegistrationApiTests {
         long id = json.readTree(sent.getResponse().getContentAsString()).at("/data/id").asLong();
 
         mvc.perform(post("/api/admin/service-registrations/" + id + "/reject").header("Authorization", token(admin))
+                        .contentType("application/json").content("{\"reason\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT status FROM service_registration WHERE id = ?", String.class, id))
+                .isEqualTo("PENDING");
+
+        mvc.perform(post("/api/admin/service-registrations/" + id + "/reject").header("Authorization", token(admin))
                         .contentType("application/json").content("{\"reason\":\"Chưa nhận được tiền thuê\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.rejectReason").value("Chưa nhận được tiền thuê"));
         verify(mail).sendServiceRegistrationRejected(email, "Sân thử D168 " + suffix, "Chưa nhận được tiền thuê");
+        var retry = form(email, true);
+        retry.put("contactPhone", jdbc.queryForObject("SELECT contact_phone FROM service_registration WHERE id=?", String.class, id));
+        submit(retry, 201);
         org.mockito.Mockito.verify(mail, org.mockito.Mockito.never()).sendServiceRegistrationApproved(
                 anyString(), anyString(), anyInt(), anyString(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void invalidAndDuplicateContactsDoNotAddPendingRequests() throws Exception {
+        var original = form("duplicate" + suffix + "@example.com", true);
+        submit(original, 201);
+        int before = jdbc.queryForObject("SELECT COUNT(*) FROM service_registration WHERE status='PENDING'", Integer.class);
+        var sameEmail = new HashMap<>(original);
+        sameEmail.put("contactEmail", original.get("contactEmail").toString().toUpperCase());
+        sameEmail.put("contactPhone", phone());
+        submit(sameEmail, 409);
+        var samePhone = new HashMap<>(original);
+        samePhone.put("contactEmail", "other" + suffix + "@example.com");
+        submit(samePhone, 409);
+        var existingAccount = form(admin.getEmail(), true);
+        submit(existingAccount, 409);
+        existingAccount.put("contactEmail", "new" + suffix + "@example.com");
+        existingAccount.put("contactPhone", admin.getPhone());
+        submit(existingAccount, 409);
+        for (var invalid : java.util.List.of(Map.of("contactEmail", "invalid@localhost"),
+                Map.of("contactPhone", "12345"), Map.of("contactName", "  "),
+                Map.of("latitude", "91"), Map.of("termsAccepted", false))) {
+            var candidate = form("invalid" + suffix + "@example.com", true);
+            candidate.putAll(invalid);
+            submit(candidate, 400);
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM service_registration WHERE status='PENDING'", Integer.class))
+                .isEqualTo(before);
+        mvc.perform(get("/api/admin/service-registrations").param("status", "PENDING")
+                        .header("Authorization", token(admin)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(before));
+    }
+
+    private void submit(Map<String, Object> form, int expectedStatus) throws Exception {
+        mvc.perform(multipart("/api/service-registrations").file(data(form))
+                        .file(new MockMultipartFile("proof", "ck.png", "image/png", new byte[] {1})))
+                .andExpect(status().is(expectedStatus));
     }
 
     private Map<String, Object> form(String email, boolean termsAccepted) {

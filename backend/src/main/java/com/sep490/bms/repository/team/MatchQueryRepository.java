@@ -30,7 +30,8 @@ public class MatchQueryRepository {
                    t.captain_id AS host_id, a.full_name AS host_name, a.phone AS host_phone, t.skill_level AS team_skill_level,
                    b.location_id, l.name AS location_name, c.name AS court_name,
                    b.play_date, b.start_minute, b.end_minute,
-                   m.current_players, m.needed_players, m.status, m.created_at, m.closed_at, m.reschedule_pending
+                   m.current_players, m.needed_players, m.status, m.created_at, m.closed_at, m.reschedule_pending,
+                   m.skill_level
             FROM [match] m
             JOIN booking b ON b.id = m.booking_id
             JOIN team t ON t.id = b.team_id
@@ -51,6 +52,7 @@ public class MatchQueryRepository {
                 .hostName(rs.getString("host_name"))
                 .hostPhone(rs.getString("host_phone"))
                 .teamSkillLevel(rs.getString("team_skill_level"))
+                .skillLevel(rs.getString("skill_level"))
                 .locationId(rs.getLong("location_id"))
                 .locationName(rs.getString("location_name"))
                 .courtName(rs.getString("court_name"))
@@ -100,10 +102,14 @@ public class MatchQueryRepository {
     /**
      * Điều kiện lọc danh sách kèo (UC29). fromMinute/toMinute lọc theo giờ bắt đầu trong ngày,
      * nửa mở [fromMinute, toMinute) để khung sáng/chiều/tối không trùng nhau.
+     * skillLevel: null = mọi trình độ, {@link #NO_SKILL_REQUIREMENT} = kèo Không yêu cầu, còn lại = đúng mức đó.
      */
     public record MatchFilter(String status, Long locationId, LocalDate playDate,
-                              Integer fromMinute, Integer toMinute, boolean upcomingOnly) {
+                              Integer fromMinute, Integer toMinute, boolean upcomingOnly, String skillLevel) {
     }
+
+    /** Giá trị lọc cho kèo không yêu cầu trình độ (m.skill_level IS NULL). */
+    public static final String NO_SKILL_REQUIREMENT = "NONE";
 
     public List<MatchResponse> searchMatches(MatchFilter filter, int offset, int size) {
         List<Object> params = new ArrayList<>();
@@ -248,6 +254,12 @@ public class MatchQueryRepository {
         }
         if (filter.upcomingOnly()) {
             where.append(" AND b.play_date >= CAST(SYSDATETIME() AS DATE)");
+        }
+        if (NO_SKILL_REQUIREMENT.equals(filter.skillLevel())) {
+            where.append(" AND m.skill_level IS NULL");
+        } else if (filter.skillLevel() != null) {
+            where.append(" AND m.skill_level = ?");
+            params.add(filter.skillLevel());
         }
         return where.toString();
     }

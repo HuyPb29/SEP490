@@ -34,7 +34,6 @@ import lombok.RequiredArgsConstructor;
  */
 @Service @Validated @RequiredArgsConstructor @Transactional(readOnly=true)
 public class LoyaltyPointService {
-    private static final int COMPENSATION_POINT_VALUE=500;
     public static final int EARNING_RATE=10000;
     /** BR41, D161: trần chung cho mọi đơn, tính sau voucher nếu có. */
     public static final int MAX_POINT_PERCENT=50;
@@ -131,7 +130,7 @@ public class LoyaltyPointService {
     /** Preview is pure: no balance creation or reservation. F3 calls redeem only after confirmation. */
     public BigDecimal preview(Long player,Long location,BigDecimal afterVoucher,int points) {
         int available=balances.findByPlayerIdAndLocationId(player,location).map(PlayerLocationBalance::getPointBalance).orElse(0);
-        BigDecimal value=BigDecimal.valueOf(em.find(Location.class,location).getPointRedemptionValue());
+        BigDecimal value=BigDecimal.valueOf(Location.POINT_REDEMPTION_VALUE);
         BigDecimal discount=BigDecimal.valueOf(points).multiply(value);
         if(discount.compareTo(BigDecimal.valueOf(1000))<0 || points>available)
             throw new AppException("Mỗi lần dùng điểm phải giảm ít nhất 1.000 đồng và không vượt số dư. (MSG37)");
@@ -265,7 +264,7 @@ public class LoyaltyPointService {
             settleRefund(refund.getId(),refund.getSuggestedAmount());
             b.setLoyaltyRefundProcessed(true);
         } else {
-            int points=paid.divide(BigDecimal.valueOf(COMPENSATION_POINT_VALUE),0,RoundingMode.CEILING).intValueExact();
+            int points=paid.divide(BigDecimal.valueOf(Location.POINT_REDEMPTION_VALUE),0,RoundingMode.CEILING).intValueExact();
             change(balance,b.getId(),null,PointTransactionType.ADJUST,points,null,"Bồi hoàn khi sân hủy (BR54)",a.getCreatedBy());
             a.setCompensationPoints(points); b.setLoyaltyCompensationProcessed(true);
             em.persist(Notification.builder().recipientId(b.getPlayerId()).type("COMPENSATION_POINTS").title("Đã cộng điểm bồi hoàn")

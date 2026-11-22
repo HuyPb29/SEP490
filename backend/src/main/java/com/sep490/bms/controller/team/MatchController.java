@@ -89,11 +89,13 @@ public class MatchController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate playDate,
             @RequestParam(required = false) Integer fromMinute,
             @RequestParam(required = false) Integer toMinute,
+            // Một trong 4 mức của DR33, hoặc NONE để lấy kèo Không yêu cầu trình độ; bỏ trống = mọi trình độ.
+            @RequestParam(required = false) String skillLevel,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(ApiResponse.success(
                 matchService.getMatches(currentUser == null ? null : currentUser.getId(), status, locationId, playDate,
-                        fromMinute, toMinute, page, size)));
+                        fromMinute, toMinute, skillLevel, page, size)));
     }
 
     /** "Kèo của tôi": role = HOSTED | JOINED (bỏ trống = cả hai), status bỏ trống = mọi trạng thái. */
