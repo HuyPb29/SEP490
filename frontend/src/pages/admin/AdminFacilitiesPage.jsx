@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import ServiceRenewals from '../../components/location/ServiceRenewals'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   apiErrorMessage,
@@ -91,6 +92,7 @@ export default function AdminFacilitiesPage() {
   const [facilities, setFacilities] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const processingRegistration = useRef(false)
   const [searchKeyword, setSearchKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [modal, setModal] = useState(null)
@@ -223,6 +225,7 @@ export default function AdminFacilitiesPage() {
   // --------------------------------------------------- UC05: duyệt / từ chối đơn đăng ký
 
   const handleApprove = async (request) => {
+    if (processingRegistration.current || saving) return
     const confirmed = window.confirm(
       `Duyệt "${request.locationName}"?\n`
       + `Chỉ duyệt khi đã thấy ${formatVnd(request.rentalAmount)} về tài khoản của bên vận hành.\n`
@@ -230,6 +233,7 @@ export default function AdminFacilitiesPage() {
       + `${request.requesterId ? '' : ", tạo tài khoản chủ sân"} và gửi email kết quả tới ${request.contactEmail}.`,
     )
     if (!confirmed) return
+    processingRegistration.current = true
     setSaving(true)
     try {
       await approveServiceRegistration(request.id)
@@ -240,11 +244,13 @@ export default function AdminFacilitiesPage() {
       setActionError(apiErrorMessage(err))
       setStatusMessage('')
     } finally {
+      processingRegistration.current = false
       setSaving(false)
     }
   }
 
   const handleReject = (request) => {
+    if (processingRegistration.current || saving) return
     setModal({ type: 'reject', requestId: request.id, locationName: request.locationName, reason: '' })
     setActionError('')
     setStatusMessage('')
@@ -252,10 +258,12 @@ export default function AdminFacilitiesPage() {
 
   const handleConfirmRejection = async (event) => {
     event.preventDefault()
+    if (processingRegistration.current || saving) return
     if (!modal?.reason.trim()) {
       setActionError('Vui lòng nhập lý do từ chối.')
       return
     }
+    processingRegistration.current = true
     setSaving(true)
     try {
       await rejectServiceRegistration(modal.requestId, modal.reason.trim())
@@ -266,6 +274,7 @@ export default function AdminFacilitiesPage() {
     } catch (err) {
       setActionError(apiErrorMessage(err))
     } finally {
+      processingRegistration.current = false
       setSaving(false)
     }
   }
@@ -381,6 +390,7 @@ export default function AdminFacilitiesPage() {
   }
 
   const closeModal = () => {
+    if (saving || processingRegistration.current) return
     if (modal?.type === 'proof' && modal.url) URL.revokeObjectURL(modal.url)
     setModal(null)
     setActionError('')
@@ -412,13 +422,14 @@ export default function AdminFacilitiesPage() {
           className={styles.secondaryButton || 'cw-secondary'}
           type="button"
           onClick={loadAll}
-          disabled={loading}
+          disabled={loading || saving}
         >
           {loading ? 'Đang tải…' : 'Làm mới'}
         </button>
       }
     >
         <AdminCourtExpansions />
+        <ServiceRenewals admin onRefresh={loadAll} />
 
         {(statusMessage || (actionError && !modal)) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
@@ -453,7 +464,7 @@ export default function AdminFacilitiesPage() {
                 </div>
                 <div className={styles.requestActions}>
                   {request.hasProof ? (
-                    <button className={styles.extendButton} type="button" onClick={() => handleViewProof(request)} disabled={saving}>
+                    <button className={styles.proofButton} type="button" onClick={() => handleViewProof(request)} disabled={saving}>
                       Xem chứng từ
                     </button>
                   ) : (
@@ -663,6 +674,8 @@ export default function AdminFacilitiesPage() {
                     <span>Lý do từ chối</span>
                     <textarea
                       autoFocus
+                      required
+                      disabled={saving}
                       rows="4"
                       maxLength={500}
                       value={modal.reason}

@@ -80,6 +80,8 @@ public class EmailService {
                 + "Yêu cầu đăng ký địa điểm " + locationName + " chưa được duyệt.\n"
                 + "Lý do: " + reason + "\n"
                 + "Bên vận hành sẽ liên hệ với anh/chị để hoàn lại tiền thuê đã chuyển.\n\n"
+                + "Anh/chị có thể sửa thông tin và gửi hồ sơ mới tại mục Đăng ký chủ sân trên website BMS. "
+                + "Email và số điện thoại trong hồ sơ bị từ chối được dùng lại nếu chưa có tài khoản hoặc hồ sơ đang chờ duyệt.\n\n"
                 + "Trân trọng,\n"
                 + "Đội ngũ quản trị BMS";
         sendEmail(toEmail, subject, content, "Không gửi được email kết quả cho chủ sân. Vui lòng thử lại sau");

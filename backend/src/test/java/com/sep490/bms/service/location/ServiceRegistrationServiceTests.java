@@ -163,6 +163,52 @@ class ServiceRegistrationServiceTests {
     // ---------------------------------------------------------------- UC06 duyệt
 
     @Test
+    void invalidContactsAndCoordinatesNeverStoreProofOrRegistration() {
+        var request = guestRequest(4, 1);
+        request.setContactPhone("abc1234567");
+        assertThatThrownBy(() -> service.submit(null, request, proof)).hasMessageContaining("10 chữ số");
+        request.setContactPhone("0933444555");
+        request.setContactEmail("owner@localhost");
+        assertThatThrownBy(() -> service.submit(null, request, proof)).hasMessageContaining("Email");
+        request.setContactEmail("owner@example.com");
+        request.setLatitude(BigDecimal.valueOf(91));
+        assertThatThrownBy(() -> service.submit(null, request, proof)).hasMessageContaining("Tọa độ");
+        verifyNoInteractions(files);
+        verify(registrations, never()).save(any());
+    }
+
+    @Test
+    void duplicatePhoneOrPendingEmailOrPendingPhoneNeverCreatesRequest() {
+        when(accounts.existsByPhone("0933444555")).thenReturn(true);
+        assertThatThrownBy(() -> service.submit(null, guestRequest(4, 1), proof)).hasMessageContaining("Số điện thoại");
+        when(accounts.existsByPhone("0933444555")).thenReturn(false);
+        when(registrations.existsByRequesterIdIsNullAndStatusAndContactEmailIgnoreCase(
+                ApprovalStatus.PENDING, "chu.san@example.com")).thenReturn(true);
+        assertThatThrownBy(() -> service.submit(null, guestRequest(4, 1), proof)).hasMessageContaining("Email");
+        when(registrations.existsByRequesterIdIsNullAndStatusAndContactEmailIgnoreCase(
+                ApprovalStatus.PENDING, "chu.san@example.com")).thenReturn(false);
+        when(registrations.existsByRequesterIdIsNullAndStatusAndContactPhone(
+                ApprovalStatus.PENDING, "0933444555")).thenReturn(true);
+        assertThatThrownBy(() -> service.submit(null, guestRequest(4, 1), proof)).hasMessageContaining("Số điện thoại");
+        verifyNoInteractions(files);
+        verify(registrations, never()).save(any());
+    }
+
+    @Test
+    void rejectionRequiresReasonAndEmailBeforeChangingStatus() {
+        var pending = pendingGuest(2, 1);
+        when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(pending));
+        assertThatThrownBy(() -> service.reject(admin, 50L, new RejectServiceRegistrationRequest("   ")))
+                .hasMessageContaining("Lý do từ chối");
+        pending.setContactEmail(null);
+        assertThatThrownBy(() -> service.reject(admin, 50L, new RejectServiceRegistrationRequest("Không hợp lệ")))
+                .hasMessageContaining("Email");
+        assertThat(pending.getStatus()).isEqualTo(ApprovalStatus.PENDING);
+        verifyNoInteractions(emails);
+        verify(registrations, never()).save(any());
+    }
+
+    @Test
     void approvingGuestRequestCreatesOwnerTermByYearsAndEmailsCredentials() {
         ServiceRegistration pending = pendingGuest(3, 2);
         when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(pending));

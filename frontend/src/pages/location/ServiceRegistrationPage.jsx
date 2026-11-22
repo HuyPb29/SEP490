@@ -54,7 +54,8 @@ export default function ServiceRegistrationPage() {
   const [lookingUpAddress, setLookingUpAddress] = useState(false);
   const [mapAddressError, setMapAddressError] = useState('');
   const [mapAddress, setMapAddress] = useState('');
-  const mapLookupInProgress = useRef(false);
+  const mapLookupVersion = useRef(0);
+  const submitInProgress = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -71,7 +72,9 @@ export default function ServiceRegistrationPage() {
   const ward = wardOptions.find(({ code }) => code === formData.wardCode);
   const addressDetail = formData.addressDetail.trim();
   const address = province && ward && addressDetail ? [addressDetail, ward.name, province.name].join(', ') : '';
-  const addressDisabled = !canSubmit || isSubmitting || lookingUpAddress || locating;
+  const addressDisabled = !canSubmit || isSubmitting || locating;
+
+  useEffect(() => () => { mapLookupVersion.current += 1; }, []);
 
   const loadMyRegistrations = useCallback(async () => {
     if (!user || !isOwner) return;
@@ -118,9 +121,11 @@ export default function ServiceRegistrationPage() {
 
   const handleProofChange = (file) => {
     clearFieldError('proof');
-    setProofFile(null);
-    setProofPreview('');
-    if (!file) return;
+    if (!file) {
+      setProofFile(null);
+      setProofPreview('');
+      return;
+    }
     if (!PROOF_TYPES.includes(file.type)) {
       setFieldErrors((prev) => ({ ...prev, proof: 'Chỉ nhận ảnh JPG hoặc PNG.' }));
       return;
@@ -159,6 +164,8 @@ export default function ServiceRegistrationPage() {
   };
 
   const handleAddressChange = (field, value) => {
+    mapLookupVersion.current += 1;
+    setLookingUpAddress(false);
     setFormData((prev) => ({
       ...prev,
       [field]: value,
@@ -179,8 +186,7 @@ export default function ServiceRegistrationPage() {
   };
 
   const lookupMapAddress = async (request) => {
-    if (mapLookupInProgress.current || isSubmitting) return;
-    mapLookupInProgress.current = true;
+    const version = ++mapLookupVersion.current;
     setLookingUpAddress(true);
     setMapAddressError('');
     setMapAddress('');
@@ -189,25 +195,25 @@ export default function ServiceRegistrationPage() {
       const { Geocoder } = await maps.importLibrary('geocoding');
       const { results } = await new Geocoder().geocode(request);
       const result = results[0];
+      if (version !== mapLookupVersion.current) return;
       if (!result?.formatted_address) throw new Error("Không tìm thấy địa chỉ phù hợp");
       setMapAddress(result.formatted_address);
     } catch {
-      setMapAddressError('Google Maps chưa tra được địa chỉ tại điểm ghim. Vị trí bạn chọn vẫn được giữ.');
+      if (version === mapLookupVersion.current) setMapAddressError('Google Maps chưa tra được địa chỉ tại điểm ghim. Vị trí bạn chọn vẫn được giữ.');
     } finally {
-      mapLookupInProgress.current = false;
-      setLookingUpAddress(false);
+      if (version === mapLookupVersion.current) setLookingUpAddress(false);
     }
   };
 
   const handleMapPick = (latitude, longitude) => {
-    if (mapLookupInProgress.current || isSubmitting) return;
+    if (submitInProgress.current) return;
     fillCoordinates(latitude, longitude);    setMapAddress('');
     setMapAddressError('');
     if (hasGoogleMapsKey) lookupMapAddress({ location: { lat: latitude, lng: longitude } });
   };
 
   const handleGetCurrentLocation = () => {
-    if (mapLookupInProgress.current || isSubmitting || locating) return;
+    if (submitInProgress.current || locating) return;
     if (!window.isSecureContext || !navigator.geolocation) {
       setLocationError('Không thể dùng định vị ở trình duyệt này. Hãy bấm vào bản đồ để đặt ghim.');
       return;
@@ -291,7 +297,7 @@ export default function ServiceRegistrationPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (addressDisabled || mapLookupInProgress.current) return;
+    if (addressDisabled || submitInProgress.current) return;
     setSubmitSuccess('');
     setSubmitError('');
 
@@ -309,6 +315,9 @@ export default function ServiceRegistrationPage() {
       return;
     }
 
+    submitInProgress.current = true;
+    mapLookupVersion.current += 1;
+    setLookingUpAddress(false);
     setIsSubmitting(true);
     try {
       const payload = {
@@ -345,8 +354,15 @@ export default function ServiceRegistrationPage() {
       setFieldErrors({});
       loadMyRegistrations();
     } catch (err) {
-      setSubmitError(apiErrorMessage(err, 'Không thể gửi đơn đăng ký. Vui lòng kiểm tra lại thông tin.'));
+      const message = apiErrorMessage(err, 'Không thể gửi đơn đăng ký. Vui lòng kiểm tra lại thông tin.');
+      setSubmitError(message);
+      if (!isOwner && /email|số điện thoại/i.test(message)) {
+        const field = /email/i.test(message) ? 'contactEmail' : 'contactPhone';
+        setFieldErrors((current) => ({ ...current, [field]: message }));
+        document.getElementById(field)?.focus();
+      }
     } finally {
+      submitInProgress.current = false;
       setIsSubmitting(false);
     }
   };
@@ -526,17 +542,17 @@ export default function ServiceRegistrationPage() {
                     Math.abs(Number(formData.latitude)) <= 90 && Math.abs(Number(formData.longitude)) <= 180
                     ? { lat: Number(formData.latitude), lng: Number(formData.longitude) } : null}
                   onPick={handleMapPick}
-                  disabled={isSubmitting || lookingUpAddress || locating}
+                  disabled={isSubmitting || locating}
                   fallback={<LocationMap
                     initialCenter={{ latitude: 21.028511, longitude: 105.854444 }}
                     venues={formData.latitude === '' || formData.longitude === '' ? [] :
                       [{ facility_id: 'registration', latitude: formData.latitude, longitude: formData.longitude }]}
                     onPick={handleMapPick}
-                    pickDisabled={isSubmitting || lookingUpAddress || locating}
+                    pickDisabled={isSubmitting || locating}
                   />}
                 />
                 {lookingUpAddress && <p role="status">Đang tìm địa chỉ trên bản đồ…</p>}
-                {mapAddress && <p role="status">Vị trí tìm được: {mapAddress}. Hãy kiểm tra và chỉnh ghim đúng vị trí sân trước khi gửi.</p>}
+                {mapAddress && <p role="status">Địa chỉ tham khảo tại ghim: {mapAddress}. Hãy kiểm tra ghim và địa chỉ đã nhập trước khi gửi.</p>}
                 {mapAddressError && <p role="alert" className={styles.errorText}>{mapAddressError}</p>}
               </div>
             )}
