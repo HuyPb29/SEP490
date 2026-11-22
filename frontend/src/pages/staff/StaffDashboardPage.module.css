@@ -208,8 +208,7 @@
   text-decoration: underline;
 }
 
-.warningBanner .handleButton,
-.transactionDetails .surchargeLabel {
+.warningBanner .handleButton {
   color: #854d0e;
 }
 
