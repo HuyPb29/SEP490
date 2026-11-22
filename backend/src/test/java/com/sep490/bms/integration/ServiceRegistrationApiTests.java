@@ -115,6 +115,7 @@ class ServiceRegistrationApiTests {
         long locationId = json.readTree(approved.getResponse().getContentAsString()).at("/data/locationId").asLong();
 
         ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> password = ArgumentCaptor.forClass(String.class);
         LocalDate today = LocalDate.now();
         String end = today.plusYears(2).minusDays(1).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
         verify(mail).sendServiceRegistrationApproved(eq(email), eq("Sân thử D168 " + suffix), eq(4),
@@ -174,6 +175,9 @@ class ServiceRegistrationApiTests {
                 .andExpect(jsonPath("$.data.status").value("REJECTED"))
                 .andExpect(jsonPath("$.data.rejectReason").value("Chưa nhận được tiền thuê"));
         verify(mail).sendServiceRegistrationRejected(email, "Sân thử D168 " + suffix, "Chưa nhận được tiền thuê");
+        var retry = form(email, true);
+        retry.put("contactPhone", jdbc.queryForObject("SELECT contact_phone FROM service_registration WHERE id=?", String.class, id));
+        submit(retry, 201);
         org.mockito.Mockito.verify(mail, org.mockito.Mockito.never()).sendServiceRegistrationApproved(
                 anyString(), anyString(), anyInt(), anyString(), anyString(), anyString(), anyString(), anyString());
     }
