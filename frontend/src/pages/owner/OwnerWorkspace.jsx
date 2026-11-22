@@ -199,7 +199,7 @@ function OwnerLocation() {
     </Section>
     {location && location.status !== 'ACTIVE' && <Section title="Địa điểm đã khóa">
       <p>{lockedVenueNotice(location)}</p>
-      <Link className="cw-secondary" to="/owner/facility-settings#service-renewal">Yêu cầu gia hạn</Link>
+      <Link className="cw-secondary" to={`/owner/facility-settings?locationId=${location.id}#service-renewal`}>Yêu cầu gia hạn</Link>
       {canDownloadLockedVenue(location) && <ActionForm label="Tải dữ liệu địa điểm" action={() => downloadVenueData()} />}
     </Section>}
     {location?.status === 'ACTIVE' && <>

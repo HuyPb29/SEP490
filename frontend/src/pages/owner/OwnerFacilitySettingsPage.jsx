@@ -1,4 +1,6 @@
+import ServiceRenewals from '../../components/location/ServiceRenewals'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { fetchProtectedImage } from '../../api'
 import {
   apiErrorMessage,
@@ -58,6 +60,9 @@ function formatDateTime(value) {
 }
 
 export default function OwnerFacilitySettingsPage() {
+  // ?locationId= từ thông báo gia hạn hoặc nút "Yêu cầu gia hạn": mở đúng địa điểm đó thay vì địa điểm đang chọn.
+  const [searchParams] = useSearchParams()
+  const requestedLocationId = Number(searchParams.get('locationId')) || null
   const [locations, setLocations] = useState([])
   const [selectedLocationId, setSelectedLocationId] = useState(null)
   const [_loading, setLoading] = useState(true)
@@ -149,7 +154,7 @@ export default function OwnerFacilitySettingsPage() {
     ;(async () => {
       setLoading(true)
       try {
-        await loadLocations()
+        await loadLocations(requestedLocationId ?? undefined)
         if (!cancelled) setLoadError('')
       } catch (err) {
         if (!cancelled) setLoadError(apiErrorMessage(err))
@@ -160,7 +165,7 @@ export default function OwnerFacilitySettingsPage() {
     return () => {
       cancelled = true
     }
-  }, [loadLocations])
+  }, [loadLocations, requestedLocationId])
 
   const handleFacilityChange = (value) => {
     const nextId = Number(value)
@@ -331,6 +336,7 @@ export default function OwnerFacilitySettingsPage() {
           </p>
         )}
 
+        {selectedLocationId && <ServiceRenewals key={selectedLocationId} locationId={selectedLocationId} onRefresh={() => loadLocations(selectedLocationId)} />}
         <form onSubmit={handleSubmit}>
           <section className={styles.card}>
             <div className={styles.cardHeader}>

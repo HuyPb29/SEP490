@@ -93,6 +93,11 @@ class ServiceRenewalApiTests {
                 .contentType("application/json").content("{\"paymentConfirmed\":true}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.startDate").value(LocalDate.now().toString()));
         assertThat(locations.findById(location.getId()).orElseThrow().getStatus()).isEqualTo("ACTIVE");
+        // Thông báo gia hạn trả đúng địa điểm để Owner có nhiều địa điểm mở đúng trang gia hạn.
+        mvc.perform(get("/api/notifications").header("Authorization",token(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].refType").value("SERVICE_RENEWAL"))
+                .andExpect(jsonPath("$.data.content[0].locationId").value(location.getId()));
     }
     @Test void rejectRequiresReasonThenOwnerCanSubmitAgain() throws Exception {
         term(LocalDate.now().plusMonths(1)); long id=submit();
