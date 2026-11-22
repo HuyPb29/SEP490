@@ -1,3 +1,4 @@
+import ServiceRenewals from '../../components/location/ServiceRenewals'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
@@ -428,6 +429,7 @@ export default function AdminFacilitiesPage() {
       }
     >
         <AdminCourtExpansions />
+        <ServiceRenewals admin onRefresh={loadAll} />
 
         {(statusMessage || (actionError && !modal)) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>

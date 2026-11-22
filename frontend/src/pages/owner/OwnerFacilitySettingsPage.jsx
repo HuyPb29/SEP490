@@ -1,3 +1,4 @@
+import ServiceRenewals from '../../components/location/ServiceRenewals'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchProtectedImage } from '../../api'
 import {
@@ -336,6 +337,7 @@ export default function OwnerFacilitySettingsPage() {
           </p>
         )}
 
+        {selectedLocationId && <ServiceRenewals key={selectedLocationId} locationId={selectedLocationId} onRefresh={() => loadLocations(selectedLocationId)} />}
         <form onSubmit={handleSubmit}>
           <section className={styles.card}>
             <div className={styles.cardHeader}>
