@@ -13,7 +13,9 @@ export function notificationDestination(item, userRole) {
   const fallback = `${inbox}#notification-${item.id}`;
 
   if (type === 'RESCHEDULE_PROOF_SUBMITTED' && ['owner', 'staff'].includes(role)) {
-    return '/staff/confirm-payments?type=reschedule';
+    // Thông báo mới tham chiếu đúng giao dịch phụ thu; thông báo cũ (ref LOCATION) mở hàng chờ phụ thu.
+    const paymentId = refType === 'RESCHEDULE_PAYMENT' ? refId : null;
+    return '/staff/confirm-payments?type=reschedule' + (paymentId ? `&paymentId=${paymentId}` : '');
   }
   const paymentTransferred = ['PAYMENT_TRANSFERRED_TO_OWNER', 'PAYMENT_ESCALATED', 'PAYMENT_ESCALATED_TO_OWNER'];
   if (role === 'staff' && paymentTransferred.includes(type)) return '/staff/dashboard';

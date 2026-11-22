@@ -15,6 +15,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sep490.bms.dto.team.CreateMatchRequest;
+import com.sep490.bms.dto.team.JoinRequestCreateRequest;
 import com.sep490.bms.dto.team.MatchResponse;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.exception.AppException;
@@ -91,19 +93,71 @@ class MatchListingTests {
         long evening = match(booking(1080), "OPEN");
 
         List<MatchResponse> eveningOnly = matches
-                .getMatches(null, null, locationId, playDate, 1020, 1380, 0, 10).getContent();
+                .getMatches(null, null, locationId, playDate, 1020, 1380, null, 0, 10).getContent();
         assertThat(ids(eveningOnly)).containsExactly(evening);
         // FR104 (D165): nhãn trình độ của kèo là trình độ của đội, không phải của chủ kèo ("Mới chơi").
         assertThat(eveningOnly.get(0).getTeamSkillLevel()).isEqualTo("Nâng cao");
-        assertThat(ids(matches.getMatches(null, null, locationId, playDate, 360, 720, 0, 10).getContent()))
+        assertThat(ids(matches.getMatches(null, null, locationId, playDate, 360, 720, null, 0, 10).getContent()))
                 .containsExactly(morning);
     }
 
     @Test
-    void invalidTimeWindowIsRejected() {
-        assertThatThrownBy(() -> matches.getMatches(null, null, null, null, 720, 720, 0, 10))
+    void captainOpensMatchWithChosenSkillOrNoRequirement() {
+        MatchResponse advanced = matches.createMatch(hostId, CreateMatchRequest.builder().bookingId(booking(480))
+                .currentPlayers(4).neededPlayers(2).skillLevel("Khá").phoneConsent(true).build());
+        MatchResponse open = matches.createMatch(hostId, CreateMatchRequest.builder().bookingId(booking(600))
+                .currentPlayers(4).neededPlayers(2).skillLevel(" ").phoneConsent(true).build());
+
+        assertThat(advanced.getSkillLevel()).isEqualTo("Khá");
+        assertThat(advanced.getTeamSkillLevel()).isEqualTo("Nâng cao");
+        assertThat(advanced.isHost()).isTrue();
+        assertThat(open.getSkillLevel()).isNull();
+    }
+
+    @Test
+    void openingMatchRequiresHostPhoneConsentAndValidSkill() {
+        long bookingId = booking(480);
+        assertThatThrownBy(() -> matches.createMatch(hostId, CreateMatchRequest.builder().bookingId(bookingId)
+                .currentPlayers(4).neededPlayers(2).skillLevel("Khá").phoneConsent(false).build()))
+                .isInstanceOf(AppException.class).hasMessageContaining("số điện thoại");
+        assertThatThrownBy(() -> matches.createMatch(hostId, CreateMatchRequest.builder().bookingId(bookingId)
+                .currentPlayers(4).neededPlayers(2).skillLevel("Giỏi").phoneConsent(true).build()))
+                .isInstanceOf(AppException.class).hasMessageContaining("Trình độ của kèo");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM [match] WHERE booking_id = ?", Long.class, bookingId))
+                .isZero();
+    }
+
+    @Test
+    void openMatchesFilterBySkillLevelIncludingNoRequirement() {
+        long medium = match(booking(480), "OPEN", "Trung bình");
+        long none = match(booking(600), "OPEN", null);
+
+        assertThat(ids(matches.getMatches(null, null, locationId, playDate, null, null, "Trung bình", 0, 10)
+                .getContent())).containsExactly(medium);
+        assertThat(ids(matches.getMatches(null, null, locationId, playDate, null, null, "none", 0, 10)
+                .getContent())).containsExactly(none);
+        assertThat(matches.getMatches(null, null, locationId, playDate, null, null, null, 0, 10).getTotalElements())
+                .isEqualTo(2);
+        assertThatThrownBy(() -> matches.getMatches(null, null, null, null, null, null, "Cao", 0, 10))
                 .isInstanceOf(AppException.class);
-        assertThatThrownBy(() -> matches.getMatches(null, null, null, null, -1, null, 0, 10))
+    }
+
+    @Test
+    void skillLevelIsOnlyALabelSoLowerLevelPlayersCanStillRequest() {
+        long advanced = match(booking(480), "OPEN", "Nâng cao");
+        jdbc.update("UPDATE account SET skill_level = N'Trung bình' WHERE id = ?", playerId);
+
+        assertThat(matches.getMatches(playerId, null, locationId, playDate, null, null, null, 0, 10).getContent())
+                .extracting(MatchResponse::getId).contains(advanced);
+        assertThat(matches.createJoinRequest(playerId, advanced,
+                JoinRequestCreateRequest.builder().phoneConsent(true).build()).getStatus()).isEqualTo("PENDING");
+    }
+
+    @Test
+    void invalidTimeWindowIsRejected() {
+        assertThatThrownBy(() -> matches.getMatches(null, null, null, null, 720, 720, null, 0, 10))
+                .isInstanceOf(AppException.class);
+        assertThatThrownBy(() -> matches.getMatches(null, null, null, null, -1, null, null, 0, 10))
                 .isInstanceOf(AppException.class);
     }
 
@@ -144,8 +198,13 @@ class MatchListingTests {
     }
 
     private long match(long bookingId, String status) {
-        jdbc.update("INSERT INTO [match] (booking_id, current_players, needed_players, status) VALUES (?, 2, 2, ?)",
-                bookingId, status);
+        return match(bookingId, status, null);
+    }
+
+    private long match(long bookingId, String status, String skillLevel) {
+        jdbc.update("""
+                INSERT INTO [match] (booking_id, current_players, needed_players, status, skill_level)
+                VALUES (?, 2, 2, ?, ?)""", bookingId, status, skillLevel);
         return jdbc.queryForObject("SELECT MAX(id) FROM [match] WHERE booking_id = ?", Long.class, bookingId);
     }
 

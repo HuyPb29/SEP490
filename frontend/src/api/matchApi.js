@@ -7,12 +7,13 @@ import api from './index'
  */
 
 /**
- * Danh sách kèo đang mở, Guest cũng xem được (D64); lọc theo địa điểm, ngày và khung giờ (FR104).
- * Giờ tính theo phút trong ngày.
+ * Danh sách kèo đang mở, Guest cũng xem được (D64); lọc theo địa điểm, ngày, khung giờ (FR104) và trình độ.
+ * Giờ tính theo phút trong ngày. skillLevel: một trong 4 mức, NO_SKILL_FILTER cho kèo Không yêu cầu,
+ * bỏ trống = mọi trình độ.
  */
-export async function getOpenMatches({ locationId, playDate, fromMinute, toMinute, page = 0, size = 50 } = {}) {
+export async function getOpenMatches({ locationId, playDate, fromMinute, toMinute, skillLevel, page = 0, size = 50 } = {}) {
   const { data } = await api.get('/matches', {
-    params: { status: 'OPEN', locationId, playDate, fromMinute, toMinute, page, size },
+    params: { status: 'OPEN', locationId, playDate, fromMinute, toMinute, skillLevel: skillLevel || undefined, page, size },
   })
   return data.data
 }
@@ -28,9 +29,14 @@ export async function getMatch(id, signal) {
   return data.data
 }
 
-/** Mở kèo từ booking đã xác nhận đặt dưới tên đội (BR55, D112). Tổng người tối đa 8 (D60). */
-export async function createMatch({ bookingId, currentPlayers, neededPlayers }) {
-  const { data } = await api.post('/matches', { bookingId, currentPlayers, neededPlayers })
+/**
+ * Mở kèo từ booking đã xác nhận đặt dưới tên đội (BR55, D112). Tổng người tối đa 8 (D60).
+ * skillLevel rỗng = Không yêu cầu; phoneConsent: chủ kèo đồng ý chia sẻ số điện thoại (BR57).
+ */
+export async function createMatch({ bookingId, currentPlayers, neededPlayers, skillLevel, phoneConsent }) {
+  const { data } = await api.post('/matches', {
+    bookingId, currentPlayers, neededPlayers, skillLevel: skillLevel || null, phoneConsent,
+  })
   return data.data
 }
 

@@ -31,4 +31,10 @@ public class CreateMatchRequest {
     @Min(value = 1, message = "Số người cần tìm tối thiểu là 1")
     @Max(value = 7, message = "Số người cần tìm tối đa là 7")
     private Integer neededPlayers;
+
+    /** Một trong 4 mức của DR33; bỏ trống = Không yêu cầu trình độ. Form mặc định lấy trình độ của đội. */
+    private String skillLevel;
+
+    /** BR57: chủ kèo đồng ý cho Player được duyệt vào kèo xem số điện thoại của mình. */
+    private Boolean phoneConsent;
 }

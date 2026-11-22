@@ -25,7 +25,8 @@ const TYPE_META = {
   BOOKING_ENDING_SOON: { label: 'Sắp hết giờ chơi', tone: 'warn' },
   SERVICE_TERM_RENEWAL_REMINDER: { label: 'Sắp hết kỳ hạn', tone: 'warn' },
   SERVICE_TERM_OVERDUE: { label: 'Quá hạn dịch vụ', tone: 'danger' },
-  RESCHEDULE_PROOF_SUBMITTED: { label: 'Chờ xác nhận phụ thu', tone: 'warn' },
+  // tag: nhãn nổi bật trên dòng thông báo, để Staff thấy ngay phụ thu đổi lịch cần xác nhận.
+  RESCHEDULE_PROOF_SUBMITTED: { label: 'Chờ xác nhận phụ thu', tone: 'warn', tag: 'Phụ thu đổi lịch' },
   VENUE_RESCHEDULE_APPROVED: { label: 'Lịch sân đã đổi', tone: 'ok' },
 };
 
@@ -200,6 +201,7 @@ export default function NotificationBell() {
                   >
                     <span className={`${styles.dot} ${styles[`tone${meta.tone}`] ?? ''}`} aria-hidden="true" />
                     <span className={styles.itemBody}>
+                      {meta.tag && <span className={styles.itemTag}>{meta.tag}</span>}
                       <span className={styles.itemTitle}>{notificationMessage(item.title)}</span>
                       <span className={styles.itemContent}>{notificationMessage(item.content)}</span>
                       <span className={styles.itemMeta}>
