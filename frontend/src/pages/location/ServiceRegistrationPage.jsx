@@ -118,9 +118,11 @@ export default function ServiceRegistrationPage() {
 
   const handleProofChange = (file) => {
     clearFieldError('proof');
-    setProofFile(null);
-    setProofPreview('');
-    if (!file) return;
+    if (!file) {
+      setProofFile(null);
+      setProofPreview('');
+      return;
+    }
     if (!PROOF_TYPES.includes(file.type)) {
       setFieldErrors((prev) => ({ ...prev, proof: 'Chỉ nhận ảnh JPG hoặc PNG.' }));
       return;
@@ -345,7 +347,13 @@ export default function ServiceRegistrationPage() {
       setFieldErrors({});
       loadMyRegistrations();
     } catch (err) {
-      setSubmitError(apiErrorMessage(err, 'Không thể gửi đơn đăng ký. Vui lòng kiểm tra lại thông tin.'));
+      const message = apiErrorMessage(err, 'Không thể gửi đơn đăng ký. Vui lòng kiểm tra lại thông tin.');
+      setSubmitError(message);
+      if (!isOwner && /email|số điện thoại/i.test(message)) {
+        const field = /email/i.test(message) ? 'contactEmail' : 'contactPhone';
+        setFieldErrors((current) => ({ ...current, [field]: message }));
+        document.getElementById(field)?.focus();
+      }
     } finally {
       setIsSubmitting(false);
     }

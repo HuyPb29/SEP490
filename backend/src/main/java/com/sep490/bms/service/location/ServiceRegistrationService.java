@@ -113,6 +113,10 @@ public class ServiceRegistrationService {
         if (request.getLatitude() == null || request.getLongitude() == null) {
             throw new AppException("Hãy chọn vị trí địa điểm trên bản đồ");
         }
+        if (request.getLatitude().abs().compareTo(BigDecimal.valueOf(90)) > 0
+                || request.getLongitude().abs().compareTo(BigDecimal.valueOf(180)) > 0) {
+            throw new AppException("Tọa độ địa điểm không hợp lệ");
+        }
         Account owner = user == null ? null : lockOwner(user.getId());
         String contactName = owner == null
                 ? requireText(request.getContactName(), "Họ tên người đại diện", 50) : owner.getFullName();
@@ -122,6 +126,12 @@ public class ServiceRegistrationService {
                 ? requireText(request.getContactEmail(), "Email", 100).toLowerCase(Locale.ROOT) : owner.getEmail();
         String locationName = requireText(request.getLocationName(), "Tên địa điểm", 100);
         String address = requireText(request.getAddress(), "Địa chỉ", 255);
+        if (contactPhone == null || !contactPhone.matches("^[0-9]{10}$")) {
+            throw new AppException("Số điện thoại liên hệ phải gồm đúng 10 chữ số");
+        }
+        if (contactEmail == null || !contactEmail.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            throw new AppException("Email liên hệ không hợp lệ");
+        }
         if (owner == null) {
             lockContact(contactEmail, contactPhone);
             requireAvailableContact(contactEmail, contactPhone);

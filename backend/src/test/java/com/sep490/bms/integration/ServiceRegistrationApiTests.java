@@ -170,6 +170,43 @@ class ServiceRegistrationApiTests {
                 anyString(), anyString(), anyInt(), anyString(), anyString(), anyString(), anyString(), anyString());
     }
 
+    @Test
+    void invalidAndDuplicateContactsDoNotAddPendingRequests() throws Exception {
+        var original = form("duplicate" + suffix + "@example.com", true);
+        submit(original, 201);
+        int before = jdbc.queryForObject("SELECT COUNT(*) FROM service_registration WHERE status='PENDING'", Integer.class);
+        var sameEmail = new HashMap<>(original);
+        sameEmail.put("contactEmail", original.get("contactEmail").toString().toUpperCase());
+        sameEmail.put("contactPhone", phone());
+        submit(sameEmail, 409);
+        var samePhone = new HashMap<>(original);
+        samePhone.put("contactEmail", "other" + suffix + "@example.com");
+        submit(samePhone, 409);
+        var existingAccount = form(admin.getEmail(), true);
+        submit(existingAccount, 409);
+        existingAccount.put("contactEmail", "new" + suffix + "@example.com");
+        existingAccount.put("contactPhone", admin.getPhone());
+        submit(existingAccount, 409);
+        for (var invalid : java.util.List.of(Map.of("contactEmail", "invalid@localhost"),
+                Map.of("contactPhone", "12345"), Map.of("contactName", "  "),
+                Map.of("latitude", "91"), Map.of("termsAccepted", false))) {
+            var candidate = form("invalid" + suffix + "@example.com", true);
+            candidate.putAll(invalid);
+            submit(candidate, 400);
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM service_registration WHERE status='PENDING'", Integer.class))
+                .isEqualTo(before);
+        mvc.perform(get("/api/admin/service-registrations").param("status", "PENDING")
+                        .header("Authorization", token(admin)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(before));
+    }
+
+    private void submit(Map<String, Object> form, int expectedStatus) throws Exception {
+        mvc.perform(multipart("/api/service-registrations").file(data(form))
+                        .file(new MockMultipartFile("proof", "ck.png", "image/png", new byte[] {1})))
+                .andExpect(status().is(expectedStatus));
+    }
+
     private Map<String, Object> form(String email, boolean termsAccepted) {
         Map<String, Object> form = new HashMap<>();
         form.put("locationName", "Sân thử D168 " + suffix);
