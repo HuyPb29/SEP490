@@ -186,7 +186,7 @@ public class PackageService {
                 .voucherDiscount(quote.voucherDiscount())
                 .pointsUsed(quote.pointsUsed())
                 .pointDiscount(quote.pointDiscount())
-                .pointRedemptionValue(location.getPointRedemptionValue())
+                .pointRedemptionValue(Location.POINT_REDEMPTION_VALUE)
                 .finalAmount(quote.finalAmount())
                 .batchOffer(offer)
                 .build();
@@ -426,9 +426,6 @@ public class PackageService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleFailed(BookingPackage pkg, BookingStatus status) {
-        if (status == BookingStatus.CANCELLED_BY_PLAYER && pkg.getStatus() != BookingStatus.HOLDING) {
-            throw new AppException("Chỉ được bỏ giữ chỗ khi đơn chưa gửi chứng từ", HttpStatus.CONFLICT);
-        }
         pkg.setStatus(status);
         bookingPackageRepository.saveAndFlush(pkg);
         for (Booking session : sessionsOf(pkg.getId())) {

@@ -2,6 +2,8 @@ package com.sep490.bms.dto.location;
 
 import java.math.BigDecimal;
 
+import com.sep490.bms.entity.location.Location;
+
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
@@ -63,7 +65,7 @@ public class UpdateLocationRequest {
     @Max(value = 100000, message = "Tỷ lệ tích điểm tối đa là 100000")
     private Integer pointEarningRate;
 
-    @Min(value = 1, message = "Giá trị dùng điểm tối thiểu là 1 đồng")
-    @Max(value = 100000, message = "Giá trị dùng điểm tối đa là 100.000 đồng")
+    @Min(value = Location.POINT_REDEMPTION_VALUE, message = "Giá trị dùng điểm cố định 500 đồng/điểm")
+    @Max(value = Location.POINT_REDEMPTION_VALUE, message = "Giá trị dùng điểm cố định 500 đồng/điểm")
     private Integer pointRedemptionValue;
 }

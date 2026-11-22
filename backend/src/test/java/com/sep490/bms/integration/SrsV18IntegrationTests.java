@@ -102,7 +102,7 @@ class SrsV18IntegrationTests {
                 .containsOnly(BookingStatus.CONFIRMED).hasSize(2);
         assertThat(em.createQuery("select sum(b.finalAmount) from Booking b where b.packageId=:p",BigDecimal.class).setParameter("p",id).getSingleResult()).isEqualByComparingTo("18000");
     }
-    @Test void singleOrderPaysAndCancelsAllFutureBookingsTogether() throws Exception {
+    @Test void paidDayOrderCannotBeCancelledByPlayer() throws Exception {
         LocalDate date = LocalDate.now().plusDays(2);
         String body = json.writeValueAsString(Map.of("date", date,
                 "ranges", List.of(Map.of("courtId", court.getId(), "startMinute", 600, "endMinute", 630),
@@ -124,12 +124,14 @@ class SrsV18IntegrationTests {
         mvc.perform(post("/api/staff/payments/" + paymentId + "/confirm").header("Authorization", token(owner))
                 .header("X-Location-Id", location.getId())).andExpect(status().isOk());
         mvc.perform(post("/api/bookings/" + bookingId + "/cancel").header("Authorization", token(player)))
-                .andExpect(status().isOk());
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/booking-orders/" + orderId + "/cancel").header("Authorization", token(player)))
+                .andExpect(status().isNotFound());
 
         em.flush();
         assertThat(packages.sessionsOf(orderId)).extracting(Booking::getStatus)
-                .containsExactly(BookingStatus.CANCELLED_BY_PLAYER, BookingStatus.CANCELLED_BY_PLAYER);
-        assertThat(em.find(BookingPackage.class, orderId).getStatus()).isEqualTo(BookingStatus.CANCELLED_BY_PLAYER);
+                .containsExactly(BookingStatus.CONFIRMED, BookingStatus.CONFIRMED);
+        assertThat(em.find(BookingPackage.class, orderId).getStatus()).isEqualTo(BookingStatus.CONFIRMED);
         assertThat(voucher.getUsedCount()).isEqualTo(1);
         assertThat(wallet().getTotalPaid()).isEqualByComparingTo("18000");
     }

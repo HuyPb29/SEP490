@@ -10,7 +10,6 @@ export {
   uploadPaymentProofApi,
   getMyBookingsApi,
   getPackageSessionsApi,
-  cancelBookingApi,
   getRescheduleDeadlineApi,
   getRescheduleRequestsApi,
   getMyAffectedBookingsApi,

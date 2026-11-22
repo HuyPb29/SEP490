@@ -12,7 +12,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.sep490.bms.entity.promotion.PlayerLocationBalance;
-import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.promotion.LoyaltyAccrualRepository;
 import com.sep490.bms.repository.promotion.PlayerLocationBalanceRepository;
@@ -37,7 +36,6 @@ class LoyaltyPointPreviewTests {
     @BeforeEach
     void playerHasManyPoints() {
         balance(1000);
-        when(entityManager.find(Location.class, LOCATION)).thenReturn(Location.builder().id(LOCATION).build());
     }
 
     @Test
@@ -63,16 +61,6 @@ class LoyaltyPointPreviewTests {
     @Test
     void lessThanTwoPointsIsMsg37() {
         assertThatThrownBy(() -> preview("100000", 1)).hasMessageContaining("MSG37");
-    }
-
-    @Test
-    void venueValueControlsMinimumAndCap() {
-        when(entityManager.find(Location.class, LOCATION))
-                .thenReturn(Location.builder().pointRedemptionValue(1500).build());
-
-        assertThat(preview("10000", 1)).isEqualByComparingTo("1500");
-        assertThat(preview("10000", 3)).isEqualByComparingTo("4500");
-        assertThatThrownBy(() -> preview("10000", 4)).hasMessageContaining("tối đa 3 điểm").hasMessageContaining("MSG38");
     }
 
     @Test

@@ -218,16 +218,6 @@ export async function getPackageSessionsApi(packageId) {
   }));
 }
 
-export async function cancelBookingApi(bookingId) {
-  const { data } = await api.post('/bookings/' + bookingId + '/cancel');
-  return data;
-}
-
-export async function cancelDayOrderApi(orderId) {
-  const { data } = await api.post('/booking-orders/' + orderId + '/cancel');
-  return data;
-}
-
 export async function createBookingReviewApi(bookingId, { rating, comment }) {
   const { data } = await api.post('/bookings/' + bookingId + '/reviews', {
     rating: Number(rating),
