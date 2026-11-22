@@ -119,10 +119,19 @@ class ServiceRegistrationApiTests {
         LocalDate today = LocalDate.now();
         String end = today.plusYears(2).minusDays(1).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
         verify(mail).sendServiceRegistrationApproved(eq(email), eq("Sân thử D168 " + suffix), eq(4),
-                eq("8.889.000"), anyString(), eq(end), username.capture(), anyString());
+                eq("8.889.000"), anyString(), eq(end), username.capture(), password.capture());
         Account owner = accounts.findByUsername(username.getValue()).orElseThrow();
         assertThat(owner.getRole()).isEqualTo(Role.OWNER);
         assertThat(owner.getEmail()).isEqualTo(email);
+        mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content(json.writeValueAsString(Map.of("email",username.getValue(),"password",password.getValue()))))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/users/me/password").header("Authorization",token(owner)).contentType("application/json")
+                .content(json.writeValueAsString(Map.of("currentPassword",password.getValue(),"newPassword","NewOwnerPass123"))))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content(json.writeValueAsString(Map.of("email",username.getValue(),"password","NewOwnerPass123"))))
+                .andExpect(status().isOk());
         // FR12: thời hạn từ ngày duyệt theo số năm thuê trong đơn (2 năm), không còn cứng 12 tháng.
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM service_term WHERE location_id = ? "
                 + "AND start_date = ? AND end_date = ?", Integer.class,
