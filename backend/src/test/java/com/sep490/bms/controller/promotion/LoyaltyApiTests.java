@@ -178,7 +178,7 @@ class LoyaltyApiTests {
         assertThat(balance().getPointBalance()).isEqualTo(8);
     }
 
-    @Test void ownerChangesOnlyEarningRateAndRedemptionIgnoresLegacyVenueValue() throws Exception {
+    @Test void ownerChangesOnlyEarningRateAndRedemptionStaysFixedAt500() throws Exception {
         seed(10);
         Booking existing = booking(20000);
         tx.executeWithoutResult(s -> {
@@ -194,7 +194,6 @@ class LoyaltyApiTests {
                 .contentType(MediaType.APPLICATION_JSON).content(rates))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.pointRedemptionValue").isString());
-        jdbc.update("update location set point_redemption_value=1500 where id=?", location.getId());
         mvc.perform(patch(path).header("Authorization", token(owner))
                 .contentType(MediaType.APPLICATION_JSON).content("{\"pointEarningRate\":5000,\"pointRedemptionValue\":500}"))
                 .andExpect(status().isOk())
