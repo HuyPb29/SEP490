@@ -307,13 +307,10 @@ export function OwnerPromotions({ location, refreshLocation }) {
     <Section title="Điểm thưởng">
       <ActionForm key={location.id} label="Lưu cấu hình điểm" action={(form) => api.patch('/owner/locations/' + location.id, {
         pointEarningRate: Number(form.pointEarningRate),
-        pointRedemptionValue: Number(form.pointRedemptionValue),
       })} after={refreshLocation} preserve>
         {(errors) => <>
           <Field label="VND để tích 1 điểm" name="pointEarningRate" type="number" min={1000} max={100000}
             defaultValue={location.pointEarningRate ?? 10000} required error={errors.pointEarningRate} />
-          <Field label="Số đồng giảm khi dùng 1 điểm" name="pointRedemptionValue" type="number" min={1} max={100000} step={1}
-            defaultValue={location.pointRedemptionValue ?? 500} required error={errors.pointRedemptionValue} />
         </>}
       </ActionForm>
     </Section>

@@ -69,7 +69,7 @@ public class LocationDetailDto {
                 .qrImagePath(location.getQrImagePath())
                 .advanceBookingDays(location.getAdvanceBookingDays())
                 .pointEarningRate(location.getPointEarningRate())
-                .pointRedemptionValue(location.getPointRedemptionValue())
+                .pointRedemptionValue(Location.POINT_REDEMPTION_VALUE)
                 .serviceTermEndDate(serviceTermEndDate)
                 .serviceActive(serviceTermEndDate != null && !serviceTermEndDate.isBefore(LocalDate.now()))
                 .status(location.getStatus())

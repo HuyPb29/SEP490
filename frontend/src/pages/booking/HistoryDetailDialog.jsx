@@ -71,7 +71,7 @@ function DetailRow({ label, children }) {
 }
 
 export default function HistoryDetailDialog({ item, now, onClose, onPayment, onReschedule, affected, affectedReady,
-  affectedLoading, canCancel, onCancelBooking, onAffected }) {
+  affectedLoading, onAffected }) {
   const ref = useRef(null)
   const [detail, setDetail] = useState(null)
   const [payment, setPayment] = useState(null)
@@ -224,10 +224,6 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
         <button type="button" className={styles.outlineActionBtn} onClick={onClose}>Đóng</button>
         {showReschedule && <button type="button" className={styles.outlineActionBtn} onClick={() => onReschedule(target)}>
           {detail.reschedule.pendingRequestId ? 'Xem phụ thu đổi lịch' : 'Đổi lịch'}
-        </button>}
-        {target && !error && canCancel(target) && <button type="button"
-          className={styles.outlineActionBtn} onClick={() => onCancelBooking(target)}>
-          {target.single_order ? 'Hủy đơn' : 'Hủy lịch'}
         </button>}
         {showAffected && affectedBookingActions.map(([choice, label]) => <button key={choice} type="button"
           disabled={affectedLoading} className={styles.outlineActionBtn} onClick={() => onAffected(target, affected.id, choice)}>

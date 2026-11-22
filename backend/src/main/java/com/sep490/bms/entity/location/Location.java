@@ -28,6 +28,8 @@ import lombok.Setter;
 @Builder
 public class Location {
 
+    public static final int POINT_REDEMPTION_VALUE = 500;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -69,10 +71,6 @@ public class Location {
     @Column(name = "point_earning_rate", nullable = false)
     @Builder.Default
     private int pointEarningRate = 10000;
-
-    @Column(name = "point_redemption_value", nullable = false)
-    @Builder.Default
-    private int pointRedemptionValue = 500;
 
     @Column(nullable = false, length = 10)
     @Builder.Default

@@ -1,20 +1,17 @@
 package com.sep490.bms.service.reschedule;
 
 import java.time.*;
-import java.util.ArrayList;
 import java.util.List;
 import com.sep490.bms.dto.request.*;
 import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
-import com.sep490.bms.entity.booking.BookingPackage;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.location.Maintenance;
 import com.sep490.bms.entity.reschedule.*;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.security.*;
 import com.sep490.bms.service.booking.SlotAvailabilityService;
-import com.sep490.bms.service.booking.PackageService;
 import com.sep490.bms.service.promotion.*;
 import jakarta.persistence.*;
 import lombok.RequiredArgsConstructor;
@@ -36,52 +33,7 @@ public class CancellationService {
     private final LoyaltyPointService points;
     private final VoucherService vouchers;
     private final SlotAvailabilityService availability;
-    private final PackageService packages;
 
-    public Booking cancel(UserPrincipal u,Long id) {
-        Booking observed = em.find(Booking.class, id);
-        if (observed != null && isOrder(observed)) {
-            support.player(u, observed);
-            support.confirmed(observed);
-            cancelOrder(u, observed.getPackageId());
-            return observed;
-        }
-        Booking b=support.booking(id); support.player(u,b);
-        support.confirmed(b); support.paid(b);
-        if(!pending(b).isEmpty()) throw new AppException("Hãy chọn xử lý booking bị ảnh hưởng",HttpStatus.CONFLICT);
-        cancelBooking(b,u.getId(),BookingStatus.CANCELLED_BY_PLAYER); return b;
-    }
-    /**
-     * BR64 (D164): Player hủy đơn đặt lẻ là hủy cả đơn: mọi booking đã xác nhận, chưa đến giờ chơi của đơn bị hủy
-     * theo BR07 (không hoàn tiền, nhả slot); booking đã chơi giữ nguyên. Booking đang bị ảnh hưởng do sân hủy
-     * lịch thì Player phải chọn cách xử lý trước.
-     */
-    public List<Booking> cancelOrder(UserPrincipal u,Long packageId) {
-        BookingPackage pkg=em.find(BookingPackage.class,packageId,LockModeType.PESSIMISTIC_WRITE);
-        if(pkg==null || pkg.getPackageType()!=PackageType.DAY) throw new AppException("Không tìm thấy đơn đặt lẻ",HttpStatus.NOT_FOUND);
-        if(u==null || u.getRole()!=Role.PLAYER || !u.getId().equals(pkg.getPlayerId()))
-            throw new AppException("Không có quyền với đơn đặt lẻ",HttpStatus.FORBIDDEN);
-        if (pkg.getStatus() == BookingStatus.HOLDING) {
-            packages.settleFailed(pkg, BookingStatus.CANCELLED_BY_PLAYER);
-            return packages.sessionsOf(packageId);
-        }
-        List<Booking> toCancel=new ArrayList<>();
-        for(Long bookingId:em.createQuery("select b.id from Booking b where b.packageId=:p order by b.playDate,b.startMinute,b.id",Long.class)
-                .setParameter("p",packageId).getResultList()) {
-            Booking b=support.booking(bookingId);
-            if(b.getStatus()!=BookingStatus.CONFIRMED || !support.start(b).isAfter(LocalDateTime.now())) continue;
-            if(!pending(b).isEmpty()) throw new AppException("Hãy chọn xử lý booking bị ảnh hưởng",HttpStatus.CONFLICT);
-            toCancel.add(b);
-        }
-        if(toCancel.isEmpty()) throw new AppException("Đơn không còn booking nào chưa chơi để hủy",HttpStatus.CONFLICT);
-        support.paid(toCancel.get(0));
-        toCancel.forEach(b->cancelBooking(b,u.getId(),BookingStatus.CANCELLED_BY_PLAYER));
-        pkg.setStatus(BookingStatus.CANCELLED_BY_PLAYER);
-        return toCancel;
-    }
-    private boolean isOrder(Booking b) {
-        return b.getPackageId()!=null && em.find(BookingPackage.class,b.getPackageId()).getPackageType()==PackageType.DAY;
-    }
     public record CancellableBooking(Long id, String bookingCode, Long courtId, int startMinute, int endMinute,
             BookingType bookingType) {}
 

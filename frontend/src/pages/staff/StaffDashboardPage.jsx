@@ -107,6 +107,7 @@ export default function StaffDashboardPage() {
 
   const todayBookings = useMemo(() => dashboard?.todayBookings ?? [], [dashboard]);
   const pendingPayments = useMemo(() => dashboard?.pendingPayments ?? [], [dashboard]);
+  const pendingSurcharges = pendingPayments.filter((payment) => payment.reschedule && !payment.overdue);
   // FR120, BR58: giao dịch chờ quá 15 phút trong giờ mở cửa đã chuyển cho chủ sân, Staff chỉ xem.
   const overduePayments = useMemo(() => pendingPayments.filter((p) => p.overdue), [pendingPayments]);
 
@@ -325,6 +326,18 @@ export default function StaffDashboardPage() {
         )}
 
         <section className={styles.alerts} aria-label="Cảnh báo vận hành">
+          {pendingSurcharges.length > 0 && (
+            <div className={styles.warningBanner} role="status">
+              <strong>{pendingSurcharges.length} khoản phụ thu đổi lịch đang chờ xác nhận.</strong>
+              <button
+                className={styles.handleButton}
+                type="button"
+                onClick={() => openPaymentConfirmation(pendingSurcharges[0])}
+              >
+                Xem phụ thu
+              </button>
+            </div>
+          )}
           {overduePayments.length > 0 && (
             <div className={styles.urgentBanner} role="alert">
               <span>
@@ -426,6 +439,7 @@ export default function StaffDashboardPage() {
                   >
                     <span className={styles.transactionDetails}>
                       <strong>{payment.label || `Giao dịch #${payment.id}`}</strong>
+                      {payment.reschedule && <small className={styles.surchargeLabel}>Phụ thu đổi lịch</small>}
                       <small>{payment.submittedAt ? `Gửi lúc ${payment.submittedAt.replace('T', ' ')}` : 'Đang chờ kiểm tra chứng từ'}</small>
                     </span>
                     <span className={styles.transactionAmount}>

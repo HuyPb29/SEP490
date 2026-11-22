@@ -112,7 +112,7 @@ public class BookingService {
                 .listAmount(listAmount)
                 .voucherDiscount(voucherDiscount)
                 .pointDiscount(pointDiscount)
-                .pointRedemptionValue(location.getPointRedemptionValue())
+                .pointRedemptionValue(Location.POINT_REDEMPTION_VALUE)
                 .finalAmount(afterVoucher.subtract(pointDiscount))
                 .build();
     }

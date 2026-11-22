@@ -22,7 +22,6 @@ const LIMITS = {
   bankAccountHolder: 100,
   advanceBookingDays: { min: 1, max: 365 },
   pointEarningRate: { min: 1000, max: 100000 },
-  pointRedemptionValue: { min: 1, max: 100000 },
 }
 const STATUS_LABELS = { ACTIVE: 'Đang hoạt động', LOCKED: 'Đã khóa' }
 const DEFAULT_MAP_CENTER = { latitude: 21.028511, longitude: 105.854444 }
@@ -43,7 +42,6 @@ function toForm(location) {
       location?.pointEarningRate === null || location?.pointEarningRate === undefined
         ? ''
         : String(location.pointEarningRate),
-    pointRedemptionValue: String(location?.pointRedemptionValue ?? 500),
     bankName: location?.bankName ?? '',
     bankAccountNo: location?.bankAccountNo ?? '',
     bankAccountHolder: location?.bankAccountHolder ?? '',
@@ -70,7 +68,6 @@ export default function OwnerFacilitySettingsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [pointValueError, setPointValueError] = useState('')
   const [qrPreview, setQrPreview] = useState('')
   const [qrError, setQrError] = useState('')
   const [qrSavedLocationId, setQrSavedLocationId] = useState(null)
@@ -174,14 +171,12 @@ export default function OwnerFacilitySettingsPage() {
     setForm(toForm(next))
     setOriginal(toForm(next))
     setError('')
-    setPointValueError('')
     setMessage('')
   }
 
   const updateField = (field) => (event) => {
     const value = event.target.value
     setForm((current) => ({ ...current, [field]: value }))
-    if (field === 'pointRedemptionValue') setPointValueError('')
     setMessage('')
   }
 
@@ -264,9 +259,6 @@ export default function OwnerFacilitySettingsPage() {
     if (form.pointEarningRate !== original.pointEarningRate && form.pointEarningRate.trim()) {
       payload.pointEarningRate = Number(form.pointEarningRate)
     }
-    if (form.pointRedemptionValue !== original.pointRedemptionValue) {
-      payload.pointRedemptionValue = Number(form.pointRedemptionValue)
-    }
     // Nhóm ngân hàng gửi chuỗi rỗng để xoá được giá trị cũ.
     if (form.bankName !== original.bankName) payload.bankName = form.bankName.trim()
     if (form.bankAccountNo !== original.bankAccountNo) payload.bankAccountNo = form.bankAccountNo.trim()
@@ -280,11 +272,6 @@ export default function OwnerFacilitySettingsPage() {
     event.preventDefault()
     if (locked) {
       setError('Địa điểm đang bị khóa nên không lưu được thay đổi.')
-      return
-    }
-    const pointValue = Number(form.pointRedemptionValue)
-    if (!Number.isInteger(pointValue) || pointValue < LIMITS.pointRedemptionValue.min || pointValue > LIMITS.pointRedemptionValue.max) {
-      setPointValueError('Nhập số tiền nguyên từ 1 đến 100.000 đồng. (MSG02)')
       return
     }
     const validation = validate()
@@ -313,9 +300,7 @@ export default function OwnerFacilitySettingsPage() {
       setError('')
       setMessage('Đã lưu hồ sơ địa điểm.')
     } catch (err) {
-      const fieldError = err.response?.data?.errors?.pointRedemptionValue
-      if (fieldError) setPointValueError(fieldError)
-      else setError(apiErrorMessage(err))
+      setError(apiErrorMessage(err))
       setMessage('')
     } finally {
       setSaving(false)
@@ -325,7 +310,6 @@ export default function OwnerFacilitySettingsPage() {
   const handleReset = () => {
     setForm(original)
     setError('')
-    setPointValueError('')
     setMessage('Đã trả về các giá trị đã lưu.')
   }
 
@@ -452,18 +436,6 @@ export default function OwnerFacilitySettingsPage() {
                   value={form.pointEarningRate}
                   onChange={updateField('pointEarningRate')}
                 />
-              </label>
-              <label className={styles.field}>
-                <span>Số đồng giảm khi dùng 1 điểm</span>
-                <input type="number" min={LIMITS.pointRedemptionValue.min} max={LIMITS.pointRedemptionValue.max}
-                  step={1} required value={form.pointRedemptionValue} onChange={updateField('pointRedemptionValue')}
-                  aria-invalid={Boolean(pointValueError)} aria-describedby={pointValueError ? 'point-value-error' : undefined}
-                  onInvalid={(event) => {
-                    event.preventDefault()
-                    setPointValueError(event.target.validity.valueMissing ? 'Vui lòng nhập giá trị dùng điểm. (MSG01)'
-                      : 'Nhập số tiền nguyên từ 1 đến 100.000 đồng. (MSG02)')
-                  }} />
-                {pointValueError && <small id="point-value-error" className="cw-field-error" role="alert">{pointValueError}</small>}
               </label>
             </div>
 

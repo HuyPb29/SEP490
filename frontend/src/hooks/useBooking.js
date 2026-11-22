@@ -1,7 +1,5 @@
 import {
   applyVoucherApi,
-  cancelBookingApi,
-  cancelDayOrderApi,
   createBookingApi,
   createBookingPackageApi,
   createBookingReviewApi,
@@ -67,10 +65,6 @@ const BOOKING_ACTIONS = Object.freeze({
   getPackageDetailApi,
   getPackageSessions: getPackageSessionsApi,
   getPackageSessionsApi,
-  cancelBooking: cancelBookingApi,
-  cancelBookingApi,
-  cancelDayOrder: cancelDayOrderApi,
-  cancelDayOrderApi,
   createBookingReview: createBookingReviewApi,
   createBookingReviewApi,
   getRescheduleDeadline: getRescheduleDeadlineApi,
