@@ -28,8 +28,10 @@ public class MatchResponse {
     private String hostName;
     /** Chỉ hiện với chủ kèo hoặc người đã được duyệt vào kèo. */
     private String hostPhone;
-    /** Trình độ của đội mở kèo, là nhãn trình độ của kèo (FR104, D165), không phải trình độ của chủ kèo. */
+    /** Trình độ hiện tại của đội mở kèo (FR104, D165), không phải trình độ của chủ kèo. */
     private String teamSkillLevel;
+    /** Trình độ của kèo do chủ kèo chọn khi mở kèo; null = Không yêu cầu. Dùng để hiển thị nhãn và lọc. */
+    private String skillLevel;
     private Long locationId;
     private String locationName;
     private String courtName;

@@ -766,9 +766,12 @@ CREATE TABLE match (
     created_at DATETIME2(0) NOT NULL CONSTRAINT df_match_created_at DEFAULT SYSDATETIME(),
     closed_at DATETIME2(0) NULL,
     reschedule_pending BIT NOT NULL CONSTRAINT df_match_reschedule_pending DEFAULT 0,
+    -- Trình độ chủ kèo chọn khi mở kèo; NULL = Không yêu cầu (migration v8).
+    skill_level NVARCHAR(30) NULL,
     CONSTRAINT pk_match PRIMARY KEY (id),
     CONSTRAINT ck_match_players CHECK (current_players >= 1 AND needed_players >= 0 AND current_players + needed_players <= 8),
-    CONSTRAINT ck_match_status CHECK (status IN ('OPEN','CLOSED','CANCELLED','EXPIRED'))
+    CONSTRAINT ck_match_status CHECK (status IN ('OPEN','CLOSED','CANCELLED','EXPIRED')),
+    CONSTRAINT ck_match_skill_level CHECK (skill_level IS NULL OR skill_level IN (N'Mới chơi', N'Trung bình', N'Khá', N'Nâng cao'))
 );
 CREATE UNIQUE INDEX ux_match_booking_active ON match (booking_id) WHERE status IN ('OPEN','CLOSED');
 

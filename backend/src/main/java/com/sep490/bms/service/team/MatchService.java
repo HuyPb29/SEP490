@@ -82,12 +82,20 @@ public class MatchService {
             throw new AppException("Booking này đã có kèo đang hoạt động", HttpStatus.CONFLICT);
         }
         validatePlayers(request.getCurrentPlayers(), request.getNeededPlayers());
+        // BR57: chủ kèo đồng ý chia sẻ số điện thoại với người được duyệt khi mở kèo.
+        if (!Boolean.TRUE.equals(request.getPhoneConsent())) {
+            throw new AppException("Bạn cần đồng ý chia sẻ số điện thoại với người được duyệt vào kèo để mở kèo");
+        }
+        // DR33: trình độ của kèo là một trong 4 mức, bỏ trống = Không yêu cầu.
+        String skillLevel = StringUtils.hasText(request.getSkillLevel())
+                ? SkillLevels.require(request.getSkillLevel(), "Trình độ của kèo") : null;
 
         Match match = matchRepository.save(Match.builder()
                 .bookingId(booking.getId())
                 .currentPlayers(request.getCurrentPlayers())
                 .neededPlayers(request.getNeededPlayers())
                 .status(MatchStatus.OPEN)
+                .skillLevel(skillLevel)
                 .build());
         return getMatch(userId, match.getId());
     }
@@ -224,13 +232,15 @@ public class MatchService {
 
     @Transactional(readOnly = true)
     public PageResponse<MatchResponse> getMatches(Long userId, String status, Long locationId, LocalDate playDate,
-                                                  Integer fromMinute, Integer toMinute, int page, int size) {
+                                                  Integer fromMinute, Integer toMinute, String skillLevel,
+                                                  int page, int size) {
         int pageNumber = Math.max(page, 0);
         int pageSize = Math.min(Math.max(size, 1), 50);
         String statusFilter = StringUtils.hasText(status) ? parseMatchStatus(status).name() : MatchStatus.OPEN.name();
         boolean upcomingOnly = MatchStatus.OPEN.name().equals(statusFilter);
         validateMinuteRange(fromMinute, toMinute);
-        MatchFilter filter = new MatchFilter(statusFilter, locationId, playDate, fromMinute, toMinute, upcomingOnly);
+        MatchFilter filter = new MatchFilter(statusFilter, locationId, playDate, fromMinute, toMinute, upcomingOnly,
+                parseSkillFilter(skillLevel));
 
         List<MatchResponse> content = matchQueryRepository
                 .searchMatches(filter, pageNumber * pageSize, pageSize)
@@ -254,6 +264,17 @@ public class MatchService {
                 .stream().map(m -> enrich(m, userId)).toList();
         return toPage(content, matchQueryRepository.countMyMatches(userId, roleFilter, statusFilter),
                 pageNumber, pageSize);
+    }
+
+    /** Bỏ trống = mọi trình độ; NONE = kèo Không yêu cầu; còn lại phải là một trong 4 mức của DR33. */
+    private static String parseSkillFilter(String skillLevel) {
+        if (!StringUtils.hasText(skillLevel)) {
+            return null;
+        }
+        if (MatchQueryRepository.NO_SKILL_REQUIREMENT.equalsIgnoreCase(skillLevel.trim())) {
+            return MatchQueryRepository.NO_SKILL_REQUIREMENT;
+        }
+        return SkillLevels.require(skillLevel, "Trình độ lọc kèo");
     }
 
     private static String parseMyMatchRole(String role) {

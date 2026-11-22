@@ -109,6 +109,9 @@ export default function StaffDashboardPage() {
   const pendingPayments = useMemo(() => dashboard?.pendingPayments ?? [], [dashboard]);
   // FR120, BR58: giao dịch chờ quá 15 phút trong giờ mở cửa đã chuyển cho chủ sân, Staff chỉ xem.
   const overduePayments = useMemo(() => pendingPayments.filter((p) => p.overdue), [pendingPayments]);
+  // Phụ thu đổi lịch (UC21) Staff còn xử lý được: hiện banner và nhãn riêng để không lẫn với thanh toán đặt sân.
+  // Đổi lịch miễn phí không sinh giao dịch nên không xuất hiện ở đây.
+  const surchargePayments = useMemo(() => pendingPayments.filter((p) => p.reschedule && !p.overdue), [pendingPayments]);
 
   const nowDate = useMemo(() => new Date(now), [now]);
   const nowMinute = nowDate.getHours() * 60 + nowDate.getMinutes();
@@ -341,6 +344,23 @@ export default function StaffDashboardPage() {
               </button>
             </div>
           )}
+          {surchargePayments.length > 0 && (
+            <div className={styles.warningBanner} role="status">
+              <span>
+                <span className={styles.surchargeTag}>Phụ thu đổi lịch</span>{' '}
+                {surchargePayments.length === 1
+                  ? `${surchargePayments[0].label} · ${formatMoney(surchargePayments[0].amountDue)} đang chờ xác nhận.`
+                  : `${surchargePayments.length} phụ thu đổi lịch đang chờ xác nhận.`}
+              </span>
+              <button
+                className={styles.handleButton}
+                type="button"
+                onClick={() => openPaymentConfirmation(surchargePayments[0])}
+              >
+                Xác nhận phụ thu
+              </button>
+            </div>
+          )}
           {endingBookings.length > 0 && (
             <div className={styles.warningBanner} role="status">
               Sắp hết giờ chơi trong 5 phút: {endingBookings.map((b) => `${b.courtName} (${b.bookingCode} · kết thúc ${clock(b.endMinute)})`).join(', ')}
@@ -425,6 +445,7 @@ export default function StaffDashboardPage() {
                     onClick={() => openPaymentConfirmation(payment)}
                   >
                     <span className={styles.transactionDetails}>
+                      {payment.reschedule && <span className={styles.surchargeTag}>Phụ thu đổi lịch</span>}
                       <strong>{payment.label || `Giao dịch #${payment.id}`}</strong>
                       <small>{payment.submittedAt ? `Gửi lúc ${payment.submittedAt.replace('T', ' ')}` : 'Đang chờ kiểm tra chứng từ'}</small>
                     </span>

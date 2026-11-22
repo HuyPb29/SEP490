@@ -29,6 +29,7 @@ import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.repository.payment.PaymentRepository;
+import com.sep490.bms.repository.reschedule.RescheduleRequestRepository;
 import com.sep490.bms.service.booking.SlotAvailabilityService;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.location.LocationRepository;
@@ -65,6 +66,12 @@ public class OperationService {
     private final PaymentRepository payments;
     private final BookingRepository bookings;
     private final SlotAvailabilityService availability;
+    private final RescheduleRequestRepository rescheduleRequests;
+
+    /** Nhãn giao dịch phụ thu trên bảng điều hành: kèm mã booking để Staff đối chiếu chứng từ. */
+    private static String surchargeLabel(Long rescheduleRequestId, String bookingCode) {
+        return bookingCode != null ? "Đổi lịch " + bookingCode : "Phụ thu đổi lịch #" + rescheduleRequestId;
+    }
 
     // ---------------------------------------------------------------- UC34 – Bảng điều hành Staff
 
@@ -84,11 +91,19 @@ public class OperationService {
 
         var pending = payments.findByLocationIdAndStatusOrderBySubmittedAtAscIdAsc(locationId,
                 PaymentStatus.AWAITING_CONFIRMATION);
-        var bookingIds = pending.stream().map(Payment::getBookingId).filter(java.util.Objects::nonNull).toList();
+        // Phụ thu đổi lịch không gắn booking_id trên payment: lấy booking qua yêu cầu đổi lịch để hiện mã booking.
+        Map<Long, Long> rescheduleBookings = new HashMap<>();
+        rescheduleRequests.findAllById(pending.stream().map(Payment::getRescheduleRequestId)
+                .filter(java.util.Objects::nonNull).toList())
+                .forEach(r -> rescheduleBookings.put(r.getId(), r.getBookingId()));
+        var bookingIds = java.util.stream.Stream.concat(
+                pending.stream().map(Payment::getBookingId), rescheduleBookings.values().stream())
+                .filter(java.util.Objects::nonNull).distinct().toList();
         Map<Long, String> codes = new HashMap<>();
         bookings.findAllById(bookingIds).forEach(b -> codes.put(b.getId(), b.getBookingCode()));
         var pendingItems = pending.stream().map(payment -> new StaffDashboardResponse.PendingPayment(payment.getId(),
-                payment.getRescheduleRequestId() != null ? "Phụ thu #" + payment.getRescheduleRequestId()
+                payment.getRescheduleRequestId() != null
+                        ? surchargeLabel(payment.getRescheduleRequestId(), codes.get(rescheduleBookings.get(payment.getRescheduleRequestId())))
                         : payment.getPackageId() != null ? "Đơn/Gói #" + payment.getPackageId()
                                 : codes.get(payment.getBookingId()),
                 payment.getAmountDue(), payment.getSubmittedAt(), payment.getRescheduleRequestId() != null,

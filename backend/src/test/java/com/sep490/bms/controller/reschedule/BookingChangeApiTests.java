@@ -178,7 +178,10 @@ class BookingChangeApiTests {
 
     private void assertProofRecipients(Long... recipients) {
         assertThat(jdbc.queryForList(
-                "select recipient_id from notification where type='RESCHEDULE_PROOF_SUBMITTED' and ref_type='LOCATION' and ref_id=?",
+                """
+                select n.recipient_id from notification n join payment p on p.id = n.ref_id
+                where n.type='RESCHEDULE_PROOF_SUBMITTED' and n.ref_type='RESCHEDULE_PAYMENT'
+                  and p.reschedule_request_id is not null and p.location_id=?""",
                 Long.class, location.getId())).containsExactlyInAnyOrder(recipients);
     }
     @Test

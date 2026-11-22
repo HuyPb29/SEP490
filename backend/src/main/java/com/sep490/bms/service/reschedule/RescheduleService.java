@@ -346,7 +346,7 @@ public class RescheduleService {
                 .submittedAt(LocalDateTime.now()).build(); em.persist(p);em.flush();
         em.persist(PaymentProof.builder().paymentId(p.getId()).imagePath(storage.storeImage(proof,"payment-proofs")).build());
         r.setStatus(RescheduleStatus.AWAITING_CONFIRMATION);
-        notifyProofSubmitted(locked, false);
+        notifyProofSubmitted(locked, p, false);
         return r;
     }
     public RescheduleRequest requestResubmission(UserPrincipal u,Long paymentId,com.sep490.bms.dto.payment.ResubmitRequest input) {
@@ -383,17 +383,21 @@ public class RescheduleService {
         if(proof==null || proof.isEmpty()) throw new AppException("Cần ảnh chứng từ bổ sung (MSG106)");
         em.persist(PaymentProof.builder().paymentId(p.getId()).imagePath(storage.storeImage(proof,"payment-proofs")).build());
         p.resubmitted(LocalDateTime.now());
-        notifyProofSubmitted(b, true);
+        notifyProofSubmitted(b, p, true);
         return r;
     }
 
-    private void notifyProofSubmitted(Booking booking, boolean resubmitted) {
+    /**
+     * Báo Owner và Staff có phụ thu đổi lịch chờ xác nhận. Tham chiếu tới chính giao dịch phụ thu
+     * (RESCHEDULE_PAYMENT, Payment.id) để bấm thông báo mở đúng yêu cầu; địa điểm suy ra từ payment.location_id.
+     */
+    private void notifyProofSubmitted(Booking booking, Payment payment, boolean resubmitted) {
         Location location = em.find(Location.class, booking.getLocationId());
         String action = resubmitted ? "đã gửi lại" : "đã gửi";
         notifyVenue(location, "RESCHEDULE_PROOF_SUBMITTED", "Phụ thu đổi lịch chờ xác nhận",
-                "Người chơi " + action + " chứng từ cho booking " + booking.getBookingCode()
-                        + " tại " + location.getName() + ".",
-                "LOCATION", location.getId());
+                "Người chơi " + action + " chứng từ phụ thu " + payment.getAmountDue().toPlainString()
+                        + " đ cho booking " + booking.getBookingCode() + " tại " + location.getName() + ".",
+                "RESCHEDULE_PAYMENT", payment.getId());
     }
 
     private void notifyVenue(Location location, String type, String title, String content, String refType, Long refId) {

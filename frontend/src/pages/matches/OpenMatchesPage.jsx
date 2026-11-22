@@ -19,7 +19,7 @@ import {
 import { searchFacilities } from '../../api/facilityApi';
 import { getMySkillLevel } from '../../api/teamApi';
 import { useAuth } from '../../hooks/useAuth';
-import { isSkillLevel, SKILL_LEVELS } from '../../utils/skillLevels';
+import { isSkillLevel, matchSkillLabel, NO_SKILL_FILTER, NO_SKILL_LABEL, SKILL_LEVELS } from '../../utils/skillLevels';
 import styles from './OpenMatchesPage.module.css';
 import { useResource } from '../workspaceSupport';
 import { keepMatchAfterRescheduleApi } from '../../api/bookingApi';
@@ -49,6 +49,7 @@ function NotificationMatch({ id }) {
       <h2 className="font-semibold">Kèo #{match.id} · {match.locationName} · {match.courtName}</h2>
       <p>{match.playDate} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}</p>
       <p>Chủ kèo {match.hostName} · Đội {match.teamName}</p>
+      <p>Trình độ {matchSkillLabel(match)} · {match.currentPlayers}/{match.currentPlayers + match.neededPlayers} người, cần thêm {match.neededPlayers}</p>
       <p>Trạng thái {({ OPEN: 'Đang mở', CLOSED: 'Đã đóng', CANCELLED: 'Đã hủy', EXPIRED: 'Hết hạn' })[match.status] || match.status}</p>
       {match.host && match.reschedulePending && <div className="mt-3 flex gap-3">
         <button type="button" disabled={busy} onClick={() => decide(true)}>Giữ kèo ở giờ mới</button>
@@ -92,7 +93,9 @@ export default function OpenMatchesPage() {
   const [selectedDate, setSelectedDate] = useState('');
   const [timeSlot, setTimeSlot] = useState('all');
   const [selectedLocation, setSelectedLocation] = useState('');
-  const [appliedFilters, setAppliedFilters] = useState(() => ({ date: '', timeSlot: 'all', locationId: '' }));
+  // Lọc theo trình độ của kèo: '' = mọi trình độ, NO_SKILL_FILTER = kèo Không yêu cầu.
+  const [selectedSkill, setSelectedSkill] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState(() => ({ date: '', timeSlot: 'all', locationId: '', skillLevel: '' }));
   // FR104: lọc kèo theo địa điểm; danh sách địa điểm đang hoạt động lấy từ UC11.
   const [locations, setLocations] = useState([]);
 
@@ -124,6 +127,7 @@ export default function OpenMatchesPage() {
         playDate: appliedFilters.date || undefined,
         fromMinute: slot.fromMinute,
         toMinute: slot.toMinute,
+        skillLevel: appliedFilters.skillLevel || undefined,
       });
       setMatches(page.content ?? []);
       setMatchesError('');
@@ -186,7 +190,7 @@ export default function OpenMatchesPage() {
 
   const submitFilters = (event) => {
     event.preventDefault();
-    setAppliedFilters({ date: selectedDate, timeSlot, locationId: selectedLocation });
+    setAppliedFilters({ date: selectedDate, timeSlot, locationId: selectedLocation, skillLevel: selectedSkill });
   };
 
   const openJoinDialog = (matchId) => {
@@ -349,6 +353,14 @@ export default function OpenMatchesPage() {
               ))}
             </select>
           </label>
+          <label className={styles.filterField}>
+            <span>Trình độ</span>
+            <select value={selectedSkill} onChange={(event) => setSelectedSkill(event.target.value)}>
+              <option value="">Mọi trình độ</option>
+              {SKILL_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
+              <option value={NO_SKILL_FILTER}>{NO_SKILL_LABEL}</option>
+            </select>
+          </label>
           <button type="submit" className={styles.filterButton}>Lọc kèo</button>
         </form>
 
@@ -365,9 +377,9 @@ export default function OpenMatchesPage() {
               <article className={styles.matchCard} key={match.id}>
                 <div className={styles.matchTop}>
                   <h2>{match.locationName} · {match.courtName}</h2>
-                  {match.teamSkillLevel && (
-                    <span className={styles.skillBadge} title="Trình độ của đội mở kèo">{match.teamSkillLevel}</span>
-                  )}
+                  <span className={styles.skillBadge} title="Trình độ của kèo do chủ kèo chọn">
+                    Trình độ: {matchSkillLabel(match)}
+                  </span>
                 </div>
                 <p className={styles.matchTime}>
                   {formatMatchDate(match.playDate)} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}
@@ -391,8 +403,8 @@ export default function OpenMatchesPage() {
               </article>
             ))}
             {!loadingMatches && !matchesError && matches.length === 0 && (
-              <div className={styles.emptyState}>{appliedFilters.date || appliedFilters.locationId || appliedFilters.timeSlot !== 'all'
-                  ? 'Không có kèo phù hợp với địa điểm, ngày và khung giờ đã chọn.'
+              <div className={styles.emptyState}>{appliedFilters.date || appliedFilters.locationId || appliedFilters.timeSlot !== 'all' || appliedFilters.skillLevel
+                  ? 'Không có kèo phù hợp với địa điểm, ngày, khung giờ và trình độ đã chọn.'
                   : 'Hiện chưa có kèo nào đang tìm người chơi.'}</div>
             )}
           </section>
@@ -414,6 +426,7 @@ export default function OpenMatchesPage() {
                       {formatMatchDate(match.playDate)} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}
                       {' · '}{match.currentPlayers}/{capacityOf(match)} người
                     </span>
+                    <span>Trình độ: {matchSkillLabel(match)}</span>
                   </div>
 
                   <h3 className={styles.requestsTitle}>Yêu cầu tham gia ({requests.length})</h3>
@@ -537,6 +550,12 @@ export default function OpenMatchesPage() {
               ×
             </button>
             <h2 id="join-modal-title">Xin tham gia kèo</h2>
+            {matches.find((item) => item.id === requestingMatchId) && (
+              <p className={styles.noRequests}>
+                Trình độ của kèo: {matchSkillLabel(matches.find((item) => item.id === requestingMatchId))}.
+                {' '}Trình độ chỉ để tham khảo, chủ kèo sẽ xét duyệt yêu cầu của bạn.
+              </p>
+            )}
             {needsSkill && (
               <label className={styles.filterField}>
                 <span>Trình độ chơi của bạn</span>
