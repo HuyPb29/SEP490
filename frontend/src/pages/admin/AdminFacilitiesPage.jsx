@@ -462,7 +462,7 @@ export default function AdminFacilitiesPage() {
                 </div>
                 <div className={styles.requestActions}>
                   {request.hasProof ? (
-                    <button className={styles.extendButton} type="button" onClick={() => handleViewProof(request)} disabled={saving}>
+                    <button className={styles.proofButton} type="button" onClick={() => handleViewProof(request)} disabled={saving}>
                       Xem chứng từ
                     </button>
                   ) : (

@@ -167,7 +167,7 @@ export default function PublicLayout({
   children,
 }) {
   return (
-    <div className={`${styles.publicShell} cw-khu vực quản lý ${className}`.trim()}>
+    <div className={`${styles.publicShell} cw-workspace ${className}`.trim()}>
       <a href="#public-main" className={styles.skipLink}>
         Đến nội dung chính
       </a>
