@@ -288,6 +288,7 @@ public class ServiceRegistrationService {
             RejectServiceRegistrationRequest request) {
         ServiceRegistration entity = requirePending(registrationId);
         String reason = requireText(request == null ? null : request.getReason(), "Lý do từ chối", 500);
+        String email = requireText(entity.getContactEmail(), "Email nhận kết quả", 100);
 
         entity.setStatus(ApprovalStatus.REJECTED);
         entity.setRejectReason(reason);
@@ -295,9 +296,7 @@ public class ServiceRegistrationService {
         entity.setProcessedAt(LocalDateTime.now());
 
         ServiceRegistration saved = serviceRegistrationRepository.save(entity);
-        if (!isBlank(saved.getContactEmail())) {
-            emails.sendServiceRegistrationRejected(saved.getContactEmail(), saved.getLocationName(), reason);
-        }
+        emails.sendServiceRegistrationRejected(email, saved.getLocationName(), reason);
         return ServiceRegistrationDto.fromEntity(saved, requesterName(saved.getRequesterId()));
     }
 

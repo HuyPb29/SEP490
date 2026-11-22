@@ -195,6 +195,20 @@ class ServiceRegistrationServiceTests {
     }
 
     @Test
+    void rejectionRequiresReasonAndEmailBeforeChangingStatus() {
+        var pending = pendingGuest(2, 1);
+        when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(pending));
+        assertThatThrownBy(() -> service.reject(admin, 50L, new RejectServiceRegistrationRequest("   ")))
+                .hasMessageContaining("Lý do từ chối");
+        pending.setContactEmail(null);
+        assertThatThrownBy(() -> service.reject(admin, 50L, new RejectServiceRegistrationRequest("Không hợp lệ")))
+                .hasMessageContaining("Email");
+        assertThat(pending.getStatus()).isEqualTo(ApprovalStatus.PENDING);
+        verifyNoInteractions(emails);
+        verify(registrations, never()).save(any());
+    }
+
+    @Test
     void approvingGuestRequestCreatesOwnerTermByYearsAndEmailsCredentials() {
         ServiceRegistration pending = pendingGuest(3, 2);
         when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(pending));

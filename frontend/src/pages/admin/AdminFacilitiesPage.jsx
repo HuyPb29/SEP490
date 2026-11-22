@@ -663,6 +663,8 @@ export default function AdminFacilitiesPage() {
                     <span>Lý do từ chối</span>
                     <textarea
                       autoFocus
+                      required
+                      disabled={saving}
                       rows="4"
                       maxLength={500}
                       value={modal.reason}

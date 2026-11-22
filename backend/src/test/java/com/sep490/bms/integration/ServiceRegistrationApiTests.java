@@ -163,8 +163,16 @@ class ServiceRegistrationApiTests {
         long id = json.readTree(sent.getResponse().getContentAsString()).at("/data/id").asLong();
 
         mvc.perform(post("/api/admin/service-registrations/" + id + "/reject").header("Authorization", token(admin))
+                        .contentType("application/json").content("{\"reason\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT status FROM service_registration WHERE id = ?", String.class, id))
+                .isEqualTo("PENDING");
+
+        mvc.perform(post("/api/admin/service-registrations/" + id + "/reject").header("Authorization", token(admin))
                         .contentType("application/json").content("{\"reason\":\"Chưa nhận được tiền thuê\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.rejectReason").value("Chưa nhận được tiền thuê"));
         verify(mail).sendServiceRegistrationRejected(email, "Sân thử D168 " + suffix, "Chưa nhận được tiền thuê");
         org.mockito.Mockito.verify(mail, org.mockito.Mockito.never()).sendServiceRegistrationApproved(
                 anyString(), anyString(), anyInt(), anyString(), anyString(), anyString(), anyString(), anyString());
