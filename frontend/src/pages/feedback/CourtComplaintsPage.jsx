@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import api, { getAllPages } from '../../api'
 import { isLatePaymentEligible } from '../../api/bookingPaymentApi'
-import WorkspaceLayout, { ActionForm, EmptyState, Field, Section, StatusPill } from '../WorkspaceLayout'
+import WorkspaceLayout, { ActionForm, EmptyState, Feedback, Field, Section, StatusPill } from '../WorkspaceLayout'
 import { today, useResource } from '../workspaceSupport'
 
 const staffPath = '/staff/complaints'
 const ownerPath = '/owner/complaints'
+const latePaymentType = 'LATE_PAYMENT_CONFIRMATION'
 const labels = { SUBMITTED: "Chờ nhân viên chuyển", PENDING_OWNER: "Chờ chủ sân xử lý", RESOLVED: 'Đã xử lý', REJECTED: 'Đã từ chối' }
 const resultLabels = {
   REFUND: 'Đã tạo yêu cầu hoàn tiền',
@@ -52,7 +53,7 @@ function WalkInComplaintForm({ refresh }) {
 }
 
 function OwnerDecision({ complaint, refresh }) {
-  const latePayment = complaint.complaintType === 'LATE_PAYMENT_CONFIRMATION'
+  const latePayment = complaint.complaintType === latePaymentType
   const [result, setResult] = useState(latePayment ? 'LATE_PAYMENT_CONFIRMED' : 'REFUND')
   // BR58, FR116 (D176): chọn phương án này thì hệ thống tặng người chơi phiếu ưu đãi bồi thường.
   const results = latePayment ? [['LATE_PAYMENT_CONFIRMED', 'Xác nhận thanh toán trễ · tặng người chơi phiếu ưu đãi 10.000 đ']] :
@@ -119,7 +120,7 @@ function CaseDetails({ id, role, refreshList }) {
         action={(form) => api.post(staffPath + '/' + id + '/forward', form)}>
         <Field label="Ghi chú khi chuyển chủ sân" name="staffNote" required maxLength={1000} />
       </ActionForm>}
-      {owner && item.status === 'PENDING_OWNER' && item.complaintType === 'LATE_PAYMENT_CONFIRMATION' &&
+      {owner && item.status === 'PENDING_OWNER' && item.complaintType === latePaymentType &&
         <p><Link className="underline" to={`/staff/confirm-payments?paymentId=${item.paymentId}${item.reschedulePayment ? '&type=reschedule' : ''}`}>
           Mở giao dịch để yêu cầu bổ sung hoặc từ chối
         </Link></p>}
@@ -152,7 +153,7 @@ function CaseList({ role = 'staff' }) {
   const id = selection.request === requestedCase ? selection.id : requestedCase
   const setId = (value) => setSelection({ request: requestedCase, id: value })
   const [status, setStatus] = useState('')
-  // D65: Owner chỉ nhận khiếu nại Staff đã chuyển lên, nên không có mục "Chờ Staff chuyển".
+  // Owner thấy khiếu nại thường đã được chuyển và khiếu nại thanh toán chậm gửi trực tiếp.
   const statusOptions = Object.entries(labels).filter(([value]) => role !== 'owner' || value !== 'SUBMITTED')
   const visible = cases.data
     ?.filter((item) => !status || item.status === status)
@@ -213,6 +214,8 @@ function PlayerComplaintForm({ bookingId, paymentId, refresh }) {
   const loadBooking = useCallback((signal) => api.get('/bookings/' + bookingId, { signal }).then((response) => response.data.data), [bookingId])
   const booking = useResource(loadBooking, bookingId)
   const item = booking.data
+  const [submittedType, setSubmittedType] = useState(null)
+  const latePaymentOnly = Boolean(paymentId)
   const types = [['COURT_SERVICE', 'Dịch vụ sân'], ['PAYMENT_ISSUE', 'Vấn đề thanh toán'], ['OTHER', 'Khác']]
   const targetPaymentId = paymentId || item?.paymentId
   const loadEligibility = useCallback(async (signal) => {
@@ -220,21 +223,45 @@ function PlayerComplaintForm({ bookingId, paymentId, refresh }) {
     return isLatePaymentEligible(bookingId, targetPaymentId, signal)
   }, [bookingId, targetPaymentId])
   const eligibility = useResource(loadEligibility, targetPaymentId)
-  if (eligibility.data) types.push(['LATE_PAYMENT_CONFIRMATION', "Xác nhận thanh toán trễ · chủ sân xác nhận thì nhận phiếu ưu đãi 10.000 đ"])
+  const canReportLatePayment = !eligibility.loading && eligibility.data === true
+  if (canReportLatePayment) types.push([latePaymentType, 'Xác nhận thanh toán chậm · chủ sân xác nhận thì nhận phiếu ưu đãi 10.000 đ'])
 
-  return <Section title="Gửi khiếu nại" resource={booking}>
+  return <Section title={latePaymentOnly ? 'Khiếu nại xác nhận thanh toán chậm' : 'Gửi khiếu nại'} resource={booking}>
     {item && <>
       <p>{item.bookingCode} · {item.playDate}</p>
-      <p className="cw-muted">
-        Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của đặt sân. Nhân viên sân kiểm tra rồi chuyển chủ sân quyết định.
-      </p>
-      <ActionForm label="Gửi khiếu nại" after={() => { eligibility.reload(); refresh() }} action={(form) => api.post('/complaints', {
-        ...form, bookingId: item.id ?? Number(bookingId),
-        paymentId: form.complaintType === 'LATE_PAYMENT_CONFIRMATION' ? targetPaymentId : null,
-      })}>
-        <Field label="Loại khiếu nại" name="complaintType" options={types} required />
-        <Field label="Nội dung" name="content" maxLength={1000} required />
-      </ActionForm>
+      <p className="cw-muted">{latePaymentOnly
+        ? 'Chủ sân nhận thông báo ngay khi bạn gửi khiếu nại về giao dịch này.'
+        : 'Khiếu nại thông thường gửi trong 24 giờ sau giờ chơi và do nhân viên tiếp nhận. Khiếu nại xác nhận thanh toán chậm được gửi thẳng cho chủ sân.'}</p>
+      {submittedType && <Feedback tone="success">{submittedType === latePaymentType
+        ? 'Đã gửi khiếu nại và thông báo cho chủ sân.'
+        : 'Đã gửi khiếu nại.'}</Feedback>}
+      {latePaymentOnly && !submittedType && <>
+        {eligibility.loading && <Feedback>Đang kiểm tra giao dịch…</Feedback>}
+        {eligibility.error && <Feedback tone="error">{eligibility.error}
+          <button type="button" className="cw-secondary" onClick={eligibility.reload}>Thử lại</button>
+        </Feedback>}
+        {!eligibility.loading && !eligibility.error && !canReportLatePayment &&
+          <Feedback tone="warning">Giao dịch này hiện không thể gửi khiếu nại xác nhận thanh toán chậm.</Feedback>}
+      </>}
+      {(!latePaymentOnly || (canReportLatePayment && !submittedType)) &&
+        <ActionForm label={latePaymentOnly ? 'Gửi cho chủ sân' : 'Gửi khiếu nại'} successMessage={false}
+          after={(response) => {
+            setSubmittedType(response.data.data.complaintType)
+            eligibility.reload()
+            refresh()
+          }} action={(form) => {
+            setSubmittedType(null)
+            const complaintType = latePaymentOnly ? latePaymentType : form.complaintType
+            return api.post('/complaints', {
+              content: form.content, complaintType, bookingId: item.id ?? Number(bookingId),
+              paymentId: complaintType === latePaymentType ? targetPaymentId : null,
+            })
+          }}>
+          {(errors) => <>
+            {!latePaymentOnly && <Field label="Loại khiếu nại" name="complaintType" options={types} required error={errors.complaintType} />}
+            <Field label="Nội dung" name="content" maxLength={1000} required error={errors.content} />
+          </>}
+        </ActionForm>}
     </>}
   </Section>
 }

@@ -66,9 +66,9 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * F8 – UC33 Gửi và xử lý khiếu nại.
- * Luồng: Player gửi (SUBMITTED) → Staff ghi chú và chuyển (PENDING_OWNER) → Owner xử lý (RESOLVED/REJECTED).
- * Khiếu nại LATE_PAYMENT_CONFIRMATION (BR58) đến thẳng Owner, bắt buộc có paymentId; voucher bồi thường
- * chỉ tặng khi Owner chọn LATE_PAYMENT_CONFIRMED (D176).
+ * Khiếu nại thường do Staff tiếp nhận và chuyển Owner. Khiếu nại chậm xác nhận thanh toán
+ * bắt buộc có paymentId và được thông báo trực tiếp cho Owner khi tạo ở trạng thái PENDING_OWNER.
+ * Voucher bồi thường chỉ tặng khi Owner chọn LATE_PAYMENT_CONFIRMED (BR58, D176).
  */
 @Service
 @RequiredArgsConstructor
