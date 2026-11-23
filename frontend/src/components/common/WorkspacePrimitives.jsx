@@ -1,4 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
+import { Modal as SharedModal, ConfirmDialog as SharedConfirmDialog } from './Modal';
+import { LoadingState, ErrorState } from './States';
 import { errorMessage, uiMessage } from '../../utils/formatters';
 
 export function Feedback({ tone = 'info', children }) {
@@ -47,15 +49,8 @@ export function Section({ title, resource, actions, children }) {
         <h2 id={id}>{title}</h2>
         {actions}
       </header>
-      {resource?.loading && <Feedback>Đang tải…</Feedback>}
-      {resource?.error && (
-        <Feedback tone="error">
-          <span>{resource.error}</span>
-          <button className="cw-secondary" type="button" onClick={resource.reload}>
-            Thử lại
-          </button>
-        </Feedback>
-      )}
+      {resource?.loading && <LoadingState />}
+      {resource?.error && <ErrorState message={resource.error} onRetry={resource.reload} />}
       {children}
     </section>
   );
@@ -93,49 +88,11 @@ export function Field({ label, options, hint, error, ...props }) {
 }
 
 export function Modal({ labelledBy, onDismiss, busy, className = '', children }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    dialog.showModal();
-    return () => dialog.close();
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      aria-labelledby={labelledBy}
-      className={'cw-modal ' + className}
-      onCancel={(event) => {
-        event.preventDefault();
-        if (!busy) onDismiss();
-      }}
-    >
-      {children}
-    </dialog>
-  );
+  return <SharedModal labelledBy={labelledBy} onDismiss={onDismiss} busy={busy} className={'cw-modal ' + className}>{children}</SharedModal>;
 }
 
 export function ConfirmDialog({ title, children, onCancel, onConfirm, tone = 'primary' }) {
-  const titleId = useId();
-  return (
-    <Modal labelledBy={titleId} onDismiss={onCancel}>
-      <div className="cw-modal-content">
-        <h2 id={titleId}>{title}</h2>
-        <p>{uiMessage(children)}</p>
-        <div className="cw-modal-actions">
-          <button type="button" className="cw-secondary" onClick={onCancel}>
-            Quay lại
-          </button>
-          <button
-            type="button"
-            className={tone === 'danger' ? 'cw-danger' : 'action'}
-            onClick={onConfirm}
-          >
-            Xác nhận
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
+  return <SharedConfirmDialog title={title} onCancel={onCancel} onConfirm={onConfirm} tone={tone}>{uiMessage(children)}</SharedConfirmDialog>;
 }
 
 export function ActionForm({

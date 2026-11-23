@@ -1,4 +1,9 @@
 const PATHS = {
+  close: <path d="m6 6 12 12M6 18 18 6" />,
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" /></>,
+  list: <><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></>,
+  map: <><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6ZM9 3v15M15 6v15" /></>,
+  court: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 12h18M8 3v18M16 3v18M8 7h8M8 17h8" /></>,
   pin: (
     <>
       <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />

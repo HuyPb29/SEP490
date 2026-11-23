@@ -421,3 +421,98 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+/* UC11: responsive list/map workspace; legacy selectors above remain compatible. */
+.workspace { width: 100%; max-width: var(--container-max); margin-inline: auto; padding: var(--space-6) var(--space-5) var(--space-8); min-width: 0; }
+.workspace .searchDock { padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.workspace .searchForm { display: grid; grid-template-columns: minmax(0, 1fr) 180px auto; gap: var(--space-4); align-items: end; }
+.workspace .keywordField, .workspace .dateField { display: grid; gap: var(--space-2); min-width: 0; }
+.workspace label { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-secondary); }
+.workspace .keywordControl { display: flex; align-items: center; min-width: 0; gap: var(--space-2); border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); padding-left: var(--space-3); color: var(--color-text-muted); }
+.workspace .keywordControl:focus-within { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.workspace .keywordControl > svg { flex: none; }
+.workspace .keywordControl input { border: 0; box-shadow: none; background: transparent; padding-inline: 0; outline: none; font-size: var(--text-md); }
+.workspace .keywordControl input::-webkit-search-cancel-button { display: none; }
+.workspace .keywordControl button { flex: none; margin-left: auto; }
+.workspace .submitButton { min-width: 110px; }
+.workspace .searchExtras { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding-block: var(--space-4); }
+.workspace .locationGroup { display: flex; align-items: center; gap: var(--space-3); min-width: 0; flex: 1; }
+.workspace .locationGroup button { flex: none; }
+.workspace .locationGroup p { color: var(--color-text-muted); font-size: var(--text-xs); max-width: 48ch; }
+.workspace .playDate { color: var(--color-text-muted); font-size: var(--text-xs); }
+.workspace .playDate strong { color: var(--color-text-secondary); }
+.workspace .locationNotice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border: 1px solid var(--color-warning-border); background: var(--color-warning-bg); color: var(--color-warning); padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--text-sm); margin-bottom: var(--space-4); }
+.workspace .locationNotice > p { flex: 1 1 260px; }
+.workspace .locationSuccess { display: flex; gap: var(--space-2); color: var(--color-success); font-size: var(--text-sm); margin-bottom: var(--space-4); }
+.workspace .resultsHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+.workspace .resultsHeading h2 { font-size: var(--text-lg); font-weight: 700; overflow-wrap: anywhere; }
+.workspace .resultsHeading p { color: var(--color-text-muted); font-size: var(--text-sm); margin-top: var(--space-1); }
+.workspace .viewSwitch { display: none; }
+.workspace .resultsGrid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+.workspace .resultsList { min-width: 0; }
+.workspace .cards { display: grid; gap: var(--space-4); list-style: none; padding: 0; margin: 0; }
+.workspace .venueCard { display: grid; grid-template-columns: 160px minmax(0, 1fr); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-xs); overflow: hidden; min-width: 0; transition: border-color .15s ease, box-shadow .15s ease; }
+.workspace .venueCard:hover, .workspace .venueCard:focus-within, .workspace .cardActive { border-color: var(--color-primary); box-shadow: var(--shadow-sm); }
+.workspace .venuePhoto { position: relative; width: 100%; min-height: 180px; background: var(--color-surface-muted); cursor: pointer; overflow: hidden; }
+.workspace .venuePhoto:focus-visible { outline-offset: -4px; }
+.workspace .venuePhoto img { display: block; width: 100%; height: 100%; position: absolute; inset: 0; object-fit: cover; }
+.workspace .photoCaption { position: absolute; bottom: var(--space-2); left: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-muted); font-size: var(--text-xs); }
+.workspace .venueBody { padding: var(--space-4); min-width: 0; }
+.workspace .cardTop { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+.workspace .venueNumber { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+.workspace .distance { display: inline-flex; align-items: center; gap: var(--space-1); margin-left: auto; color: var(--color-primary); font-size: var(--text-xs); font-weight: 600; }
+.workspace .venueName { font-size: var(--text-md); font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; margin: 0; }
+.workspace .venueName button { min-height: 44px; text-align: left; color: var(--color-text); cursor: pointer; }
+.workspace .venueName button:hover { color: var(--color-primary); }
+.workspace .address { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--color-text-muted); font-size: var(--text-sm); margin-top: var(--space-1); overflow-wrap: anywhere; }
+.workspace .address > svg { flex: none; margin-top: 2px; }
+.workspace .facts { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin-block: var(--space-3); font-size: var(--text-xs); color: var(--color-text-secondary); }
+.workspace .facts > span { display: inline-flex; align-items: center; gap: var(--space-2); }
+.workspace .facts svg { flex: none; color: var(--color-text-muted); }
+.workspace .cardFooter { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
+.workspace .cardSummary { display: grid; gap: var(--space-2); }
+.workspace .rating { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); font-size: var(--text-xs); color: var(--color-text-muted); }
+.workspace .rating > svg { color: var(--color-warning); }
+.workspace .rating strong { color: var(--color-text); }
+.workspace .price { color: var(--color-text-muted); font-size: var(--text-xs); }
+.workspace .price strong { margin-inline: var(--space-1); color: var(--color-text); font-size: var(--text-md); font-weight: 700; }
+.workspace .priceMissing { color: var(--color-text-muted); font-size: var(--text-xs); }
+.workspace .loadingGrid { display: grid; gap: var(--space-4); }
+.workspace .loadingGrid > div { min-height: 220px; }
+.workspace .mapColumn { min-width: 0; position: sticky; top: calc(var(--header-height) + var(--space-5)); }
+.workspace .mapCard { padding: 0; overflow: hidden; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.workspace .mapHeader { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-4); border-bottom: 1px solid var(--color-border); }
+.workspace .mapHeader > div { display: flex; align-items: center; gap: var(--space-2); color: var(--color-primary); }
+.workspace .mapHeader h2 { font-size: var(--text-sm); font-weight: 700; color: var(--color-text); }
+.workspace .mapHeader > span { color: var(--color-text-muted); font-size: var(--text-xs); }
+.workspace .mapWrap { --venue-map-height: min(60dvh, 620px); --venue-map-aspect: auto; min-height: 300px; padding: var(--space-2); }
+.workspace .mapWrap > [role="status"], .workspace .mapWrap > [role="alert"] { margin: var(--space-3); }
+.workspace .mapHint { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--color-border); color: var(--color-text-muted); font-size: var(--text-xs); }
+.workspace .mapHint svg { flex: none; margin-top: 2px; }
+@media (640px <= width < 1024px) {
+  .workspace .resultsGrid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: var(--space-4); }
+  .workspace .venueCard { grid-template-columns: 1fr; }
+  .workspace .venuePhoto { min-height: 150px; }
+  .workspace .searchExtras { align-items: start; }
+  .workspace .locationGroup { flex-wrap: wrap; }
+  .workspace .searchForm { grid-template-columns: minmax(0, 1fr) 150px auto; gap: var(--space-3); }
+}
+@media (width < 640px) {
+  .workspace { padding: var(--space-4) var(--space-3) var(--space-6); }
+  .workspace .searchDock { position: sticky; top: var(--header-height); z-index: 40; padding: var(--space-3); }
+  .workspace .searchForm { grid-template-columns: minmax(0, 1fr) 110px; gap: var(--space-3); }
+  .workspace .keywordField { grid-column: 1 / -1; }
+  .workspace .keywordControl input { font-size: var(--text-md); }
+  .workspace .locationGroup { flex-wrap: wrap; gap: var(--space-2); }
+  .workspace .locationGroup p { max-width: none; }
+  .workspace .playDate { display: none; }
+  .workspace .resultsHeading > div:first-child { width: 100%; }
+  .workspace .viewSwitch { display: flex; width: 100%; padding: var(--space-1); border: 1px solid var(--color-border); background: var(--color-surface); border-radius: var(--radius-md); }
+  .workspace .viewSwitch button { flex: 1; }
+  .workspace .resultsGrid { display: block; }
+  .workspace .listHidden, .workspace .mapHidden { display: none; }
+  .workspace .venueCard { grid-template-columns: 1fr; }
+  .workspace .venuePhoto { min-height: 170px; }
+  .workspace .venueBody { padding: var(--space-4); }
+  .workspace .mapColumn { position: static; }
+  .workspace .mapWrap { --venue-map-height: 52dvh; }
+}

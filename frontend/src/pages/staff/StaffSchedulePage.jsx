@@ -130,7 +130,7 @@ export default function StaffSchedulePage() {
       </div>
       {schedule && (schedule.courts.length === 0
         ? <p>Địa điểm chưa có sân hoạt động.</p>
-        : <ScheduleGrid schedule={schedule} selected={[]} allowBooking={false} showBooker
+        : <ScheduleGrid schedule={schedule} selected={[]} allowBooking={false} showBooker role={user?.role_code || 'staff'}
           onSlot={() => {}} onInspect={setInspecting} />)}
     </Section>
 

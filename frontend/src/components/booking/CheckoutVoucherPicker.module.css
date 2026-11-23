@@ -1,28 +1,10 @@
-.picker, .group {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-
-.picker { margin-block: 12px; }
-.group label { font-weight: 600; }
-
-.input {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 8px 10px;
-  border: 1px solid var(--cw-border, #d2d9d4);
-  border-radius: 8px;
-  color: inherit;
-  background: var(--cw-surface, white);
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-}
-
+.picker { display: grid; gap: var(--space-4); min-width: 0; margin-block: var(--space-5); }
+.picker input, .picker select { font-size: 16px; }
+.actions { display: flex; gap: var(--space-2); min-width: 0; }
+.actions input { flex: 1; width: 0; min-width: 0; }
 .actions button { flex-shrink: 0; }
-.success { margin: 0; color: #166534; }
+.empty { border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); padding: var(--space-3); background: var(--color-bg); }
+.empty p, .hint { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: 1.7; margin: 0; }
+.empty button { padding-inline: 0; }
+.success { margin: 0; padding: var(--space-3); border: 1px solid var(--color-success-border); border-radius: var(--radius-md); color: var(--color-success); background: var(--color-success-bg); font-size: var(--text-sm); line-height: 1.7; overflow-wrap: anywhere; }
+.error { margin: 0; font-size: var(--text-sm); color: var(--color-danger); line-height: 1.7; }

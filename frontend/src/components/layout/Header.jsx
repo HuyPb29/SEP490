@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './Header.module.css'
+import NavigationDrawer from './NavigationDrawer'
+import { useNavigationDrawer } from '../../hooks/useNavigationDrawer'
 
 export default function Header({ roleContext }) {
   const navigate = useNavigate()
@@ -10,6 +12,7 @@ export default function Header({ roleContext }) {
   const { user, isAuthenticated, logout } = useAuth()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef(null)
+  const [drawerOpen, setDrawerOpen] = useNavigationDrawer()
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -52,21 +55,7 @@ export default function Header({ roleContext }) {
   const isRegisterServiceActive =
     location.pathname.startsWith('/register-service') || location.pathname.startsWith('/owner')
 
-  return (
-    <header className={styles.navbar}>
-      <div className={styles.navContainer}>
-        {/* Brand */}
-        <div className={styles.brandGroup}>
-          <div className={styles.brand} onClick={() => navigate('/')} role="button" tabIndex={0}>
-            <span className={styles.brandIcon} aria-hidden="true">⚡</span>
-            <span className={styles.brandText}>Courtly</span>
-          </div>
-          {isOwnerRoute && (
-            <span className={styles.portalBadge}>Quản lý chủ sân</span>
-          )}
-        </div>
-
-        {/* Global Navigation Links */}
+  const navigation = (
         <nav className={styles.navLinks} aria-label="Điều hướng chính">
           <Link
             to="/locations"
@@ -93,9 +82,28 @@ export default function Header({ roleContext }) {
             Đăng ký chủ sân
           </Link>
         </nav>
+  )
+
+  return (
+    <header className={styles.navbar}>
+      <div className={styles.navContainer}>
+        {/* Brand */}
+        <div className={styles.brandGroup}>
+          <Link className={styles.brand} to="/">
+            <span className={styles.brandIcon} aria-hidden="true">⚡</span>
+            <span className={styles.brandText}>Courtly</span>
+          </Link>
+          {isOwnerRoute && (
+            <span className={styles.portalBadge}>Quản lý chủ sân</span>
+          )}
+        </div>
+
+        {/* Global Navigation Links */}
+        {navigation}
 
         {/* Right side: User Area & Notifications OR Đăng nhập/Đăng ký */}
         <div className={styles.userArea}>
+          <button type="button" className={styles.mobileMenu} aria-label="Mở menu điều hướng" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>☰</button>
           {isLoggedIn ? (
             <>
               <NotificationBell />
@@ -205,6 +213,10 @@ export default function Header({ roleContext }) {
           )}
         </div>
       </div>
+      {drawerOpen && <NavigationDrawer label="Điều hướng di động" onClose={() => setDrawerOpen(false)}>
+        <button type="button" className={styles.drawerClose} onClick={() => setDrawerOpen(false)}>Đóng menu ✕</button>
+        <div className={styles.drawerLinks} onClick={(event) => { if (event.target.closest('a')) setDrawerOpen(false); }}>{navigation}</div>
+      </NavigationDrawer>}
     </header>
   )
 }

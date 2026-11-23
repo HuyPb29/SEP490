@@ -43,7 +43,7 @@
 .btnPrimary {
   border: 1px solid var(--color-primary);
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-on-primary);
 }
 
 .btnPrimary:hover:not(:disabled) {
@@ -69,7 +69,7 @@
 }
 
 .btnDanger:hover:not(:disabled) {
-  background: #fecaca;
+  background: var(--color-danger-border);
 }
 
 .btnGhost {
@@ -133,7 +133,7 @@
 .textareaControl:focus {
   outline: none;
   border-color: var(--color-primary-accent);
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 .inputControl:disabled,
@@ -146,7 +146,7 @@
 
 .controlInvalid {
   border-color: var(--color-danger) !important;
-  background: #fffafa;
+  background: var(--color-danger-bg);
 }
 
 .fieldError {
@@ -329,7 +329,7 @@
 }
 
 .table tbody tr:hover td {
-  background: #f9fbf9;
+  background: var(--color-surface-muted);
 }
 
 /* 6. Modal & ConfirmDialog */
@@ -347,7 +347,7 @@
 }
 
 .dialogNative::backdrop {
-  background: rgba(15, 23, 42, 0.5);
+  background: var(--color-overlay);
 }
 
 .modalOverlay {
@@ -358,7 +358,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
-  background: rgba(15, 23, 42, 0.5);
+  background: var(--color-overlay);
 }
 
 .modalCard {
@@ -506,7 +506,7 @@
 .pageBtnActive {
   border-color: var(--color-primary);
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-on-primary);
 }
 
 .pageBtn:disabled {
@@ -525,3 +525,45 @@
     flex-basis: auto;
   }
 }
+
+/* Shared interaction and responsive rules. */
+.btnSm, .btnMd, .pageBtn, .backLink { min-height: 44px; min-width: 44px; }
+.inputControl, .selectControl { min-height: 44px; min-width: 0; }
+.inputControl[aria-invalid="true"], .selectControl[aria-invalid="true"], .textareaControl[aria-invalid="true"] { border-color: var(--color-danger); }
+.badgeDot { width: 6px; height: 6px; flex: none; border-radius: var(--radius-full); background: currentColor; }
+.tableContainer { max-height: 70dvh; }
+.table th { position: sticky; top: 0; z-index: 1; }
+.table td { overflow-wrap: anywhere; }
+.dialogNative { overscroll-behavior: contain; scrollbar-gutter: stable; }
+body:has(.dialogNative[open]) { overflow: hidden; }
+.modalFooter { position: sticky; bottom: calc(-1 * var(--space-6)); margin: var(--space-5) calc(-1 * var(--space-6)) calc(-1 * var(--space-6)); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--color-border); background: var(--color-surface); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+.breadcrumbs { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--color-text-muted); font-size: var(--text-sm); }
+.breadcrumbs a { color: var(--color-primary); display: inline-flex; align-items: center; min-height: 44px; }
+.breadcrumbs li + li::before { content: '/'; margin-right: var(--space-2); }
+.skeletonGroup { width: min(100%, 420px); display: grid; gap: var(--space-3); padding-block: var(--space-2); }
+.skeleton { display: block; height: 16px; border-radius: var(--radius-sm); background: var(--color-surface-muted); animation: skeletonPulse 1.4s ease-in-out infinite alternate; }
+.skeleton:nth-child(2) { width: 85%; }
+.skeleton:last-child { width: 62%; }
+@keyframes skeletonPulse { to { opacity: .4; } }
+.spinnerState { display: grid; justify-items: center; gap: var(--space-3); padding: var(--space-8); color: var(--color-text-muted); }
+.spinner { width: 32px; height: 32px; border: 3px solid var(--color-border); border-top-color: var(--color-primary); border-radius: var(--radius-full); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.buttonSpinner { width: 14px; height: 14px; flex: none; border: 2px solid currentColor; border-right-color: transparent; border-radius: var(--radius-full); animation: spin .8s linear infinite; }
+.tabs { display: flex; gap: var(--space-1); overflow-x: auto; border-bottom: 1px solid var(--color-border); }
+.tabs button { flex: none; min-height: 44px; padding: var(--space-2) var(--space-4); border-bottom: 2px solid transparent; color: var(--color-text-muted); font-weight: 600; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+.tabs button:disabled { opacity: .55; cursor: not-allowed; }
+.tabPanel { padding-top: var(--space-4); }
+@media (width < 640px) {
+  .tableContainer { overflow: visible; max-height: none; border: 0; background: transparent; }
+  .table, .table tbody { display: block; }
+  .table thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+  .table tbody tr { display: block; padding: var(--space-3); margin-bottom: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+  .table td { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) 0; text-align: right; border: 0; min-width: 0; }
+  .table td[data-label]::before { content: attr(data-label); text-align: left; color: var(--color-text-muted); font-size: var(--text-xs); flex: 0 0 38%; }
+  .table td > * { min-width: 0; }
+  .table td button { min-height: 44px; }
+  .headerActions { width: 100%; }
+}
+
+.requiredMark::after { content: "*"; }

@@ -2,28 +2,21 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getRescheduleRequestsApi } from '../../api/bookingApi'
 import { getReschedulePaymentDetail, loadPaymentImage } from '../../api/bookingPaymentApi'
-import WorkspaceLayout, { EmptyState, Feedback, Section, StatusPill } from '../WorkspaceLayout'
-import { errorMessage, money, useResource } from '../workspaceSupport'
+import PublicLayout from '../../components/layout/PublicLayout'
+import { Button, EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '../../components/common'
+import { money, shortDate, uiMessage } from '../../utils/formatters'
+import { bookingTimestamp } from '../../api/bookingHistory'
+import styles from './RescheduleHistoryPage.module.css'
+import { errorMessage, useResource } from '../workspaceSupport'
 
-const requestStatus = {
-  PENDING_PAYMENT: 'Chờ thanh toán phụ thu',
-  AWAITING_CONFIRMATION: 'Chờ xử lý phụ thu',
-  APPROVED: 'Đã đổi lịch',
-  REJECTED: 'Bị từ chối · giữ lịch cũ',
-  EXPIRED: 'Hết hạn · giữ lịch cũ',
-}
-
-const paymentStatus = {
-  AWAITING_CONFIRMATION: 'Chờ xác nhận',
-  RESUBMIT_REQUESTED: 'Cần gửi lại chứng từ',
-  CONFIRMED: 'Đã xác nhận',
-  REJECTED: 'Đã từ chối',
-}
+const price = (value) => money(value).replace(/\s*₫/, 'đ')
+const timestamp = (value) => new Date(bookingTimestamp(value)).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
 const clock = (minute) => String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0')
 
 function PaymentProof({ paymentId, proofId }) {
   const [image, setImage] = useState(null)
+  const [revision, setRevision] = useState(0)
   useEffect(() => {
     const controller = new AbortController()
     let url
@@ -40,11 +33,11 @@ function PaymentProof({ paymentId, proofId }) {
       controller.abort()
       if (url) URL.revokeObjectURL(url)
     }
-  }, [paymentId, proofId])
+  }, [paymentId, proofId, revision])
 
-  if (!image) return <p role="status">Đang tải ảnh…</p>
-  if (image.error) return <p role="alert">{image.error}</p>
-  return <img className="max-h-96 max-w-full rounded-lg object-contain" src={image.url} alt="Chứng từ phụ thu đã gửi" />
+  if (!image) return <LoadingState message="Đang tải ảnh chứng từ…" />
+  if (image.error) return <ErrorState message={uiMessage(image.error)} onRetry={() => { setImage(null); setRevision((value) => value + 1) }} />
+  return <img className={styles.proofImage} src={image.url} alt="Chứng từ phụ thu đã gửi" />
 }
 
 function PaymentDetails({ paymentId }) {
@@ -53,19 +46,19 @@ function PaymentDetails({ paymentId }) {
   const [proofId, setProofId] = useState(null)
   const payment = detail.data?.payment
 
-  return <div className="space-y-2">
-    {detail.loading && <p role="status">Đang tải giao dịch…</p>}
-    {detail.error && <Feedback tone="error">{detail.error}<button className="cw-secondary" type="button" onClick={detail.reload}>Thử lại</button></Feedback>}
+  return <div className={styles.paymentDetails}>
+    {detail.loading && <LoadingState message="Đang tải giao dịch…" />}
+    {detail.error && <ErrorState message={uiMessage(detail.error)} onRetry={detail.reload} />}
     {payment && <>
-      <p>{paymentStatus[payment.status] ?? payment.status} · Phụ thu {money(payment.amountDue)}</p>
-      {payment.receiptNo && <p>Biên nhận: <strong>{payment.receiptNo}</strong>{payment.confirmedAt && ' · ' + payment.confirmedAt.replace('T', ' ')}</p>}
-      {payment.receivedAmount != null && <p>Đã nhận {money(payment.receivedAmount)}</p>}
+      <p><StatusBadge category={payment.status === 'REJECTED' ? 'reschedule' : 'booking'} status={payment.status} /> · Phụ thu {price(payment.amountDue)}</p>
+      {payment.receiptNo && <p>Biên nhận: <strong>{payment.receiptNo}</strong>{payment.confirmedAt && ' · ' + timestamp(payment.confirmedAt)}</p>}
+      {payment.receivedAmount != null && <p>Đã nhận {price(payment.receivedAmount)}</p>}
       {payment.resubmitReason && <p>Lý do yêu cầu gửi lại: {payment.resubmitReason}</p>}
-      <div className="flex flex-wrap gap-3">
-        {detail.data.proofs.map((proof, index) => <button key={proof.id} type="button" className="underline"
+      <div className={styles.proofButtons}>
+        {detail.data.proofs.map((proof, index) => <Button variant="secondary" key={proof.id} type="button"
           aria-pressed={proofId === proof.id} onClick={() => setProofId(proofId === proof.id ? null : proof.id)}>
           Chứng từ {index + 1}
-        </button>)}
+        </Button>)}
       </div>
       {proofId && <PaymentProof key={proofId} paymentId={paymentId} proofId={proofId} />}
     </>}
@@ -74,9 +67,9 @@ function PaymentDetails({ paymentId }) {
 
 export function ReschedulePaymentDetail({ paymentId }) {
   const [expanded, setExpanded] = useState(false)
-  return <details className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+  return <details className={styles.paymentDisclosure}
     onToggle={(event) => setExpanded(event.currentTarget.open)}>
-    <summary className="cursor-pointer font-semibold">Chi tiết giao dịch và chứng từ phụ thu</summary>
+    <summary>Chi tiết giao dịch và chứng từ phụ thu</summary>
     {expanded && <PaymentDetails key={paymentId} paymentId={paymentId} />}
   </details>
 }
@@ -85,24 +78,30 @@ function RequestList({ bookingId }) {
   const load = useCallback((signal) => getRescheduleRequestsApi(bookingId, signal), [bookingId])
   const requests = useResource(load, bookingId)
 
-  return <Section title="Yêu cầu đã gửi" resource={requests}>
-    {requests.data?.length === 0 && <EmptyState>Lịch đặt sân này chưa có yêu cầu đổi lịch.</EmptyState>}
-    {requests.data?.map((item) => <article key={item.id} className="cw-record flex-col !items-start">
-      <h3 className="font-semibold">Yêu cầu #{item.id} <StatusPill tone={item.status === 'APPROVED' ? 'positive' : 'neutral'}>
-        {requestStatus[item.status] ?? item.status}</StatusPill></h3>
-      <p>khung giờ yêu cầu: {item.newDate} · Sân #{item.newCourtId} · {clock(item.newStartMinute)}–{clock(item.newEndMinute)}</p>
-      <p>{item.free ? 'Đổi miễn phí do sân hủy' : 'Phụ thu ' + money(item.extraAmount)}</p>
-      {item.extraAmount > 0 && <Link className="cw-secondary" to={'/booking/payment?rescheduleId=' + item.id}>
+  return <section className={styles.requests} aria-label="Yêu cầu đã gửi">
+    {requests.loading && <LoadingState message="Đang tải lịch sử đổi lịch…" />}
+    {requests.error && <ErrorState message={uiMessage(requests.error)} onRetry={requests.reload} />}
+    {!requests.loading && !requests.error && requests.data?.length === 0 && <EmptyState title="Chưa có yêu cầu đổi lịch"
+      description="Các yêu cầu đổi lịch và kết quả xử lý sẽ xuất hiện tại đây. Mở chi tiết lịch đặt sân để xem thao tác hiện có."
+      action={<Link className={styles.actionLink} to="/my-bookings">Về lịch đặt sân</Link>} />}
+    {!requests.loading && !requests.error && requests.data?.map((item) => <article key={item.id} className={styles.requestCard}>
+      <div className={styles.requestHeader}><h2>Yêu cầu #{item.id}</h2><StatusBadge category="reschedule" status={item.status} /></div>
+      <p className={styles.scheduleLine}>{shortDate(item.newDate)} · {clock(item.newStartMinute)}–{clock(item.newEndMinute)}</p>
+      <p>Sân #{item.newCourtId}</p>
+      <div className={styles.amountRow}><span>{item.free ? 'Đổi miễn phí do sân hủy' : 'Phụ thu chênh lệch'}</span><strong>{price(item.extraAmount || 0)}</strong></div>
+      {['REJECTED', 'EXPIRED'].includes(item.status) && <p className={styles.notice}>Yêu cầu chưa có hiệu lực. Lịch cũ được giữ nguyên.</p>}
+      {item.extraAmount > 0 && <Link className={styles.actionLink} to={'/booking/payment?rescheduleId=' + item.id}>
         {item.status === 'PENDING_PAYMENT' ? 'Thanh toán phụ thu' : 'Xem tình trạng và chứng từ phụ thu'}
       </Link>}
     </article>)}
-  </Section>
+  </section>
 }
 
 export default function RescheduleHistoryPage() {
   const { bookingId } = useParams()
-  return <WorkspaceLayout title="Lịch sử đổi lịch" role="player">
-    <Link className="cw-secondary justify-self-start" to="/my-bookings">‹ Về lịch đặt sân</Link>
+  return <PublicLayout fullWidth><div className={styles.page}>
+    <PageHeader title="Lịch sử đổi lịch" subtitle="Theo dõi khung giờ mới, phụ thu và kết quả xử lý từng yêu cầu."
+      backTo={{ to: '/my-bookings', label: 'Về lịch đặt sân' }} />
     {/^\d+$/.test(bookingId || '') && <RequestList bookingId={bookingId} />}
-  </WorkspaceLayout>
+  </div></PublicLayout>
 }

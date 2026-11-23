@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api, { apiErrorMessage } from '../../api'
-import { affectedBookingActions, blocksNormalBookingActions, bookingStatusLabels, bookingStartsAfter, canPayHistoryEntry, canRescheduleBooking, getHistoryDetail, withBookingDeadlines } from '../../api/bookingHistory'
+import { affectedBookingActions, blocksNormalBookingActions, bookingStartsAfter, canPayHistoryEntry, canRescheduleBooking, getHistoryDetail, withBookingDeadlines } from '../../api/bookingHistory'
 import { createMatch } from '../../api/matchApi'
 import { getMyTeams } from '../../api/teamApi'
 import { isSkillLevel, NO_SKILL_LABEL, SKILL_LEVELS } from '../../utils/skillLevels'
-import { formatVnd, uiMessage } from '../../utils/formatters'
+import { money, shortDate, uiMessage } from '../../utils/formatters'
 import styles from './MyBookingsPage.module.css'
+import { Button, Modal, LoadingState, ErrorState, StatusBadge, Table, FormField, Input, Select } from '../../components/common'
 
 /** D60: tối đa 8 người tính cả chủ kèo — chủ kèo khai số đang có và số cần thêm. */
 const MATCH_MAX_PLAYERS = 8
 
-function CreateMatchForm({ bookingId, teamId, onCreated }) {
+function CreateMatchForm({ bookingId, teamId, onCreated, onSaving }) {
   const [currentPlayers, setCurrentPlayers] = useState(4)
   const [neededPlayers, setNeededPlayers] = useState(2)
   // Trình độ của kèo: mặc định theo trình độ của đội; '' = Không yêu cầu. Chỉ là nhãn, không chặn ai xin vào.
@@ -20,6 +21,7 @@ function CreateMatchForm({ bookingId, teamId, onCreated }) {
   const [phoneConsent, setPhoneConsent] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const submitLock = useRef(false)
 
   useEffect(() => {
     if (skillTouched) return undefined
@@ -40,59 +42,56 @@ function CreateMatchForm({ bookingId, teamId, onCreated }) {
       setError('Vui lòng đồng ý chia sẻ số điện thoại với người được duyệt vào kèo.')
       return
     }
+    if (submitLock.current) return
+    submitLock.current = true
     setSaving(true)
+    onSaving?.(true)
     try {
       await createMatch({ bookingId, currentPlayers, neededPlayers, skillLevel, phoneConsent })
       onCreated()
     } catch (cause) {
       setError(apiErrorMessage(cause, 'Không mở được kèo.'))
     } finally {
+      submitLock.current = false
       setSaving(false)
+      onSaving?.(false)
     }
   }
 
   const numberField = (label, value, setValue) => (
-    <label className="flex flex-col gap-1 text-sm">
-      <span>{label}</span>
-      <input
-        type="number" min={1} max={MATCH_MAX_PLAYERS - 1} value={value}
-        className="rounded border border-gray-300 px-2 py-1"
-        onChange={(event) => { setValue(Math.max(1, Math.min(MATCH_MAX_PLAYERS - 1, Number(event.target.value) || 1))); setError('') }}
-      />
-    </label>
+    <FormField label={label}>
+      <Input type="number" min={1} max={MATCH_MAX_PLAYERS - 1} value={value} disabled={saving} aria-describedby={error ? "create-match-error" : undefined}
+        onChange={(event) => { setValue(Math.max(1, Math.min(MATCH_MAX_PLAYERS - 1, Number(event.target.value) || 1))); setError('') }} />
+    </FormField>
   )
 
   return (
-    <div className="mt-4 rounded-lg border border-gray-200 p-4">
-      <h4 className="mb-2 font-semibold">Mở kèo tìm người chơi</h4>
-      <div className="flex flex-wrap gap-4">
+    <div className={styles.matchForm}>
+      <h4 className={styles.modalTitle}>Mở kèo tìm người chơi</h4>
+      <div className={styles.matchFields}>
         {numberField('Số người đã có (kể cả bạn)', currentPlayers, setCurrentPlayers)}
         {numberField('Số người cần thêm', neededPlayers, setNeededPlayers)}
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Trình độ của kèo</span>
-          <select value={skillLevel} className="rounded border border-gray-300 px-2 py-1"
+        <FormField label="Trình độ của kèo">
+          <Select value={skillLevel} disabled={saving} aria-describedby={error ? "create-match-error" : undefined}
             onChange={(event) => { setSkillLevel(event.target.value); setSkillTouched(true); setError('') }}>
             {SKILL_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
             <option value="">{NO_SKILL_LABEL}</option>
-          </select>
-        </label>
+          </Select>
+        </FormField>
       </div>
-      <p className="mt-1 text-xs text-gray-500">Trình độ chỉ để người chơi lọc kèo; ai cũng gửi được yêu cầu, bạn là người duyệt.</p>
-      <label className="mt-3 flex items-start gap-2 text-sm">
-        <input type="checkbox" className="mt-1" checked={phoneConsent}
+      <p className={styles.subNoteLine}>Trình độ chỉ để người chơi lọc kèo; ai cũng gửi được yêu cầu, bạn là người duyệt.</p>
+      <label className={styles.consent}>
+        <input type="checkbox" disabled={saving} aria-describedby={error ? "create-match-error" : undefined} checked={phoneConsent}
           onChange={(event) => { setPhoneConsent(event.target.checked); setError('') }} />
         <span>Tôi đồng ý cho người chơi được duyệt vào kèo xem số điện thoại của tôi.</span>
       </label>
-      {error && <p className="mt-2 text-sm text-red-600" role="alert">{uiMessage(error)}</p>}
-      <button type="button" disabled={saving || !phoneConsent} onClick={submit}
-        className="mt-3 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-        {saving ? 'Đang mở kèo…' : 'Mở kèo'}
-      </button>
+      {error && <p id="create-match-error" className={styles.errorBanner} role="alert">{uiMessage(error)}</p>}
+      <Button loading={saving} disabled={!phoneConsent} onClick={submit}>Mở kèo</Button>
     </div>
   )
 }
 
-const currency = { format: formatVnd }
+const currency = { format: (value) => money(value).replace(/\s*₫/, 'đ') }
 
 const minuteOfDay = (time) => {
   const [hours, minutes] = (time ?? '').split(':').map(Number)
@@ -105,8 +104,7 @@ function DetailRow({ label, children }) {
 }
 
 export default function HistoryDetailDialog({ item, now, onClose, onPayment, onReschedule, affected, affectedReady,
-  affectedLoading, onAffected }) {
-  const ref = useRef(null)
+  affectedLoading, onAffected, presentation = 'dialog', extraActions }) {
   const [detail, setDetail] = useState(null)
   const [payment, setPayment] = useState(null)
   const [error, setError] = useState('')
@@ -114,12 +112,9 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
   const [revision, setRevision] = useState(0)
   const [matchFormOpen, setMatchFormOpen] = useState(false)
   const [matchCreated, setMatchCreated] = useState(false)
-
-  useEffect(() => {
-    const dialog = ref.current
-    dialog.showModal()
-    return () => { if (dialog.open) dialog.close() }
-  }, [])
+  const [matchSaving, setMatchSaving] = useState(false)
+  const titleRef = useRef(null)
+  useEffect(() => { titleRef.current?.focus({ preventScroll: true }) }, [presentation])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -160,7 +155,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
   const currentStatus = detail?.status.toLowerCase()
   const requestOpen = currentStatus === 'resubmit_requested' && payment?.status === 'RESUBMIT_REQUESTED'
   const target = detail && {
-    ...item, status: currentStatus, hold_deadline_ms: detail.holdDeadlineMs,
+    ...item, facility_name: detail.locationName ?? item.facility_name, status: currentStatus, hold_deadline_ms: detail.holdDeadlineMs,
     payment_id: requestOpen ? detail.paymentId : null,
     resubmit_deadline_ms: requestOpen
       ? (payment.resubmitDeadline ? payment.resubmitDeadlineMs : detail.resubmitDeadlineMs) : null,
@@ -182,25 +177,25 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
     && affectedReady && !blocksNormalBookingActions(affected)
     && bookingStartsAfter(detail.playDate, detail.startTime, now)
 
+  const Container = presentation === 'panel' ? 'section' : Modal
   return (
-    <dialog ref={ref} aria-labelledby="booking-detail-title"
-      className="m-auto max-h-[85dvh] w-full max-w-xl overflow-auto rounded-xl bg-white p-6 shadow-xl backdrop:bg-black/40"
-      onCancel={(event) => { event.preventDefault(); onClose() }}>
-      <h3 id="booking-detail-title" className={styles.modalTitle}>Chi tiết đặt sân · {item.booking_code}</h3>
-      {!detail && !error && <p role="status">Đang tải chi tiết…</p>}
-      {(error || paymentError) && <p className={styles.errorBanner} role="alert">{error || paymentError}{' '}
-        <button type="button" onClick={() => setRevision((value) => value + 1)}>Thử lại</button>
-      </p>}
+    <Container {...(presentation === 'panel' ? { 'aria-labelledby': 'booking-detail-title' } : { labelledBy: 'booking-detail-title', onClose, busy: matchSaving })}
+      className={presentation === 'panel' ? styles.detailPanel : styles.detailDialog}>
+      <div className={styles.detailHeader}><span className={styles.subNoteLine}>Vé chơi của bạn</span>
+      <h3 ref={titleRef} tabIndex={-1} id="booking-detail-title" className={styles.modalTitle}>Chi tiết đặt sân · {item.booking_code}</h3></div>
+      <div className={styles.detailBody}>
+      {!detail && !error && <LoadingState message="Đang tải chi tiết…" />}
+      {(error || paymentError) && <ErrorState message={uiMessage(error || paymentError)} onRetry={() => setRevision((value) => value + 1)} />}
       {detail && (
         <div className={styles.quoteBox}>
           <dl>
-            <DetailRow label="Trạng thái">{bookingStatusLabels[currentStatus] || detail.status}</DetailRow>
+            <DetailRow label="Trạng thái"><StatusBadge category="booking" status={currentStatus} /></DetailRow>
             <DetailRow label="Địa điểm">{detail.locationName}</DetailRow>
             <DetailRow label="Địa chỉ">{detail.locationAddress}</DetailRow>
             <DetailRow label="Sân">{detail.courtName}</DetailRow>
-            {detail.playDate && <DetailRow label="Ngày và giờ chơi">{detail.playDate} · {detail.startTime} – {detail.endTime}</DetailRow>}
+            {detail.playDate && <DetailRow label="Ngày và giờ chơi">{shortDate(detail.playDate)} · {detail.startTime} – {detail.endTime}</DetailRow>}
             {detail.startDate && <DetailRow label="Ngày chơi">
-              {detail.startDate === detail.endDate ? detail.startDate : detail.startDate + ' – ' + detail.endDate}
+              {detail.startDate === detail.endDate ? shortDate(detail.startDate) : shortDate(detail.startDate) + ' – ' + shortDate(detail.endDate)}
             </DetailRow>}
             <DetailRow label="Đặt cho">{detail.teamName || 'Cá nhân'}</DetailRow>
             <DetailRow label="Ghi chú cho chủ sân">{detail.note}</DetailRow>
@@ -222,7 +217,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
             </DetailRow>}
           </dl>
           {detail.sessions?.length > 0 && <div className={styles.sessionPriceTable}>
-            <table>
+            <Table>
               <caption>Chi tiết từng buổi</caption>
               <thead><tr><th scope="col">Ngày chơi</th><th scope="col">Sân và khung giờ</th>
                 <th scope="col">Thời lượng</th><th scope="col">Đơn giá bình quân lúc đặt</th>
@@ -230,7 +225,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
               <tbody>{detail.sessions.map((session) => {
                 const duration = minuteOfDay(session.endTime) - minuteOfDay(session.startTime)
                 return <tr key={session.id}>
-                  <td>{session.playDate}</td>
+                  <td>{shortDate(session.playDate)}</td>
                   <td>{session.courtName} · {session.startTime} – {session.endTime}</td>
                   <td>{duration > 0 ? duration + ' phút' : '—'}</td>
                   <td>{session.bookedHalfHours > 0 && session.listAmount != null
@@ -238,7 +233,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
                   <td>{session.finalAmount == null ? '—' : currency.format(session.finalAmount)}</td>
                 </tr>
               })}</tbody>
-            </table>
+            </Table>
           </div>}
         </div>
       )}
@@ -246,36 +241,39 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
         <CreateMatchForm
           bookingId={detail.id}
           teamId={detail.teamId}
+          onSaving={setMatchSaving}
           onCreated={() => { setMatchFormOpen(false); setMatchCreated(true) }}
         />
       )}
       {matchCreated && (
-        <p className="mt-3 text-sm text-emerald-700" role="status">
+        <p className={styles.successNote} role="status">
           Đã mở kèo thành công. Theo dõi và duyệt yêu cầu tham gia ở trang{' '}
-          <Link to="/open-matches" className="underline">Kèo đang tìm người chơi</Link>.
+          <Link to="/open-matches" className={styles.textLink}>Kèo đang tìm người chơi</Link>.
         </p>
       )}
-      <div className={styles.modalActions}>
-        <button type="button" className={styles.outlineActionBtn} onClick={onClose}>Đóng</button>
-        {showReschedule && <button type="button" className={styles.outlineActionBtn} onClick={() => onReschedule(target)}>
-          {detail.reschedule.pendingRequestId ? 'Xem phụ thu đổi lịch' : 'Đổi lịch'}
-        </button>}
-        {showAffected && affectedBookingActions.map(([choice, label]) => <button key={choice} type="button"
-          disabled={affectedLoading} className={styles.outlineActionBtn} onClick={() => onAffected(target, affected.id, choice)}>
-          {label}
-        </button>)}
-        {canCreateMatch && !matchFormOpen && (
-          <button type="button" className={styles.primaryActionBtn} onClick={() => setMatchFormOpen(true)}>
-            Tạo kèo
-          </button>
-        )}
-        {showPayment && <button type="button" className={styles.primaryActionBtn} onClick={() => onPayment(target)}>
-          {currentStatus === 'holding' ? 'Tiếp tục thanh toán' : 'Gửi lại chứng từ'}
-        </button>}
-        {viewPayment && <button type="button" className={styles.outlineActionBtn} onClick={() => onPayment(target)}>
-          {detail.receiptNo ? 'Xem biên nhận' : 'Xem thanh toán'}
-        </button>}
       </div>
-    </dialog>
+      <fieldset disabled={matchSaving} className={styles.detailActions} aria-label="Thao tác với lịch đặt sân">
+        {target && !error && extraActions?.(target)}
+        <Button type="button" variant="secondary" onClick={onClose}>Đóng</Button>
+        {showReschedule && <Button type="button" variant="secondary" onClick={() => onReschedule(target)}>
+          {detail.reschedule.pendingRequestId ? 'Xem phụ thu đổi lịch' : 'Đổi lịch'}
+        </Button>}
+        {showAffected && affectedBookingActions.map(([choice, label]) => <Button key={choice} type="button"
+          loading={affectedLoading} variant="secondary" onClick={() => onAffected(target, affected.id, choice)}>
+          {label}
+        </Button>)}
+        {canCreateMatch && !matchFormOpen && (
+          <Button type="button"  onClick={() => setMatchFormOpen(true)}>
+            Tạo kèo
+          </Button>
+        )}
+        {showPayment && <Button type="button"  onClick={() => onPayment(target)}>
+          {currentStatus === 'holding' ? 'Tiếp tục thanh toán' : 'Gửi lại chứng từ'}
+        </Button>}
+        {viewPayment && <Button type="button" variant="secondary" onClick={() => onPayment(target)}>
+          {detail.receiptNo ? 'Xem biên nhận' : 'Xem thanh toán'}
+        </Button>}
+      </fieldset>
+    </Container>
   )
 }

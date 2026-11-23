@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { Children, cloneElement, isValidElement, useId } from 'react';
 import styles from './CommonUI.module.css';
 
 export function Input({ invalid = false, className = '', ...props }) {
@@ -46,29 +46,38 @@ export function FormField({
   children,
 }) {
   const autoId = useId();
-  const fieldId = htmlFor || autoId;
+  const controls = Children.toArray(children);
+  const control = controls.find((child) => isValidElement(child) &&
+    (['input', 'select', 'textarea'].includes(child.type) || [Input, Select, Textarea].includes(child.type)));
+  const fieldId = htmlFor || control?.props.id || autoId;
   const errorId = error ? `${fieldId}-error` : undefined;
+  const hintId = !error && hint ? `${fieldId}-hint` : undefined;
 
   return (
     <div className={[styles.formField, className].filter(Boolean).join(' ')}>
       {(label || action) && (
         <div className={styles.fieldLabelRow}>
           {label && (
-            <label htmlFor={htmlFor} className={styles.fieldLabel}>
+            <label htmlFor={fieldId} className={styles.fieldLabel}>
               {label}
-              {required && <span className={styles.requiredMark} aria-hidden="true">*</span>}
+              {required && <span className={styles.requiredMark} aria-hidden="true" />}
             </label>
           )}
           {action}
         </div>
       )}
-      {children}
+      {controls.map((child) => child === control ? cloneElement(child, {
+        id: fieldId,
+        'aria-invalid': error ? true : child.props['aria-invalid'] ?? (child.props.invalid || undefined),
+        'aria-required': required || child.props['aria-required'],
+        'aria-describedby': [...new Set([child.props['aria-describedby'], errorId, hintId].filter(Boolean).join(' ').split(' '))].filter(Boolean).join(' ') || undefined,
+      }) : child)}
       {error && (
         <p id={errorId} role="alert" className={styles.fieldError}>
           {error}
         </p>
       )}
-      {!error && hint && <p className={styles.fieldHint}>{hint}</p>}
+      {!error && hint && <p id={hintId} className={styles.fieldHint}>{hint}</p>}
     </div>
   );
 }

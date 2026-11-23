@@ -1,19 +1,17 @@
 import HistoryDetailDialog from './HistoryDetailDialog';
-import { affectedBookingActions, blocksNormalBookingActions, bookingStatusLabels, bookingStartsAfter, canPayHistoryEntry, canRescheduleBooking } from '../../api/bookingHistory';
+import { bookingStartsAfter, canPayHistoryEntry, canRescheduleBooking } from '../../api/bookingHistory';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, Link, Navigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import styles from './MyBookingsPage.module.css';
-import { formatVnd, uiMessage } from '../../utils/formatters';
-import { ConfirmDialog, EmptyState, Feedback, Field, Modal } from '../../components/common/WorkspacePrimitives';
-import { PublicHeader } from '../../components/layout/PublicLayout';
-import PublicFooter from '../../components/layout/PublicFooter';
+import { money, shortDate, uiMessage } from '../../utils/formatters';
+import { Button, ConfirmDialog, EmptyState, ErrorState, LoadingState, FormField, Input, Select, Modal, PageHeader, StatusBadge, Tabs, STATUS_CATALOG } from '../../components/common';
+import PublicLayout from '../../components/layout/PublicLayout';
 import ScheduleGrid from '../../components/schedule/ScheduleGrid';
 
 // Phân nhóm 10 trạng thái chính thức theo chuẩn SRS (Sheet Trang_thai)
 const PENDING_STATUSES = ['holding', 'resubmit_requested', 'awaiting_confirmation'];
-const CONFIRMED_STATUSES = ['confirmed', 'in_use'];
 const PAST_STATUSES = [
   'completed',
   'cancelled_by_player',
@@ -67,9 +65,11 @@ const formatDeadline = (value) => new Date(serverTimestamp(value))
 
 /** UC21: "Sân A · 2026-11-20 · 17:30–19:00" cho slot cũ (from) hoặc slot mới (to) của một lần đổi lịch. */
 const describeSlot = (change, side) => [
-  change[side + 'CourtName'], change[side + "Ngày"],
+  change[side + 'CourtName'], shortDate(change[side + 'Date']),
   change[side + 'StartTime'] + '–' + change[side + 'EndTime'],
 ].filter(Boolean).join(' · ');
+
+const formatVnd = (value) => money(value).replace(/\s*₫/, 'đ');
 
 export default function MyBookingsPage() {
   const navigate = useNavigate();
@@ -90,8 +90,15 @@ export default function MyBookingsPage() {
   } = useBookingActions();
   const isPlayer = user?.role_code === 'player';
 
-  // Tab: 'all' | 'pending_payment' | 'confirmed' | 'past'
+  // Bộ lọc hiển thị, không thay đổi dữ liệu hoặc điều kiện thao tác.
   const [activeTab, setActiveTab] = useState('all');
+  const [desktop, setDesktop] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)');
+    const update = () => setDesktop(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const [exactStatus, setExactStatus] = useState('');
   const [search, setSearch] = useState('');
   const [bookings, setBookings] = useState([]);
@@ -335,9 +342,14 @@ export default function MyBookingsPage() {
   // Lọc và giữ nguyên thứ tự ưu tiên: Nhóm chờ thanh toán luôn nằm trên đầu
   const displayedBookings = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('vi-VN');
-    const statusGroup = { pending_payment: PENDING_STATUSES, confirmed: CONFIRMED_STATUSES, past: PAST_STATUSES }[activeTab];
+    const isPast = (item) => {
+      const lastDate = item.booking_type === 'package'
+        ? item.time_range?.match(/\d{4}-\d{2}-\d{2}/g)?.at(-1) || item.booking_date : item.booking_date;
+      return PAST_STATUSES.includes(item.status) ||
+        (lastDate && lastDate < today() && !PENDING_STATUSES.includes(item.status));
+    };
     const matches = (item) => (!exactStatus || item.status === exactStatus) &&
-      (!statusGroup || statusGroup.includes(item.status)) &&
+      (activeTab === 'all' || (activeTab === 'past' ? isPast(item) : !isPast(item))) &&
       (!query || [item.booking_code, item.facility_name, item.court_name]
         .some((value) => value?.toLocaleLowerCase('vi-VN').includes(query)));
     const childrenByPackage = new Map();
@@ -588,125 +600,51 @@ export default function MyBookingsPage() {
     }
   };
 
-  const getBadgeClass = (status) => {
-    switch (status) {
-      case 'holding':
-        return styles.badgeHolding;
-      case 'resubmit_requested':
-        return styles.badgeResubmit;
-      case 'awaiting_confirmation':
-        return styles.badgeAwaiting;
-      case 'confirmed':
-      case 'in_use':
-        return styles.badgeConfirmed;
-      case 'completed':
-      case 'expired':
-      case 'cancelled_by_player':
-      case 'cancelled_by_facility':
-      case 'payment_rejected':
-      default:
-        return styles.badgePast;
-    }
-  };
-
   if (!user) return <Navigate to="/login" state={{ returnTo: '/my-bookings' }} replace />;
   if (!isPlayer) return <p role="alert">Chỉ tài khoản Người chơi xem được lịch sử đặt sân cá nhân.</p>;
 
   return (
-    <div className={`${styles.pageWrapper} cw-workspace`}>
-      <PublicHeader user={user} />
-
-      <main className={styles.mainContainer}>
-        {/* Header Row: Tiêu đề + Nút Tìm sân để đặt */}
-        <div className={styles.headerRow}>
-          <h1 className={styles.pageTitle}>Lịch đặt sân</h1>
-          <button
-            type="button"
-            className={styles.multiBookBtn}
-            onClick={() => navigate('/locations')}
-          >
-            Tìm sân để đặt
-          </button>
-        </div>
-
-        {/* Bộ lọc 4 Tab theo chuẩn UC17 */}
+    <PublicLayout fullWidth className={styles.pageWrapper}>
+      <div className={styles.mainContainer}>
+        <PageHeader eyebrow="LỊCH CỦA BẠN" title="Lịch đặt sân"
+          subtitle="Theo dõi thanh toán, xem chi tiết và chuẩn bị cho buổi chơi tiếp theo."
+          actions={<Button onClick={() => navigate('/locations')}>Tìm sân để đặt</Button>} />
         <div className={styles.historyTools}>
-          <Field label="Tìm lịch đặt sân" type="search" placeholder="Mã đặt sân, địa điểm hoặc tên sân"
-            value={search} onChange={(event) => setSearch(event.target.value)} />
-        <div className={styles.filterTabs} role="group" aria-label="Trạng thái đặt sân">
-          <button
-            type="button"
-            aria-pressed={activeTab === 'all'}
-            className={`${styles.tabPill} ${activeTab === 'all' ? styles.tabPillActive : ''}`}
-            onClick={() => { setExactStatus(''); setActiveTab('all'); }}
-          >
-            Tất cả
-          </button>
-          <button
-            type="button"
-            aria-pressed={activeTab === 'pending_payment'}
-            className={`${styles.tabPill} ${
-              activeTab === 'pending_payment' ? styles.tabPillActive : ''
-            }`}
-            onClick={() => { setExactStatus(''); setActiveTab('pending_payment'); }}
-          >
-            Thanh toán · {pendingCount}
-          </button>
-          <button
-            type="button"
-            aria-pressed={activeTab === 'confirmed'}
-            className={`${styles.tabPill} ${
-              activeTab === 'confirmed' ? styles.tabPillActive : ''
-            }`}
-            onClick={() => { setExactStatus(''); setActiveTab('confirmed'); }}
-          >
-            Đã xác nhận
-          </button>
-          <button
-            type="button"
-            aria-pressed={activeTab === 'past'}
-            className={`${styles.tabPill} ${activeTab === 'past' ? styles.tabPillActive : ''}`}
-            onClick={() => { setExactStatus(''); setActiveTab('past'); }}
-          >
-            Đã qua
-          </button>
-          <label className={`${styles.statusFilter} ${exactStatus ? styles.statusFilterActive : ''}`}>
-            <span className={styles.statusFilterLabel}>Trạng thái</span>
-            <select className={styles.statusSelect} value={exactStatus} onChange={(event) => { setExactStatus(event.target.value); setActiveTab('all'); }}>
+          <Tabs label="Thời gian đặt sân" value={activeTab} onChange={setActiveTab}
+            items={[{ value: 'upcoming', label: 'Sắp tới' }, { value: 'past', label: 'Đã qua' }, { value: 'all', label: 'Tất cả' }]} />
+          <div className={styles.filterRow}>
+            <FormField label="Tìm lịch đặt sân" id="history-search"><Input type="search" placeholder="Mã đặt sân, địa điểm hoặc tên sân"
+              value={search} onChange={(event) => setSearch(event.target.value)} /></FormField>
+            <FormField label="Trạng thái" id="history-status"><Select value={exactStatus} onChange={(event) => setExactStatus(event.target.value)}>
               <option value="">Tất cả trạng thái</option>
-              {Object.entries(bookingStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
-            </select>
-          </label>
-        </div>
-
+              {Object.entries(STATUS_CATALOG.booking).map(([code, entry]) => <option key={code} value={code.toLowerCase()}>{entry.label}</option>)}
+            </Select></FormField>
+          </div>
+          {!loading && !fetchError && <p className={styles.resultCount}>{displayedBookings.filter((item) => item.booking_type !== 'session').length} đơn / gói · {pendingCount} mục chờ thanh toán hoặc xác nhận</p>}
         </div>
         {feedbackBanner && (
           <div className={styles.feedbackBanner} role="status">
             <span>{uiMessage(feedbackBanner)}</span>
-            <button
+            <Button
               type="button"
-              className={styles.closeBannerBtn}
+              variant="ghost" className={styles.closeBannerBtn}
               aria-label="Đóng thông báo"
               onClick={() => setFeedbackBanner('')}
             >
               ✕
-            </button>
+            </Button>
           </div>
         )}
 
-        {fetchError && <Feedback tone="error">{uiMessage(fetchError)}<button className="cw-secondary" type="button" onClick={() => { setFetchError(''); setLoading(true); setReload((value) => value + 1); }}>Thử lại</button></Feedback>}
-        {affectedError && <Feedback tone="error">{uiMessage(affectedError)}{' '}
-          <button className="cw-secondary" type="button" onClick={() => setAffectedRevision((value) => value + 1)}>Tải lại đặt sân bị ảnh hưởng</button>
-        </Feedback>}
+        {fetchError && <ErrorState message={uiMessage(fetchError)} onRetry={() => { setFetchError(''); setLoading(true); setReload((value) => value + 1); }} />}
+        {affectedError && <ErrorState message={uiMessage(affectedError)} onRetry={() => setAffectedRevision((value) => value + 1)} />}
 
-        {/* Danh sách các thẻ Booking */}
+        <div className={styles.masterDetail}><section aria-label="Danh sách lịch đặt sân" className={styles.listColumn}>
         {loading ? (
-          <Feedback>Đang tải lịch đặt sân…</Feedback>
+          <LoadingState message="Đang tải lịch đặt sân…" />
         ) : fetchError ? null : displayedBookings.length === 0 ? (
-          <EmptyState action={search ? <button type="button" className="cw-secondary" onClick={() => setSearch('')}>Xóa từ khóa</button>
-            : activeTab === 'all' ? <Link to="/locations" className="cw-secondary">Tìm sân</Link> : null}>
-            {search ? 'Không tìm thấy lịch đặt sân phù hợp.' : 'Chưa có lịch đặt sân trong mục này.'}
-          </EmptyState>
+          <EmptyState title="Chưa có lịch đặt sân phù hợp" description="Thử bỏ bớt từ khóa hoặc đổi bộ lọc. Bạn cũng có thể tìm sân cho buổi chơi tiếp theo."
+            action={<div className={styles.actionGroup}><Button variant="secondary" onClick={() => { setSearch(''); setExactStatus(''); setActiveTab('all'); }}>Xóa bộ lọc</Button><Button onClick={() => navigate('/locations')}>Tìm sân</Button></div>} />
         ) : (
           <div className={styles.bookingList}>
             {displayedBookings.map((item) => {
@@ -726,7 +664,7 @@ export default function MyBookingsPage() {
                 secondaryLine = 'Nhân viên yêu cầu gửi lại chứng từ.';
               } else if (affectedPending) {
                 secondaryLine = canChooseAffected
-                  ? `Đặt sân ${item.booking_code} bị ảnh hưởng do ${AFFECTED_CAUSES[affected.cause] || affected.cause}. Chọn đổi khung giờ miễn phí, hoàn tiền hoặc điểm bồi hoàn trước ${item.start_time} ngày ${item.booking_date}. Nếu không chọn, bạn sẽ nhận điểm bồi hoàn.`
+                  ? `Đặt sân ${item.booking_code} bị ảnh hưởng do ${AFFECTED_CAUSES[affected.cause] || affected.cause}. Chọn đổi khung giờ miễn phí, hoàn tiền hoặc điểm bồi hoàn trước ${item.start_time} ngày ${shortDate(item.booking_date)}. Nếu không chọn, bạn sẽ nhận điểm bồi hoàn.`
                   : "đặt sân bị ảnh hưởng. Hệ thống tự cấp điểm bồi hoàn khi quá giờ chơi.";
               } else if (affected?.status === 'RESOLVED') {
                 secondaryLine = `${AFFECTED_CAUSES[affected.cause] || affected.cause} · ${AFFECTED_CHOICES[affected.choice] || affected.choice}`
@@ -735,26 +673,24 @@ export default function MyBookingsPage() {
               }
 
               return (
-                <article key={item.booking_type + '-' + item.booking_id} className={styles.bookingCard + (item.booking_type === 'session' ? ' ' + styles.bookingChild : '')}>
+                <article key={item.booking_type + '-' + item.booking_id} className={styles.bookingCard + (detailTarget?.booking_type === item.booking_type && detailTarget?.booking_id === item.booking_id ? ' ' + styles.selectedCard : '') + (item.booking_type === 'session' ? ' ' + styles.bookingChild : '')}>
                   {/* Khối trái: Ô lịch Ngày/Tháng + Thông tin sân */}
                   <div className={styles.cardLeft}>
-                    <div className={styles.dateBox}>
+                    <time className={styles.dateBox} dateTime={item.booking_date} aria-label={shortDate(item.booking_date)}>
                       <strong className={styles.dateDay}>{day}</strong>
                       <span className={styles.dateMonth}>{monthLabel}</span>
-                    </div>
+                    </time>
 
                     <div className={styles.bookingDetails}>
                       <div className={styles.titleRow}>
                         <h2 className={styles.facilityCourtTitle}>
                           {item.facility_name} · {item.court_name}
                         </h2>
-                        <span className={`${styles.statusBadge} ${getBadgeClass(item.status)}`}>
-                          {item.status_name}
-                        </span>
+                        <StatusBadge category="booking" status={item.status} />
                       </div>
 
                       <p className={styles.timeMetaLine}>
-                        {item.booking_code} · {item.time_range}
+                        {item.booking_code} · {item.booking_type === 'package' ? item.time_range.replace(/\d{4}-\d{2}-\d{2}/g, (date) => shortDate(date)) : item.time_range}
                         {item.booker_label ? ` · ${item.booker_label}` : ''}
                       </p>
                       {item.reschedule_changes?.length > 0 && (
@@ -779,7 +715,7 @@ export default function MyBookingsPage() {
                       )}
 
                       {secondaryLine && (
-                        <p className={styles.subNoteLine}>{secondaryLine}</p>
+                        <p className={item.status === 'holding' ? styles.countdown : styles.subNoteLine} role={item.status === 'holding' ? 'timer' : undefined}>{secondaryLine}</p>
                       )}
                     </div>
                   </div>
@@ -792,112 +728,58 @@ export default function MyBookingsPage() {
 
                     <div className={styles.actionGroup}>
                       {/* Nút Xem chi tiết (UC17 #3-5, FR35, FR51, FR52, FR57) */}
-                      <button
+                      <Button
                         type="button"
-                        className={styles.outlineActionBtn}
+                        variant="secondary" className={styles.outlineActionBtn}
                         onClick={() => setDetailTarget(item)}
                       >
                         Xem chi tiết
-                      </button>
+                      </Button>
 
                       {/* 1. Trạng thái holding -> Nút Tiếp tục thanh toán */}
                       {item.status === 'holding' && canPayHistoryEntry(item, nowMs) && (
-                        <button
+                        <Button
                           type="button"
                           className={styles.primaryActionBtn}
                           onClick={() => handleGoToPayment(item)}
                         >
                           Tiếp tục thanh toán
-                        </button>
+                        </Button>
                       )}
 
                       {/* 2. Trạng thái resubmit_requested -> Nút Gửi lại chứng từ */}
                       {item.status === 'resubmit_requested' && canPayHistoryEntry(item, nowMs) && (
-                        <button
+                        <Button
                           type="button"
                           className={styles.primaryActionBtn}
                           onClick={() => handleGoToPayment(item)}
                         >
                           Gửi lại chứng từ
-                        </button>
+                        </Button>
                       )}
 
                       {/* 3. Trạng thái chờ xác nhận -> Xem thanh toán */}
                       {item.status === 'awaiting_confirmation' && item.booking_type !== 'session' && (
-                        <button type="button" className={styles.outlineActionBtn} onClick={() => handleGoToPayment(item)}>
+                        <Button type="button" variant="secondary" className={styles.outlineActionBtn} onClick={() => handleGoToPayment(item)}>
                           Xem thanh toán
-                        </button>
+                        </Button>
                       )}
 
                       {item.booking_type === 'package' && (item.status === 'confirmed' ||
                         (item.single_order && item.status === 'cancelled_by_player')) && (
                         <>
-                          <button
+                          <Button
                             type="button"
-                            className={styles.outlineActionBtn}
+                            variant="secondary" className={styles.outlineActionBtn}
                             onClick={() => showPackageSessions(item)}
                             disabled={packageLoading != null}
                             aria-expanded={expandedPackages.includes(item.booking_id)}
                           >
-                            {packageLoading === item.booking_id ? 'Đang tải…' : expandedPackages.includes(item.booking_id) ? 'Thu gọn lịch' : item.single_order ? 'Xem lịch trong đơn' : 'Xem lịch gói'}
-                          </button>
+                            {packageLoading === item.booking_id ? 'Đang xử lý…' : expandedPackages.includes(item.booking_id) ? 'Thu gọn lịch' : item.single_order ? 'Xem lịch trong đơn' : 'Xem lịch gói'}
+                          </Button>
                         </>
                       )}
 
-                      {/* UC22: Booking bị ảnh hưởng -> Player chọn đổi slot miễn phí, hoàn tiền hoặc điểm bồi hoàn */}
-                      {canChooseAffected && affectedBookingActions.map(([choice, label]) => (
-                        <button key={choice} type="button"
-                          className={choice === 'RESCHEDULE' ? styles.primaryActionBtn : styles.outlineActionBtn}
-                          disabled={affectedLoading} onClick={() => beginAffectedAction(item, affected.id, choice)}>
-                          {label}
-                        </button>
-                      ))}
-
-                      {item.booking_type !== 'package' && !['holding', 'awaiting_confirmation', 'resubmit_requested', 'expired', 'payment_rejected'].includes(item.status) && (
-                        <button type="button" className={styles.outlineActionBtn}
-                          onClick={() => navigate('/my-bookings/' + item.booking_id + '/reschedules')}>
-                          Lịch sử đổi lịch
-                        </button>
-                      )}
-
-                      {item.booking_type !== 'package' && item.status !== 'holding' && (
-                        <button type="button" className={styles.outlineActionBtn}
-                          onClick={() => navigate('/my-complaints?bookingId=' + item.booking_id)}>Khiếu nại</button>
-                      )}
-
-                      {/* Đánh giá sân sau khi hoàn tất buổi chơi (UC31) */}
-                      {item.can_review && (
-                        <button
-                          type="button"
-                          className={styles.primaryActionBtn}
-                          onClick={() => openReviewModal(item)}
-                        >
-                          Đánh giá
-                        </button>
-                      )}
-
-                      {/* 4. Trạng thái confirmed (Đơn lẻ) -> Mở kèo, Đổi lịch */}
-                      {item.status === 'confirmed' && item.booking_type !== 'package' && !blocksNormalBookingActions(affected) && (
-                        <>
-                          {item.can_open_match && (
-                            <button
-                              type="button"
-                              className={styles.outlineActionBtn}
-                              onClick={() => navigate('/open-matches')}
-                            >
-                              Mở kèo
-                            </button>
-                          )}
-                          {(item.reschedule?.pendingRequestId || canRescheduleBooking(item.reschedule, nowMs)) && <button
-                            type="button"
-                            className={styles.outlineActionBtn}
-                            title={!item.reschedule.pendingRequestId ? `Hạn đổi lịch: ${formatDeadline(item.reschedule.deadline)}` : undefined}
-                            onClick={() => handleRescheduleClick(item)}
-                          >
-                            {item.reschedule?.pendingRequestId ? 'Xem phụ thu đổi lịch' : 'Đổi lịch'}
-                          </button>}
-                        </>
-                      )}
 
                     </div>
                   </div>
@@ -906,17 +788,27 @@ export default function MyBookingsPage() {
             })}
           </div>
         )}
-      </main>
-      <PublicFooter />
-
-      {detailTarget && (
-        <HistoryDetailDialog key={detailTarget.booking_type + ':' + detailTarget.booking_id}
-          item={detailTarget} now={nowMs} onClose={closeDetail} onPayment={handleGoToPayment}
-          onReschedule={(booking) => { closeDetail(); handleRescheduleClick(booking); }}
-          affected={detailTarget.booking_type !== 'package' ? affectedByBooking[detailTarget.booking_id] : null}
-          affectedReady={affectedReady} affectedLoading={affectedLoading}
-          onAffected={(booking, id, choice) => { closeDetail(); beginAffectedAction(booking, id, choice); }} />
-      )}
+        </section>
+        {desktop && !detailTarget && <aside className={styles.detailPlaceholder}><EmptyState title="Chi tiết lịch đặt sân" description="Chọn “Xem chi tiết” ở một thẻ bên trái để xem giá, biên nhận và các thao tác phù hợp." /></aside>}
+        {detailTarget && (
+          <HistoryDetailDialog key={detailTarget.booking_type + ':' + detailTarget.booking_id}
+            presentation={desktop ? 'panel' : 'dialog'}
+            item={detailTarget} now={nowMs} onClose={closeDetail} onPayment={handleGoToPayment}
+            onReschedule={(booking) => { closeDetail(); handleRescheduleClick(booking); }}
+            affected={detailTarget.booking_type !== 'package' ? affectedByBooking[detailTarget.booking_id] : null}
+            affectedReady={affectedReady} affectedLoading={affectedLoading}
+            onAffected={(booking, id, choice) => { closeDetail(); beginAffectedAction(booking, id, choice); }}
+            extraActions={(target) => <>
+              {bookings.find((row) => row.booking_type === target.booking_type && row.booking_id === target.booking_id)?.can_review &&
+                <Button onClick={() => { closeDetail(); openReviewModal(target); }}>Đánh giá</Button>}
+              {target.booking_type !== 'package' && !['holding', 'awaiting_confirmation', 'resubmit_requested', 'expired', 'payment_rejected'].includes(target.status) &&
+                <Button variant="secondary" onClick={() => navigate('/my-bookings/' + target.booking_id + '/reschedules')}>Lịch sử đổi lịch</Button>}
+              {target.booking_type !== 'package' && target.status !== 'holding' &&
+                <Button variant="ghost" onClick={() => navigate('/my-complaints?bookingId=' + target.booking_id)}>Gửi khiếu nại</Button>}
+            </>} />
+        )}
+        </div>
+      </div>
 
       {/* UC21: Modal chọn slot mới & xem chênh lệch đổi lịch */}
       {rescheduleTarget && (
@@ -927,7 +819,7 @@ export default function MyBookingsPage() {
             </h3>
             <p className={styles.modalBody} style={{ marginBottom: 14 }}>
               Lịch hiện tại tại <strong>{originalBooking.facility_name}</strong> · {originalBooking.court_name}
-              {' · '}{originalBooking.booking_date} · {originalBooking.time_range}
+              {' · '}{shortDate(originalBooking.booking_date)} · {originalBooking.time_range}
             </p>
 
             <p className={styles.modalBody}>
@@ -936,21 +828,21 @@ export default function MyBookingsPage() {
             </p>
             {rsLocationId && <>
               <div className={styles.rsDateBar}>
-                <button type="button" className={styles.rsNavBtn} aria-label="Ngày trước"
-                  disabled={rescheduleSubmitting || newPlayDate <= today()} onClick={() => shiftRescheduleDate(-1)}>‹</button>
+                <Button type="button" variant="secondary" className={styles.rsNavBtn} aria-label="Ngày trước"
+                  disabled={rescheduleSubmitting || newPlayDate <= today()} onClick={() => shiftRescheduleDate(-1)}>‹</Button>
                 <span className={styles.rsDateLabel}>{newPlayDate && dayLabelFormat.format(new Date(newPlayDate + 'T12:00:00Z'))}</span>
-                <button type="button" className={styles.rsNavBtn} aria-label="Ngày sau"
-                  disabled={rescheduleSubmitting || !rsMaxDate || newPlayDate >= rsMaxDate} onClick={() => shiftRescheduleDate(1)}>›</button>
+                <Button type="button" variant="secondary" className={styles.rsNavBtn} aria-label="Ngày sau"
+                  disabled={rescheduleSubmitting || !rsMaxDate || newPlayDate >= rsMaxDate} onClick={() => shiftRescheduleDate(1)}>›</Button>
                 <input type="date" className={styles.formInput} aria-label="Chọn ngày chơi mới"
                   style={{ width: 'auto', marginInlineStart: 'auto' }}
                   min={today()} max={rsMaxDate || undefined} value={newPlayDate} disabled={rescheduleSubmitting}
                   onChange={(e) => chooseRescheduleDate(e.target.value)} />
               </div>
 
-              {!rsCurrent && <p role="status" className={styles.modalBody}>Đang tải lịch sân…</p>}
+              {!rsCurrent && <LoadingState message="Đang tải lịch sân…" />}
               {rsCurrent?.error && <p role="alert" className={styles.errorBanner}>
                 {uiMessage(rsCurrent.error)}{' '}
-                <button type="button" className="underline" onClick={() => setRsRevision((v) => v + 1)}>Thử lại</button>
+                <Button type="button" className="underline" onClick={() => setRsRevision((v) => v + 1)}>Thử lại</Button>
               </p>}
               {rsCurrent?.data?.time_headers.length === 0 && <p className={styles.modalBody}>Ngày này chưa có khung giờ mở đặt.</p>}
               {rsCurrent?.data?.time_headers.length > 0 && <ScheduleGrid schedule={rsCurrent.data} selected={rsSelected}
@@ -974,15 +866,15 @@ export default function MyBookingsPage() {
             </>}
 
             {!rescheduleTarget.affected && <div style={{ marginBottom: 12 }}>
-              <button
+              <Button
                 type="button"
-                className={styles.outlineActionBtn}
+                variant="secondary" className={styles.outlineActionBtn}
                 style={{ width: '100%' }}
                 onClick={handlePreviewQuote}
                 disabled={quoteLoading || rsSelected.length === 0 || Boolean(deadlinePassed) || rescheduleSubmitting}
               >
-                {quoteLoading ? 'Đang kiểm tra...' : '🔍 Kiểm tra chênh lệch giá'}
-              </button>
+                {quoteLoading ? 'Đang xử lý…' : '🔍 Kiểm tra chênh lệch giá'}
+              </Button>
             </div>}
 
             {(deadlinePassed || quoteError) && <p role="alert" className={styles.errorBanner} style={{ margin: '8px 0' }}>
@@ -1005,17 +897,17 @@ export default function MyBookingsPage() {
                 </div>
                 <div className={styles.quoteRow}>
                   <span>Phụ thu chênh lệch:</span>
-                  <strong style={{ color: quote.extraAmount > 0 ? '#b45309' : '#0d8a52' }}>
-                    {quote.extraAmount > 0 ? `+${formatVnd(Number(quote.extraAmount))}` : '0 VND (Đổi miễn phí)'}
+                  <strong style={{ color: quote.extraAmount > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
+                    {quote.extraAmount > 0 ? `+${formatVnd(Number(quote.extraAmount))}` : '0đ (Đổi miễn phí)'}
                   </strong>
                 </div>
                 {quote.noDifferenceRefund && (
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-text-secondary)' }}>
                     khung giờ mới có giá thấp hơn. Phần chênh lệch không được hoàn lại.
                   </p>
                 )}
                 {quote.extraAmount > 0 && (
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: '#b45309' }}>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-warning)' }}>
                     Sau khi gửi chứng từ, địa điểm cần xác nhận phụ thu trước {new Date(serverTimestamp(quote.approveDeadline))
                       .toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}. Lịch cũ được giữ trong lúc chờ.
                   </p>
@@ -1025,31 +917,31 @@ export default function MyBookingsPage() {
             )}
 
             <div className={styles.modalActions}>
-              <button
+              <Button
                 type="button"
-                className={styles.outlineActionBtn}
+                variant="secondary" className={styles.outlineActionBtn}
                 onClick={closeRescheduleModal}
                 disabled={rescheduleSubmitting}
               >
                 Đóng
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className={styles.primaryActionBtn}
                 onClick={() => setReviewReschedule(true)}
                 disabled={rsSelected.length === 0 || (!rescheduleTarget.affected && (!quote || Boolean(deadlinePassed))) || rescheduleSubmitting}
               >
-                {rescheduleSubmitting ? 'Đang xử lý...' : 'Xem lại yêu cầu'}
-              </button>
+                {rescheduleSubmitting ? 'Đang xử lý…' : 'Xem lại yêu cầu'}
+              </Button>
             </div>
           </div>
         </Modal>
       )}
 
       {reviewReschedule && rsSelected.length > 0 && (
-        <ConfirmDialog title="Xác nhận yêu cầu đổi lịch"
+        <ConfirmDialog busy={rescheduleSubmitting} title="Xác nhận yêu cầu đổi lịch"
           onCancel={() => setReviewReschedule(false)} onConfirm={handleConfirmReschedule}>
-          Đổi sang {rsSelected[0].courtName} tại {originalBooking.facility_name}, ngày {newPlayDate},
+          Đổi sang {rsSelected[0].courtName} tại {originalBooking.facility_name}, ngày {shortDate(newPlayDate)},
           {' '}từ {formatSlotTime(startMin)} đến {formatSlotTime(endMin)}.
           {quote?.extraAmount > 0
             ? ` Bạn sẽ chuyển sang thanh toán phụ thu ${formatVnd(Number(quote.extraAmount))}.`
@@ -1075,22 +967,22 @@ export default function MyBookingsPage() {
             </p>
             {choiceError && <p role="alert" className={styles.errorBanner}>{uiMessage(choiceError)}</p>}
             <div className={styles.modalActions}>
-              <button
+              <Button
                 type="button"
-                className={styles.outlineActionBtn}
+                variant="secondary" className={styles.outlineActionBtn}
                 onClick={() => setChoiceTarget(null)}
                 disabled={choiceSubmitting}
               >
                 Quay lại
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className={styles.primaryActionBtn}
                 onClick={handleConfirmChoice}
                 disabled={choiceSubmitting}
               >
-                {choiceSubmitting ? 'Đang gửi...' : 'Xác nhận'}
-              </button>
+                {choiceSubmitting ? 'Đang xử lý…' : 'Xác nhận'}
+              </Button>
             </div>
           </div>
         </Modal>
@@ -1104,28 +996,21 @@ export default function MyBookingsPage() {
               Đánh giá buổi chơi — {reviewTarget.booking_code}
             </h3>
             <p className={styles.modalBody} style={{ marginBottom: 12 }}>
-              {reviewTarget.facility_name} · {reviewTarget.court_name} ({reviewTarget.booking_date} · {reviewTarget.time_range})
+              {reviewTarget.facility_name} · {reviewTarget.court_name} ({shortDate(reviewTarget.booking_date)} · {reviewTarget.time_range})
             </p>
             <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Số sao đánh giá (1–5 sao)</label>
-              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <p id="review-rating-label" className={styles.formLabel}>Số sao đánh giá (1–5 sao)</p>
+              <div className={styles.ratingGroup} role="group" aria-labelledby="review-rating-label">
                 {[1, 2, 3, 4, 5].map((star) => (
-                  <button
+                  <Button
                     key={star}
                     type="button"
                     onClick={() => setReviewRating(star)}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: 8,
-                      border: reviewRating === star ? '1.5px solid #0d8a52' : '1px solid #cbd5e1',
-                      background: reviewRating === star ? '#e8f5ee' : '#fff',
-                      color: reviewRating >= star ? '#f59e0b' : '#94a3b8',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
+                    aria-label={star + ' sao'} aria-pressed={reviewRating === star} disabled={reviewSubmitting}
+                    className={reviewRating === star ? styles.ratingSelected : styles.ratingButton}
                   >
                     {star} ★
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -1138,33 +1023,35 @@ export default function MyBookingsPage() {
                 rows={4}
                 maxLength={1000}
                 className={styles.formInput}
+                disabled={reviewSubmitting} aria-describedby={reviewError ? "review-error review-count" : "review-count"}
                 placeholder="Chia sẻ trải nghiệm của bạn về mặt sân, ánh sáng, dịch vụ..."
                 value={reviewComment}
                 onChange={(e) => setReviewComment(e.target.value)}
               />
             </div>
-            {reviewError && <p className={styles.errorBanner}>{uiMessage(reviewError)}</p>}
+            <p id="review-count" className={styles.subNoteLine}>{reviewComment.length}/1.000 ký tự</p>
+            {reviewError && <p id="review-error" role="alert" className={styles.errorBanner}>{uiMessage(reviewError)}</p>}
             <div className={styles.modalActions}>
-              <button
+              <Button
                 type="button"
-                className={styles.outlineActionBtn}
+                variant="secondary" className={styles.outlineActionBtn}
                 onClick={() => setReviewTarget(null)}
                 disabled={reviewSubmitting}
               >
                 Đóng
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className={styles.primaryActionBtn}
                 onClick={handleSubmitReview}
                 disabled={reviewSubmitting}
               >
-                {reviewSubmitting ? 'Đang gửi…' : 'Gửi đánh giá'}
-              </button>
+                {reviewSubmitting ? 'Đang xử lý…' : 'Gửi đánh giá'}
+              </Button>
             </div>
           </div>
         </Modal>
       )}
-    </div>
+    </PublicLayout>
   );
 }

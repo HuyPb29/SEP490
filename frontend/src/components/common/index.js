@@ -14,3 +14,10 @@ export {
   Field,
   ActionForm,
 } from './WorkspacePrimitives';
+
+export { Tabs } from './Tabs';
+export { default as LoadingSpinner } from './LoadingSpinner';
+
+export { PasswordField, OtpInput } from './AuthInputs';
+export { FormStepper } from './FormStepper';
+export { Drawer } from './Drawer';

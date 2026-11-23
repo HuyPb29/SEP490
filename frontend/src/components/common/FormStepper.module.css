@@ -1,0 +1,13 @@
+.stepper { min-width: 0; }
+.stepper ol { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; gap: var(--space-3); }
+.stepper li { border-bottom: 2px solid var(--color-border); padding-bottom: var(--space-3); }
+.stepper button { width: 100%; min-height: 44px; display: flex; align-items: center; gap: var(--space-3); text-align: left; border: 0; background: transparent; color: var(--color-text-muted); font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
+.stepper button:disabled { cursor: default; }
+.stepper small { display: block; margin-top: var(--space-1); font-size: 10px; font-weight: 400; }
+.number { width: 32px; height: 32px; display: grid; place-items: center; flex-shrink: 0; border: 1px solid var(--color-border-strong); border-radius: var(--radius-full); }
+.stepper li[data-active="true"], .stepper li[data-complete="true"] { border-color: var(--color-primary); }
+.stepper li[data-active="true"] button, .stepper li[data-complete="true"] button { color: var(--color-primary); }
+.stepper li[data-active="true"] .number { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
+.stepper li[data-complete="true"] .number { background: var(--color-primary-soft); border-color: var(--color-primary); }
+.mobile { display: none; }
+@media (max-width: 639px) { .mobile { display: block; color: var(--color-primary); font-weight: 600; font-size: var(--text-sm); margin: 0 0 var(--space-3); } .stepper ol { gap: var(--space-2); } .stepper li { padding-bottom: var(--space-2); } .stepper button { justify-content: center; } .stepper button > span:last-child { display: none; } }

@@ -71,6 +71,16 @@ export const STATUS_CATALOG = {
     COMPLETED: { label: 'Hoàn thành', tone: 'neutral' },
     CANCELLED: { label: 'Đã hủy', tone: 'neutral' },
   },
+  slot: {
+    FREE: { label: 'Trống', tone: 'success', slot: 'free' },
+    SELECTED: { label: 'Đang chọn', tone: 'success', slot: 'selected' },
+    HOLDING: { label: 'Đang giữ chỗ', tone: 'warning', slot: 'holding' },
+    BOOKED: { label: 'Đã đặt', tone: 'neutral', slot: 'booked' },
+    IN_USE: { label: 'Đang sử dụng', tone: 'neutral', slot: 'inuse' },
+    MAINTENANCE: { label: 'Bảo trì', tone: 'danger', slot: 'maintenance' },
+    CLOSED: { label: 'Ngoài giờ', tone: 'neutral', slot: 'closed' },
+    PAST: { label: 'Đã qua', tone: 'neutral', slot: 'closed' },
+  },
 };
 
 export function resolveStatusMeta(status, category = 'booking') {

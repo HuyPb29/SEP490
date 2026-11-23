@@ -32,7 +32,7 @@
   right: -4px;
   min-width: 18px;
   padding: 0 4px;
-  color: #ffffff;
+  color: var(--color-on-primary);
   background: var(--color-danger);
   border-radius: var(--radius-full);
   font-size: 10px;
@@ -146,7 +146,7 @@
 }
 
 .tonewarn {
-  background: #f59e0b;
+  background: var(--color-warning-border);
 }
 
 .toneinfo {
@@ -171,9 +171,9 @@
 .itemTag {
   align-self: flex-start;
   padding: 1px 8px;
-  color: #92400e;
-  background: #fef3c7;
-  border: 1px solid #f59e0b;
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
   border-radius: 999px;
   font-size: 10.5px;
   font-weight: 800;
@@ -224,3 +224,13 @@
     width: min(340px, calc(100vw - 24px));
   }
 }
+
+.bellButton { width: 44px; height: 44px; border-radius: var(--radius-md); }
+.markAll { min-height: 44px; white-space: normal; padding-inline: var(--space-2); }
+.viewAll { display: grid; place-items: center; min-height: 44px; }
+.itemTitle, .itemContent, .itemMeta { font-size: var(--text-sm); }
+.itemBody { overflow-wrap: anywhere; }
+.feedback { margin: 0; padding: var(--space-3); color: var(--color-success); background: var(--color-success-bg); font-size: var(--text-sm); }
+.list[hidden] { display: none; }
+.panel > [role="status"], .panel > [role="alert"] { flex-shrink: 0; }
+@media (width < 640px) { .panel { position: fixed; top: calc(var(--header-height) + var(--space-1)); right: var(--space-3); width: calc(100vw - var(--space-6)); max-height: calc(100dvh - var(--header-height) - var(--space-6)); } }

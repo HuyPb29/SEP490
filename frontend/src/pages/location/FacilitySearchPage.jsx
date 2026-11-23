@@ -1,107 +1,63 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import courtPhoto from '../../assets/badminton-court.jpg';
-import { PublicHeader } from '../../components/layout/PublicLayout';
-import PublicFooter from '../../components/layout/PublicFooter';
+import PublicLayout from '../../components/layout/PublicLayout';
+import { Button, EmptyState, ErrorState, Input, LoadingState, PageHeader, StatusBadge } from '../../components/common';
 import GoogleVenueMap from '../../components/map/GoogleVenueMap';
 import { useFacilitySearch } from '../../hooks/useFacilitySearch';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import { distanceKm } from '../../utils/distance';
-import { today } from '../../utils/formatters';
+import { money, shortDate, today } from '../../utils/formatters';
 import HomeIcon from './HomeIcons';
-import styles from './HomePage.module.css';
+import home from './HomePage.module.css';
+import styles from './FacilitySearchPage.module.css';
 
 const MIN_PLAY_DATE = today();
-const FEATURED_LIMIT = 6;
-const NEARBY_LIMIT = 4;
-const vnd = new Intl.NumberFormat('vi-VN');
+const formatKm = (km) => `${km.toFixed(1).replace('.', ',')} km`;
+const byRating = (a, b) => (b.averageRating ?? 0) - (a.averageRating ?? 0) || (b.reviewCount ?? 0) - (a.reviewCount ?? 0);
+const byDistance = (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity);
 
-const HIGHLIGHTS = ['Giá niêm yết rõ ràng', 'Xem giờ trống theo ngày', "Tích điểm, dùng phiếu ưu đãi"];
-
-const FEATURES = [
-  { icon: 'pin', title: 'Tìm sân gần bạn', text: 'Sắp xếp sân từ gần đến xa theo vị trí' },
-  { icon: 'clock', title: "Đặt sân trực tuyến", text: 'Chủ động đặt lịch bất cứ lúc nào' },
-  { icon: 'card', title: 'Thanh toán chuyển khoản', text: 'Quét QR, tải biên lai, sân xác nhận' },
-  { icon: 'receipt', title: 'Giá cả minh bạch', text: 'Biết chính xác chi phí trước khi đặt' },
-];
-
-const STEPS = [
-  { icon: 'search', title: 'Tìm sân', text: 'Nhập khu vực hoặc dùng vị trí để tìm sân gần bạn.' },
-  { icon: 'calendar', title: 'Chọn khung giờ', text: 'So sánh sân, giá và chọn giờ còn trống.' },
-  { icon: 'shield', title: 'Thanh toán & xác nhận', text: 'Chuyển khoản theo QR, tải biên lai và chờ sân xác nhận.' },
-];
-
-function formatKm(km) {
-  return `${km.toFixed(1).replace('.', ',')} km`;
+function openingHours(venue) {
+  if (venue.open_hours) return venue.open_hours;
+  return 'Xem tại trang chi tiết';
 }
 
-function formatPrice(value) {
-  return `${vnd.format(Number(value))}đ`;
-}
-
-function byRating(a, b) {
-  return (b.averageRating ?? 0) - (a.averageRating ?? 0) || (b.reviewCount ?? 0) - (a.reviewCount ?? 0);
-}
-
-function byDistance(a, b) {
-  return (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity);
-}
-
-function VenueCard({ venue, index, onSelect }) {
-  const hasRating = venue.averageRating != null;
-  return (
-    <article className={styles.venueCard}>
-      {/* Bấm ảnh cũng mở sân cho tiện dùng chuột; bàn phím và trình đọc màn hình dùng nút "Xem sân". */}
-      <div className={styles.venueThumb} onClick={() => onSelect(venue)}>
-        <img
-          src={courtPhoto}
-          alt=""
-          loading="lazy"
-          style={{ objectPosition: `${20 + ((index * 23) % 60)}% center` }}
-        />
-        {venue.activeCourtCount > 0 && (
-          <span className={styles.courtBadge}>
-            <span className={styles.badgeDot} />
-            {venue.activeCourtCount} sân
-          </span>
-        )}
+function VenueCard({ venue, index, active, onSelect, onHighlight }) {
+  const imageUrl = venue.imageUrl || venue.photoUrl;
+  const [imageFailed, setImageFailed] = useState(false);
+  return <article className={`${styles.venueCard} ${active ? styles.cardActive : ''}`}
+    aria-labelledby={`venue-${venue.facility_id}`}
+    onMouseEnter={() => onHighlight(venue.facility_id)} onMouseLeave={() => onHighlight(null)}
+    onFocus={() => onHighlight(venue.facility_id)}
+    onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) onHighlight(null); }}>
+    <button type="button" className={styles.venuePhoto} onClick={() => onSelect(venue)} aria-label={`Xem lịch sân ${venue.facility_name}`}>
+      <img src={!imageFailed && imageUrl ? imageUrl : courtPhoto} alt={!imageFailed && imageUrl ? `Sân tại ${venue.facility_name}` : ''} loading="lazy" onError={() => setImageFailed(true)} />
+      {(!imageUrl || imageFailed) && <span className={styles.photoCaption}>Ảnh minh họa</span>}
+    </button>
+    <div className={styles.venueBody}>
+      <div className={styles.cardTop}><span className={styles.venueNumber} aria-label={`Ghim ${index + 1}`}>{String(index + 1).padStart(2, '0')}</span>
+        <StatusBadge status="ACTIVE" category="location" />
+        {venue.distance_km != null && <span className={styles.distance}><HomeIcon name="navigation" size={14} />{formatKm(venue.distance_km)}</span>}
       </div>
-
-      <div className={styles.venueBody}>
-        <div className={styles.venueTitleRow}>
-          <h3 className={styles.venueName}>{venue.facility_name}</h3>
-          {hasRating && (
-            <span className={styles.venueRating} aria-label={`Đánh giá ${venue.averageRating} trên 5`}>
-              <HomeIcon name="star" size={14} filled />
-              {venue.averageRating.toFixed(1).replace('.', ',')}
-            </span>
-          )}
-        </div>
-        <p className={styles.venueAddress}>
-          <HomeIcon name="pin" size={13} />
-          <span>{venue.address}</span>
-        </p>
-        <div className={styles.venueMeta}>
-          <span>{venue.distance_km != null ? `${formatKm(venue.distance_km)} từ bạn` : ''}</span>
-          <span>{venue.reviewCount > 0 ? `${venue.reviewCount} đánh giá` : 'Chưa có đánh giá'}</span>
-        </div>
-        <div className={styles.venueFooter}>
-          {venue.minPricePerHour != null ? (
-            <p className={styles.venuePrice}>
-              <span className={styles.priceFrom}>Từ </span>
-              <strong>{formatPrice(venue.minPricePerHour)}</strong>
-              <span className={styles.priceUnit}>/ giờ</span>
-            </p>
-          ) : (
-            <p className={styles.venuePriceMissing}>Chưa có bảng giá</p>
-          )}
-          <button type="button" className={styles.viewBtn} onClick={() => onSelect(venue)}>
-            Xem sân
-          </button>
-        </div>
+      <h3 id={`venue-${venue.facility_id}`} className={styles.venueName}>
+        <button type="button" onClick={() => onSelect(venue)}>{venue.facility_name}</button>
+      </h3>
+      <p className={styles.address}><HomeIcon name="pin" size={16} /><span>{venue.address || 'Địa chỉ chưa cập nhật'}</span></p>
+      <div className={styles.facts}>
+        <span><HomeIcon name="court" size={16} />{venue.activeCourtCount ?? 0} sân</span>
+        <span><HomeIcon name="clock" size={16} /><span>Giờ mở cửa: {openingHours(venue)}</span></span>
       </div>
-    </article>
-  );
+      <div className={styles.cardFooter}>
+        <div className={styles.cardSummary}>
+          <p className={styles.rating}><HomeIcon name="star" size={15} filled />
+            {venue.averageRating != null ? <><strong>{Number(venue.averageRating).toFixed(1).replace('.', ',')}</strong><span>({venue.reviewCount ?? 0} đánh giá)</span></> : <span>Chưa có đánh giá</span>}
+          </p>
+          {venue.minPricePerHour != null ? <p className={styles.price}>Từ <strong>{money(venue.minPricePerHour).replace(/\s*₫/, 'đ')}</strong><span>/giờ</span></p> : <p className={styles.priceMissing}>Chưa có bảng giá</p>}
+        </div>
+        <Button size="sm" onClick={() => onSelect(venue)}>Xem lịch sân<HomeIcon name="arrowRight" size={16} /></Button>
+      </div>
+    </div>
+  </article>;
 }
 
 export default function FacilitySearchPage({ searchOnly = false }) {
@@ -109,280 +65,107 @@ export default function FacilitySearchPage({ searchOnly = false }) {
   const [keyword, setKeyword] = useState('');
   const [searchedKeyword, setSearchedKeyword] = useState('');
   const [playDate, setPlayDate] = useState(MIN_PLAY_DATE);
-  const [showAll, setShowAll] = useState(false);
-  const [activeCount, setActiveCount] = useState(null);
+  const [mobileView, setMobileView] = useState('list');
+  const [activeVenueId, setActiveVenueId] = useState(null);
   const keywordInput = useRef(null);
-  const resultsSection = useRef(null);
-
+  const debounce = useRef(null);
+  const lastQuery = useRef(null);
+  const formId = useId();
   const { facilities, loading, loadError, fetchFacilities } = useFacilitySearch();
   const { position, locating, locationError, requestLocation } = useGeolocation();
 
-  useEffect(() => { void fetchFacilities(''); }, [fetchFacilities]);
+  const runSearch = useCallback((value, retry = false) => {
+    const query = value.trim();
+    if (!retry && query === lastQuery.current) return;
+    lastQuery.current = query;
+    setSearchedKeyword(query);
+    void fetchFacilities(query);
+  }, [fetchFacilities]);
 
-  // Ghi lại tổng số sân ở lần tải đầu (chưa lọc) để badge không đổi theo từ khoá tìm kiếm.
-  if (activeCount == null && !loading && !loadError && !searchedKeyword) setActiveCount(facilities.length);
+  // Input debounce is presentation only; the hook still owns cancellation and API rules.
+  useEffect(() => {
+    debounce.current = setTimeout(() => runSearch(keyword), lastQuery.current == null ? 0 : 350);
+    return () => clearTimeout(debounce.current);
+  }, [keyword, runSearch]);
 
-  const venues = facilities.map((venue) => ({ ...venue, distance_km: distanceKm(position, venue) }));
-  const isSearching = searchedKeyword !== '';
-  const listed = [...venues].sort(position ? byDistance : isSearching ? () => 0 : byRating);
-  const visible = showAll ? listed : listed.slice(0, FEATURED_LIMIT);
-  const nearby = (position ? [...venues].sort(byDistance) : venues).slice(0, NEARBY_LIMIT);
+  const listed = useMemo(() => facilities.map((venue) => ({ ...venue, distance_km: distanceKm(position, venue) }))
+    .sort(position ? byDistance : searchedKeyword ? () => 0 : byRating), [facilities, position, searchedKeyword]);
+  const pendingKeyword = keyword.trim() !== searchedKeyword;
+  const busy = loading || pendingKeyword;
 
   const handleSearchSubmit = (event) => {
     event.preventDefault();
-    const trimmed = keyword.trim();
-    setSearchedKeyword(trimmed);
-    setShowAll(false);
-    void fetchFacilities(trimmed);
-    resultsSection.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    clearTimeout(debounce.current);
+    runSearch(keyword);
   };
-
   const clearSearch = () => {
+    clearTimeout(debounce.current);
     setKeyword('');
-    setSearchedKeyword('');
-    void fetchFacilities('');
+    runSearch('');
+    keywordInput.current?.focus();
   };
-
   const handleSelectFacility = (facility) => {
     sessionStorage.setItem('selected_facility_id', String(facility.facility_id));
     navigate(`/facilities/${facility.facility_id}`, { state: { playDate } });
   };
 
-  const focusSearch = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    keywordInput.current?.focus({ preventScroll: true });
-  };
+  return <PublicLayout fullWidth className={home.page}>
+    {!searchOnly && <section className={home.hero} aria-labelledby="search-title">
+      <div className={home.heroContent}><p className={home.eyebrow}><HomeIcon name="court" size={16} />Courtly · Cầu lông mỗi ngày</p>
+        <h1 id="search-title">Sân phù hợp.<br /><span>Buổi chơi trọn vẹn.</span></h1>
+        <p>Tìm địa điểm, xem lịch sân và chọn khung giờ của bạn. Một buổi cầu lông tốt bắt đầu từ đây.</p>
+        <div className={home.highlights}><span><HomeIcon name="check" size={15} />Giá niêm yết rõ ràng</span><span><HomeIcon name="check" size={15} />Xem lịch trước khi đặt</span></div>
+        <Link className={home.ownerLink} to="/register-service">Bạn là chủ sân? Đăng ký sử dụng dịch vụ<HomeIcon name="arrowRight" size={16} /></Link>
+      </div>
+      <div className={home.heroVisual}><img src={courtPhoto} alt="Không gian sân cầu lông trong nhà, ảnh minh họa" fetchPriority="high" /><span>Chọn sân. Lên lịch. Ra sân.</span></div>
+    </section>}
 
-  return (
-    <div className={styles.page}>
-      <PublicHeader />
-
-      <section className={styles.hero}>
-        <img className={styles.heroPhoto} src={courtPhoto} alt="" fetchPriority="high" />
-        <div className={styles.heroInner}>
-          {activeCount > 0 && (
-            <p className={styles.heroBadge}>
-              <HomeIcon name="check" size={13} />
-              {activeCount} cụm sân đang hoạt động trên Courtly
-            </p>
-          )}
-          <h1 className={styles.heroTitle}>{searchOnly ? 'Tìm sân cầu lông' : 'Đặt sân cầu lông dễ dàng hơn'}</h1>
-          <p className={styles.heroSubtitle}>
-            Tìm sân gần bạn, chọn giờ phù hợp và đặt sân chỉ trong vài bước.
-          </p>
-
-          <form className={styles.searchCard} onSubmit={handleSearchSubmit} role="search">
-            <label className={styles.searchField}>
-              <span className={styles.fieldIcon}><HomeIcon name="pin" /></span>
-              <span className={styles.fieldBody}>
-                <span className={styles.fieldLabel}>Địa điểm</span>
-                <input
-                  ref={keywordInput}
-                  type="search"
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  placeholder="Tên sân, quận/huyện…"
-                />
-              </span>
-            </label>
-
-            <label className={styles.searchField}>
-              <span className={styles.fieldIcon}><HomeIcon name="calendar" /></span>
-              <span className={styles.fieldBody}>
-                <span className={styles.fieldLabel}>Ngày chơi</span>
-                <input
-                  type="date"
-                  min={MIN_PLAY_DATE}
-                  value={playDate}
-                  onChange={(e) => setPlayDate(e.target.value)}
-                />
-              </span>
-            </label>
-
-            <button
-              type="button"
-              className={`${styles.searchField} ${styles.locateField} ${position ? styles.locateActive : ''}`}
-              onClick={requestLocation}
-              disabled={locating}
-              aria-pressed={Boolean(position)}
-            >
-              <span className={styles.fieldIcon}><HomeIcon name="crosshair" /></span>
-              <span className={styles.fieldBody}>
-                <span className={styles.fieldLabel}>Vị trí</span>
-                <span className={styles.locateText}>
-                  {locating ? 'Đang lấy vị trí…' : position ? 'Đã dùng vị trí của bạn' : 'Dùng vị trí của tôi'}
-                </span>
-              </span>
-            </button>
-
-            <button type="submit" className={styles.searchBtn}>
-              <HomeIcon name="search" />
-              Tìm sân
-            </button>
-          </form>
-
-          {locationError && <p role="status" className={styles.heroNotice}>{locationError}</p>}
-
-          <ul className={styles.heroChecks}>
-            {HIGHLIGHTS.map((item) => (
-              <li key={item}><HomeIcon name="check" size={14} />{item}</li>
-            ))}
-          </ul>
+    <div className={styles.workspace}>
+      {searchOnly && <PageHeader eyebrow="Địa điểm cầu lông" title="Tìm sân cho buổi chơi tiếp theo" subtitle="Tìm theo tên hoặc địa chỉ, đối chiếu vị trí và xem lịch sân." />}
+      <div className={styles.searchDock}>
+        <form id={formId} role="search" aria-label="Tìm địa điểm" className={styles.searchForm} onSubmit={handleSearchSubmit}>
+          <div className={styles.keywordField}><label htmlFor={`${formId}-keyword`}>Tên hoặc địa chỉ địa điểm</label>
+            <div className={styles.keywordControl}><HomeIcon name="search" size={20} />
+              <Input ref={keywordInput} id={`${formId}-keyword`} type="search" value={keyword} onChange={(event) => setKeyword(event.target.value)}
+                placeholder="Tên sân, đường, quận/huyện…" autoComplete="off" aria-controls="venue-results" />
+              {keyword && <Button variant="ghost" size="sm" onClick={clearSearch} aria-label="Xóa từ khóa tìm kiếm"><HomeIcon name="close" size={18} /></Button>}
+            </div>
+          </div>
+          <div className={styles.dateField}><label htmlFor={`${formId}-date`}>Ngày chơi</label><Input id={`${formId}-date`} type="date" min={MIN_PLAY_DATE} value={playDate} onChange={(event) => setPlayDate(event.target.value)} /></div>
+          <Button type="submit" className={styles.submitButton} loading={loading}>Tìm sân</Button>
+        </form>
+      </div>
+      <div className={styles.searchExtras}>
+        <div className={styles.locationGroup}><Button variant="secondary" loading={locating} onClick={requestLocation} aria-describedby={`${formId}-location-help`}><HomeIcon name="crosshair" size={17} />Dùng vị trí của tôi</Button>
+          <p id={`${formId}-location-help`}>Cho phép vị trí để sắp xếp sân gần đến xa. Bạn vẫn tìm được sân nếu không cấp quyền.</p>
         </div>
+        <p className={styles.playDate}>Ngày chơi: <strong>{shortDate(playDate)}</strong></p>
+      </div>
+      {locationError && <div role="status" className={styles.locationNotice}><HomeIcon name="info" size={18} /><p>{locationError}</p><Button variant="ghost" size="sm" onClick={() => keywordInput.current?.focus()}>Tìm theo tên hoặc địa chỉ</Button></div>}
+      {position && !locationError && <p role="status" className={styles.locationSuccess}><HomeIcon name="check" size={16} />Đã dùng vị trí của bạn. Danh sách được sắp xếp từ gần đến xa.</p>}
+
+      <div className={styles.resultsHeading}><div><h2 id="results-title">{searchedKeyword ? `Kết quả cho “${searchedKeyword}”` : 'Địa điểm đang hoạt động'}</h2>
+        <p role="status" aria-live="polite">{busy ? 'Đang tìm địa điểm phù hợp…' : loadError ? 'Danh sách tạm thời chưa tải được.' : `${listed.length} địa điểm${position ? ' · Gần bạn nhất trước' : searchedKeyword ? ' · Khớp tên hoặc địa chỉ' : ' · Đánh giá tốt nhất trước'}`}</p></div>
+        <div className={styles.viewSwitch} role="group" aria-label="Cách xem kết quả">
+          <Button variant={mobileView === 'list' ? 'primary' : 'ghost'} aria-pressed={mobileView === 'list'} onClick={() => setMobileView('list')}><HomeIcon name="list" size={16} />Danh sách</Button>
+          <Button variant={mobileView === 'map' ? 'primary' : 'ghost'} aria-pressed={mobileView === 'map'} onClick={() => setMobileView('map')}><HomeIcon name="map" size={16} />Bản đồ</Button>
+        </div>
+      </div>
+
+      <section className={styles.resultsGrid} aria-labelledby="results-title">
+        <div id="venue-results" className={`${styles.resultsList} ${mobileView === 'map' ? styles.listHidden : ''}`} aria-busy={busy}>
+          {busy ? <div className={styles.loadingGrid}><LoadingState message="Đang tải danh sách địa điểm…" /><LoadingState message="Đang chuẩn bị thông tin sân…" /></div> : loadError ? <ErrorState message="Không tải được danh sách địa điểm. Vui lòng kiểm tra kết nối và thử lại." onRetry={() => runSearch(searchedKeyword, true)} /> : !listed.length ?
+            <EmptyState title={searchedKeyword ? 'Chưa tìm thấy địa điểm phù hợp' : 'Chưa có địa điểm để hiển thị'} description={searchedKeyword ? 'Thử bỏ bớt từ khóa hoặc tìm bằng tên đường, quận/huyện. Bạn cũng có thể xem lại tất cả địa điểm.' : 'Hiện chưa có địa điểm đang hoạt động trong danh sách. Bạn có thể thử tải lại sau.'} action={searchedKeyword ? <Button variant="secondary" onClick={clearSearch}>Xóa tìm kiếm và xem tất cả</Button> : <Button variant="secondary" onClick={() => runSearch('', true)}>Tải lại danh sách</Button>} /> :
+            <ol className={styles.cards}>{listed.map((venue, index) => <li key={venue.facility_id}><VenueCard venue={venue} index={index} active={String(activeVenueId) === String(venue.facility_id)} onSelect={handleSelectFacility} onHighlight={setActiveVenueId} /></li>)}</ol>}
+        </div>
+        <aside className={`${styles.mapColumn} ${mobileView === 'list' ? styles.mapHidden : ''}`} aria-label="Bản đồ kết quả tìm kiếm">
+          <div className={styles.mapCard}><header className={styles.mapHeader}><div><HomeIcon name="map" size={18} /><h2>Địa điểm trên bản đồ</h2></div><span>{!busy && !loadError ? `${listed.length} địa điểm` : 'Đang cập nhật'}</span></header>
+            <div className={styles.mapWrap}>{busy ? <LoadingState message="Đang cập nhật địa điểm trên bản đồ…" /> : loadError ? <ErrorState message="Chưa có dữ liệu để hiển thị bản đồ." onRetry={() => runSearch(searchedKeyword, true)} /> : !listed.length ? <EmptyState title="Chưa có địa điểm trên bản đồ" description="Bỏ bớt từ khóa hoặc tải lại danh sách để xem thêm địa điểm." action={searchedKeyword ? <Button variant="secondary" onClick={clearSearch}>Xóa tìm kiếm</Button> : <Button variant="secondary" onClick={() => runSearch('', true)}>Tải lại danh sách</Button>} /> : <GoogleVenueMap key={mobileView} venues={listed} onSelect={handleSelectFacility} activeVenueId={activeVenueId} />}</div>
+            <p className={styles.mapHint}><HomeIcon name="pin" size={15} />Bấm ghim để xem địa chỉ và lịch sân. Số ghim theo danh sách; chỉ hiển thị địa điểm có tọa độ.</p>
+          </div>
+        </aside>
       </section>
-
-      <main>
-        {!searchOnly && <div className={styles.featureStrip}>
-          {FEATURES.map((item) => (
-            <div key={item.title} className={styles.featureItem}>
-              <span className={styles.featureIcon}><HomeIcon name={item.icon} /></span>
-              <div>
-                <p className={styles.featureTitle}>{item.title}</p>
-                <p className={styles.featureText}>{item.text}</p>
-              </div>
-            </div>
-          ))}
-        </div>}
-
-        <section className={styles.section} ref={resultsSection} aria-labelledby="featured-title">
-          <div className={styles.sectionHead}>
-            <div>
-              <p className={styles.eyebrow}>{isSearching ? 'Kết quả tìm kiếm' : 'Được yêu thích'}</p>
-              <h2 id="featured-title" className={styles.sectionTitle}>
-                {isSearching ? `Sân phù hợp với “${searchedKeyword}”` : 'Sân cầu lông nổi bật'}
-              </h2>
-              <p className={styles.sectionLead}>
-                {isSearching
-                  ? `${listed.length} cụm sân khớp tên hoặc địa chỉ.`
-                  : position
-                    ? 'Đã sắp xếp từ gần đến xa theo vị trí hiện tại của bạn.'
-                    : 'Những sân được người chơi Courtly đánh giá tốt.'}
-              </p>
-            </div>
-            {isSearching ? (
-              <button type="button" className={styles.linkBtn} onClick={clearSearch}>
-                Xoá tìm kiếm
-              </button>
-            ) : listed.length > FEATURED_LIMIT && (
-              <button type="button" className={styles.linkBtn} onClick={() => setShowAll((value) => !value)}>
-                {showAll ? 'Thu gọn' : 'Xem tất cả'}
-                <HomeIcon name="arrowRight" size={16} />
-              </button>
-            )}
-          </div>
-
-          {loading ? (
-            <p role="status" className={styles.stateText}>Đang tải danh sách sân…</p>
-          ) : loadError ? (
-            <p role="alert" className={styles.stateText}>
-              Không tải được danh sách sân.{' '}
-              <button type="button" className={styles.inlineBtn} onClick={() => void fetchFacilities(searchedKeyword)}>
-                Thử lại
-              </button>
-            </p>
-          ) : listed.length === 0 ? (
-            <p className={styles.stateText}>Không tìm thấy sân phù hợp. Thử từ khoá khác hoặc xoá tìm kiếm.</p>
-          ) : (
-            <div className={styles.venueGrid}>
-              {visible.map((venue, index) => (
-                <VenueCard key={venue.facility_id} venue={venue} index={index} onSelect={handleSelectFacility} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {!searchOnly && <section className={styles.stepsBand} aria-labelledby="steps-title">
-          <div className={styles.stepsInner}>
-            <p className={styles.eyebrow}>Nhanh chóng & đơn giản</p>
-            <h2 id="steps-title" className={styles.sectionTitle}>Đặt sân chỉ với 3 bước</h2>
-            <ol className={styles.steps}>
-              {STEPS.map((step, index) => (
-                <li key={step.title} className={styles.step}>
-                  <span className={styles.stepIcon}><HomeIcon name={step.icon} size={20} /></span>
-                  <span className={styles.stepNo}>Bước {String(index + 1).padStart(2, '0')}</span>
-                  <h3 className={styles.stepTitle}>{step.title}</h3>
-                  <p className={styles.stepText}>{step.text}</p>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>}
-
-        {!searchOnly && (
-          <section className={styles.section} aria-labelledby="rewards-title">
-            <div className={styles.promo}>
-              <span className={styles.promoTag}>Dành cho người chơi</span>
-              <h2 id="rewards-title" className={styles.promoTitle}>Tích điểm sau mỗi lần đặt sân</h2>
-              <p className={styles.promoText}>
-                Đặt sân là được cộng điểm tại cụm sân đó. Dùng điểm và phiếu ưu đãi để giảm giá cho lần đặt tiếp theo.
-              </p>
-              <Link to="/login?mode=register" className={styles.promoBtn}>
-                Đăng ký để tích điểm
-                <HomeIcon name="arrowRight" size={16} />
-              </Link>
-            </div>
-          </section>
-        )}
-
-        <section className={`${styles.section} ${styles.nearbySection}`} aria-labelledby="nearby-title">
-          <div className={styles.sectionHead}>
-            <div>
-              <p className={styles.eyebrow}>Quanh bạn</p>
-              <h2 id="nearby-title" className={styles.sectionTitle}>Sân gần đây</h2>
-              <p className={styles.sectionLead}>
-                {position
-                  ? 'Xem nhanh sân và mức giá quanh khu vực hiện tại.'
-                  : 'Bật vị trí để xem những sân gần bạn nhất.'}
-              </p>
-            </div>
-            {!position && (
-              <button type="button" className={styles.linkBtn} onClick={requestLocation} disabled={locating}>
-                <HomeIcon name="navigation" size={15} />
-                {locating ? 'Đang lấy vị trí…' : 'Dùng vị trí của tôi'}
-              </button>
-            )}
-          </div>
-
-          <div className={styles.nearbyCard}>
-            <div className={styles.nearbyMap}>
-              <GoogleVenueMap venues={nearby} onSelect={handleSelectFacility} />
-            </div>
-            <ol className={styles.nearbyList}>
-              {nearby.map((venue, index) => (
-                <li key={venue.facility_id}>
-                  <button type="button" className={styles.nearbyItem} onClick={() => handleSelectFacility(venue)}>
-                    <img src={courtPhoto} alt="" className={styles.nearbyThumb} loading="lazy" />
-                    <span className={styles.nearbyBody}>
-                      <span className={styles.nearbyName}>{venue.facility_name}</span>
-                      <span className={styles.nearbyMeta}>
-                        <HomeIcon name="pin" size={12} />
-                        {venue.distance_km != null ? `${formatKm(venue.distance_km)} · ` : ''}
-                        {venue.address}
-                      </span>
-                      {venue.minPricePerHour != null && (
-                        <span className={styles.nearbyPrice}>{formatPrice(venue.minPricePerHour)}/giờ</span>
-                      )}
-                    </span>
-                    <span className={styles.nearbyIndex}>{index + 1}</span>
-                  </button>
-                </li>
-              ))}
-              {!loading && nearby.length === 0 && <li className={styles.stateText}>Chưa có sân để hiển thị.</li>}
-            </ol>
-          </div>
-        </section>
-
-        {!searchOnly && <section className={styles.ctaBand} aria-labelledby="cta-title">
-          <h2 id="cta-title" className={styles.ctaTitle}>Sẵn sàng ra sân?</h2>
-          <p className={styles.ctaText}>Tìm sân phù hợp và bắt đầu trận đấu của bạn ngay hôm nay.</p>
-          <button type="button" className={styles.ctaBtn} onClick={focusSearch}>
-            Tìm sân ngay
-            <HomeIcon name="arrowRight" size={16} />
-          </button>
-        </section>}
-      </main>
-
-      <PublicFooter />
+      {!searchOnly && <section className={home.ownerCallout} aria-labelledby="owner-callout-title"><span className={home.ownerIcon}><HomeIcon name="court" size={24} /></span><div><h2 id="owner-callout-title">Bạn đang quản lý sân cầu lông?</h2><p>Đưa địa điểm của bạn lên Courtly để người chơi dễ dàng tìm thấy và đặt lịch.</p></div><Link to="/register-service">Đăng ký sử dụng dịch vụ<HomeIcon name="arrowRight" size={18} /></Link></section>}
     </div>
-  );
+  </PublicLayout>;
 }

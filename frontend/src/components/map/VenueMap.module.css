@@ -1,0 +1,10 @@
+.frame { position: relative; min-width: 0; isolation: isolate; }
+.canvas { width: 100%; height: var(--venue-map-height, auto); aspect-ratio: var(--venue-map-aspect, 1 / 1); min-height: 240px; border-radius: var(--radius-md); background: var(--color-surface-muted); }
+.details { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-sm); }
+.details > div { flex: 1 1 160px; min-width: 0; }
+.details strong { font-size: var(--text-sm); overflow-wrap: anywhere; }
+.details p { margin-top: var(--space-1); color: var(--color-text-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.loading { position: absolute; inset: var(--space-4); z-index: 450; pointer-events: none; align-content: center; background: var(--color-surface); border-radius: var(--radius-md); }
+.notice { margin-bottom: var(--space-3); }
+.pin { display: grid; place-items: center; width: 44px; height: 44px; padding: var(--space-1); border: 2px solid var(--color-surface); border-radius: var(--radius-full); background: var(--color-primary); color: var(--color-on-primary); font: 700 var(--text-sm) var(--font-sans); box-shadow: var(--shadow-md); transition: transform .15s ease, background-color .15s ease; }
+.pinActive { background: var(--color-text); outline: 3px solid var(--color-primary-accent); outline-offset: 2px; transform: translateY(-4px); }

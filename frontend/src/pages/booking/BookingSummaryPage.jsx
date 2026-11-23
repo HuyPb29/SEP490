@@ -1,15 +1,17 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import styles from './BookingSummaryPage.module.css';
-import { formatVnd, uiMessage } from '../../utils/formatters';
+import { money, shortDate, uiMessage } from '../../utils/formatters';
 import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, defaultPointRedemptionValue, pointInputError } from '../../utils/checkoutPoints';
-import { CheckoutProgress, ConfirmDialog, Feedback } from '../../components/common/WorkspacePrimitives';
+import { CheckoutProgress } from '../../components/common/WorkspacePrimitives';
 import CheckoutVoucherPicker from '../../components/booking/CheckoutVoucherPicker';
 import { useCheckoutVoucherSelection } from '../../hooks/useCheckoutVouchers';
-import { PublicHeader } from '../../components/layout/PublicLayout';
-import PublicFooter from '../../components/layout/PublicFooter';
+import PublicLayout from '../../components/layout/PublicLayout';
+import { Button, FormField, Input, Textarea, PageHeader, LoadingState, ErrorState, EmptyState, ConfirmDialog } from '../../components/common';
+
+const formatVnd = amount => money(amount).replace(/\s*₫/, 'đ');
 
 function toMinutes(time) {
   const [hours, minutes] = time.split(':').map(Number);
@@ -53,6 +55,12 @@ function groupSlotsIntoRanges(selectedSlots) {
 
 export default function BookingSummaryPage() {
   const navigate = useNavigate();
+  const submitLock = useRef(false);
+  const feedbackRef = useRef(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [quoteLoading, setQuoteLoading] = useState(true);
+  const [teamsLoading, setTeamsLoading] = useState(true);
+  const [pointsLoading, setPointsLoading] = useState(true);
   const { user } = useAuth();
   const {
     getMyPointsAtFacility,
@@ -124,20 +132,29 @@ export default function BookingSummaryPage() {
       .then((data) => { if (active()) setQuote(data); })
       .catch((error) => {
         if (active()) setQuoteError(error.response?.data?.message || 'Không tải được giá đặt sân.');
-      });
+      })
+      .finally(() => { if (active()) setQuoteLoading(false); });
     getMyOwnedTeams().then((teams) => { if (active()) setOwnedTeams(teams); })
-      .catch(() => { if (active()) setTeamError('Không tải được danh sách đội. Bạn vẫn có thể đặt cho cá nhân.'); });
+      .catch(() => { if (active()) setTeamError('Không tải được danh sách đội. Bạn vẫn có thể đặt cho cá nhân.'); })
+      .finally(() => { if (active()) setTeamsLoading(false); });
     getMyPointsAtFacility(bookingContext.facility.facility_id)
       .then((points) => { if (active()) setAvailablePoints(points); })
       .catch((error) => {
         if (active()) setPointsError(error.response?.data?.message || 'Không tải được số dư điểm.');
-      });
+      })
+      .finally(() => { if (active()) setPointsLoading(false); });
     return () => controller.abort();
-  }, [bookingContext, isOrder, isPlayer, selection, previewDayOrderApi, previewBookingApi, getMyOwnedTeams, getMyPointsAtFacility]);
+  }, [loadAttempt, bookingContext, isOrder, isPlayer, selection, previewDayOrderApi, previewBookingApi, getMyOwnedTeams, getMyPointsAtFacility]);
 
   const listPrice = Number(quote?.listAmount ?? 0);
   const voucher = useCheckoutVoucherSelection(quote?.locationId, quote?.conflictSessions ? 0 : listPrice);
   const { applied: appliedVoucher, checking: voucherLoading } = voucher;
+  useEffect(() => {
+    const target = pointSubmitError ? document.getElementById('checkout-points') : submitError ? feedbackRef.current : voucher.error ? document.getElementById('checkout-voucher-code') : null;
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.focus({ preventScroll: true });
+  }, [submitError, pointSubmitError, voucher.error]);
   const pointValue = quote?.pointRedemptionValue || defaultPointRedemptionValue;
   const voucherDiscount = Number(appliedVoucher?.discountAmount ?? 0);
   const remainingAfterVoucher = listPrice - voucherDiscount;
@@ -166,23 +183,16 @@ export default function BookingSummaryPage() {
         : [],
   };
 
-  const formatDate = (dateStr) => {
-    const d = new Date(dateStr);
-    const days = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
-    const dayName = days[d.getDay()];
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    return `${dayName}, ${dd}/${mm}/${yyyy}`;
-  };
+  const formatDate = dateStr => shortDate(dateStr);
 
   const validNote = guestNote.length <= 200;
 
   const [confirmPoints, setConfirmPoints] = useState(false);
   const handleConfirmBooking = async () => {
-    if (!quote || quote.conflictSessions || submitting || voucherLoading || !validPoints || !validNote) return;
+    if (!quote || quote.conflictSessions || quoteLoading || submitLock.current || submitting || voucherLoading || !validPoints || !validNote) return;
     setSubmitError('');
     setPointSubmitError('');
+    submitLock.current = true;
     setSubmitting(true);
     try {
       const payload = {
@@ -231,6 +241,7 @@ export default function BookingSummaryPage() {
       else if (field === 'points') setPointSubmitError(message);
       else setSubmitError(message || 'Không thể xác nhận đặt sân. Vui lòng thử lại.');
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   };
@@ -238,228 +249,74 @@ export default function BookingSummaryPage() {
   if (!bookingContext) return <Navigate to="/locations" replace />;
   if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/summary' }} replace />;
   if (!isPlayer) return <p role="alert">Vui lòng đăng nhập bằng tài khoản người chơi để đặt sân.</p>;
-  if (!quote) return <div className="cw-workspace"><PublicHeader user={user} /><main className={styles.mainContainer}>
-    <Feedback tone={quoteError ? 'error' : 'info'}>{quoteError || 'Đang tải giá đặt sân…'}
-      {quoteError && <Link className="cw-secondary" to={'/facilities/' + bookingContext.facility.facility_id}>Quay lại lịch sân</Link>}
-    </Feedback>
-  </main><PublicFooter /></div>;
+  const retryCheckout = () => {
+    setQuoteError(''); setTeamError(''); setPointsError('');
+    setQuoteLoading(true); setTeamsLoading(true); setPointsLoading(true);
+    setLoadAttempt(value => value + 1);
+  };
+  const backToSchedule = '/facilities/' + (bookingContext.facility?.facility_id || 1);
+  if (!quote) return <PublicLayout><PageHeader title="Kiểm tra đơn đặt sân" subtitle="Đang đối chiếu lịch và giá sân của bạn." />
+    {quoteError ? <ErrorState message={uiMessage(quoteError)} onRetry={retryCheckout} /> : quoteLoading ? <LoadingState message="Đang tải giá và thông tin đặt sân…" /> : <EmptyState title="Chưa có thông tin báo giá" description="Thử tải lại để kiểm tra lịch và giá sân trước khi giữ chỗ." action={<Button variant="secondary" onClick={retryCheckout}>Thử lại</Button>} />}
+    <Link className={styles.backLink} to={backToSchedule}>← Quay lại lịch sân</Link>
+  </PublicLayout>;
+  const blocked = submitting || quoteLoading || voucherLoading || !validPoints || !validNote || quote.conflictSessions > 0;
+  const confirmBooking = () => pointsUsed > 0 ? setConfirmPoints(true) : handleConfirmBooking();
+  const conflicted = slotSummary.sessions.filter(item => item.conflict);
+  const hasConflict = Boolean(quote.conflictSessions) || /MSG28/.test(submitError);
+  const pendingLimit = /MSG29|chờ thanh toán|đơn đang chờ/i.test(submitError);
+  const confirmButton = (mobile = false) => <Button loading={submitting} disabled={blocked} onClick={confirmBooking} className={styles.confirmBtn} aria-describedby={mobile ? 'mobile-hold-notice' : 'hold-notice'}>{mobile ? 'Xác nhận' : 'Xác nhận và giữ chỗ'}</Button>;
 
-  return (
-    <div className={`${styles.pageWrapper} cw-workspace`}>
-      <PublicHeader user={user} />
-      {confirmPoints && <ConfirmDialog title="Xác nhận dùng điểm" onCancel={() => setConfirmPoints(false)} onConfirm={() => {
-        setConfirmPoints(false);
-        handleConfirmBooking();
-      }}>Dùng {pointsUsed} điểm để giảm {formatVnd(pointsDiscount)}? Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy lịch.</ConfirmDialog>}
-
-      <main className={styles.mainContainer}>
-        {/* Nút quay lại lịch sân */}
-        <Link
-          to={`/facilities/${bookingContext.facility?.facility_id || 1}`}
-          className={styles.backLink}
-        >
-          ‹ Quay lại lịch sân
-        </Link>
-
-        <CheckoutProgress current={0} />
-        <h1 className={styles.pageTitle}>Xác nhận lịch đặt sân</h1>
-
-        <div className={styles.contentGrid}>
-          {/* CỘT TRÁI: Đặt cho + Thông tin booking + Ưu đãi */}
-          <div className={styles.leftColumn}>
-            {/* Card 1: Đặt cho (DR03 / BR09) */}
-            <section className={styles.card}>
-              <h2 className={styles.cardTitle}>Đặt cho</h2>
-              <div className={styles.teamPillGroup}>
-                <button
-                  type="button"
-                  className={`${styles.teamPill} ${selectedTeamId === null ? styles.teamPillActive : ''
-                    }`}
-                  aria-pressed={selectedTeamId === null}
-                  onClick={() => setSelectedTeamId(null)}
-                >
-                  Cá nhân
-                </button>
-                {ownedTeams.map((team) => (
-                  <button
-                    key={team.id}
-                    type="button"
-                    className={`${styles.teamPill} ${selectedTeamId === team.id ? styles.teamPillActive : ''
-                      }`}
-                    aria-pressed={selectedTeamId === team.id}
-                    onClick={() => setSelectedTeamId(team.id)}
-                  >
-                    {team.name}
-                  </button>
-                ))}
-              </div>
-              <p className={styles.helperText}>
-                Chọn đội nếu bạn đặt sân thay cho đội mình quản lý.
-              </p>
-            </section>
-
-            {/* Card 2: Thông tin booking (UC14) */}
-            <section className={styles.card}>
-              <h2 className={styles.cardTitle}>Thông tin đặt sân</h2>
-
-              <div className={styles.infoGrid}>
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Địa điểm</span>
-                  <strong className={styles.infoValue}>
-                    {bookingContext.facility?.facility_name || quote.locationName || '—'}
-                  </strong>
-                </div>
-
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Sân</span>
-                  <strong className={styles.infoValue}>{[...new Set(slotSummary.sessions.map((item) => item.courtName))].join(', ')}</strong>
-                </div>
-
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Ngày chơi</span>
-                  <strong className={styles.infoValue}>
-                    {formatDate(bookingContext.playDate)}
-                  </strong>
-                </div>
-
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Giờ chơi</span>
-                  <ul>{slotSummary.sessions.map((item) => <li key={item.courtId + ':' + item.startMinute}>
-                    {item.courtName} · {item.startTime}–{item.endTime} · {item.conflict
-                      ? 'Không còn trống' : formatVnd(Number(item.listAmount))}
-                  </li>)}</ul>
-                </div>
-
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Người đặt</span>
-                  <strong className={styles.infoValue}>{user.full_name}</strong>
-                </div>
-
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Số điện thoại</span>
-                  <strong className={styles.infoValue}>{user.phone_number}</strong>
-                </div>
-              </div>
-
-              <div className={styles.noteGroup}>
-                <label className={styles.noteLabel} htmlFor="booking-note">Ghi chú cho chủ sân (không bắt buộc, tối đa 200 ký tự)</label>
-                <textarea
-                  rows={3}
-                  maxLength={200}
-                  id="booking-note" className={styles.noteTextarea}
-                  placeholder="Ví dụ: Cho mình mượn thêm 2 vợt cầu lông..."
-                  value={guestNote}
-                  onChange={(e) => setGuestNote(e.target.value)}
-                />
-                {!validNote && <p role="alert" className={styles.errorText}>Ghi chú không được vượt quá 200 ký tự.</p>}
-              </div>
-            </section>
-
-            {teamError && <p role="alert" className={styles.errorText}>{teamError}</p>}
-            {/* Card 3: Ưu đãi (Voucher & Điểm thưởng - DR08, BR41, P10, P13) */}
-            <section className={styles.card}>
-              <h2 className={styles.cardTitle}>phiếu ưu đãi và điểm thưởng</h2>
-
-              <CheckoutVoucherPicker {...voucher} disabled={submitting || Boolean(quote.conflictSessions)} />
-
-              {pointsError && <p role="alert" className={styles.errorText}>{pointsError}</p>}
-
-              <div className={styles.pointsRow}>
-                <div className={styles.pointsInfo}>
-                  <strong className={styles.pointsTitle}>Dùng điểm thưởng</strong>
-                  <span className={styles.pointsSub}>
-                    Bạn đang có {availablePoints} điểm tại địa điểm này (1 điểm = {formatVnd(pointValue)}).{' '}
-                    Tối đa {checkoutPointPercent}% {appliedVoucher ? "số tiền còn lại sau phiếu ưu đãi" : 'giá niêm yết'}.
-                  </span>
-                </div>
-
-                <input type="number" aria-label="Số điểm muốn dùng" min="0" max={pointsAllowed}
-                  placeholder="0" value={pointsInput} disabled={submitting || voucherLoading}
-                  aria-invalid={Boolean(pointValidation || pointSubmitError)}
-                  aria-describedby={pointValidation || pointSubmitError ? 'checkout-point-error' : undefined}
-                  onChange={(event) => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
-                {(pointValidation || pointSubmitError) && <p id="checkout-point-error" role="alert" className={styles.errorText}>
-                  {uiMessage(pointValidation || pointSubmitError)}
-                </p>}
-              </div>
-            </section>
-          </div>
-
-          {/* CỘT PHẢI: Thanh toán & Xác nhận đặt sân */}
-          <aside className={styles.rightColumn}>
-            <div className={styles.paymentCard}>
-              <h2 className={styles.cardTitle}>Chi phí đặt sân</h2>
-
-              <div className={styles.priceLine}>
-                <span className={styles.priceLabel}>
-                  Tiền sân ({slotSummary.totalSlots} khung giờ{isOrder ? `, ${ranges.length} dải` : ''})
-                </span>
-                <strong className={styles.priceValue}>
-                  {formatVnd(pricingSummary.listPrice)}
-                </strong>
-              </div>
-
-              <div className={styles.priceLine}>
-                <span className={styles.priceLabel}>Phiếu ưu đãi</span>
-                <strong className={styles.discountValue}>
-                  –{formatVnd(pricingSummary.voucherDiscount)}
-                </strong>
-              </div>
-
-              <div className={styles.priceLine}>
-                <span className={styles.priceLabel}>Điểm thưởng</span>
-                <strong className={styles.discountValue}>
-                  –{formatVnd(pricingSummary.pointsDiscount)} (
-                  {pricingSummary.pointsUsed} điểm)
-                </strong>
-              </div>
-
-              <hr className={styles.divider} />
-
-              <div className={styles.totalLine}>
-                <span className={styles.totalLabel}>Cần thanh toán</span>
-                <strong className={styles.totalValue}>
-                  {formatVnd(pricingSummary.finalAmount)}
-                </strong>
-              </div>
-
-              {submitError && (
-                <div style={{
-                  backgroundColor: '#fef2f2',
-                  borderLeft: '4px solid #ef4444',
-                  padding: '12px 16px',
-                  borderRadius: '6px',
-                  color: '#991b1b',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  marginBottom: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <span>⚠️</span>
-                  <span>{uiMessage(submitError)}</span>
-                </div>
-              )}
-
-              <button
-                type="button"
-                className={styles.confirmBtn}
-                disabled={submitting || voucherLoading || !validPoints || !validNote || quote.conflictSessions > 0}
-                onClick={() => pointsUsed > 0 ? setConfirmPoints(true) : handleConfirmBooking()}
-              >
-                {submitting ? 'Đang giữ chỗ…' : 'Xác nhận và thanh toán'}
-              </button>
-
-              <p className={styles.holdNotice}>
-                Trang thanh toán sẽ hiển thị mã QR chuyển khoản và giữ chỗ trong 10 phút để bạn gửi chứng từ.
-              </p>
-
-            </div>
-          </aside>
+  return <PublicLayout className={styles.checkoutPage}>
+    <div className={styles.container}>
+      <Link to={backToSchedule} className={styles.backLink}>← Quay lại lịch sân</Link>
+      <CheckoutProgress current={0} />
+      <PageHeader eyebrow="Kiểm tra trước khi giữ chỗ" title="Tóm tắt đơn đặt sân" subtitle="Xem lại lịch chơi, chọn ưu đãi và xác nhận thông tin người đặt." />
+      {quoteLoading && <LoadingState message="Đang cập nhật thông tin đơn…" />}
+      {quoteError && <ErrorState message={uiMessage(quoteError)} onRetry={retryCheckout} />}
+      {hasConflict && <section ref={feedbackRef} tabIndex={-1} className={styles.conflict} aria-labelledby="conflict-title" role="alert"><h2 id="conflict-title">Một số khung giờ không còn trống</h2><p>Đơn chưa được tạo. Hãy quay lại lịch và chọn lại những khung giờ bị trùng.</p>
+        {conflicted.length > 0 && <ul>{conflicted.map(item => <li key={item.courtId + ':' + item.startMinute}><strong>{item.courtName}</strong> · {item.startTime}–{item.endTime}</li>)}</ul>}
+        {submitError && <p>{uiMessage(submitError)}</p>}<Link to={backToSchedule} className={styles.linkButton}>Quay lại lịch để chọn lại</Link>
+      </section>}
+      <div className={styles.contentGrid}>
+        <div className={styles.leftColumn}>
+          <section className={styles.card} aria-labelledby="selection-heading"><header className={styles.cardHeader}><div><p className={styles.eyebrow}>Lịch chơi của bạn</p><h2 id="selection-heading">{bookingContext.facility?.facility_name || quote.locationName || 'Địa điểm đã chọn'}</h2></div><span className={styles.countChip}>{ranges.length} booking · {slotSummary.totalSlots} slot</span></header>
+            <p className={styles.playDate}>{formatDate(bookingContext.playDate)}</p>
+            <p className={styles.helper}>Cùng một ngày, cùng một địa điểm. Mỗi dải giờ liền nhau trên một sân là một booking.</p>
+            {!slotSummary.sessions.length ? <EmptyState title="Chưa có chi tiết lịch đặt" description="Thử tải lại thông tin hoặc quay lại lịch để chọn khung giờ." action={<Button variant="secondary" onClick={retryCheckout}>Thử lại</Button>} /> : <ol className={styles.sessions}>{slotSummary.sessions.map((item, index) => {
+              const range = ranges.find(range => range.courtId === item.courtId && (range.startMinute === item.startMinute || range.startTime === item.startTime)) || ranges[index];
+              const count = range ? (range.endMinute - range.startMinute) / 30 : 0;
+              return <li key={item.courtId + ':' + item.startMinute} className={item.conflict ? styles.sessionConflict : ''}>
+                <div className={styles.sessionNumber} aria-hidden="true">{String(index + 1).padStart(2, '0')}</div><div className={styles.sessionBody}><h3>{item.courtName}</h3><p>{item.startTime} – {item.endTime}</p><span>{count} slot · {count * 30} phút</span>{item.conflict && <p className={styles.error}>Không còn trống · Cần chọn lại</p>}</div><strong className={styles.sessionPrice}>{formatVnd(Number(item.listAmount))}</strong>
+              </li>;
+            })}</ol>}
+            <div className={styles.selectionTotal}><span>Tổng giá niêm yết</span><strong>{formatVnd(listPrice)}</strong></div>
+          </section>
+          <section className={styles.card} aria-labelledby="booker-heading"><header className={styles.cardHeader}><h2 id="booker-heading">Người đặt & đội</h2><span className={styles.readOnly}>Thông tin chỉ đọc</span></header>
+            <dl className={styles.booker}><div><dt>Họ và tên</dt><dd>{user.full_name || '—'}</dd></div><div><dt>Số điện thoại</dt><dd>{user.phone_number || '—'}</dd></div></dl>
+            <fieldset className={styles.teamGroup}><legend>Đặt sân cho</legend><div className={styles.teamOptions}><Button variant={selectedTeamId === null ? 'primary' : 'secondary'} aria-pressed={selectedTeamId === null} disabled={submitting} onClick={() => setSelectedTeamId(null)}>Đặt cho cá nhân</Button>{ownedTeams.map(team => <Button key={team.id} variant={selectedTeamId === team.id ? 'primary' : 'secondary'} aria-pressed={selectedTeamId === team.id} disabled={submitting} onClick={() => setSelectedTeamId(team.id)}>{team.name}</Button>)}</div></fieldset>
+            {teamsLoading ? <LoadingState message="Đang tải đội bạn làm chủ…" /> : teamError ? <ErrorState message={teamError} onRetry={retryCheckout} /> : !ownedTeams.length ? <p className={styles.helper}>Bạn chưa có đội để chọn. Bạn có thể tiếp tục đặt cho cá nhân.</p> : <p className={styles.helper}>Không bắt buộc chọn đội. Chỉ hiện các đội bạn làm chủ.</p>}
+          </section>
+          <section className={styles.card} aria-labelledby="note-heading"><h2 id="note-heading">Ghi chú cho chủ sân</h2><FormField htmlFor="booking-note" label="Nội dung ghi chú (không bắt buộc)" hint="Ghi chú không sửa được sau khi xác nhận đơn." error={!validNote ? 'Ghi chú không được vượt quá 200 ký tự.' : undefined}>
+            <Textarea id="booking-note" rows={4} maxLength={200} value={guestNote} disabled={submitting} placeholder="Ví dụ: Cho mình mượn thêm 2 vợt cầu lông…" onChange={event => setGuestNote(event.target.value)} aria-describedby="booking-note-count" />
+          </FormField><p className={styles.noteCount} id="booking-note-count">{guestNote.length}/200 ký tự</p></section>
         </div>
-      </main>
-      <PublicFooter />
+        <aside className={styles.rightColumn} aria-label="Ưu đãi và thanh toán"><div className={styles.paymentCard}>
+          <h2>Ưu đãi & thanh toán</h2><p className={styles.helper}>Một voucher áp dụng cho toàn bộ đơn.</p>
+          <CheckoutVoucherPicker {...voucher} disabled={submitting || Boolean(quote.conflictSessions) || quoteLoading} />
+          <section className={styles.points} aria-labelledby="points-heading"><h3 id="points-heading">Điểm thưởng tại địa điểm</h3>
+            {pointsLoading ? <LoadingState message="Đang tải số dư điểm…" /> : pointsError ? <ErrorState message={uiMessage(pointsError)} onRetry={retryCheckout} /> : <p className={styles.pointBalance}>Số dư: <strong>{availablePoints} điểm</strong> · 1 điểm = {formatVnd(pointValue)}</p>}
+            <FormField htmlFor="checkout-points" label="Số điểm muốn dùng" error={pointValidation || pointSubmitError ? uiMessage(pointValidation || pointSubmitError) : undefined} hint={`Tối đa ${pointsAllowed} điểm · ${checkoutPointPercent}% ${appliedVoucher ? 'số tiền còn lại sau voucher' : 'giá niêm yết'}.`}>
+              <Input id="checkout-points" type="number" min={0} max={pointsAllowed} placeholder="0" value={pointsInput} disabled={submitting || voucherLoading || pointsLoading || Boolean(pointsError)} onChange={event => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
+            </FormField>
+            <label htmlFor="checkout-points-range" className={styles.rangeLabel}>Điều chỉnh số điểm</label><input id="checkout-points-range" className={styles.range} type="range" min={0} max={pointsAllowed} step={1} value={validPoints ? pointsUsed : 0} disabled={submitting || voucherLoading || pointsLoading || Boolean(pointsError) || pointsAllowed === 0} onChange={event => { setPointsInput(event.target.value); setPointSubmitError(''); }} aria-describedby="point-minimum" /><p id="point-minimum" className={styles.helper}>Mỗi lần dùng điểm phải giảm ít nhất 1.000đ. Nhập 0 nếu không dùng điểm.</p>
+          </section>
+          <dl className={styles.pricing}><div><dt>Tạm tính</dt><dd>{formatVnd(pricingSummary.listPrice)}</dd></div><div><dt>Giảm voucher</dt><dd>{pricingSummary.voucherDiscount > 0 ? '−' : ''}{formatVnd(pricingSummary.voucherDiscount)}</dd></div><div><dt>Giảm điểm ({pointsUsed} điểm)</dt><dd>{pricingSummary.pointsDiscount > 0 ? '−' : ''}{formatVnd(pricingSummary.pointsDiscount)}</dd></div><div className={styles.total}><dt>Phải trả</dt><dd>{formatVnd(pricingSummary.finalAmount)}</dd></div></dl>
+          {submitError && !hasConflict && <div ref={feedbackRef} tabIndex={-1} className={styles.submitError} role="alert"><p>{uiMessage(submitError)}</p>{pendingLimit && <Link to="/my-bookings">Lịch đặt sân của tôi →</Link>}</div>}
+          <div className={styles.desktopConfirm}>{confirmButton()}<p id="hold-notice" className={styles.holdNotice}>Giữ chỗ 10 phút sau khi xác nhận để bạn chuyển khoản và gửi chứng từ. Chưa giữ chỗ ở bước xem lại này.</p></div>
+        </div></aside>
+      </div>
+      <div className={styles.mobileBar}><div><span>Phải trả</span><strong>{formatVnd(pricingSummary.finalAmount)}</strong></div>{confirmButton(true)}<p id="mobile-hold-notice">Giữ chỗ 10 phút sau khi xác nhận.</p></div>
+      {confirmPoints && <ConfirmDialog title="Xác nhận dùng điểm" busy={submitting} onCancel={() => setConfirmPoints(false)} onConfirm={() => { setConfirmPoints(false); handleConfirmBooking(); }} message={`Dùng ${pointsUsed} điểm để giảm ${formatVnd(pointsDiscount)}? Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy lịch.`} />}
     </div>
-  );
+  </PublicLayout>;
 }

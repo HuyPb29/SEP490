@@ -3,6 +3,9 @@ import L from 'leaflet'
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import './LocationMap.css'
+import { EmptyState, ErrorState, LoadingState } from '../common'
+import VenueMapDetails from './VenueMapDetails'
+import styles from './VenueMap.module.css'
 
 // Ảnh bản đồ mặc định lấy từ Esri World Street Map, không cần API key.
 // Muốn đổi nguồn ảnh thì đặt VITE_LOCATION_MAP_TILE_URL và VITE_LOCATION_MAP_ATTRIBUTION.
@@ -11,12 +14,13 @@ const DEFAULT_ATTRIBUTION = 'Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NR
 const PIN_ZOOM = 16
 
 // Dùng divIcon thay ảnh marker mặc định của Leaflet (ảnh mặc định bị lỗi đường dẫn khi build bằng Vite).
-const pinIcon = L.divIcon({
-  className: '',
-  html: '<span style="display:block;width:22px;height:22px;border-radius:50% 50% 50% 0;background:#065f46;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);transform:rotate(-45deg)"></span>',
-  iconSize: [22, 22],
-  iconAnchor: [11, 22],
+const venueIcon = (number = '', active = false) => L.divIcon({
+  className: `bms-map-marker ${active ? 'bms-map-marker-active' : ''}`,
+  html: `<span class="bms-map-pin" aria-hidden="true"><span>${number}</span></span>`,
+  iconSize: [44, 44],
+  iconAnchor: [22, 44],
 })
+const pinIcon = venueIcon()
 
 function validPoint(venue) {
   const lat = Number(venue?.latitude)
@@ -32,12 +36,29 @@ function FitToVenues({ positions }) {
   useEffect(() => {
     if (!positions.length) return
     if (positions.length === 1) map.setView(positions[0], PIN_ZOOM)
-    else map.fitBounds(positions, { padding: [24, 24], maxZoom: PIN_ZOOM })
+    else {
+      const attributionHeight = map.getContainer().querySelector('.leaflet-control-attribution')?.offsetHeight || 40
+      map.fitBounds(positions, { paddingTopLeft: [36, 48], paddingBottomRight: [36, attributionHeight + 44], maxZoom: PIN_ZOOM })
+    }
   }, [map, key]) // eslint-disable-line react-hooks/exhaustive-deps
   return null
 }
 
 const pinKey = (lat, lng) => `${Number(lat.toFixed(6))},${Number(lng.toFixed(6))}`
+
+function ResizeMap() {
+  const map = useMap()
+  useEffect(() => {
+    let frame
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => map.invalidateSize({ animate: false }))
+    })
+    observer.observe(map.getContainer())
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [map])
+  return null
+}
 
 /**
  * Chế độ chọn: bấm vào bản đồ để đặt ghim. Ghim do người dùng bấm hoặc kéo thì giữ nguyên khung nhìn;
@@ -45,6 +66,12 @@ const pinKey = (lat, lng) => `${Number(lat.toFixed(6))},${Number(lng.toFixed(6))
  */
 function PickHandler({ pin, onPick, disabled, userPickRef }) {
   const map = useMapEvents({
+    keypress(event) {
+      if (disabled || event.originalEvent.key !== 'Enter') return
+      const { lat, lng } = map.getCenter().wrap()
+      userPickRef.current = pinKey(lat, lng)
+      onPick(lat, lng)
+    },
     click(event) {
       if (disabled) return
       // wrap(): bản đồ lặp theo chiều ngang, đưa kinh độ về khoảng -180..180 trước khi lưu.
@@ -61,15 +88,18 @@ function PickHandler({ pin, onPick, disabled, userPickRef }) {
   return null
 }
 
-export default function LocationMap({ venues, onSelect, onPick, initialCenter, pickDisabled = false }) {
+export default function LocationMap({ venues, onSelect, onPick, initialCenter, pickDisabled = false, activeVenueId }) {
   const [selectedId, setSelectedId] = useState(null)
+  const [tileStatus, setTileStatus] = useState('loading')
+  const [tileAttempt, setTileAttempt] = useState(0)
+  const markerRefs = useRef({})
   const userPickRef = useRef('')
   const points = useMemo(() => venues.filter(validPoint), [venues])
   const positions = useMemo(() => points.map((venue) => [Number(venue.latitude), Number(venue.longitude)]), [points])
   const selected = points.find((venue) => venue.facility_id === selectedId)
   const picking = Boolean(onPick)
 
-  if (!picking && !positions.length) return <p>Chưa có địa điểm có tọa độ để hiển thị.</p>
+  if (!picking && !positions.length) return <EmptyState title="Địa điểm chưa có tọa độ" description="Chọn địa điểm trong danh sách để tiếp tục xem lịch sân." />
 
   const configuredTemplate = import.meta.env.VITE_LOCATION_MAP_TILE_URL
   const tileUrl = configuredTemplate || DEFAULT_TILE_URL
@@ -77,10 +107,13 @@ export default function LocationMap({ venues, onSelect, onPick, initialCenter, p
   const start = positions[0] ?? [Number(initialCenter?.latitude ?? 21.028511), Number(initialCenter?.longitude ?? 105.854444)]
   const pin = picking ? positions[0] ?? null : null
 
-  return <section aria-label="Bản đồ địa điểm" className="relative">
+  return <section aria-label="Bản đồ địa điểm" className={styles.frame}>
+    {tileStatus === 'error' && <div className={styles.notice}><ErrorState message="Không tải được nền bản đồ. Các ghim và danh sách địa điểm vẫn dùng được." onRetry={() => { setTileStatus('loading'); setTileAttempt((value) => value + 1) }} /></div>}
+    {tileStatus === 'loading' && <div className={styles.loading}><LoadingState message="Đang tải nền bản đồ…" /></div>}
     <MapContainer center={start} zoom={positions.length ? PIN_ZOOM : 12} scrollWheelZoom
-      style={{ width: '100%', aspectRatio: '1 / 1', borderRadius: 12, cursor: picking && !pickDisabled ? 'crosshair' : undefined }}>
-      <TileLayer url={tileUrl} attribution={attribution} />
+      className={styles.canvas} style={{ cursor: picking && !pickDisabled ? 'crosshair' : undefined }}>
+      <ResizeMap />
+      <TileLayer key={tileAttempt} url={tileUrl} attribution={attribution} eventHandlers={{ load: () => setTileStatus((value) => value === 'error' ? value : 'ready'), tileerror: () => setTileStatus('error') }} />
       {picking
         ? <>
           <PickHandler pin={pin} onPick={onPick} disabled={pickDisabled} userPickRef={userPickRef} />
@@ -94,15 +127,26 @@ export default function LocationMap({ venues, onSelect, onPick, initialCenter, p
         : <>
           <FitToVenues positions={positions} />
           {points.map((venue, index) =>
-            <Marker key={venue.facility_id} position={positions[index]} icon={pinIcon}
-              title={'Ghim ' + (venue.facility_name ?? '')} alt={'Ghim ' + (venue.facility_name ?? '')}
-              eventHandlers={{ click: () => setSelectedId(venue.facility_id) }} />)}
+            <Marker key={venue.facility_id} position={positions[index]}
+              ref={(marker) => { if (marker) markerRefs.current[venue.facility_id] = marker; else delete markerRefs.current[venue.facility_id] }}
+              icon={venueIcon(venues.indexOf(venue) + 1, String(venue.facility_id) === String(activeVenueId) || venue.facility_id === selectedId)}
+              zIndexOffset={String(venue.facility_id) === String(activeVenueId) || venue.facility_id === selectedId ? 1000 : 0}
+              title={`Ghim ${venues.indexOf(venue) + 1}: ${venue.facility_name ?? ''}`} alt={`Ghim ${venues.indexOf(venue) + 1}: ${venue.facility_name ?? ''}`}
+              eventHandlers={{
+                click: () => setSelectedId(venue.facility_id),
+                keydown: (event) => {
+                  if (event.originalEvent.key === 'Enter' || event.originalEvent.key === ' ') {
+                    event.originalEvent.preventDefault()
+                    setSelectedId(venue.facility_id)
+                  }
+                },
+              }} />)}
         </>}
     </MapContainer>
-    {selected && <div className="mt-2 rounded-lg border border-emerald-200 p-3">
-      <strong>{selected.facility_name}</strong>
-      <p>{selected.address}</p>
-      <button type="button" className="underline" onClick={() => onSelect(selected)}>Xem địa điểm</button>
-    </div>}
+    {selected && <VenueMapDetails venue={selected} onSelect={onSelect} onClose={() => {
+      const marker = markerRefs.current[selectedId]
+      setSelectedId(null)
+      requestAnimationFrame(() => marker?.getElement()?.focus())
+    }} />}
   </section>
 }

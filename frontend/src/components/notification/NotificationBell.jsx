@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   apiErrorMessage,
@@ -11,6 +11,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { notificationMessage } from '../../utils/formatters';
 import styles from './NotificationBell.module.css';
 import { notificationDestination } from '../../utils/notificationNavigation';
+import { Button, EmptyState, ErrorState, LoadingState } from '../common';
 
 /** Nhãn + màu cho từng loại thông báo do job tự động sinh ra. */
 const TYPE_META = {
@@ -57,6 +58,11 @@ export default function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [markingAll, setMarkingAll] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const pendingMarkAll = useRef(false);
+  const triggerRef = useRef(null);
+  const panelId = useId();
   const wrapperRef = useRef(null);
 
   const loadUnread = useCallback(async () => {
@@ -107,7 +113,10 @@ export default function NotificationBell() {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setOpen(false);
     };
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -146,23 +155,34 @@ export default function NotificationBell() {
   };
 
   const handleMarkAll = async () => {
+    if (pendingMarkAll.current) return;
+    pendingMarkAll.current = true;
+    setMarkingAll(true);
+    setFeedback('');
     try {
       await markAllNotificationsRead();
       setItems((current) => current.map((entry) => ({ ...entry, read: true })));
       setUnread(0);
       setError('');
+      setFeedback('Đã đánh dấu tất cả thông báo là đã đọc.');
     } catch (err) {
       setError(apiErrorMessage(err));
+    } finally {
+      pendingMarkAll.current = false;
+      setMarkingAll(false);
     }
   };
 
   return (
     <div className={styles.wrapper} ref={wrapperRef}>
       <button
+        ref={triggerRef}
         className={styles.bellButton}
         type="button"
         aria-label={unread > 0 ? `Thông báo, ${unread} chưa đọc` : 'Thông báo'}
         aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        aria-haspopup="dialog"
         onClick={toggle}
       >
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
@@ -175,21 +195,22 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className={styles.panel} role="dialog" aria-label="Thông báo">
+        <div id={panelId} className={styles.panel} role="dialog" aria-label="Thông báo">
           <div className={styles.panelHeader}>
             <strong>Thông báo</strong>
-            <button className={styles.markAll} type="button" onClick={handleMarkAll} disabled={unread === 0}>
+            <Button variant="ghost" size="sm" className={styles.markAll} onClick={handleMarkAll} disabled={unread === 0 || loading} loading={markingAll}>
               Đánh dấu đã đọc hết
-            </button>
+            </Button>
           </div>
 
-          {error && <p className={styles.error}>{error}</p>}
-          {loading && <p className={styles.empty}>Đang tải thông báo…</p>}
-          {!loading && items.length === 0 && (
-            <p className={styles.empty}>Chưa có thông báo mới.</p>
+          {error && <ErrorState message={error} onRetry={loadPreview} />}
+          {feedback && <p role="status" className={styles.feedback}>{feedback}</p>}
+          {loading && <LoadingState message="Đang tải thông báo…" />}
+          {!loading && !error && items.length === 0 && (
+            <EmptyState title="Chưa có thông báo mới" description="Thông tin về lịch đặt và hoạt động sẽ xuất hiện tại đây." action={<Button variant="secondary" size="sm" onClick={loadPreview}>Làm mới</Button>} />
           )}
 
-          <ul className={styles.list}>
+          <ul className={styles.list} hidden={loading}>
             {items.map((item) => {
               const meta = TYPE_META[item.type] ?? { label: 'Thông báo', tone: 'info' };
               return (
@@ -205,7 +226,7 @@ export default function NotificationBell() {
                       <span className={styles.itemTitle}>{notificationMessage(item.title)}</span>
                       <span className={styles.itemContent}>{notificationMessage(item.content)}</span>
                       <span className={styles.itemMeta}>
-                        {meta.label} · {relativeTime(item.createdAt)}
+                        {item.read ? 'Đã đọc' : 'Chưa đọc'} · {meta.label} · {relativeTime(item.createdAt)}
                       </span>
                     </span>
                   </button>

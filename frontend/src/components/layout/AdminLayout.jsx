@@ -74,6 +74,7 @@ export default function AdminLayout({
         </div>
 
         <nav className={styles.sidebarNav} aria-label="Menu quản trị">
+          <p className={styles.navGroup}>Quản trị hệ thống</p>
           {renderNavLinks(false)}
         </nav>
       </aside>
@@ -139,6 +140,7 @@ export default function AdminLayout({
             </div>
 
             <nav className={styles.drawerNav} aria-label="Menu quản trị di động">
+              <p className={styles.navGroup}>Quản trị hệ thống</p>
               {renderNavLinks(true)}
             </nav>
         </NavigationDrawer>

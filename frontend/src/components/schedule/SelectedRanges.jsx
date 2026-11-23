@@ -1,4 +1,4 @@
-import { formatVnd } from '../../utils/formatters'
+import { money } from '../../utils/formatters'
 import styles from './ScheduleGrid.module.css'
 
 const WEEKDAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
@@ -14,9 +14,9 @@ export default function SelectedRanges({ ranges, onRemove, showDate = false, sho
   return <ul className={styles.chips} aria-label="Các khung giờ đã chọn">
     {ranges.map((range) => {
       const text = [showDate && range.date && dayLabel(range.date), range.courtName,
-        `${range.startTime}–${range.endTime}`, showPrice && formatVnd(range.amount)].filter(Boolean).join(' · ')
+        `${range.startTime}–${range.endTime}`, `${range.items.length} slot`, showPrice && money(range.amount).replace(/\s*₫/, 'đ')].filter(Boolean).join(' · ')
       return <li key={`${range.date}|${range.courtId}|${range.startMinute}`} className={styles.chip}>
-        {text}
+        <span className={styles.chipText}>{text}</span>
         {onRemove && <button type="button" className={styles.chipRemove} aria-label={'Bỏ ' + text}
           onClick={() => onRemove(range)}>×</button>}
       </li>

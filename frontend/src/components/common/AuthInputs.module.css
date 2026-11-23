@@ -1,0 +1,13 @@
+.passwordWrap { position: relative; }
+.passwordInput { padding-right: 64px; }
+.toggle { position: absolute; inset-inline-end: 0; top: 0; min-width: 56px; min-height: 44px; height: 100%; border: 0; background: transparent; color: var(--color-primary); font-weight: 600; cursor: pointer; border-radius: var(--radius-sm); }
+.strength { display: grid; gap: var(--space-1); color: var(--color-text-secondary); font-size: var(--text-xs); }
+.strength small { color: var(--color-text-muted); }
+.strengthTrack { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-1); }
+.strengthTrack span { height: 4px; background: var(--color-border); border-radius: var(--radius-full); }
+.strengthTrack span[data-filled="true"] { background: var(--color-primary); }
+.otpField { border: 0; padding: 0; margin: 0; min-width: 0; }
+.otpField legend { font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-2); }
+.otpCells { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--space-2); }
+.otpCells input { padding: 0; text-align: center; height: 52px; font-size: var(--text-xl); font-weight: 600; }
+.error { color: var(--color-danger); font-size: var(--text-sm); margin: var(--space-2) 0 0; }
