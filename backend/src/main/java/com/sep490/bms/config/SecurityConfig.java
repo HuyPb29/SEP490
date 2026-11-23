@@ -63,7 +63,8 @@ public class SecurityConfig {
                 .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll()
                 .requestMatchers("/api/auth/logout").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/service-registrations").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/service-registrations",
+                    "/api/service-registrations/check").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/service-registrations/payment-info",
                     "/api/service-registrations/payment-info/qr").permitAll()
                 .requestMatchers("/swagger-ui", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()

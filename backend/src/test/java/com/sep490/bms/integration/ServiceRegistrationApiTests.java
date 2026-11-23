@@ -222,6 +222,59 @@ class ServiceRegistrationApiTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(before));
     }
 
+    /** D181: form gọi API kiểm tra trước khi hiện QR; cùng các lỗi như lúc gửi, không lưu đơn nào. */
+    @Test
+    void checkFindsContactAndVenueProblemsBeforePaymentWithoutSaving() throws Exception {
+        var pending = form("pending" + suffix + "@example.com", true);
+        submit(pending, 201);
+        int before = jdbc.queryForObject("SELECT COUNT(*) FROM service_registration", Integer.class);
+
+        // Chưa đến bước điều khoản: termsAccepted = false vẫn qua kiểm tra.
+        check(form("fresh" + suffix + "@example.com", false), null, 200);
+        mvc.perform(post("/api/service-registrations/check").contentType("application/json")
+                        .content(json.writeValueAsString(form(admin.getEmail(), false))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("MSG103")));
+        var usedPhone = form("phone" + suffix + "@example.com", false);
+        usedPhone.put("contactPhone", admin.getPhone());
+        check(usedPhone, null, 409);
+        var pendingEmail = form(pending.get("contactEmail").toString(), false);
+        check(pendingEmail, null, 409);
+        var invalidPhone = form("bad" + suffix + "@example.com", false);
+        invalidPhone.put("contactPhone", "12345");
+        check(invalidPhone, null, 400);
+
+        Account player = accounts.saveAndFlush(Account.builder().username("p" + suffix).email("p" + suffix + "@example.com")
+                .phone(phone()).fullName("Player test").passwordHash("unused").role(Role.PLAYER)
+                .status(AccountStatus.ACTIVE).build());
+        check(form("x" + suffix + "@example.com", false), player, 403);
+
+        Account owner = accounts.saveAndFlush(Account.builder().username("o" + suffix).email("o" + suffix + "@example.com")
+                .phone(phone()).fullName("Owner test").passwordHash("unused").role(Role.OWNER)
+                .status(AccountStatus.ACTIVE).build());
+        mvc.perform(multipart("/api/service-registrations").file(data(form(null, true)))
+                        .file(new MockMultipartFile("proof", "ck.png", "image/png", new byte[] {1}))
+                        .header("Authorization", token(owner)))
+                .andExpect(status().isCreated());
+        int afterOwnerSubmit = before + 1;
+        check(form(null, false), owner, 409);
+        var otherVenue = form(null, false);
+        otherVenue.put("locationName", "Sân khác " + suffix);
+        check(otherVenue, owner, 200);
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM service_registration", Integer.class))
+                .isEqualTo(afterOwnerSubmit);
+    }
+
+    private void check(Map<String, Object> form, Account user, int expectedStatus) throws Exception {
+        var request = post("/api/service-registrations/check").contentType("application/json")
+                .content(json.writeValueAsString(form));
+        if (user != null) {
+            request.header("Authorization", token(user));
+        }
+        mvc.perform(request).andExpect(status().is(expectedStatus));
+    }
+
     private void submit(Map<String, Object> form, int expectedStatus) throws Exception {
         mvc.perform(multipart("/api/service-registrations").file(data(form))
                         .file(new MockMultipartFile("proof", "ck.png", "image/png", new byte[] {1})))
