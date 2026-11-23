@@ -1,19 +1,79 @@
-/* UC07 – Hồ sơ địa điểm: thông tin chung, quy tắc đặt sân, thanh toán & QR. */
+/* UC07, UC36 – Cài đặt địa điểm: hồ sơ, nhận chuyển khoản, chính sách, thời hạn dịch vụ, tải dữ liệu. */
 
-.subtitle {
-  max-width: 720px;
-  margin: -6px 0 14px;
-  color: #6b7789;
-  font-size: 11px;
-  line-height: 1.55;
+.layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+  padding-bottom: var(--space-8);
 }
 
+/* ---------------------------------------------------------------- mục lục */
+
+.toc {
+  position: sticky;
+  top: var(--space-4);
+}
+
+.toc ol {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toc a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-secondary);
+  border-left: 2px solid var(--color-border);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.toc a:hover {
+  color: var(--color-primary);
+  border-left-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.dirtyDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--color-warning);
+  border-radius: var(--radius-full);
+}
+
+.content {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------- khối */
+
 .card {
-  margin-bottom: 14px;
-  padding: 15px;
-  background: #fff;
-  border: 1px solid #e3e7ed;
-  border-radius: 15px;
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  scroll-margin-top: var(--space-4);
+}
+
+.card:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .cardHeader {
@@ -21,252 +81,252 @@
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px 16px;
-  margin-bottom: 12px;
+  gap: var(--space-2) var(--space-4);
 }
 
 .cardTitle {
   margin: 0;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 730;
+  color: var(--color-text);
+  font-size: var(--text-lg);
+  font-weight: 700;
 }
 
 .cardHint {
-  margin: 4px 0 0;
-  color: #7d899b;
-  font-size: 10px;
-  line-height: 1.5;
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
 }
 
-/* ---------------------------------------------------------------- fields */
+.cardFooter {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
 
-/* Lưới cố định 3 cột để hàng luôn kín, không phụ thuộc bề rộng cửa sổ. */
+.footerActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* ServiceRenewals là component dùng chung có khung riêng; trong khối này thì bỏ khung. */
+.card :global(.cw-section) {
+  margin-bottom: 0 !important;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+/* ---------------------------------------------------------------- trường */
+
 .fieldGrid {
   display: grid;
-  gap: 10px 14px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-/* Khối chỉ có 2 ô thì dùng lưới 2 cột, tránh ô trống bên phải. */
-.fieldGridNarrow {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  max-width: 640px;
-}
-
-.field {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.field > span {
-  color: #6b7789;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
-.field input {
-  min-height: 32px;
-  padding: 0 9px;
-  color: #172033;
-  background: #fff;
-  border: 1px solid #dfe5ee;
-  border-radius: 7px;
-  font: inherit;
-  font-size: 11px;
-}
-
-.field input:focus {
-  border-color: #16a34a;
-  outline: 2px solid #d8f0e1;
+  gap: var(--space-4);
 }
 
 .fieldWide {
   grid-column: 1 / -1;
 }
 
-.note {
-  margin: 10px 0 0;
-  color: #7d899b;
-  font-size: 10px;
-  line-height: 1.5;
+.fieldStack {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.fieldLabel {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.accountNo {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* --------------------------------------------------------------- bản đồ */
+
+.mapBlock {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.mapHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.map {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 /* -------------------------------------------------------------------- QR */
 
-.qrBox {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 11px;
-  padding: 9px 11px;
-  background: #f9fbfc;
-  border: 1px solid #eef1f5;
-  border-radius: 11px;
+.bankLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.qrPanel {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.qrFrame {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: var(--space-3);
+  background: var(--color-surface-muted);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
 }
 
 .qrImage {
-  width: 74px;
-  height: 74px;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  background: #fff;
-  border: 1px solid #e3e7ed;
-  border-radius: 8px;
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
 }
 
-.qrHint {
-  color: #8592a6;
-  font-size: 10px;
+.qrEmpty {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 
-/* ---------------------------------------------------------------- actions */
+/* ------------------------------------------------------------- thông tin */
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 14px;
-}
-
-.primaryButton {
-  min-height: 34px;
-  padding: 0 17px;
-  color: #fff;
-  background: #16a34a;
-  border: 1px solid #128044;
-  border-radius: 8px;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.primaryButton:hover:not(:disabled) {
-  background: #128044;
-}
-
-.primaryButton:disabled {
-  color: #eef2f5;
-  background: #a7bdb1;
-  border-color: #a7bdb1;
-  cursor: not-allowed;
-}
-
-.ghostButton {
-  min-height: 32px;
-  padding: 0 13px;
-  color: #33415c;
-  background: #f6f8fa;
-  border: 1px solid #dfe5ee;
-  border-radius: 8px;
-  font: inherit;
-  font-size: 10px;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.ghostButton:hover:not(:disabled) {
-  background: #eef1f5;
-}
-
-.ghostButton:disabled {
-  color: #a4aebd;
-  cursor: not-allowed;
-}
-
-.dirtyHint {
-  color: #8592a6;
-  font-size: 10px;
-  font-weight: 600;
-}
-
-/* ------------------------------------------------------------------- meta */
-
-.metaGrid {
+.facts {
   display: grid;
-  gap: 12px 18px;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: var(--space-3);
   margin: 0;
 }
 
-.metaGrid dt {
-  color: #8592a6;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+.facts > div {
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-md);
 }
 
-.metaGrid dd {
-  margin: 3px 0 0;
-  color: #172033;
-  font-size: 11px;
-  font-weight: 650;
+.facts dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
 }
 
-.badge {
-  display: inline-block;
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: 750;
-  letter-spacing: 0.03em;
+.facts dd {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.badgeActive {
-  color: #12633c;
-  background: #e7f6ec;
+.exportRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
 }
 
-.badgeLocked {
-  color: #92400e;
-  background: #fffaeb;
+.exportRow > * {
+  flex: 0 1 200px;
 }
 
-/* ---------------------------------------------------------------- alerts */
-
-.alertError,
-.alertOk,
-.alertWarn {
-  margin: 10px 0;
-  padding: 8px 11px;
-  border-radius: 9px;
-  font-size: 10px;
-  line-height: 1.5;
+.exportButton {
+  flex: none;
+  margin-top: calc(var(--text-sm) * 1.5 + var(--space-2));
 }
 
-.alertError {
-  color: #b42318;
-  background: #fef4f4;
-  border: 1px solid #fadcd9;
+/* ------------------------------------------------------------------ báo */
+
+.notice {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  line-height: 1.6;
 }
 
-.alertOk {
-  color: #12633c;
-  background: #effaf2;
-  border: 1px solid #cbead6;
+.noticeDanger {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
 }
 
-.alertWarn {
-  color: #92400e;
-  background: #fffaeb;
-  border: 1px solid #fde9b8;
+.formError {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
 }
 
-@media (max-width: 900px) {
-  .fieldGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (width < 1024px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .toc {
+    position: static;
+    overflow-x: auto;
+  }
+
+  .toc ol {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .toc a {
+    white-space: nowrap;
+    border-left: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    background: var(--color-surface);
   }
 }
 
-@media (max-width: 640px) {
+@media (width < 640px) {
+  .card {
+    padding: var(--space-4);
+  }
+
   .fieldGrid,
-  .fieldGridNarrow {
-    grid-template-columns: minmax(0, 1fr);
+  .bankLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .qrPanel {
+    max-width: 280px;
+  }
+
+  .exportRow > * {
+    flex: 1 1 100%;
+  }
+
+  .exportButton {
+    margin-top: 0;
+  }
+
+  .footerActions > * {
+    flex: 1 1 auto;
   }
 }
