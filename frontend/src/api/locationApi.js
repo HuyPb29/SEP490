@@ -154,6 +154,15 @@ export async function getServiceRegistrationPaymentInfo() {
 }
 
 /**
+ * POST /api/service-registrations/check — kiểm tra thông tin đơn trước khi hiện QR (FR10, D181), không lưu gì.
+ * Lỗi trả 400/409 kèm câu báo như lúc gửi.
+ */
+export async function checkServiceRegistration(payload) {
+  const { data } = await api.post('/service-registrations/check', payload)
+  return data
+}
+
+/**
  * POST /api/service-registrations (multipart): phần "data" là JSON đơn, phần "proof" là ảnh chứng từ.
  * Trả nguyên body để lấy câu MSG99 trong message.
  */

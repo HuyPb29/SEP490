@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import api, { apiErrorMessage } from '../../api';
-import { getServiceRegistrationPaymentInfo, operatorQrUrl, submitServiceRegistration } from '../../api/locationApi';
+import { checkServiceRegistration, getServiceRegistrationPaymentInfo, operatorQrUrl, submitServiceRegistration } from '../../api/locationApi';
 import { useAuth } from '../../hooks/useAuth';
 import LocationMap from '../../components/map/LocationMap';
 import GoogleLocationPicker, { hasGoogleMapsKey, loadMaps } from '../../components/map/GoogleLocationPicker';
@@ -28,6 +28,8 @@ const MAX_RENTAL_YEARS = 10;
  * UC05 - Đăng ký sử dụng dịch vụ (FR10, BR61, BR65, DR19, P35; D168, D169).
  * Guest (hoặc Owner đăng ký thêm địa điểm) nhập địa điểm, số sân, số năm thuê; form tự tính tiền thuê,
  * hiện QR của bên vận hành và điều khoản; chủ sân chuyển khoản, đính kèm ảnh chứng từ, đồng ý điều khoản rồi gửi.
+ * D181: QR, ô ảnh chứng từ và điều khoản chỉ hiện sau khi backend kiểm tra thông tin (email, số điện thoại,
+ * đơn chờ duyệt trùng, địa điểm trùng); sửa thông tin sau đó thì phải kiểm tra lại.
  */
 export default function ServiceRegistrationPage() {
   const { user } = useAuth();
@@ -74,6 +76,10 @@ export default function ServiceRegistrationPage() {
   const mapLookupVersion = useRef(0);
   const submitInProgress = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formRef = useRef(null);
+  // D181: khóa của thông tin đã qua kiểm tra; thông tin hiện tại khác khóa này thì phải kiểm tra lại mới hiện QR.
+  const [checkedKey, setCheckedKey] = useState('');
+  const [isChecking, setIsChecking] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState('');
   const successHeading = useRef(null);
   useEffect(() => { if (submitSuccess) successHeading.current?.focus(); }, [submitSuccess]);
@@ -135,6 +141,23 @@ export default function ServiceRegistrationPage() {
   const amount = rentalAmount(formData.courtCount, formData.rentalYears,
     paymentInfo?.referenceFee, paymentInfo?.referenceCourts);
 
+  /** Thông tin đơn gửi lên backend (không gồm điều khoản và ảnh chứng từ). */
+  const buildPayload = () => ({
+    locationName: formData.locationName.trim(),
+    address,
+    latitude: Number(formData.latitude),
+    longitude: Number(formData.longitude),
+    courtCount: Number(formData.courtCount),
+    rentalYears: Number(formData.rentalYears),
+    ...(!isOwner && {
+      contactName: formData.contactName.trim(),
+      contactPhone: formData.contactPhone.trim(),
+      contactEmail: formData.contactEmail.trim(),
+    }),
+  });
+  const payloadKey = JSON.stringify(buildPayload());
+  const verified = checkedKey !== '' && checkedKey === payloadKey;
+
   const clearFieldError = (field) => {
     setFieldErrors(({ [field]: _removed, ...rest }) => rest);
   };
@@ -164,6 +187,8 @@ export default function ServiceRegistrationPage() {
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    // Đã sửa thông tin thì câu lỗi của lần kiểm tra/gửi trước (vd. email đã có tài khoản) không còn đúng.
+    setSubmitError('');
     if (fieldErrors[field]) {
       setFieldErrors((prev) => {
         const next = { ...prev };
@@ -181,6 +206,7 @@ export default function ServiceRegistrationPage() {
     }));
     setFieldErrors(({ latitude: _latitude, longitude: _longitude, ...rest }) => rest);
     setLocationError('');
+    setSubmitError('');
   };
 
   const handleAddressChange = (field, value) => {
@@ -203,6 +229,7 @@ export default function ServiceRegistrationPage() {
     });
     setMapAddress('');    setMapAddressError('');
     setLocationError('');
+    setSubmitError('');
   };
 
   const lookupMapAddress = async (request) => {
@@ -258,7 +285,8 @@ export default function ServiceRegistrationPage() {
     );
   };
 
-  const getValidationErrors = () => {
+  /** payment = false: bỏ qua ảnh chứng từ và điều khoản (chưa đến bước chuyển khoản, D181). */
+  const getValidationErrors = ({ payment = true } = {}) => {
     const errors = {};
 
     if (!formData.locationName.trim()) {
@@ -292,10 +320,10 @@ export default function ServiceRegistrationPage() {
       errors.rentalYears = `Số năm thuê tối đa là ${MAX_RENTAL_YEARS} năm.`;
     }
 
-    if (!proofFile) {
+    if (payment && !proofFile) {
       errors.proof = 'Vui lòng đính kèm ảnh chứng từ chuyển khoản tiền thuê.';
     }
-    if (!termsAccepted) {
+    if (payment && !termsAccepted) {
       errors.terms = 'Vui lòng đọc và đồng ý điều khoản sử dụng dịch vụ.';
     }
 
@@ -315,6 +343,57 @@ export default function ServiceRegistrationPage() {
     return errors;
   };
 
+  /** Hiện lỗi kiểm tra ở form: chuyển tới bước có trường sai đầu tiên và đưa con trỏ vào trường đó. */
+  const showValidationErrors = (validationErrors) => {
+    setFieldErrors(validationErrors);
+    const firstError = Object.keys(validationErrors)[0];
+    if (!firstError) return false;
+    setStep(stepForField(firstError));
+    const fieldId = { address: 'addressDetail', latitude: 'registration-map' }[firstError] || firstError;
+    if (stepForField(firstError) !== step) pendingFocus.current = fieldId;
+    const form = formRef.current;
+    const field = form?.querySelector('[id="' + fieldId + '"]');
+    const target = firstError === 'proof' ? form?.querySelector('label[for="proof"]') : field;
+    requestAnimationFrame(() => { target?.scrollIntoView({ behavior: 'smooth', block: 'center' }); field?.focus({ preventScroll: true }); });
+    return true;
+  };
+
+  /** Lỗi từ backend (kiểm tra hoặc gửi): email, số điện thoại, địa điểm trùng thì chuyển về đúng trường. */
+  const showServerError = (err, fallback) => {
+    const message = apiErrorMessage(err, fallback);
+    setSubmitError(message);
+    const field = /email/i.test(message) ? 'contactEmail'
+      : /số điện thoại/i.test(message) ? 'contactPhone'
+        : /^Địa điểm này/i.test(message) ? 'locationName' : null;
+    if (!field || (isOwner && field !== 'locationName')) return;
+    // Thông tin này phải sửa và kiểm tra lại trước khi chuyển khoản.
+    setCheckedKey('');
+    setFieldErrors((current) => ({ ...current, [field]: message }));
+    pendingFocus.current = field;
+    setStep(stepForField(field));
+    requestAnimationFrame(() => document.getElementById(field)?.focus());
+  };
+
+  /** D181: kiểm tra thông tin ở backend (không lưu gì); qua thì mới sang bước chuyển khoản, hiện QR. */
+  const handleCheck = async () => {
+    if (addressDisabled || isChecking || submitInProgress.current || !canSubmit) return;
+    setSubmitSuccess('');
+    setSubmitError('');
+    if (showValidationErrors(getValidationErrors({ payment: false }))) return;
+
+    const key = payloadKey;
+    setIsChecking(true);
+    try {
+      await checkServiceRegistration(buildPayload());
+      setCheckedKey(key);
+      setStep(3);
+    } catch (err) {
+      showServerError(err, 'Không kiểm tra được thông tin. Vui lòng thử lại.');
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (addressDisabled || submitInProgress.current) return;
@@ -322,41 +401,18 @@ export default function ServiceRegistrationPage() {
     setSubmitError('');
 
     if (!canSubmit) return;
-
-    const validationErrors = getValidationErrors();
-    setFieldErrors(validationErrors);
-    const firstError = Object.keys(validationErrors)[0];
-    if (firstError) {
-      setStep(stepForField(firstError));
-      const fieldId = { address: 'addressDetail', latitude: 'registration-map' }[firstError] || firstError;
-      if (stepForField(firstError) !== step) pendingFocus.current = fieldId;
-      const field = e.currentTarget.querySelector('[id="' + fieldId + '"]');
-      const target = firstError === 'proof' ? e.currentTarget.querySelector('label[for="proof"]') : field;
-      requestAnimationFrame(() => { target?.scrollIntoView({ behavior: 'smooth', block: 'center' }); field?.focus({ preventScroll: true }); });
+    if (!verified) {
+      handleCheck();
       return;
     }
+    if (showValidationErrors(getValidationErrors())) return;
 
     submitInProgress.current = true;
     mapLookupVersion.current += 1;
     setLookingUpAddress(false);
     setIsSubmitting(true);
     try {
-      const payload = {
-        locationName: formData.locationName.trim(),
-        address,
-        latitude: Number(formData.latitude),
-        longitude: Number(formData.longitude),
-        courtCount: Number(formData.courtCount),
-        rentalYears: Number(formData.rentalYears),
-        termsAccepted,
-        ...(!isOwner && {
-          contactName: formData.contactName.trim(),
-          contactPhone: formData.contactPhone.trim(),
-          contactEmail: formData.contactEmail.trim(),
-        }),
-      };
-
-      const res = await submitServiceRegistration(payload, proofFile);
+      const res = await submitServiceRegistration({ ...buildPayload(), termsAccepted }, proofFile);
       // MSG99 do backend trả về, có email nhận kết quả.
       setStep(3);
       setSubmitSuccess(res?.message || 'Đã gửi yêu cầu đăng ký.');
@@ -374,17 +430,10 @@ export default function ServiceRegistrationPage() {
       setProofPreview('');
       setTermsAccepted(false);
       setFieldErrors({});
+      setCheckedKey('');
       loadMyRegistrations();
     } catch (err) {
-      const message = apiErrorMessage(err, 'Không thể gửi đơn đăng ký. Vui lòng kiểm tra lại thông tin.');
-      setSubmitError(message);
-      if (!isOwner && /email|số điện thoại/i.test(message)) {
-        const field = /email/i.test(message) ? 'contactEmail' : 'contactPhone';
-        setFieldErrors((current) => ({ ...current, [field]: message }));
-        pendingFocus.current = field;
-        setStep(2);
-        requestAnimationFrame(() => document.getElementById(field)?.focus());
-      }
+      showServerError(err, 'Không thể gửi đơn đăng ký. Vui lòng kiểm tra lại thông tin.');
     } finally {
       submitInProgress.current = false;
       setIsSubmitting(false);
@@ -404,6 +453,11 @@ export default function ServiceRegistrationPage() {
     const first = Object.keys(currentErrors)[0];
     if (first) {
       document.getElementById(first === 'latitude' ? 'registration-map' : first === 'address' ? 'addressDetail' : first)?.focus();
+      return;
+    }
+    // D181: rời bước Người đại diện là bấm Kiểm tra thông tin; qua kiểm tra mới sang bước chuyển khoản.
+    if (step === 2 && !verified) {
+      handleCheck();
       return;
     }
     setStep(current => Math.min(3, current + 1));
@@ -445,10 +499,10 @@ export default function ServiceRegistrationPage() {
         <div className={styles.formLayout}>
           <section className={styles.card} aria-labelledby="step-title">
             <div className={styles.sectionHeading}><p className={styles.eyebrow}>Bước {step + 1} / 4</p><h2 ref={stepHeading} id="step-title" tabIndex={-1}>{steps[step]}</h2>
-              <p>{['Cho người chơi biết tên, địa chỉ và quy mô sân của bạn.', 'Đặt ghim chính xác để người chơi tìm đường đến sân.', isOwner ? 'Thông tin liên hệ được lấy từ tài khoản Chủ sân của bạn.' : 'Thông tin để nhận kết quả xét duyệt và quyền truy cập tài khoản.', 'Kiểm tra thông tin, đính kèm chứng từ và đồng ý điều khoản trước khi gửi.'][step]}</p>
+              <p>{['Cho người chơi biết tên, địa chỉ và quy mô sân của bạn.', 'Đặt ghim chính xác để người chơi tìm đường đến sân.', isOwner ? 'Thông tin liên hệ được lấy từ tài khoản Chủ sân của bạn.' : 'Thông tin để nhận kết quả xét duyệt và quyền truy cập tài khoản.', verified ? 'Thông tin đã được kiểm tra. Chuyển khoản, đính kèm chứng từ và đồng ý điều khoản trước khi gửi.' : 'Hệ thống kiểm tra thông tin trước khi hiện thông tin chuyển khoản.'][step]}</p>
             </div>
             <p className={styles.requiredNote}>Các trường có dấu <span aria-hidden="true">*</span> là bắt buộc.</p>
-            <form noValidate onSubmit={event => { if (step < 3) { event.preventDefault(); nextStep(); } else handleSubmit(event); }} aria-busy={isSubmitting}>
+            <form ref={formRef} noValidate onSubmit={event => { if (step < 3) { event.preventDefault(); nextStep(); } else handleSubmit(event); }} aria-busy={isSubmitting || isChecking}>
               <div hidden={step !== 0} className={styles.stepBody}>
                 <FormField label="Tên địa điểm sân" required error={errorText('locationName')}><Input id="locationName" maxLength={100} placeholder="Ví dụ: Cầu lông Thành Công" value={formData.locationName} onChange={event => handleChange('locationName', event.target.value)} disabled={addressDisabled} /></FormField>
                 <div className={styles.row}>
@@ -485,6 +539,8 @@ export default function ServiceRegistrationPage() {
               </div>
               <div hidden={step !== 3} className={styles.stepBody}>
                 <section className={styles.review} aria-label="Thông tin xem lại"><div className={styles.reviewHeading}><h3>Thông tin đăng ký</h3><Button variant="ghost" disabled={isSubmitting} onClick={() => setStep(0)}>Chỉnh sửa</Button></div><dl className={styles.details}><dt>Địa điểm</dt><dd>{formData.locationName}</dd><dt>Địa chỉ</dt><dd>{address}</dd><dt>Vị trí</dt><dd>{point ? `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}` : 'Chưa chọn ghim'}</dd><dt>Quy mô</dt><dd>{formData.courtCount} sân · {formData.rentalYears} năm</dd><dt>Người đại diện</dt><dd>{representative.name}<br />{representative.phone}<br />{representative.email}</dd></dl></section>
+                {!verified ? <div className={styles.pinInfo}><strong>Chưa kiểm tra thông tin</strong><p>Bấm Kiểm tra thông tin để hệ thống kiểm tra email, số điện thoại và địa điểm. Thông tin chuyển khoản chỉ hiện khi thông tin hợp lệ, bạn chưa cần chuyển tiền ở bước này.</p></div> : <>
+                <p className={styles.helper} role="status">Thông tin đã được kiểm tra. Nếu sửa lại thông tin, bạn cần kiểm tra lại trước khi chuyển khoản.</p>
                 <section aria-labelledby="payment-title" className={styles.payment}><h3 id="payment-title">Chuyển khoản tiền thuê</h3><p>Chuyển <strong>{price(amount)}</strong> vào tài khoản bên vận hành, sau đó đính kèm ảnh chứng từ. Không giới hạn thời gian thanh toán.</p>
                   {paymentLoading ? <LoadingState message="Đang tải thông tin chuyển khoản…" /> : paymentInfoError ? <ErrorState message={paymentInfoError} onRetry={() => { setPaymentInfoError(''); setPaymentLoading(true); setPaymentAttempt(current => current + 1); }} /> : paymentInfo && <div className={styles.bank}>
                     <div>{qrError ? <div className={styles.qrFallback}><p>Chưa tải được mã QR.</p><Button variant="secondary" onClick={() => setQrError(false)}>Thử lại</Button></div> : <img src={operatorQrUrl(paymentInfo.updatedAt)} onError={() => setQrError(true)} alt="Mã QR chuyển khoản của bên vận hành" width={180} height={180} />}<a className={styles.download} href={operatorQrUrl(paymentInfo.updatedAt)} download="qr-ben-van-hanh.png">Lưu ảnh QR</a></div>
@@ -499,10 +555,13 @@ export default function ServiceRegistrationPage() {
                   <label className={styles.checkbox}><input id="terms" type="checkbox" checked={termsAccepted} disabled={isSubmitting} aria-invalid={Boolean(fieldErrors.terms)} aria-describedby={fieldErrors.terms ? 'terms-error' : undefined} onChange={event => { setTermsAccepted(event.target.checked); clearFieldError('terms'); }} /><span>Tôi đã đọc và đồng ý các điều khoản sử dụng dịch vụ.</span></label>
                   {fieldErrors.terms && <p className={styles.error} id="terms-error" role="alert">{errorText('terms')}</p>}
                 </section>
+                </>}
               </div>
-              {submitError && <div role="alert" className={styles.errorBanner}><p>{uiMessage(submitError)}</p>{step === 3 && <Button type="submit" variant="secondary" disabled={isSubmitting} loading={isSubmitting}>Thử lại</Button>}</div>}
-              <div className={styles.formFooter}>{step > 0 ? <Button variant="secondary" disabled={isSubmitting || locating} onClick={() => setStep(current => current - 1)}>Quay lại</Button> : <span className={styles.helper}>Thông tin được giữ khi chuyển bước.</span>}
-                {step < 3 ? <Button key="continue" onClick={event => { event.preventDefault(); nextStep(); }} disabled={locating}>Tiếp tục →</Button> : <Button key="submit" type="submit" loading={isSubmitting} disabled={addressDisabled}>Gửi đơn đăng ký dịch vụ</Button>}
+              {submitError && <div role="alert" className={styles.errorBanner}><p>{uiMessage(submitError)}</p>{step === 3 && <Button type="submit" variant="secondary" disabled={isSubmitting || isChecking} loading={isSubmitting || isChecking}>Thử lại</Button>}</div>}
+              <div className={styles.formFooter}>{step > 0 ? <Button variant="secondary" disabled={isSubmitting || isChecking || locating} onClick={() => setStep(current => current - 1)}>Quay lại</Button> : <span className={styles.helper}>Thông tin được giữ khi chuyển bước.</span>}
+                {step < 3
+                  ? <Button key="continue" onClick={event => { event.preventDefault(); nextStep(); }} loading={step === 2 && isChecking} disabled={locating || isChecking}>{step === 2 && !verified ? 'Kiểm tra thông tin →' : 'Tiếp tục →'}</Button>
+                  : <Button key="submit" type="submit" loading={isSubmitting || isChecking} disabled={addressDisabled || isChecking}>{verified ? 'Gửi đơn đăng ký dịch vụ' : 'Kiểm tra thông tin'}</Button>}
               </div>
             </form>
           </section>
