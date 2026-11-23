@@ -2,18 +2,29 @@ import { useEffect, useState } from 'react';
 import api, { apiErrorMessage } from '../../api';
 import { getSelectedLocation } from '../../api/session';
 import ManagementLayout from '../../components/layout/ManagementLayout';
-import { formatVnd } from '../../utils/formatters';
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  FormField,
+  Input,
+  LoadingState,
+  Pagination,
+  StatusBadge,
+  Table,
+} from '../../components/common';
+import { formatVnd, shortDate } from '../../utils/formatters';
 import styles from './OwnerReportPage.module.css';
 
-const currency = { format: formatVnd };
+const vnd = (value) => formatVnd(value).replace(' đồng', 'đ');
 
 export default function OwnerReconciliationPage({ locationId = getSelectedLocation() }) {
   return (
     <ManagementLayout
       role="owner"
-      title="Kết quả đối soát doanh thu"
-      subtitle="Theo dõi biên bản đối soát doanh thu ca của nhân viên"
-      backTo="/owner/reports"
+      title="Đối soát doanh thu"
+      subtitle="Biên bản đối soát cuối ngày của nhân viên: tổng hệ thống so với tiền thực nhận, chênh lệch và lý do."
+      backTo={{ to: '/owner/reports', label: 'Về báo cáo' }}
     >
       <ReconciliationResults key={locationId} locationId={locationId} />
     </ManagementLayout>
@@ -45,49 +56,89 @@ function ReconciliationResults({ locationId }) {
   }, [locationId, from, to, page, request, validDates]);
 
   const current = result?.request === request ? result : null;
+  const rows = current?.data?.content ?? [];
+  const mismatched = rows.filter((row) => Number(row.difference) !== 0).length;
+  const changeFilter = (setter) => (event) => {
+    setter(event.target.value);
+    setPage(0);
+    setRevision((value) => value + 1);
+  };
+
+  if (!locationId) {
+    return <EmptyState title="Chưa chọn địa điểm" description="Chọn địa điểm ở thanh bên trái để xem đối soát." />;
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="my-4 flex flex-wrap gap-4 items-center">
-        <label className="text-sm font-medium text-slate-700">Từ ngày <input className={styles.dateInput} type="date" value={from}
-          onChange={(event) => { setFrom(event.target.value); setPage(0); setRevision((value) => value + 1); }} /></label>
-        <label className="text-sm font-medium text-slate-700">Đến ngày <input className={styles.dateInput} type="date" value={to}
-          onChange={(event) => { setTo(event.target.value); setPage(0); setRevision((value) => value + 1); }} /></label>
-      </div>
-      {!validDates && <p role="alert" className="text-sm text-rose-600">Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.</p>}
-      {validDates && !current && <p role="status" className="text-sm text-slate-500">Đang tải kết quả đối soát…</p>}
-      {current?.error && <p role="alert" className="text-sm text-rose-600">{current.error}{' '}
-        <button type="button" className="underline" onClick={() => setRevision((value) => value + 1)}>Thử lại</button>
-      </p>}
-      {current?.data?.content.length === 0 && <p role="status" className="text-sm text-slate-500">Chưa có kết quả đối soát trong khoảng ngày này.</p>}
-      {current?.data?.content.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200"><tr>
-              {['Ngày', 'Số tiền hệ thống', 'Tổng thực nhận', 'Chênh lệch', 'Lý do', 'Nhân viên'].map((label) =>
-                <th className="px-4 py-3 font-semibold text-slate-700" key={label} scope="col">{label}</th>)}
-            </tr></thead>
-            <tbody>
-              {current.data.content.map((row) => (
-                <tr className="border-t border-slate-200 hover:bg-slate-50" key={row.id}>
-                  <td className="px-4 py-3 text-slate-900">{row.date}</td>
-                  <td className="px-4 py-3">{currency.format(row.systemAmount)}</td>
-                  <td className="px-4 py-3">{currency.format(row.actualAmount)}</td>
-                  <td className="px-4 py-3 font-medium" style={{ color: row.difference === 0 ? '#16a34a' : '#e11d48' }}>
-                    {currency.format(row.difference)}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{row.reason || '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">{row.staffName || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div className={styles.page}>
+      <section className={styles.filterBar} aria-label="Lọc theo ngày">
+        <div className={styles.dateFields}>
+          <FormField label="Từ ngày">
+            <Input type="date" value={from} max={to || undefined} onChange={changeFilter(setFrom)} />
+          </FormField>
+          <FormField label="Đến ngày" error={!validDates ? 'Ngày kết thúc phải sau ngày bắt đầu.' : undefined}>
+            <Input type="date" value={to} min={from || undefined} onChange={changeFilter(setTo)} />
+          </FormField>
         </div>
+        {(from || to) && (
+          <Button variant="ghost" onClick={() => { setFrom(''); setTo(''); setPage(0); setRevision((value) => value + 1); }}>
+            Xóa bộ lọc
+          </Button>
+        )}
+      </section>
+
+      {validDates && !current && <LoadingState message="Đang tải kết quả đối soát…" />}
+      {current?.error && <ErrorState message={current.error} onRetry={() => setRevision((value) => value + 1)} />}
+      {current?.data && rows.length === 0 && (
+        <EmptyState
+          title="Chưa có biên bản đối soát"
+          description={from || to
+            ? 'Không có biên bản trong khoảng ngày này. Thử bỏ bớt điều kiện lọc.'
+            : 'Nhân viên lập đối soát cuối ngày từ bảng điều hành; kết quả sẽ hiện ở đây.'}
+        />
       )}
-      {current?.data?.totalPages > 1 && <nav aria-label="Phân trang đối soát" className="mt-4 flex gap-4 text-sm items-center">
-        <button type="button" className="px-3 py-1.5 rounded border border-slate-300 disabled:opacity-50" disabled={page === 0} onClick={() => setPage(page - 1)}>Trang trước</button>
-        <span>Trang {page + 1}/{current.data.totalPages}</span>
-        <button type="button" className="px-3 py-1.5 rounded border border-slate-300 disabled:opacity-50" disabled={page + 1 >= current.data.totalPages} onClick={() => setPage(page + 1)}>Trang sau</button>
-      </nav>}
+      {rows.length > 0 && (
+        <section className={styles.card} aria-labelledby="reconciliation-title">
+          <header className={styles.cardHeader}>
+            <h2 id="reconciliation-title" className={styles.cardTitle}>Biên bản đối soát</h2>
+            <span className={styles.cardHint}>
+              {mismatched > 0 ? `${mismatched}/${rows.length} ngày có chênh lệch trên trang này` : 'Mọi ngày trên trang này đều khớp'}
+            </span>
+          </header>
+          <Table>
+            <thead>
+              <tr>
+                <th scope="col">Ngày</th>
+                <th scope="col" className={styles.numericHead}>Tổng hệ thống</th>
+                <th scope="col" className={styles.numericHead}>Thực nhận</th>
+                <th scope="col" className={styles.numericHead}>Chênh lệch</th>
+                <th scope="col">Lý do</th>
+                <th scope="col">Nhân viên</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const difference = Number(row.difference);
+                return (
+                  <tr key={row.id} className={difference !== 0 ? styles.rowMismatch : undefined}>
+                    <td><strong>{shortDate(row.date)}</strong></td>
+                    <td className={styles.numeric}>{vnd(row.systemAmount)}</td>
+                    <td className={styles.numeric}>{vnd(row.actualAmount)}</td>
+                    <td className={styles.numeric}>
+                      <span className={styles.differenceCell}>
+                        {difference > 0 ? '+' : ''}{vnd(difference)}
+                        <StatusBadge tone={difference === 0 ? 'success' : 'danger'}>{difference === 0 ? 'Khớp' : 'Lệch'}</StatusBadge>
+                      </span>
+                    </td>
+                    <td>{row.reason || '—'}</td>
+                    <td>{row.staffName || '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+          <Pagination page={page + 1} totalPages={current.data.totalPages} onPageChange={(next) => setPage(next - 1)} />
+        </section>
+      )}
     </div>
   );
 }
