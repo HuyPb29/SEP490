@@ -1,225 +1,164 @@
+/* UC32 phía chủ sân: phản hồi đánh giá, ẩn đánh giá vi phạm. */
+
 .container {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  font-family: var(--font-sans);
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
 }
 
 .filterRow {
   display: flex;
-  align-items: center;
-  gap: 12px;
   flex-wrap: wrap;
-  padding: 14px 16px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  align-items: flex-end;
+  gap: var(--space-3);
 }
 
-.filterSelect {
-  height: 38px;
-  padding: 0 12px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-size: var(--text-sm);
-  outline: none;
+.filterField {
+  flex: 0 1 200px;
 }
 
-.filterSelect:focus {
-  border-color: var(--color-primary-accent);
+.clearFilter {
+  flex: none;
 }
 
 .reviewList {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .reviewCard {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: 20px;
-  box-shadow: var(--shadow-xs);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+}
+
+.reviewHidden {
+  background: var(--color-surface-muted);
+  border-style: dashed;
 }
 
 .cardTop {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-2) var(--space-4);
 }
 
 .reviewerName {
-  font-size: var(--text-base);
-  font-weight: 750;
-  color: var(--color-text);
   margin: 0;
+  color: var(--color-text);
+  font-size: var(--text-md);
+  font-weight: 700;
 }
 
 .reviewMeta {
-  font-size: var(--text-xs);
+  margin: var(--space-1) 0 0;
   color: var(--color-text-muted);
-  margin-top: 2px;
+  font-size: var(--text-sm);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .stars {
-  color: #f59e0b;
-  font-weight: 700;
-  font-size: var(--text-sm);
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
+  color: var(--color-warning);
+  font-size: var(--text-md);
+  letter-spacing: 1px;
+}
+
+.starsEmpty {
+  color: var(--color-border-strong);
+}
+
+.ratingText {
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .comment {
-  font-size: var(--text-sm);
-  line-height: 1.55;
-  color: var(--color-text);
   margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.badgeHidden {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  background-color: #fee2e2;
-  color: var(--color-danger);
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  white-space: pre-line;
 }
 
 .replyBox {
-  background: #f8fafc;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-primary-soft);
   border-left: 3px solid var(--color-primary);
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  padding: 12px 14px;
-  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
 }
 
 .replyTitle {
-  font-weight: 700;
-  color: var(--color-primary);
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
+  color: var(--color-primary-hover);
   font-size: var(--text-xs);
+  font-weight: 700;
 }
 
 .replyText {
-  color: var(--color-text);
   margin: 0;
-  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-line;
 }
 
 .replyForm {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 6px;
+  display: grid;
+  gap: var(--space-3);
 }
 
-.replyTextarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 72px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  font-family: inherit;
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  resize: vertical;
-  outline: none;
-}
-
-.replyTextarea:focus {
-  border-color: var(--color-primary-accent);
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
-}
-
+.formActions,
 .actionRow {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--color-border);
   flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
-.secondaryBtn {
-  display: inline-flex;
-  align-items: center;
-  height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-  font-size: var(--text-xs);
-  font-weight: 650;
-  cursor: pointer;
-  transition: all 0.15s ease;
+.formActions {
+  justify-content: flex-end;
 }
 
-.secondaryBtn:hover:not(:disabled) {
-  background: var(--color-bg);
-  border-color: var(--color-primary-accent);
-  color: var(--color-primary);
-}
-
-.primaryBtn {
-  display: inline-flex;
-  align-items: center;
-  height: 34px;
-  padding: 0 14px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: #ffffff;
-  font-size: var(--text-xs);
-  font-weight: 700;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.primaryBtn:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
-
-.primaryBtn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.errorText {
+.dangerText {
   color: var(--color-danger);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  margin: 4px 0 0;
 }
 
-.alertDanger {
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: var(--color-danger);
+.dialogWarning {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border-radius: var(--radius-sm);
   font-size: var(--text-sm);
 }
 
-.alertSuccess {
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  background: var(--color-success-bg);
-  border: 1px solid var(--color-success-border);
-  color: var(--color-success);
-  font-size: var(--text-sm);
+@media (width < 640px) {
+  .filterField {
+    flex: 1 1 100%;
+  }
+
+  .reviewCard {
+    padding: var(--space-4);
+  }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useId, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import api, { getAllPages } from '../../api'
 import { voucherGrantState } from '../../api/bookingApi'
 import { searchFacilities } from '../../api/facilityApi'
@@ -8,6 +8,7 @@ import PointGrantForm from './PointGrantForm'
 import { useLoyaltyMilestones } from '../../hooks/useLoyaltyMilestones'
 import { useVoucherCampaigns } from '../../hooks/useVoucherCampaigns'
 import { shortDate } from '../../utils/formatters'
+import { Modal as DialogModal } from '../../components/common'
 import styles from './PromotionPages.module.css'
 
 const loadPersonalVouchers = (signal) => getAllPages('/me/vouchers', { signal })
@@ -107,11 +108,44 @@ export function PersonalRewardsPage() {
   return <WorkspaceLayout title="Ưu đãi của tôi" role="player"><PersonalRewards /></WorkspaceLayout>
 }
 
+/** Thẻ xem trước voucher, đọc giá trị đang nhập trong form. */
+function VoucherPreview({ values }) {
+  const discount = Number(values.discountValue)
+  const minimum = Number(values.minOrderAmount)
+  const hasDiscount = Number.isFinite(discount) && discount > 0
+  return <aside className={styles.preview} aria-label="Xem trước phiếu ưu đãi">
+    <p className={styles.previewLabel}>Xem trước</p>
+    <div className={styles.ticket}>
+      <div className={styles.ticketValue}>
+        {hasDiscount ? (values.discountType === 'PERCENT' ? discount + '%' : money(discount)) : '—'}
+        <span>giảm</span>
+      </div>
+      <div className={styles.ticketBody}>
+        <strong>{values.name?.trim() || 'Tên phiếu ưu đãi'}</strong>
+        <span>{minimum > 0 ? 'Đơn tối thiểu ' + money(minimum) : 'Không yêu cầu đơn tối thiểu'}</span>
+        <span>{values.validFrom ? shortDate(values.validFrom) : '—'} – {values.validTo ? shortDate(values.validTo) : '—'}</span>
+        <span>{voucherTargets[values.targetGroup] ?? ''}</span>
+        {values.targetGroup !== 'SPECIFIED' && <code>{values.code?.trim().toUpperCase() || 'MÃ ƯU ĐÃI'}</code>}
+      </div>
+    </div>
+  </aside>
+}
+
 function VoucherForm({ voucher, save, after }) {
   const [target, setTarget] = useState(voucher?.targetGroup || 'ALL_PLAYERS')
   const [discountType, setDiscountType] = useState(voucher?.discountType || 'AMOUNT')
   const [startDate, setStartDate] = useState(voucher?.validFrom ?? today())
-  return <div className={styles.voucherForm}><ActionForm label={voucher ? 'Lưu voucher' : 'Tạo và phát hành'} after={after}
+  const [preview, setPreview] = useState(() => ({
+    name: voucher?.name ?? '', code: voucher?.code ?? '', targetGroup: voucher?.targetGroup || 'ALL_PLAYERS',
+    discountType: voucher?.discountType || 'AMOUNT', discountValue: voucher?.discountValue ?? '',
+    minOrderAmount: voucher?.minOrderAmount ?? 0, validFrom: voucher?.validFrom ?? today(), validTo: voucher?.validTo ?? '',
+  }))
+  const readPreview = (event) => {
+    const form = event.target.form
+    if (form) setPreview(Object.fromEntries(new FormData(form)))
+  }
+  return <div className={styles.voucherLayout} onChange={readPreview} onInput={readPreview}>
+  <div className={styles.voucherForm}><ActionForm label={voucher ? 'Lưu voucher' : 'Tạo và phát hành'} after={after}
     successMessage={voucher ? 'Đã lưu thay đổi.' : false} action={(form) => {
     const payload = {
       ...form, code: form.code?.trim().toUpperCase() || null, discountValue: Number(form.discountValue),
@@ -122,43 +156,45 @@ function VoucherForm({ voucher, save, after }) {
     return save(payload)
   }}>
     {(errors) => <>
-      <div className={styles.formGroup} role="group" aria-label="Thông tin voucher">
-        <h4>Thông tin voucher</h4>
-        <Field label="Tên voucher" name="name" defaultValue={voucher?.name} maxLength={100} required error={errors.name} />
-        <Field label="Đối tượng" name="targetGroup" value={target} onChange={(event) => setTarget(event.target.value)}
-          options={Object.entries(voucherTargets)} error={errors.targetGroup}
-          hint={target === 'SPECIFIED' ? 'Voucher dành riêng cho những người được cấp. Sau khi phát hành, mở chiến dịch và nhập ID người chơi ở mục Cấp voucher.' : undefined} />
-        {target !== 'SPECIFIED' && <Field label="Mã voucher" name="code" defaultValue={voucher?.code || ''} maxLength={20}
-          pattern="[A-Za-z0-9_\u002D]+" required error={errors.code || errors.codeValid} />}
-      </div>
-      <div className={styles.formGroup} role="group" aria-label="Điều kiện giảm giá">
-        <h4>Điều kiện giảm giá</h4>
+      <div className={styles.formGroup} role="group" aria-label="Loại và giá trị">
+        <h4>Loại và giá trị</h4>
+        <Field label="Tên phiếu ưu đãi" name="name" defaultValue={voucher?.name} maxLength={100} required error={errors.name} />
         <Field label="Kiểu giảm" name="discountType" value={discountType} onChange={(event) => setDiscountType(event.target.value)}
-          options={[[ 'AMOUNT', 'Số tiền (VND)' ], [ 'PERCENT', 'Phần trăm' ]]} error={errors.discountType} />
-        <Field label={discountType === 'PERCENT' ? 'Mức giảm (%)' : 'Mức giảm (VND)'} name="discountValue" type="number" min={1}
+          options={[[ 'AMOUNT', 'Số tiền (đồng)' ], [ 'PERCENT', 'Phần trăm' ]]} error={errors.discountType} />
+        <Field label={discountType === 'PERCENT' ? 'Mức giảm (1–99%)' : 'Mức giảm (đồng)'} name="discountValue" type="number" min={1}
           max={discountType === 'PERCENT' ? 99 : 999999999999} defaultValue={voucher?.discountValue} required
           error={errors.discountValue || errors.percentageValid} />
-        <Field label="Đơn tối thiểu (VND)" name="minOrderAmount" type="number" min={0} max={999999999999}
-          defaultValue={voucher?.minOrderAmount ?? 0} required error={errors.minOrderAmount} />
       </div>
-      <div className={styles.formGroup} role="group" aria-label="Thời gian áp dụng">
-        <h4>Thời gian áp dụng</h4>
+      <div className={styles.formGroup} role="group" aria-label="Thời hạn và điều kiện">
+        <h4>Thời hạn và điều kiện</h4>
         <Field label="Từ ngày" name="validFrom" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)}
           required error={errors.validFrom} />
         <Field label="Đến ngày" name="validTo" type="date" min={startDate > today() ? startDate : today()}
           defaultValue={voucher?.validTo} required error={errors.validTo || errors.dateRangeValid} />
-        {target === 'SPECIFIED' && <Field label="Hạn voucher cá nhân (ngày)" name="grantValidDays" type="number" min={1} max={3650}
+        <Field label="Đơn tối thiểu (đồng)" name="minOrderAmount" type="number" min={0} max={999999999999}
+          defaultValue={voucher?.minOrderAmount ?? 0} required error={errors.minOrderAmount} hint="Nhập 0 nếu không yêu cầu." />
+      </div>
+      <div className={styles.formGroup} role="group" aria-label="Đối tượng">
+        <h4>Đối tượng</h4>
+        <Field label="Đối tượng" name="targetGroup" value={target} onChange={(event) => setTarget(event.target.value)}
+          options={Object.entries(voucherTargets)} error={errors.targetGroup}
+          hint={target === 'SPECIFIED' ? 'Chỉ người được cấp mới dùng được. Sau khi phát hành, mở chiến dịch và nhập ID người chơi ở mục Cấp voucher.' : undefined} />
+        {target !== 'SPECIFIED' && <Field label="Mã phiếu ưu đãi" name="code" defaultValue={voucher?.code || ''} maxLength={20}
+          pattern="[A-Za-z0-9_\u002D]+" required error={errors.code || errors.codeValid} hint="Chữ, số, gạch dưới hoặc gạch ngang." />}
+        {target === 'SPECIFIED' && <Field label="Hạn dùng sau khi cấp (ngày)" name="grantValidDays" type="number" min={1} max={3650}
           defaultValue={voucher?.grantValidDays} error={errors.grantValidDays} />}
       </div>
-      <div className={styles.formGroup} role="group" aria-label="Hạn mức sử dụng">
-        <h4>Hạn mức sử dụng</h4>
-        <Field label="Lượt mỗi người" name="maxUsesPerPlayer" type="number" min={1} required
+      <div className={styles.formGroup} role="group" aria-label="Lượt và ngân sách">
+        <h4>Lượt và ngân sách</h4>
+        <Field label="Lượt dùng mỗi người" name="maxUsesPerPlayer" type="number" min={1} required
           defaultValue={voucher?.maxUsesPerPlayer} error={errors.maxUsesPerPlayer} />
-        <Field label="Ngân sách (VND)" name="budget" type="number" min={1} max={999999999999} required
-          defaultValue={voucher?.budget} error={errors.budget} />
+        <Field label="Ngân sách (đồng)" name="budget" type="number" min={1} max={999999999999} required
+          defaultValue={voucher?.budget} error={errors.budget} hint="Tổng tiền giảm tối đa của cả chiến dịch." />
       </div>
     </>}
   </ActionForm></div>
+  <VoucherPreview values={preview} />
+  </div>
 }
 
 function CampaignCard({ item, campaigns }) {
@@ -213,8 +249,6 @@ function Campaigns({ campaigns }) {
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
-  const formId = useId()
-  const toggle = useRef(null)
   const published = result?.published
     || campaigns.data?.some((item) => item.id === result?.id && item.status === 'PUBLISHED')
 
@@ -228,28 +262,28 @@ function Campaigns({ campaigns }) {
   }
 
   return <Section title="Chiến dịch voucher" resource={campaigns} actions={
-    <button ref={toggle} type="button" className={creating ? 'cw-secondary' : 'action'}
-      aria-expanded={creating} aria-controls={formId} disabled={busy} onClick={() => {
+    <button type="button" className="action" disabled={busy} onClick={() => {
         setResult(null)
-        setCreating(!creating)
+        setCreating(true)
       }}>
-      {creating ? 'Hủy tạo' : 'Tạo chiến dịch voucher'}
+      Tạo chiến dịch voucher
     </button>
   }>
     {result && (published
       ? <Feedback tone="success">Đã tạo và phát hành voucher.</Feedback>
       : <Feedback tone="warning">Đã tạo voucher nhưng chưa xác nhận phát hành. Nếu thẻ còn hiện Bản nháp, mở thẻ và chọn Phát hành để thử lại.</Feedback>)}
-    <div id={formId} hidden={!creating} className={styles.createPanel}>
-      {creating && <>
-        <h3>Tạo voucher</h3>
-        <VoucherForm save={create} after={(created) => {
-          setCreating(false)
-          setResult(created)
-          campaigns.reload()
-          requestAnimationFrame(() => toggle.current?.focus())
-        }} />
-      </>}
-    </div>
+    <DialogModal open={creating} title="Tạo chiến dịch phiếu ưu đãi" className={styles.createDialog} busy={busy}
+      onClose={() => setCreating(false)}>
+      <p className={styles.createHint}>Phiếu ưu đãi được phát hành ngay sau khi tạo.</p>
+      <VoucherForm save={create} after={(created) => {
+        setCreating(false)
+        setResult(created)
+        campaigns.reload()
+      }} />
+      <div className={styles.createFooter}>
+        <button type="button" className="cw-secondary" disabled={busy} onClick={() => setCreating(false)}>Hủy</button>
+      </div>
+    </DialogModal>
     {campaigns.data?.length === 0 && <EmptyState>Chưa có chiến dịch voucher.</EmptyState>}
     {campaigns.data?.length > 0 && <ul className={styles.campaignList}>
       {campaigns.data.map((item) => <li key={item.id}><CampaignCard item={item} campaigns={campaigns} /></li>)}
