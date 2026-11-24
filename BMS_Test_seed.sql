@@ -7,6 +7,7 @@
 --   admin | owner.sunrise, owner.thanglong | staff.sunrise1, staff.sunrise2, staff.thanglong1
 --   player: nguyen.an, tran.binh, le.cuong, pham.dung, hoang.em, vu.phuc, dang.giang, bui.hieu (locked.user bị khóa)
 -- Ngày giờ tính theo ngày chạy script (hôm nay = ngày chạy): booking quá khứ/tương lai lệch theo đó.
+-- Ảnh QR của địa điểm mẫu: chép nội dung thư mục BMS_seed_uploads vào thư mục upload của backend (mặc định %USERPROFILE%\bms-uploads).
 -- ============================================================
 USE BMS_Test;
 GO
@@ -41,8 +42,8 @@ SET IDENTITY_INSERT account OFF;
 -- location (2)
 SET IDENTITY_INSERT location ON;
 INSERT INTO location (id, owner_id, name, address, latitude, longitude, contact_phone, bank_name, bank_account_no, bank_account_holder, qr_image_path, advance_booking_days, point_earning_rate, status) VALUES
-  (1, 2, N'Cầu lông Sunrise', N'12 Nguyễn Trãi, Thanh Xuân, Hà Nội', 20.99412, 105.80731, N'0243100001', N'Vietcombank', N'0011001234567', N'NGUYEN MINH KHOI', N'uploads/qr/location_1.png', 30, 10000, N'ACTIVE'),
-  (2, 3, N'Cầu lông Thăng Long', N'88 Cầu Giấy, Cầu Giấy, Hà Nội', 21.0333, 105.7978, N'0243100002', N'Techcombank', N'19031234567890', N'TRAN THU HA', N'uploads/qr/location_2.png', 14, 10000, N'ACTIVE');
+  (1, 2, N'Cầu lông Sunrise', N'12 Nguyễn Trãi, Thanh Xuân, Hà Nội', 20.99412, 105.80731, N'0243100001', N'Techcombank', N'19077019383011', N'DUONG DUC MINH', N'location-qr/2026/11/owner-techcombank.png', 30, 10000, N'ACTIVE'),
+  (2, 3, N'Cầu lông Thăng Long', N'88 Cầu Giấy, Cầu Giấy, Hà Nội', 21.0333, 105.7978, N'0243100002', N'Techcombank', N'19077019383011', N'DUONG DUC MINH', N'location-qr/2026/11/owner-techcombank.png', 14, 10000, N'ACTIVE');
 SET IDENTITY_INSERT location OFF;
 
 -- account (3)

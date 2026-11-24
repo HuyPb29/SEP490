@@ -189,9 +189,9 @@ CREATE TABLE operator_payment_info (
     CONSTRAINT pk_operator_payment_info PRIMARY KEY (id),
     CONSTRAINT ck_operator_payment_info_single CHECK (id = 1)
 );
--- Giá trị mặc định khi cài hệ thống (D169); tài khoản giả, Admin sửa thành tài khoản thật.
+-- Giá trị mặc định khi cài hệ thống (D169), khớp ảnh QR mặc định resources/operator/default-qr.png; Admin sửa được.
 INSERT INTO operator_payment_info (id, bank_name, bank_account_no, bank_account_holder)
-VALUES (1, N'MB Bank', '0123456789', N'BEN VAN HANH BMS');
+VALUES (1, N'VietinBank', '103876799618', N'DUONG DUC MINH');
 
 -- court: Sân con của địa điểm (UC07).
 CREATE TABLE court (
