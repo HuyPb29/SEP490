@@ -107,11 +107,17 @@ export default function StaffDashboardPage() {
 
   const todayBookings = useMemo(() => dashboard?.todayBookings ?? [], [dashboard]);
   const pendingPayments = useMemo(() => dashboard?.pendingPayments ?? [], [dashboard]);
-  // FR120, BR58: giao dịch chờ quá 15 phút trong giờ mở cửa đã chuyển cho chủ sân, Staff chỉ xem.
-  const overduePayments = useMemo(() => pendingPayments.filter((p) => p.overdue), [pendingPayments]);
+  // D182 (BR58, FR120): chờ quá 15 phút (P24) trong giờ mở cửa thì báo đỏ, Staff vẫn xử lý được;
+  // quá thêm 10 phút (P36) thì giao dịch đã chuyển cho chủ sân, Staff chỉ xem.
+  const overdueMinutes = dashboard?.paymentOverdueMinutes ?? 15;
+  const transferMinutes = dashboard?.paymentTransferMinutes ?? 25;
+  const urgentPayments = useMemo(
+    () => pendingPayments.filter((p) => p.overdue && !p.transferredToOwner), [pendingPayments]);
+  const transferredPayments = useMemo(() => pendingPayments.filter((p) => p.transferredToOwner), [pendingPayments]);
   // Phụ thu đổi lịch (UC21) Staff còn xử lý được: hiện banner và nhãn riêng để không lẫn với thanh toán đặt sân.
   // Đổi lịch miễn phí không sinh giao dịch nên không xuất hiện ở đây.
-  const surchargePayments = useMemo(() => pendingPayments.filter((p) => p.reschedule && !p.overdue), [pendingPayments]);
+  const surchargePayments = useMemo(
+    () => pendingPayments.filter((p) => p.reschedule && !p.transferredToOwner), [pendingPayments]);
 
   const nowDate = useMemo(() => new Date(now), [now]);
   const nowMinute = nowDate.getHours() * 60 + nowDate.getMinutes();
@@ -241,7 +247,7 @@ export default function StaffDashboardPage() {
     {
       label: 'Chờ xác nhận TT',
       value: String(dashboard?.paymentsAwaitingConfirmation ?? pendingPayments.length),
-      note: `${overduePayments.length} giao dịch đã chuyển cho chủ sân`,
+      note: `${urgentPayments.length} quá ${overdueMinutes} phút · ${transferredPayments.length} đã chuyển cho chủ sân`,
     },
     {
       label: 'Doanh thu hôm nay',
@@ -328,17 +334,34 @@ export default function StaffDashboardPage() {
         )}
 
         <section className={styles.alerts} aria-label="Cảnh báo vận hành">
-          {overduePayments.length > 0 && (
+          {urgentPayments.length > 0 && (
             <div className={styles.urgentBanner} role="alert">
               <span>
-                {overduePayments.length === 1
-                  ? `Giao dịch ${overduePayments[0].label || `#${overduePayments[0].id}`}`
-                  : `${overduePayments.length} giao dịch`} đã chờ quá 15 phút trong giờ mở cửa và đã được chuyển cho chủ sân xử lý.
+                {urgentPayments.length === 1
+                  ? `Giao dịch ${urgentPayments[0].label || `#${urgentPayments[0].id}`}`
+                  : `${urgentPayments.length} giao dịch`} đã chờ quá {overdueMinutes} phút. Hãy kiểm tra tiền về và xử lý ngay;
+                quá {transferMinutes} phút giao dịch sẽ được chuyển cho chủ sân.
               </span>
               <button
                 className={styles.handleButton}
                 type="button"
-                onClick={() => openPaymentConfirmation(overduePayments[0])}
+                onClick={() => openPaymentConfirmation(urgentPayments[0])}
+              >
+                Xử lý ngay
+              </button>
+            </div>
+          )}
+          {transferredPayments.length > 0 && (
+            <div className={styles.urgentBanner} role="alert">
+              <span>
+                {transferredPayments.length === 1
+                  ? `Giao dịch ${transferredPayments[0].label || `#${transferredPayments[0].id}`}`
+                  : `${transferredPayments.length} giao dịch`} đã chờ quá {transferMinutes} phút trong giờ mở cửa và đã được chuyển cho chủ sân xử lý.
+              </span>
+              <button
+                className={styles.handleButton}
+                type="button"
+                onClick={() => openPaymentConfirmation(transferredPayments[0])}
               >
                 Xem giao dịch
               </button>
@@ -426,7 +449,7 @@ export default function StaffDashboardPage() {
               <button
                 className={styles.viewAllButton}
                 type="button"
-                onClick={() => openPaymentConfirmation(pendingPayments.find((p) => !p.overdue) ?? pendingPayments[0])}
+                onClick={() => openPaymentConfirmation(pendingPayments.find((p) => !p.transferredToOwner) ?? pendingPayments[0])}
               >
                 Mở bàn xác nhận ›
               </button>
@@ -452,7 +475,8 @@ export default function StaffDashboardPage() {
                     <span className={styles.transactionAmount}>
                       <strong>{formatMoney(payment.amountDue)}</strong>
                       <small className={payment.overdue ? styles.overdueText : ''}>
-                        {payment.overdue ? 'Đã chuyển cho chủ sân' : 'Chờ xác nhận'}
+                        {payment.transferredToOwner ? 'Đã chuyển cho chủ sân'
+                          : payment.overdue ? `Quá ${overdueMinutes} phút · Xử lý gấp` : 'Chờ xác nhận'}
                       </small>
                     </span>
                   </button>

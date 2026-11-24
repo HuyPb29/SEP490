@@ -142,7 +142,8 @@ function PaymentDesk({ role, surcharge }) {
   const payment = detail?.payment || detail;
   const activeDetail = !loadingQueue && selectedId && payment?.id === selectedId ? detail : null;
   const activePayment = activeDetail ? payment : null;
-  // D174: chờ quá 15 phút trong giờ mở cửa thì giao dịch đã chuyển cho chủ sân; Staff chỉ xem, Owner vẫn xử lý.
+  // D182 (BR58): chờ quá 15 phút (P24) trong giờ mở cửa thì báo đỏ, Staff vẫn xử lý; quá 25 phút (P24 + P36)
+  // thì giao dịch đã chuyển cho chủ sân, Staff chỉ xem, Owner vẫn xử lý.
   const transferredToOwner = activePayment?.transferredToOwner
     ?? Boolean(queue.find(({ id }) => id === selectedId)?.transferredToOwner);
   const canDecide = activePayment?.status === 'AWAITING_CONFIRMATION' && !(transferredToOwner && role !== 'owner');
@@ -367,9 +368,10 @@ function PaymentDesk({ role, surcharge }) {
                 <span className={styles.bookingMeta}>
                   Mã GD #{item.id} · Còn {item.resubmitsLeft ?? Math.max(0, 3 - (item.resubmitCount ?? 0))} lượt gửi lại
                 </span>
-                <span className={styles.waiting}>
+                <span className={item.overdue ? styles.overdue : styles.waiting}>
                   {item.transferredToOwner
                     ? 'Đã chuyển cho chủ sân xử lý'
+                    : item.overdue ? 'Quá 15 phút · Xử lý gấp, quá 25 phút sẽ chuyển cho chủ sân'
                     : item.submittedAt ? `Gửi lúc ${item.submittedAt.replace('T', ' ')}` : 'Đang chờ xác nhận'}
                 </span>
               </button>
@@ -404,8 +406,8 @@ function PaymentDesk({ role, surcharge }) {
                   {transferredToOwner && activePayment?.status === 'AWAITING_CONFIRMATION' && (
                     <p role="status" className={styles.escalatedNotice}>
                       {role === 'owner'
-                        ? 'Giao dịch đã chờ quá 15 phút mà nhân viên chưa xác nhận nên được chuyển cho bạn xử lý.'
-                        : 'Giao dịch đã chờ quá 15 phút mà chưa được xác nhận nên đã được chuyển cho chủ sân xử lý. (MSG118)'}
+                        ? 'Giao dịch đã chờ quá 25 phút mà nhân viên chưa xác nhận nên được chuyển cho bạn xử lý.'
+                        : 'Giao dịch đã chờ quá 25 phút mà chưa được xác nhận nên đã được chuyển cho chủ sân xử lý. (MSG118)'}
                     </p>
                   )}
 
