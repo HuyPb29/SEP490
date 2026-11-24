@@ -4,7 +4,7 @@ import { mapSchedule } from '../../api/facilityApi'
 import { fieldError, normalizeName, validName, validPhone } from '../../api/f1Rules'
 import { F1Dialog, F1Toast } from '../../components/F1Feedback'
 import ScheduleGrid from '../../components/schedule/ScheduleGrid'
-import { pickRange } from '../../utils/slotRanges'
+import { pickRangeTo } from '../../utils/slotRanges'
 import styles from './StaffDashboardPage.module.css'
 
 const dateFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
@@ -13,7 +13,6 @@ const expiredMessage = "Đã hết thời gian giữ chỗ. khung giờ đã đ�
 const timeLabel = (minute) =>
   String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0')
 const isFree = (slot) => slot.status === 'AVAILABLE' && slot.price != null
-const toMinute = (time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
 const duration = (minutes) => [Math.floor(minutes / 60) && `${Math.floor(minutes / 60)} giờ`, minutes % 60 && `${minutes % 60} phút`].filter(Boolean).join(' ')
 
 function loadSchedule(venue, date, signal) {
@@ -28,12 +27,13 @@ function secondsLeft(expiresAt) {
   return Math.max(0, Math.ceil((Date.parse(timestamp) - Date.now()) / 1000)) || 0
 }
 
-export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }) {
+// initialDate, initialStart, initialEnd: mở từ lịch sân Staff với dải đã chọn sẵn (UC13, UC16).
+export default function WalkInBookingDialog({ initialCourt, initialDate, initialStart, initialEnd, onClose, onChanged }) {
   const [today] = useState(() => dateFormat.format(new Date()))
-  const [date, setDate] = useState(today)
+  const [date, setDate] = useState(initialDate || today)
   const [court, setCourt] = useState(initialCourt ? String(initialCourt) : '')
-  const [start, setStart] = useState('')
-  const [end, setEnd] = useState('')
+  const [start, setStart] = useState(initialStart != null ? String(initialStart) : '')
+  const [end, setEnd] = useState(initialEnd != null ? String(initialEnd) : '')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [schedule, setSchedule] = useState(null)
@@ -106,18 +106,9 @@ export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }
   // D183: bấm ô bắt đầu rồi bấm ô kết thúc cùng sân thì lấy cả dải nếu mọi ô ở giữa còn trống;
   // bấm ô liền kề để kéo dài, bấm ô đầu hoặc cuối để bớt (pickRange).
   const pickSlot = (row, slot) => {
-    const minute = toMinute(slot.time)
-    const sameCourt = range && range.courtId === Number(row.court_id)
-    let next = pickRange(range, Number(row.court_id), slot.time)
-    if (sameCourt && (minute > range.endMinute || minute + 30 < range.startMinute)) {
-      const from = Math.min(range.startMinute, minute)
-      const to = Math.max(range.endMinute, minute + 30)
-      const free = new Set((courts.find(({ courtId }) => courtId === Number(row.court_id))?.slots || [])
-        .filter(isFree).map(({ startMinute }) => startMinute))
-      let allFree = true
-      for (let m = from; m < to; m += 30) if (!free.has(m)) allFree = false
-      if (allFree) next = { courtId: Number(row.court_id), startMinute: from, endMinute: to }
-    }
+    const free = new Set((courts.find(({ courtId }) => courtId === Number(row.court_id))?.slots || [])
+      .filter(isFree).map(({ startMinute }) => startMinute))
+    const next = pickRangeTo(range, Number(row.court_id), slot.time, (minute) => free.has(minute))
     setFields((current) => ({ ...current, courtId: undefined, startMinute: undefined, endMinute: undefined }))
     setCourt(String(row.court_id))
     setStart(next ? String(next.startMinute) : '')

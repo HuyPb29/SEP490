@@ -123,7 +123,7 @@ function HorizontalScheduleGrid({ schedule, selected = [], allowBooking, showBoo
       className={`${styles.cell} ${tone} ${info ? styles.inspectable : ''} ${conflictKeys.has(key) ? styles.recentConflict : ''}`}
       aria-pressed={bookable || chosen ? chosen : undefined} disabled={!info && !(allowBooking && (bookable || chosen))}
       onFocus={() => setFocused(key)}
-      onClick={() => info ? onInspect?.({ ...info, time: slot.time, courtName: court.court_name }) : onSlot(court, slot, timeIdx)}>
+      onClick={() => info ? onInspect?.({ ...info, time: slot.time, status: slot.status, courtName: court.court_name }) : onSlot(court, slot, timeIdx)}>
       {mobile && <span className={styles.mobileTime}>{slot.time}–{slotEnd(slot.time)}</span>}
       <span className={styles.slotValue}><span aria-hidden="true">{chosen ? '✓' : kind ? '!' : icons[slot.status] || '—'}</span>{(isBookable(slot) || chosen) && shortPrice(slot.price)}</span>
       <small>{status}</small>
@@ -215,7 +215,7 @@ function VerticalScheduleGrid({ schedule, selected = [], allowBooking, showBooke
               className={`${verticalStyles.slotBtn} ${slotClass || ''} ${original ? (chosen ? styles.selectedOriginalSlot : styles.originalSlot) : ''}`}
               aria-label={[...description, price].join(', ')}
               aria-pressed={bookable ? chosen : undefined} disabled={!bookable && !info}
-              onClick={() => info ? onInspect?.({ ...info, time: slot.time, courtName: court.court_name }) : onSlot(court, slot, index)}>
+              onClick={() => info ? onInspect?.({ ...info, time: slot.time, status: slot.status, courtName: court.court_name }) : onSlot(court, slot, index)}>
               <span>{original && !chosen ? 'Lịch cũ' : status}</span><small className="block">{price}</small>
               {info && <small className="block">{info.name} · {info.phone}</small>}
             </button>
