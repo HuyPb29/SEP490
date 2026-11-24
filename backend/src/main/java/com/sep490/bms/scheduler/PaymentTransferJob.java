@@ -22,7 +22,8 @@ import com.sep490.bms.service.payment.PaymentTransferPolicy;
 import lombok.RequiredArgsConstructor;
 
 /**
- * D174 (BR58, FR120): giao dịch chờ xác nhận quá 15 phút trong giờ mở cửa mà Staff chưa xử lý thì chuyển cho
+ * D182 (BR58, FR120, P24, P36): giao dịch chờ xác nhận quá 25 phút trong giờ mở cửa (15 phút báo đỏ trên màn Staff,
+ * thêm 10 phút) mà Staff chưa xử lý thì chuyển cho
  * chủ sân. Job chỉ gửi thông báo: báo Owner xử lý (MSG119), báo Staff của địa điểm là giao dịch đã được chuyển
  * (MSG118). Việc chặn Staff thao tác nằm ở PaymentTransferPolicy, không phụ thuộc job đã chạy hay chưa.
  * Mỗi người nhận chỉ được báo một lần cho một giao dịch.
@@ -31,6 +32,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "bms.job.enabled", havingValue = "true", matchIfMissing = true)
 public class PaymentTransferJob {
+
+    private static final long WAIT_MINUTES = Payment.OWNER_TRANSFER_WAIT.toMinutes();
 
     private final PaymentRepository payments;
     private final PaymentTransferPolicy policy;
@@ -47,7 +50,7 @@ public class PaymentTransferJob {
 
     void notifyTransferredPayments(LocalDateTime now) {
         for (Payment payment : payments.findByStatusAndSubmittedAtBefore(PaymentStatus.AWAITING_CONFIRMATION,
-                now.minus(Payment.LATE_CONFIRMATION_WAIT))) {
+                now.minus(Payment.OWNER_TRANSFER_WAIT))) {
             if (!policy.transferredToOwner(payment, now)) {
                 continue;
             }
@@ -58,14 +61,16 @@ public class PaymentTransferJob {
             String label = label(payment);
             notifications.notifyOnce(location.getOwnerId(), NotificationType.PAYMENT_TRANSFERRED_TO_OWNER,
                     "Giao dịch chờ chủ sân xác nhận",
-                    "Giao dịch " + label + " tại " + location.getName() + " đã chờ quá 15 phút mà nhân viên chưa xác nhận. "
+                    "Giao dịch " + label + " tại " + location.getName() + " đã chờ quá " + WAIT_MINUTES
+                            + " phút mà nhân viên chưa xác nhận. "
                             + "Vui lòng kiểm tra tiền về và xử lý. (MSG119)",
                     "PAYMENT", payment.getId());
             for (var staff : accounts.findByRoleAndLocationId(Role.STAFF, payment.getLocationId())) {
                 if (staff.getStatus() == AccountStatus.ACTIVE) {
                     notifications.notifyOnce(staff.getId(), NotificationType.PAYMENT_TRANSFERRED_TO_OWNER,
                             "Giao dịch đã chuyển cho chủ sân",
-                            "Giao dịch " + label + " đã chờ quá 15 phút mà chưa được xác nhận nên đã được chuyển "
+                            "Giao dịch " + label + " đã chờ quá " + WAIT_MINUTES
+                                    + " phút mà chưa được xác nhận nên đã được chuyển "
                                     + "cho chủ sân xử lý. (MSG118)",
                             "PAYMENT", payment.getId());
                 }

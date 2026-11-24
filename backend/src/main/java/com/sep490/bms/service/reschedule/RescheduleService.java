@@ -77,9 +77,12 @@ public class RescheduleService {
         Long location=access.selectedLocation(u).getId();
         List<Payment> list=em.createQuery("select p from Payment p where p.locationId=:l and p.rescheduleRequestId is not null and p.status=:s order by p.submittedAt,p.id",Payment.class)
                 .setParameter("l",location).setParameter("s",status==null?PaymentStatus.AWAITING_CONFIRMATION:status).getResultList();
-        // FR120, BR58: đánh dấu giao dịch đã chuyển cho chủ sân để màn Staff khóa nút xử lý.
+        // FR120, BR58 (D182): đánh dấu giao dịch quá 15 phút (báo đỏ) và đã chuyển cho chủ sân (khóa nút của Staff).
         LocalDateTime now=LocalDateTime.now();
-        list.forEach(p -> p.setTransferredToOwner(transferPolicy.transferredToOwner(p, now)));
+        list.forEach(p -> {
+            p.setOverdue(transferPolicy.overdue(p, now));
+            p.setTransferredToOwner(transferPolicy.transferredToOwner(p, now));
+        });
         return list;
     }
     public PaymentView payment(UserPrincipal u,Long id) {
@@ -93,7 +96,9 @@ public class RescheduleService {
             if (!access.selectedLocation(u).getId().equals(b.getLocationId())) {
                 throw new AppException("Sai địa điểm", HttpStatus.FORBIDDEN);
             }
-            p.setTransferredToOwner(transferPolicy.transferredToOwner(p, LocalDateTime.now()));
+            LocalDateTime now = LocalDateTime.now();
+            p.setOverdue(transferPolicy.overdue(p, now));
+            p.setTransferredToOwner(transferPolicy.transferredToOwner(p, now));
         }
         return new PaymentView(p,em.createQuery("select p from PaymentProof p where p.paymentId=:id order by p.id",PaymentProof.class).setParameter("id",id).getResultList());
     }

@@ -180,11 +180,21 @@ class PaymentConfirmationTests {
                 .containsExactly("/api/payments/50/proofs/81/image", "/api/payments/50/proofs/80/image");
     }
 
-    // ---------- D174: quá 15 phút chưa xác nhận thì chuyển cho chủ sân ----------
+    // ---------- D182: quá 15 phút báo đỏ, quá thêm 10 phút chưa xác nhận thì chuyển cho chủ sân ----------
+
+    @Test
+    void overdueButNotYetTransferredStaffStillDecides() {
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.OWNER_TRANSFER_WAIT))).thenReturn(false);
+
+        PaymentResponse result = service.confirm(staff, PAYMENT, null, NOW);
+
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+    }
 
     @Test
     void staffCannotDecideAfterTransferToOwnerButOwnerCan() {
-        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.OWNER_TRANSFER_WAIT))).thenReturn(true);
 
         assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW))
                 .isInstanceOf(AppException.class)
@@ -206,8 +216,23 @@ class PaymentConfirmationTests {
     }
 
     @Test
-    void pendingListFlagsPaymentsTransferredToOwner() {
+    void pendingListFlagsOverduePaymentsBeforeTransfer() {
         when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.OWNER_TRANSFER_WAIT))).thenReturn(false);
+        when(payments.findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
+                LOCATION, PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<>(List.of(payment), PageRequest.of(0, 20), 1));
+        when(bookings.getByIds(anyCollection())).thenReturn(Map.of(BOOKING, booking));
+
+        assertThat(service.listPending(staff, 0, 20).getContent()).singleElement().satisfies(item -> {
+            assertThat(item.isOverdue()).isTrue();
+            assertThat(item.isTransferredToOwner()).isFalse();
+        });
+    }
+
+    @Test
+    void pendingListFlagsPaymentsTransferredToOwner() {
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), any())).thenReturn(true);
         when(payments.findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
                 LOCATION, PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(0, 20)))
                 .thenReturn(new PageImpl<>(List.of(payment), PageRequest.of(0, 20), 1));

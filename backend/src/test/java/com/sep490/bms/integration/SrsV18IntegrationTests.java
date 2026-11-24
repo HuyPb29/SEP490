@@ -154,7 +154,9 @@ class SrsV18IntegrationTests {
         mvc.perform(get("/api/staff/dashboards/me").header("Authorization", token(staff)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentsAwaitingConfirmation").value(1))
                 .andExpect(jsonPath("$.data.pendingPayments[0].id").value(paymentId))
-                .andExpect(jsonPath("$.data.pendingPayments[0].overdue").value(true));
+                .andExpect(jsonPath("$.data.pendingPayments[0].overdue").value(true))
+                // D182: quá 15 phút chỉ báo đỏ, chưa chuyển cho chủ sân (chuyển khi quá 25 phút).
+                .andExpect(jsonPath("$.data.pendingPayments[0].transferredToOwner").value(false));
         mvc.perform(get(eligibility).header("Authorization", token(player))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").value(true));
 
