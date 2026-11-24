@@ -10,4 +10,5 @@ import com.sep490.bms.entity.promotion.LoyaltyReward;
  */
 @Repository
 public interface LoyaltyRewardRepository extends JpaRepository<LoyaltyReward, Long> {
+    java.util.List<LoyaltyReward> findByPlayerIdAndLoyaltyTierId(Long playerId, Long loyaltyTierId);
 }

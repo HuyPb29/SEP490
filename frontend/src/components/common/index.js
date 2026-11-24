@@ -1,4 +1,7 @@
 export { Button } from './Button';
+export { Avatar } from './Avatar';
+export { Timeline } from './Timeline';
+export { default as ImageAttachmentField } from '../upload/ImageProofUpload';
 export { FormField, Input, Select, Textarea } from './FormField';
 export { StatusBadge } from './StatusBadge';
 export { STATUS_CATALOG, resolveStatusMeta } from './statusCatalog';

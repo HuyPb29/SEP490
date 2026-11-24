@@ -1,30 +1,31 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { apiErrorMessage } from '../../api';
 import { toTimeLabel } from '../../api/bookingApi';
 import CheckoutVoucherPicker from '../../components/booking/CheckoutVoucherPicker';
-import { CheckoutProgress, ConfirmDialog, Feedback } from '../../components/common/WorkspacePrimitives';
-import { PublicHeader } from '../../components/layout/PublicLayout';
-import PublicFooter from '../../components/layout/PublicFooter';
+import { Button, ConfirmDialog, EmptyState, ErrorState, FormField, FormStepper, Input, LoadingState, PageHeader, StatusBadge, Table, Textarea, STATUS_CATALOG } from '../../components/common';
+import PublicLayout from '../../components/layout/PublicLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
 import { useCheckoutVoucherSelection } from '../../hooks/useCheckoutVouchers';
 import { usePackagePreview } from '../../hooks/usePackagePreview';
 import { checkoutPointLimit, checkoutPointPercent, checkoutRewardErrorField, defaultPointRedemptionValue, pointInputError } from '../../utils/checkoutPoints';
-import { formatVnd, uiMessage } from '../../utils/formatters';
+import { money, uiMessage } from '../../utils/formatters';
 import { clearPackageDraft, readPackageDraft } from '../../utils/packageDraft';
 import styles from './BookingSummaryPage.module.css';
 import own from './PackageSummaryPage.module.css';
+const formatVnd = value => money(value).replace(/\s*₫/, 'đ');
+const PACKAGE_STEPS = ['Thiết lập lịch', 'Xử lý buổi trùng', 'Tóm tắt & xác nhận'];
 
 // Backend: 1 = Thứ 2 … 7 = Chủ nhật; Date.getDay(): 0 = Chủ nhật
 const BACKEND_DAY_LABELS = { 1: 'T2', 2: 'T3', 3: 'T4', 4: 'T5', 5: 'T6', 6: 'T7', 7: 'CN' };
-const JS_DAY_LABELS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+const JS_DAY_LABELS = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 
 const CONFLICT_LABELS = {
-  TAKEN: 'Đã có người đặt',
-  MAINTENANCE: 'Đang bảo trì',
-  CLOSED: 'Ngoài giờ mở cửa',
-  STARTED: 'Đã qua giờ bắt đầu',
+  TAKEN: STATUS_CATALOG.slot.BOOKED.label,
+  MAINTENANCE: STATUS_CATALOG.slot.MAINTENANCE.label,
+  CLOSED: STATUS_CATALOG.slot.CLOSED.label,
+  STARTED: STATUS_CATALOG.slot.PAST.label,
 };
 
 function formatDay(dateKey) {
@@ -76,6 +77,9 @@ export default function PackageSummaryPage() {
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmPoints, setConfirmPoints] = useState(false);
+  const [contactRevision, setContactRevision] = useState(0);
+  const submitLock = useRef(false);
+  useEffect(() => { window.scrollTo({ top: 0 }) }, []);
 
   useEffect(() => {
     if (!isPlayer || !facilityId) return undefined;
@@ -85,7 +89,7 @@ export default function PackageSummaryPage() {
     getMyPointsAtFacility(facilityId).then((points) => { if (active) setAvailablePoints(Number(points || 0)); })
       .catch((error) => { if (active) setPointsLoadError(apiErrorMessage(error, 'Không tải được số dư điểm.')); });
     return () => { active = false; };
-  }, [isPlayer, facilityId, getMyOwnedTeams, getMyPointsAtFacility]);
+  }, [isPlayer, facilityId, getMyOwnedTeams, getMyPointsAtFacility, contactRevision]);
 
   const baseRequest = useMemo(() => isPlayer && draft?.request
     ? { ...draft.request, teamId: selectedTeamId }
@@ -132,7 +136,8 @@ export default function PackageSummaryPage() {
     !voucher.checking && !pointValidation && validNote && !submitting;
 
   const handleConfirm = async () => {
-    if (!canConfirm) return;
+    if (!canConfirm || submitLock.current) return;
+    submitLock.current = true;
     setSubmitError('');
     setPointSubmitError('');
     setSubmitting(true);
@@ -152,6 +157,7 @@ export default function PackageSummaryPage() {
       else if (field === 'points') setPointSubmitError(message);
       else setSubmitError(message);
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   };
@@ -159,201 +165,92 @@ export default function PackageSummaryPage() {
   if (!user) return <Navigate to="/login" state={{ returnTo: '/booking/package-summary' }} replace />;
   if (!draft) return <Navigate to="/locations" replace />;
   if (!isPlayer) return <p role="alert">Vui lòng đăng nhập bằng tài khoản người chơi để đặt sân.</p>;
-  if (!preview) {
-    return (
-      <div className="cw-workspace"><PublicHeader user={user} /><main className={styles.mainContainer}>
-        <Feedback tone={previewError ? 'error' : 'info'}>{previewError || 'Đang tải tóm tắt gói…'}
-          {previewError && <Link className="cw-secondary" to={editPath}>Quay lại sửa lịch gói</Link>}
-        </Feedback>
-      </main><PublicFooter /></div>
-    );
-  }
 
-  const validSessions = preview.totalSessions - preview.conflictSessions;
-  const voucherDiscount = Number(preview.voucherDiscount ?? 0);
-  const pointDiscount = Number(preview.pointDiscount ?? 0);
+  const editLink = <Link className={own.actionLink} to={editPath} state={{ reviewConflicts: true }}>Quay lại lịch để chọn lại</Link>;
+  const validSessions = preview ? preview.totalSessions - preview.conflictSessions : 0;
+  const voucherDiscount = Number(preview?.voucherDiscount ?? 0);
+  const pointDiscount = Number(preview?.pointDiscount ?? 0);
+  const confirm = () => pointsUsed > 0 ? setConfirmPoints(true) : handleConfirm();
+  const retryContact = () => { setTeamError(''); setPointsLoadError(''); setContactRevision(value => value + 1); };
 
-  return (
-    <div className={`${styles.pageWrapper} cw-workspace`}>
-      <PublicHeader user={user} />
-      {confirmPoints && <ConfirmDialog title="Xác nhận dùng điểm" onCancel={() => setConfirmPoints(false)} onConfirm={() => {
-        setConfirmPoints(false);
-        handleConfirm();
-      }}>Dùng {pointsUsed} điểm để giảm {formatVnd(pointDiscount)}? Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy đặt sân. (MSG39)</ConfirmDialog>}
-
-      <main className={styles.mainContainer}>
-        <Link to={editPath} className={styles.backLink}>‹ Sửa lịch gói</Link>
-
-        <CheckoutProgress current={0} />
-        <h1 className={styles.pageTitle}>Xác nhận gói đặt nhiều buổi</h1>
-
-        {conflictedSessions.length > 0 && (
-          <div className={own.conflictBox}>
-            <Feedback tone="error">
-              Bạn có {conflictedSessions.length} buổi vừa bị đặt trùng: {conflictedSessions
-                .map((session) => `${formatDay(session.date)} ${session.startTime}–${session.endTime} ${session.courtName} (${CONFLICT_LABELS[session.conflict] || session.conflict})`)
-                .join('; ')}. Vui lòng quay lại lịch để chọn khung giờ bù hoặc bỏ buổi. (MSG44)
-              <Link className="cw-secondary" to={editPath}>Quay lại sửa lịch gói</Link>
-            </Feedback>
-          </div>
-        )}
-
-        <div className={styles.contentGrid}>
-          <div className={styles.leftColumn}>
-            {/* Đặt cho (DR03 / BR09) */}
-            <section className={styles.card}>
-              <h2 className={styles.cardTitle}>Đặt cho</h2>
-              <div className={styles.teamPillGroup}>
-                <button type="button" aria-pressed={selectedTeamId === null}
-                  className={`${styles.teamPill} ${selectedTeamId === null ? styles.teamPillActive : ''}`}
-                  onClick={() => setSelectedTeamId(null)}>
-                  Cá nhân
-                </button>
-                {ownedTeams.map((team) => (
-                  <button key={team.id} type="button" aria-pressed={selectedTeamId === team.id}
-                    className={`${styles.teamPill} ${selectedTeamId === team.id ? styles.teamPillActive : ''}`}
-                    onClick={() => setSelectedTeamId(team.id)}>
-                    {team.name}
-                  </button>
-                ))}
-              </div>
-              <p className={styles.helperText}>Chọn đội nếu bạn đặt sân thay cho đội mình quản lý.</p>
-              {teamError && <p role="alert" className={styles.errorText}>{teamError}</p>}
-            </section>
-
-            {/* Thông tin gói (UC15) */}
-            <section className={styles.card}>
-              <h2 className={styles.cardTitle}>Thông tin gói</h2>
-              <div className={styles.infoGrid}>
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Địa điểm</span>
-                  <strong className={styles.infoValue}>{draft.facilityName || preview.locationName || '—'}</strong>
-                </div>
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Cách đặt</span>
-                  <strong className={styles.infoValue}>{describePattern(draft.request)}</strong>
-                </div>
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Thời gian gói</span>
-                  <strong className={styles.infoValue}>{formatDay(preview.startDate)} – {formatDay(preview.endDate)}</strong>
-                </div>
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Số buổi</span>
-                  <strong className={styles.infoValue}>{validSessions} buổi</strong>
-                </div>
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Người đặt</span>
-                  <strong className={styles.infoValue}>{user.full_name}</strong>
-                </div>
-                <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>Số điện thoại</span>
-                  <strong className={styles.infoValue}>{user.phone_number}</strong>
-                </div>
-              </div>
-
-              <div className={own.tableWrap}>
-                <table className={own.sessionTable}>
-                  <thead>
-                    <tr><th>Ngày</th><th>Sân</th><th>Giờ</th><th className={own.amount}>Giá</th></tr>
-                  </thead>
-                  <tbody>
-                    {sessions.map((session) => (
-                      <tr key={`${session.date}|${session.courtId}|${session.startMinute}`}
-                        className={session.conflict ? own.conflictRow : undefined}>
-                        <td>{formatDay(session.date)}</td>
-                        <td>
-                          {session.courtName}
-                          {isReplacement(session) && <span className={own.replacementTag}>khung giờ bù</span>}
-                        </td>
-                        <td>{session.startTime}–{session.endTime}</td>
-                        <td className={own.amount}>
-                          {session.conflict ? (CONFLICT_LABELS[session.conflict] || 'Trùng lịch') : formatVnd(Number(session.listAmount))}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {sessions.length > 10 && <p className={own.tableCaption}>Cuộn trong bảng để xem đủ {sessions.length} buổi.</p>}
-
-              <div className={`${styles.noteGroup} ${own.noteSpacing}`}>
-                <label className={styles.noteLabel} htmlFor="package-note">Ghi chú cho chủ sân (không bắt buộc, tối đa 200 ký tự)</label>
-                <textarea rows={3} maxLength={200} id="package-note" className={styles.noteTextarea}
-                  placeholder="Ví dụ: Chuẩn bị thêm 2 ống cầu..." value={note} onChange={(event) => setNote(event.target.value)} />
-                {!validNote && <p role="alert" className={styles.errorText}>Ghi chú không được vượt quá 200 ký tự (MSG109).</p>}
-              </div>
-            </section>
-
-            {/* Voucher và điểm thưởng (BR14, BR41, D130, D161) */}
-            <section className={styles.card}>
-              <h2 className={styles.cardTitle}>phiếu ưu đãi và điểm thưởng</h2>
-
-              <CheckoutVoucherPicker {...voucher} error={voucherError}
-                disabled={submitting || !baseResult?.data || conflictedSessions.length > 0} />
-
-              {pointsLoadError && <p role="alert" className={styles.errorText}>{pointsLoadError}</p>}
-              <div className={styles.pointsRow}>
-                <div className={styles.pointsInfo}>
-                  <strong className={styles.pointsTitle}>Dùng điểm thưởng</strong>
-                  <span className={styles.pointsSub}>
-                    Bạn đang có {availablePoints} điểm tại địa điểm này (1 điểm = {formatVnd(pointValue)}).{' '}
-                    Tối đa {checkoutPointPercent}% {appliedVoucher ? "số tiền còn lại sau phiếu ưu đãi" : 'giá niêm yết'}.
-                  </span>
-                </div>
-                <input type="number" aria-label="Số điểm muốn dùng" min="0" max={pointsAllowed}
-                  placeholder="0" value={pointsInput} disabled={submitting}
-                  aria-invalid={Boolean(pointError)}
-                  aria-describedby={pointError ? 'package-point-error' : undefined}
-                  onChange={(event) => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
-                {pointError && <p id="package-point-error" role="alert" className={styles.errorText}>
-                  {uiMessage(pointError)}
-                </p>}
-              </div>
-            </section>
-          </div>
-
-          {/* Chi phí gói và xác nhận */}
-          <aside className={styles.rightColumn}>
-            <div className={styles.paymentCard}>
-              <h2 className={styles.cardTitle}>Chi phí gói</h2>
-
-              <div className={styles.priceLine}>
-                <span className={styles.priceLabel}>Tiền sân ({validSessions} buổi)</span>
-                <strong className={styles.priceValue}>{formatVnd(preview.listAmount)}</strong>
-              </div>
-              <div className={styles.priceLine}>
-                <span className={styles.priceLabel}>Phiếu ưu đãi</span>
-                <strong className={styles.discountValue}>–{formatVnd(voucherDiscount)}</strong>
-              </div>
-              <div className={styles.priceLine}>
-                <span className={styles.priceLabel}>Điểm thưởng</span>
-                <strong className={styles.discountValue}>–{formatVnd(pointDiscount)} ({preview.pointsUsed ?? 0} điểm)</strong>
-              </div>
-
-              <hr className={styles.divider} />
-
-              <div className={styles.totalLine}>
-                <span className={styles.totalLabel}>Cần thanh toán</span>
-                <strong className={styles.totalValue}>{formatVnd(preview.finalAmount)}</strong>
-              </div>
-
-              {loading && <p role="status" className={styles.holdNotice}>Đang cập nhật giá gói…</p>}
-              {previewError && <p role="alert" className={styles.errorText}>{previewError}</p>}
-              {submitError && <p role="alert" className={styles.errorText}>{submitError}</p>}
-
-              <button type="button" className={styles.confirmBtn} disabled={!canConfirm}
-                onClick={() => pointsUsed > 0 ? setConfirmPoints(true) : handleConfirm()}>
-                {submitting ? 'Đang giữ chỗ gói…' : 'Xác nhận và thanh toán'}
-              </button>
-
-              <p className={styles.holdNotice}>
-                Thanh toán 1 lần cho toàn bộ gói. Bấm xác nhận thì gói được giữ chỗ 10 phút và chuyển sang trang thanh toán (mã QR chuyển khoản).
-              </p>
-            </div>
-          </aside>
+  return <PublicLayout fullWidth className={own.page}>
+    <div className={`${styles.container} ${own.container}`}>
+      <PageHeader title="Tóm tắt gói đặt nhiều buổi" subtitle="Kiểm tra lịch, chọn ưu đãi và xác nhận trước khi chuyển khoản."
+        backTo={{ to: editPath, label: 'Sửa lịch gói' }} />
+      <FormStepper steps={PACKAGE_STEPS} current={2} disabled={submitting} onChange={index => { if (index < 2) navigate(editPath, { state: { reviewConflicts: index === 1 } }); }} />
+      {!preview ? previewError
+        ? <ErrorState message={uiMessage(previewError)} onRetry={() => setRevision(value => value + 1)} />
+        : <LoadingState message="Đang tải tóm tắt gói…" /> : <>
+      {conflictedSessions.length > 0 && <section className={own.conflictBox} role="alert" aria-labelledby="package-conflict-title">
+        <h2 id="package-conflict-title">Có {conflictedSessions.length} buổi không còn trống</h2>
+        <p>Chưa thể xác nhận gói. Chọn khung giờ bù hoặc bỏ các buổi sau để tiếp tục.</p>
+        <ul>{conflictedSessions.map(session => <li key={session.date + '|' + session.courtId + '|' + session.startMinute}>
+          {formatDay(session.date)} · {session.courtName} · {session.startTime}–{session.endTime} · {CONFLICT_LABELS[session.conflict] || session.conflict}
+        </li>)}</ul>{editLink}
+      </section>}
+      <div className={styles.contentGrid}>
+        <div className={styles.leftColumn}>
+          <section className={styles.card}>
+            <div className={styles.cardHeader}><h2>Lịch chơi của bạn</h2><span className={styles.countChip}>{validSessions} buổi</span></div>
+            <h3 className={own.venueName}>{draft.facilityName || preview.locationName || 'Địa điểm đã chọn'}</h3>
+            <p className={own.pattern}>{describePattern(draft.request)}</p>
+            <p className={own.dateRange}>{formatDay(preview.startDate)} – {formatDay(preview.endDate)}</p>
+            {sessions.length ? <Table className={own.tableWrap}>
+              <caption>Chi tiết {sessions.length} buổi trong gói</caption>
+              <thead><tr><th scope="col">Ngày chơi</th><th scope="col">Sân</th><th scope="col">Khung giờ</th><th scope="col">Giá niêm yết</th></tr></thead>
+              <tbody>{sessions.map(session => <tr key={session.date + '|' + session.courtId + '|' + session.startMinute} className={session.conflict ? own.conflictRow : undefined}>
+                <td>{formatDay(session.date)}</td><td>{session.courtName}{isReplacement(session) && <span className={own.replacementTag}>Khung giờ bù</span>}</td>
+                <td>{session.startTime}–{session.endTime}</td><td>{session.conflict ? <StatusBadge category="slot" status={({ TAKEN: 'BOOKED', STARTED: 'PAST' })[session.conflict] || session.conflict} /> : formatVnd(session.listAmount)}</td>
+              </tr>)}</tbody>
+            </Table> : <EmptyState title="Chưa có buổi trong gói" description="Quay lại lịch để chọn buổi trên ít nhất hai ngày khác nhau." action={editLink} />}
+          </section>
+          <section className={styles.card}>
+            <h2>Thông tin người đặt</h2>
+            <dl className={styles.booker}><div><dt>Họ tên</dt><dd>{user.full_name || '—'}</dd></div><div><dt>Số điện thoại</dt><dd>{user.phone_number || '—'}</dd></div></dl>
+            <fieldset className={styles.teamGroup} disabled={submitting}><legend>Đặt cho</legend><div className={styles.teamOptions}>
+              <Button variant={selectedTeamId === null ? 'primary' : 'secondary'} aria-pressed={selectedTeamId === null} onClick={() => setSelectedTeamId(null)}>Cá nhân</Button>
+              {ownedTeams.map(team => <Button key={team.id} variant={selectedTeamId === team.id ? 'primary' : 'secondary'} aria-pressed={selectedTeamId === team.id} onClick={() => setSelectedTeamId(team.id)}>{team.name}</Button>)}
+            </div></fieldset>
+            <p className={styles.helper}>Có thể chọn một đội do bạn quản lý hoặc tiếp tục đặt cho cá nhân.</p>
+            {teamError && <ErrorState message={teamError} onRetry={retryContact} />}
+          </section>
+          <section className={styles.card}>
+            <FormField label="Ghi chú cho chủ sân" htmlFor="package-note" hint="Không bắt buộc. Không sửa được sau khi xác nhận." error={!validNote ? 'Ghi chú không được vượt quá 200 ký tự.' : undefined}>
+              <Textarea rows={4} maxLength={200} placeholder="Ví dụ: Chuẩn bị thêm 2 ống cầu…" value={note} disabled={submitting} onChange={event => setNote(event.target.value)} />
+            </FormField><p className={styles.noteCount}>{note.length}/200 ký tự</p>
+          </section>
         </div>
-      </main>
-      <PublicFooter />
+        <aside className={styles.rightColumn} aria-label="Chi phí và xác nhận gói">
+          <section className={styles.paymentCard}>
+            <h2>Ưu đãi & thanh toán</h2>
+            <CheckoutVoucherPicker {...voucher} error={voucherError} disabled={submitting || !baseResult?.data || conflictedSessions.length > 0} />
+            <div className={styles.points}>
+              <h3>Dùng điểm tại địa điểm</h3><p className={styles.helper}>Số dư: <strong>{availablePoints} điểm</strong> · 1 điểm = {formatVnd(pointValue)}. Tối đa {checkoutPointPercent}% {appliedVoucher ? 'số tiền sau voucher' : 'giá niêm yết'}.</p>
+              {pointsLoadError && <ErrorState message={pointsLoadError} onRetry={retryContact} />}
+              <FormField label="Số điểm muốn dùng" htmlFor="package-points" error={uiMessage(pointError)} hint={'Được dùng tối đa ' + pointsAllowed + ' điểm cho gói này.'}>
+                <Input type="number" min="0" max={pointsAllowed} placeholder="0" value={pointsInput} disabled={submitting}
+                  onChange={event => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
+              </FormField>
+            </div>
+            <dl className={styles.pricing}>
+              <div><dt>Tạm tính ({validSessions} buổi)</dt><dd>{formatVnd(preview.listAmount)}</dd></div>
+              <div><dt>Giảm voucher</dt><dd>−{formatVnd(voucherDiscount)}</dd></div>
+              <div><dt>Giảm điểm ({preview.pointsUsed ?? 0})</dt><dd>−{formatVnd(pointDiscount)}</dd></div>
+              <div className={styles.total}><dt>Phải trả</dt><dd>{formatVnd(preview.finalAmount)}</dd></div>
+            </dl>
+            {loading && <p role="status" className={styles.helper}>Đang cập nhật giá gói…</p>}
+            {previewError && <ErrorState message={uiMessage(previewError)} onRetry={() => setRevision(value => value + 1)} />}
+            {submitError && <div role="alert" className={styles.submitError}><p>{uiMessage(submitError)}</p>{/MSG29|chờ thanh toán/i.test(submitError) && <Link to="/my-bookings">Lịch đặt sân của tôi →</Link>}</div>}
+            <div className={styles.desktopConfirm}><Button className={styles.confirmBtn} loading={submitting} disabled={!canConfirm} onClick={confirm}>Xác nhận lịch</Button></div>
+            <p className={styles.holdNotice}>Gói được giữ chỗ <strong>10 phút</strong> sau khi xác nhận. Thanh toán một lần cho toàn bộ gói bằng chuyển khoản.</p>
+          </section>
+        </aside>
+      </div>
+      <div className={styles.mobileBar}><div><span>Phải trả</span><strong>{formatVnd(preview.finalAmount)}</strong></div><Button loading={submitting} disabled={!canConfirm} onClick={confirm}>Xác nhận lịch</Button><p>Giữ chỗ 10 phút sau khi xác nhận.</p></div>
+      </>}
     </div>
-  );
+    {confirmPoints && <ConfirmDialog title="Xác nhận dùng điểm" busy={submitting} onCancel={() => setConfirmPoints(false)} onConfirm={() => { setConfirmPoints(false); handleConfirm(); }}>
+      Dùng {pointsUsed} điểm để giảm {formatVnd(pointDiscount)}? Điểm bị trừ khi xác nhận đặt sân và không được trả lại nếu bạn tự hủy đặt sân.
+    </ConfirmDialog>}
+  </PublicLayout>;
 }

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import api, { getAllPages } from '../../api'
-import { isLatePaymentEligible } from '../../api/bookingPaymentApi'
-import WorkspaceLayout, { ActionForm, EmptyState, Feedback, Field, Section, StatusPill } from '../WorkspaceLayout'
+import PlayerComplaintWorkspace from './PlayerComplaintWorkspace'
+import ComplaintEvidence from './ComplaintEvidence'
+import WorkspaceLayout, { ActionForm, EmptyState, Field, Section, StatusPill } from '../WorkspaceLayout'
 import { today, useResource } from '../workspaceSupport'
 
 const staffPath = '/staff/complaints'
@@ -110,7 +111,7 @@ function CaseDetails({ id, role, refreshList }) {
         {item.playerName && ' · ' + item.playerName}
         {' · Gửi lúc ' + formatCreatedAt(item.createdAt)}
       </p>
-      <p>{item.content}</p>
+      <p>{item.content}</p><ComplaintEvidence complaintId={id} />
       {item.staffNote && <p>Ghi chú của nhân viên: {item.staffNote}</p>}
       {item.rejectReason && <p>Lý do từ chối: {item.rejectReason}</p>}
       {item.result && <p>Kết quả: {resultLabels[item.result] ?? item.result}
@@ -210,73 +211,8 @@ function StaffComplaints() {
   </>
 }
 
-function PlayerComplaintForm({ bookingId, paymentId, refresh }) {
-  const loadBooking = useCallback((signal) => api.get('/bookings/' + bookingId, { signal }).then((response) => response.data.data), [bookingId])
-  const booking = useResource(loadBooking, bookingId)
-  const item = booking.data
-  const [submittedType, setSubmittedType] = useState(null)
-  const latePaymentOnly = Boolean(paymentId)
-  const types = [['COURT_SERVICE', 'Dịch vụ sân'], ['PAYMENT_ISSUE', 'Vấn đề thanh toán'], ['OTHER', 'Khác']]
-  const targetPaymentId = paymentId || item?.paymentId
-  const loadEligibility = useCallback(async (signal) => {
-    if (!targetPaymentId) return false
-    return isLatePaymentEligible(bookingId, targetPaymentId, signal)
-  }, [bookingId, targetPaymentId])
-  const eligibility = useResource(loadEligibility, targetPaymentId)
-  const canReportLatePayment = !eligibility.loading && eligibility.data === true
-  if (canReportLatePayment) types.push([latePaymentType, 'Xác nhận thanh toán chậm · chủ sân xác nhận thì nhận phiếu ưu đãi 10.000 đ'])
-
-  return <Section title={latePaymentOnly ? 'Khiếu nại xác nhận thanh toán chậm' : 'Gửi khiếu nại'} resource={booking}>
-    {item && <>
-      <p>{item.bookingCode} · {item.playDate}</p>
-      <p className="cw-muted">{latePaymentOnly
-        ? 'Chủ sân nhận thông báo ngay khi bạn gửi khiếu nại về giao dịch này.'
-        : 'Khiếu nại thông thường gửi trong 24 giờ sau giờ chơi và do nhân viên tiếp nhận. Khiếu nại xác nhận thanh toán chậm được gửi thẳng cho chủ sân.'}</p>
-      {submittedType && <Feedback tone="success">{submittedType === latePaymentType
-        ? 'Đã gửi khiếu nại và thông báo cho chủ sân.'
-        : 'Đã gửi khiếu nại.'}</Feedback>}
-      {latePaymentOnly && !submittedType && <>
-        {eligibility.loading && <Feedback>Đang kiểm tra giao dịch…</Feedback>}
-        {eligibility.error && <Feedback tone="error">{eligibility.error}
-          <button type="button" className="cw-secondary" onClick={eligibility.reload}>Thử lại</button>
-        </Feedback>}
-        {!eligibility.loading && !eligibility.error && !canReportLatePayment &&
-          <Feedback tone="warning">Giao dịch này hiện không thể gửi khiếu nại xác nhận thanh toán chậm.</Feedback>}
-      </>}
-      {(!latePaymentOnly || (canReportLatePayment && !submittedType)) &&
-        <ActionForm label={latePaymentOnly ? 'Gửi cho chủ sân' : 'Gửi khiếu nại'} successMessage={false}
-          after={(response) => {
-            setSubmittedType(response.data.data.complaintType)
-            eligibility.reload()
-            refresh()
-          }} action={(form) => {
-            setSubmittedType(null)
-            const complaintType = latePaymentOnly ? latePaymentType : form.complaintType
-            return api.post('/complaints', {
-              content: form.content, complaintType, bookingId: item.id ?? Number(bookingId),
-              paymentId: complaintType === latePaymentType ? targetPaymentId : null,
-            })
-          }}>
-          {(errors) => <>
-            {!latePaymentOnly && <Field label="Loại khiếu nại" name="complaintType" options={types} required error={errors.complaintType} />}
-            <Field label="Nội dung" name="content" maxLength={1000} required error={errors.content} />
-          </>}
-        </ActionForm>}
-    </>}
-  </Section>
-}
-
 export function PlayerComplaintsPage() {
-  const [params] = useSearchParams()
-  const [revision, setRevision] = useState(0)
-  const bookingId = params.get('bookingId')
-  return <WorkspaceLayout role="player" title="Khiếu nại">
-    {bookingId && /^[1-9]\d*$/.test(bookingId) &&
-      <PlayerComplaintForm key={bookingId + ':' + params.get('paymentId')} bookingId={bookingId}
-        paymentId={/^[1-9]\d*$/.test(params.get('paymentId') || '') ? params.get('paymentId') : null} refresh={() => setRevision((value) => value + 1)} />}
-    <Link to="/my-bookings" className="cw-secondary justify-self-start">Chọn lịch đặt sân để gửi khiếu nại</Link>
-    <CaseList role="player" key={revision} />
-  </WorkspaceLayout>
+  return <PlayerComplaintWorkspace />
 }
 
 export default function CourtComplaintsPage() {
