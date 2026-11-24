@@ -51,7 +51,9 @@ export default function ScheduleGrid({ courtsAsColumns = false, role, showBooker
   return courtsAsColumns ? <VerticalScheduleGrid {...shared} /> : <HorizontalScheduleGrid {...shared} />
 }
 
-function HorizontalScheduleGrid({ schedule, selected = [], allowBooking, showBooker, onSlot, onInspect, mark, markLegend = [], legend = true, filters = false, conflictSlots = [] }) {
+// keepNowAtLeft: thêm khoảng trống cuối bảng để cột "Bây giờ" nằm sát mép trái (mặc định). Hộp thoại đặt tại quầy tắt đi
+// để bảng luôn đầy, không có khoảng trắng.
+function HorizontalScheduleGrid({ schedule, selected = [], allowBooking, showBooker, onSlot, onInspect, mark, markLegend = [], legend = true, filters = false, conflictSlots = [], keepNowAtLeft = true }) {
   const [period, setPeriod] = useState('all')
   const [onlyFree, setOnlyFree] = useState(false)
   const [courtFilter, setCourtFilter] = useState('all')
@@ -81,9 +83,9 @@ function HorizontalScheduleGrid({ schedule, selected = [], allowBooking, showBoo
     if (!target) return
     const left = Math.max(0, target.getBoundingClientRect().left - wrapper.getBoundingClientRect().left + wrapper.scrollLeft - courtColumn.offsetWidth)
     const room = wrapper.scrollWidth - wrapper.clientWidth
-    if (target.hasAttribute('data-now') && spacerRef.current && left > room) spacerRef.current.style.width = `${left - room}px`
+    if (keepNowAtLeft && target.hasAttribute('data-now') && spacerRef.current && left > room) spacerRef.current.style.width = `${left - room}px`
     wrapper.scrollLeft = left
-  }, [schedule, afterClose, period, courtFilter, onlyFree])
+  }, [schedule, afterClose, period, courtFilter, onlyFree, keepNowAtLeft])
 
   function moveFocus(event) {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
