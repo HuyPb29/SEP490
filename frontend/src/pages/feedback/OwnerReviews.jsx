@@ -1,7 +1,32 @@
 import { useCallback, useEffect, useState } from 'react';
 import api, { apiErrorMessage } from '../../api';
-import { LoadingState, Pagination } from '../../components/common';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  FormField,
+  LoadingState,
+  Pagination,
+  Select,
+  StatusBadge,
+  Textarea,
+  Toast,
+} from '../../components/common';
+import { shortDate } from '../../utils/formatters';
 import styles from './OwnerReviews.module.css';
+
+const REPLY_LIMIT = 1000;
+
+function Stars({ rating }) {
+  const value = Math.max(0, Math.min(5, Number(rating) || 0));
+  return (
+    <span className={styles.stars} aria-label={`${value} trên 5 sao`}>
+      <span aria-hidden="true">{'★'.repeat(value)}<span className={styles.starsEmpty}>{'★'.repeat(5 - value)}</span></span>
+      <span className={styles.ratingText}>{value}/5</span>
+    </span>
+  );
+}
 
 export function OwnerReviews() {
   const [reviews, setReviews] = useState([]);
@@ -12,13 +37,14 @@ export function OwnerReviews() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [toast, setToast] = useState(null);
 
   // Quản lý reply theo từng review
   const [replyTextMap, setReplyTextMap] = useState({});
   const [activeReplyId, setActiveReplyId] = useState(null);
   const [replyError, setReplyError] = useState('');
   const [actionInProgress, setActionInProgress] = useState(false);
+  const [pendingHide, setPendingHide] = useState(null);
 
   const loadReviews = useCallback(async () => {
     setIsLoading(true);
@@ -38,7 +64,7 @@ export function OwnerReviews() {
       setReviews(Array.isArray(list) ? list : []);
       setTotalPages(pageData.totalPages || 1);
     } catch (err) {
-      setError(apiErrorMessage(err, 'Không thể tải danh sách đánh giá của cơ sở.'));
+      setError(apiErrorMessage(err, 'Không thể tải danh sách đánh giá của địa điểm.'));
     } finally {
       setIsLoading(false);
     }
@@ -55,8 +81,8 @@ export function OwnerReviews() {
       setReplyError('Nội dung phản hồi không được để trống.');
       return;
     }
-    if (text.length > 1000) {
-      setReplyError('Nội dung phản hồi tối đa 1000 ký tự.');
+    if (text.length > REPLY_LIMIT) {
+      setReplyError(`Nội dung phản hồi tối đa ${REPLY_LIMIT} ký tự.`);
       return;
     }
 
@@ -64,7 +90,7 @@ export function OwnerReviews() {
     setReplyError('');
     try {
       await api.post(`/owner/reviews/${reviewId}/replies`, { reply: text });
-      setNotice('Đã gửi phản hồi đánh giá thành công.');
+      setToast({ tone: 'success', text: 'Đã gửi phản hồi đánh giá.' });
       setActiveReplyId(null);
       setReplyTextMap((prev) => ({ ...prev, [reviewId]: '' }));
       loadReviews();
@@ -76,197 +102,146 @@ export function OwnerReviews() {
   };
 
   // Ẩn / Hiện lại đánh giá (UC32)
-  const handleToggleHidden = async (review) => {
-    // BR22: chỉ ẩn đánh giá vi phạm quy định nội dung, không ẩn vì bị chấm điểm thấp.
-    if (!review.hidden && !window.confirm(
-      'Chỉ ẩn đánh giá vi phạm quy định nội dung (xúc phạm, quảng cáo, thông tin cá nhân…), '
-      + 'không ẩn vì bị chấm điểm thấp. Ẩn đánh giá này khỏi trang công khai?'
-    )) {
-      return;
-    }
+  const changeHidden = async (review) => {
     setActionInProgress(true);
     try {
       await api.patch(`/owner/reviews/${review.id}`, { hidden: !review.hidden });
-      setNotice(`Đã ${review.hidden ? 'hiển thị lại' : 'ẩn'} đánh giá.`);
+      setToast({ tone: 'success', text: `Đã ${review.hidden ? 'hiển thị lại' : 'ẩn'} đánh giá.` });
       loadReviews();
     } catch (err) {
-      setError(apiErrorMessage(err, 'Không thể thay đổi trạng thái hiển thị của đánh giá.'));
+      setToast({ tone: 'danger', text: apiErrorMessage(err, 'Không thể thay đổi trạng thái hiển thị của đánh giá.') });
     } finally {
       setActionInProgress(false);
+      setPendingHide(null);
     }
   };
 
+  // BR22: chỉ ẩn đánh giá vi phạm quy định nội dung, không ẩn vì bị chấm điểm thấp.
+  const handleToggleHidden = (review) => {
+    if (review.hidden) changeHidden(review);
+    else setPendingHide(review);
+  };
+
+  const filtered = ratingFilter !== '' || hiddenFilter !== '';
+
   return (
     <div className={styles.container}>
-      {notice && (
-        <div className={styles.alertSuccess}>
-          <span>✓ {notice}</span>
-          <button
-            type="button"
-            onClick={() => setNotice('')}
-            style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      {toast && <Toast tone={toast.tone} onClose={() => setToast(null)}>{toast.text}</Toast>}
 
-      {error && <div className={styles.alertDanger}>{error}</div>}
-
-      {/* Thanh bộ lọc */}
       <div className={styles.filterRow}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label htmlFor="ratingFilterSelect" style={{ fontSize: 'var(--text-sm)', fontWeight: 650 }}>
-            Số sao:
-          </label>
-          <select
-            id="ratingFilterSelect"
-            className={styles.filterSelect}
+        <FormField label="Số sao" className={styles.filterField}>
+          <Select
             value={ratingFilter}
             onChange={(e) => {
               setRatingFilter(e.target.value);
               setPage(0);
             }}
-          >
-            <option value="">Tất cả số sao</option>
-            <option value="5">⭐⭐⭐⭐⭐ (5 sao)</option>
-            <option value="4">⭐⭐⭐⭐ (4 sao)</option>
-            <option value="3">⭐⭐⭐ (3 sao)</option>
-            <option value="2">⭐⭐ (2 sao)</option>
-            <option value="1">⭐ (1 sao)</option>
-          </select>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label htmlFor="hiddenFilterSelect" style={{ fontSize: 'var(--text-sm)', fontWeight: 650 }}>
-            Hiển thị:
-          </label>
-          <select
-            id="hiddenFilterSelect"
-            className={styles.filterSelect}
+            options={[['', 'Tất cả số sao'], ['5', '5 sao'], ['4', '4 sao'], ['3', '3 sao'], ['2', '2 sao'], ['1', '1 sao']]}
+          />
+        </FormField>
+        <FormField label="Hiển thị" className={styles.filterField}>
+          <Select
             value={hiddenFilter}
             onChange={(e) => {
               setHiddenFilter(e.target.value);
               setPage(0);
             }}
-          >
-            <option value="">Tất cả</option>
-            <option value="false">Đang hiển thị</option>
-            <option value="true">Đã ẩn</option>
-          </select>
-        </div>
+            options={[['', 'Tất cả'], ['false', 'Đang hiển thị'], ['true', 'Đã ẩn']]}
+          />
+        </FormField>
+        {filtered && (
+          <Button variant="ghost" className={styles.clearFilter}
+            onClick={() => { setRatingFilter(''); setHiddenFilter(''); setPage(0); }}>
+            Xóa bộ lọc
+          </Button>
+        )}
       </div>
 
-      {isLoading ? (
-        <LoadingState message="Đang tải danh sách đánh giá…" />
-      ) : reviews.length === 0 ? (
-        <p style={{ textAlign: 'center', padding: '36px 0', color: 'var(--color-text-muted)', background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
-          Chưa có đánh giá nào phù hợp với bộ lọc hiện tại.
-        </p>
-      ) : (
-        <div className={styles.reviewList}>
-          {reviews.map((item) => (
-            <article key={item.id} className={styles.reviewCard}>
-              <div className={styles.cardTop}>
-                <div>
-                  <h4 className={styles.reviewerName}>{item.playerName || 'Người chơi ẩn danh'}</h4>
-                  <div className={styles.reviewMeta}>
-                    Mã đặt sân #{item.bookingId} ·{' '}
-                    {item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—'}
+      {isLoading && <LoadingState message="Đang tải danh sách đánh giá…" />}
+      {!isLoading && error && <ErrorState message={error} onRetry={loadReviews} />}
+      {!isLoading && !error && reviews.length === 0 && (
+        <EmptyState
+          title="Chưa có đánh giá"
+          description={filtered
+            ? 'Không có đánh giá phù hợp với bộ lọc. Thử bỏ bớt điều kiện lọc.'
+            : 'Khách đánh giá sau khi booking hoàn thành; đánh giá sẽ hiện ở đây.'}
+        />
+      )}
+      {!isLoading && !error && reviews.length > 0 && (
+        <ul className={styles.reviewList}>
+          {reviews.map((item) => {
+            const draft = replyTextMap[item.id] || '';
+            const replyId = `reply-input-${item.id}`;
+            return (
+              <li key={item.id} className={`${styles.reviewCard} ${item.hidden ? styles.reviewHidden : ''}`}>
+                <div className={styles.cardTop}>
+                  <div>
+                    <h3 className={styles.reviewerName}>{item.playerName || 'Người chơi ẩn danh'}</h3>
+                    <p className={styles.reviewMeta}>
+                      Mã đặt sân #{item.bookingId} · {item.createdAt ? shortDate(item.createdAt) : '—'}
+                    </p>
+                  </div>
+                  <div className={styles.badges}>
+                    <Stars rating={item.rating} />
+                    {item.hidden && <StatusBadge tone="neutral">Đã ẩn</StatusBadge>}
+                    {!item.ownerReply && <StatusBadge tone="warning">Chưa phản hồi</StatusBadge>}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div className={styles.stars}>
-                    {'★'.repeat(item.rating || 5)}{'☆'.repeat(Math.max(0, 5 - (item.rating || 5)))}
-                    <span style={{ color: 'var(--color-text)', marginLeft: 4 }}>({item.rating}/5)</span>
+                <p className={styles.comment}>{item.comment || 'Khách không để lại nhận xét.'}</p>
+
+                {item.ownerReply && (
+                  <div className={styles.replyBox}>
+                    <p className={styles.replyTitle}>Phản hồi của bạn</p>
+                    <p className={styles.replyText}>{item.ownerReply}</p>
                   </div>
-                  {item.hidden && <span className={styles.badgeHidden}>Đã ẩn</span>}
-                </div>
-              </div>
-
-              <p className={styles.comment}>{item.comment || 'Khách hàng không để lại nhận xét chi tiết.'}</p>
-
-              {/* Phản hồi của Chủ sân nếu có */}
-              {item.ownerReply && (
-                <div className={styles.replyBox}>
-                  <p className={styles.replyTitle}>Phản hồi từ bạn (Chủ sân):</p>
-                  <p className={styles.replyText}>{item.ownerReply}</p>
-                </div>
-              )}
-
-              {/* Form gửi phản hồi nếu chưa có */}
-              {!item.ownerReply && activeReplyId === item.id && (
-                <div className={styles.replyForm}>
-                  <label htmlFor={`reply-input-${item.id}`} style={{ fontSize: 'var(--text-xs)', fontWeight: 650, color: 'var(--color-text-secondary)' }}>
-                    Soạn câu trả lời cho đánh giá này:
-                  </label>
-                  <textarea
-                    id={`reply-input-${item.id}`}
-                    rows={3}
-                    maxLength={1000}
-                    placeholder="Nhập phản hồi cảm ơn hoặc hỗ trợ khách hàng..."
-                    className={styles.replyTextarea}
-                    value={replyTextMap[item.id] || ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setReplyTextMap((prev) => ({ ...prev, [item.id]: val }));
-                      if (replyError) setReplyError('');
-                    }}
-                    disabled={actionInProgress}
-                  />
-                  {replyError && <p className={styles.errorText} role="alert">{replyError}</p>}
-
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                    <button
-                      type="button"
-                      className={styles.secondaryBtn}
-                      onClick={() => {
-                        setActiveReplyId(null);
-                        setReplyError('');
-                      }}
-                      disabled={actionInProgress}
-                    >
-                      Hủy
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.primaryBtn}
-                      onClick={() => handleSendReply(item.id)}
-                      disabled={actionInProgress}
-                    >
-                      {actionInProgress ? 'Đang gửi…' : 'Gửi phản hồi'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className={styles.actionRow}>
-                {!item.ownerReply && activeReplyId !== item.id && (
-                  <button
-                    type="button"
-                    className={styles.primaryBtn}
-                    onClick={() => {
-                      setActiveReplyId(item.id);
-                      setReplyError('');
-                    }}
-                  >
-                    💬 Phản hồi khách hàng
-                  </button>
                 )}
 
-                <button
-                  type="button"
-                  className={styles.secondaryBtn}
-                  disabled={actionInProgress}
-                  onClick={() => handleToggleHidden(item)}
-                >
-                  {item.hidden ? '👁 Hiện lại đánh giá' : '🚫 Ẩn đánh giá'}
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
+                {!item.ownerReply && activeReplyId === item.id && (
+                  <div className={styles.replyForm}>
+                    <FormField label="Phản hồi khách hàng" htmlFor={replyId} required error={replyError || undefined}
+                      hint={`${draft.length}/${REPLY_LIMIT} ký tự. Phản hồi hiển thị công khai và không sửa được sau khi gửi.`}>
+                      <Textarea
+                        id={replyId}
+                        rows={3}
+                        maxLength={REPLY_LIMIT}
+                        placeholder="Cảm ơn khách hoặc giải thích, hỗ trợ khách hàng…"
+                        value={draft}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setReplyTextMap((prev) => ({ ...prev, [item.id]: val }));
+                          if (replyError) setReplyError('');
+                        }}
+                        disabled={actionInProgress}
+                      />
+                    </FormField>
+                    <div className={styles.formActions}>
+                      <Button variant="secondary" disabled={actionInProgress}
+                        onClick={() => { setActiveReplyId(null); setReplyError(''); }}>
+                        Hủy
+                      </Button>
+                      <Button loading={actionInProgress} loadingText="Đang gửi…" onClick={() => handleSendReply(item.id)}>
+                        Gửi phản hồi
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className={styles.actionRow}>
+                  {!item.ownerReply && activeReplyId !== item.id && (
+                    <Button size="sm" onClick={() => { setActiveReplyId(item.id); setReplyError(''); }}>
+                      Phản hồi
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" className={item.hidden ? undefined : styles.dangerText}
+                    disabled={actionInProgress} onClick={() => handleToggleHidden(item)}>
+                    {item.hidden ? 'Hiện lại đánh giá' : 'Ẩn đánh giá'}
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       {totalPages > 1 && (
@@ -276,6 +251,21 @@ export function OwnerReviews() {
           onPageChange={(next) => setPage(next - 1)}
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingHide)}
+        title="Ẩn đánh giá này?"
+        tone="danger"
+        confirmText="Ẩn đánh giá"
+        busy={actionInProgress}
+        onConfirm={() => changeHidden(pendingHide)}
+        onCancel={() => setPendingHide(null)}
+      >
+        <p>Đánh giá sẽ không còn hiện trên trang công khai của địa điểm. Bạn có thể hiện lại sau.</p>
+        <p className={styles.dialogWarning}>
+          Chỉ ẩn đánh giá vi phạm quy định nội dung (xúc phạm, quảng cáo, lộ thông tin cá nhân…), không ẩn vì bị chấm điểm thấp.
+        </p>
+      </ConfirmDialog>
     </div>
   );
 }

@@ -12,7 +12,7 @@ function getPublicMenuItems(roleCode) {
     return [
       ['/locations', 'Tìm sân'],
       ['/my-bookings', 'Lịch đặt sân của tôi'],
-      ['/open-matches', 'Kèo'],
+      ['/open-matches', 'Kèo đang mở'],
       ['/teams', 'Đội của tôi'],
       ['/my-rewards', "Ưu đãi & Điểm"],
       ['/my-complaints', 'Khiếu nại'],
@@ -22,8 +22,10 @@ function getPublicMenuItems(roleCode) {
   if (roleCode === 'staff') return [['/staff/dashboard', 'Bảng điều hành']];
   if (roleCode === 'admin') return [['/admin/workspace', 'Quản trị hệ thống']];
   return [
-    ['/', 'Trang chủ'],
-    ['/open-matches', 'Kèo mở'],
+    ['/', 'Tìm sân'],
+    ['/open-matches', 'Kèo đang mở'],
+    ['/my-bookings', 'Lịch đặt sân của tôi'],
+    ['/my-rewards', 'Ưu đãi'],
     ['/register-service', 'Đăng ký chủ sân'],
   ];
 }

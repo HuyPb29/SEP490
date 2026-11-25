@@ -6,11 +6,17 @@ export function PageHeader({
   title,
   subtitle,
   backTo,
+  breadcrumbs = [],
   actions,
   className = '',
 }) {
   return (
     <header className={[styles.pageHeader, className].filter(Boolean).join(' ')}>
+      {breadcrumbs.length > 0 && <nav aria-label="Đường dẫn trang"><ol className={styles.breadcrumbs}>
+        {breadcrumbs.map((item, index) => <li key={item.to || index}>
+          {item.to ? <Link to={item.to}>{item.label}</Link> : <span aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}>{item.label}</span>}
+        </li>)}
+      </ol></nav>}
       {backTo && (
         <div className={styles.breadcrumbRow}>
           {backTo.to ? (

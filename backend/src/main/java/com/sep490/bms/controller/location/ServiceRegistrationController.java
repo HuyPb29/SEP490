@@ -66,6 +66,21 @@ public class ServiceRegistrationController {
     }
 
     /**
+     * UC05 #2 – Kiểm tra thông tin đơn trước khi form hiện QR chuyển khoản (FR10, D181). Không lưu gì.
+     * Status: IMPLEMENTED
+     *
+     * Body là JSON CreateServiceRegistrationRequest, bỏ qua termsAccepted (chưa đến bước điều khoản),
+     * nên không dùng @Valid; service kiểm tra từng trường như lúc gửi. Có lỗi thì trả 400/409 kèm câu báo.
+     */
+    @PostMapping(path = "/api/service-registrations/check", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ApiResponse<Void> postServiceRegistrationsCheck(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @RequestBody CreateServiceRegistrationRequest request) {
+        serviceRegistrationService.check(currentUser, request);
+        return ApiResponse.success("Thông tin hợp lệ. Vui lòng chuyển khoản tiền thuê và đính kèm ảnh chứng từ.");
+    }
+
+    /**
      * UC05 – Thông tin nhận chuyển khoản của bên vận hành và mức P35 để form tự tính tiền (FR10, FR127).
      * Status: IMPLEMENTED
      */

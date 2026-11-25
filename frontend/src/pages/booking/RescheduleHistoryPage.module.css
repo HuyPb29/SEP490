@@ -1,0 +1,19 @@
+.page { width: min(100% - 48px, 1040px); margin-inline: auto; padding-block: var(--space-8); }
+.requests { display: grid; gap: var(--space-4); margin-top: var(--space-6); }
+.requestCard, .paymentDisclosure { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-5); min-width: 0; }
+.requestCard p { margin: 0; line-height: 1.7; color: var(--color-text-secondary); font-size: .875rem; }
+.requestCard { display: grid; gap: var(--space-3); }
+.requestHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.requestHeader h2 { margin: 0; font-size: 1rem; }
+.requestCard .scheduleLine { font-weight: 700; color: var(--color-text); font-size: 1rem; }
+.amountRow { border-top: 1px solid var(--color-border); padding-top: var(--space-4); display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3); font-size: .875rem; }
+.amountRow strong { font-size: 1.125rem; font-variant-numeric: tabular-nums; }
+.actionLink { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; justify-self: start; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: .875rem; font-weight: 600; color: var(--color-primary); background: var(--color-surface); text-decoration: none; }
+.actionLink:hover { background: var(--color-primary-soft); border-color: var(--color-primary); }
+.requestCard .notice { padding: var(--space-3); background: var(--color-warning-bg); color: var(--color-warning); border-radius: var(--radius-sm); }
+.paymentDisclosure { margin-bottom: var(--space-4); }
+.paymentDisclosure summary { min-height: 44px; cursor: pointer; font-size: .875rem; font-weight: 600; align-content: center; }
+.paymentDetails { display: grid; gap: var(--space-3); margin-top: var(--space-3); font-size: .875rem; overflow-wrap: anywhere; }
+.proofButtons { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.proofImage { width: 100%; max-height: 480px; object-fit: contain; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+@media (max-width: 639px) { .page { width: calc(100% - 32px); padding-block: var(--space-5); } .requestCard, .paymentDisclosure { padding: var(--space-4); } .actionLink { justify-self: stretch; text-align: center; } }

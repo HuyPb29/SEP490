@@ -37,7 +37,12 @@ public class Payment {
 
     /** Số lần gửi lại chứng từ tối đa (BR34, P06): cố định (D154), database chặn bằng ck_payment_resubmit. */
     public static final int MAX_RESUBMITS = 3;
+    /** P24 (D182): chờ quá 15 phút trong giờ mở cửa thì báo đỏ trên màn Staff và Player được khiếu nại chậm xác nhận. */
     public static final Duration LATE_CONFIRMATION_WAIT = Duration.ofMinutes(15);
+    /** P36 (D182): sau mốc P24 thêm 10 phút trong giờ mở cửa mà Staff vẫn chưa xử lý thì chuyển cho chủ sân. */
+    public static final Duration OWNER_TRANSFER_EXTRA_WAIT = Duration.ofMinutes(10);
+    /** Tổng thời gian chờ trước khi chuyển cho chủ sân: P24 + P36 = 25 phút. */
+    public static final Duration OWNER_TRANSFER_WAIT = LATE_CONFIRMATION_WAIT.plus(OWNER_TRANSFER_EXTRA_WAIT);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -98,10 +103,15 @@ public class Payment {
     private LocalDateTime createdAt;
 
     /**
-     * D174: tính khi trả danh sách hoặc chi tiết phụ thu cho Staff/Owner, không lưu DB.
+     * D182: chờ quá P24 + P36 (25 phút) trong giờ mở cửa thì đã chuyển cho chủ sân. Tính khi trả danh sách
+     * hoặc chi tiết phụ thu cho Staff/Owner, không lưu DB.
      */
     @Transient
     private boolean transferredToOwner;
+
+    /** D182: chờ quá P24 (15 phút) trong giờ mở cửa, màn Staff báo đỏ. Không lưu DB. */
+    @Transient
+    private boolean overdue;
 
     /**
      * Player đã gửi lại chứng từ (UC18 #4): chờ Staff xem lại. Tính lại thời điểm gửi để

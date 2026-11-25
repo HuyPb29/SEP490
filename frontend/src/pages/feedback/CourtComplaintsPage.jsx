@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import api, { getAllPages } from '../../api'
-import { isLatePaymentEligible } from '../../api/bookingPaymentApi'
-import WorkspaceLayout, { ActionForm, EmptyState, Field, Section, StatusPill } from '../WorkspaceLayout'
+import PlayerComplaintWorkspace from './PlayerComplaintWorkspace'
+import ComplaintEvidence from './ComplaintEvidence'
+import { ActionForm, Field } from '../WorkspaceLayout'
+import ManagementLayout from '../../components/layout/ManagementLayout'
+import { Drawer } from '../../components/common/Drawer'
+import { Modal } from '../../components/common/Modal'
+import styles from './CourtComplaintsPage.module.css'
 import { today, useResource } from '../workspaceSupport'
 
 const staffPath = '/staff/complaints'
 const ownerPath = '/owner/complaints'
-const labels = { SUBMITTED: "Chờ nhân viên chuyển", PENDING_OWNER: "Chờ chủ sân xử lý", RESOLVED: 'Đã xử lý', REJECTED: 'Đã từ chối' }
+const latePaymentType = 'LATE_PAYMENT_CONFIRMATION'
+const labels = { SUBMITTED: 'Mới gửi', PENDING_OWNER: 'Chờ chủ sân quyết định', RESOLVED: 'Đã xử lý', REJECTED: 'Bị từ chối' }
 const resultLabels = {
   REFUND: 'Đã tạo yêu cầu hoàn tiền',
   POINTS: 'Cộng điểm bồi hoàn',
@@ -16,7 +22,6 @@ const resultLabels = {
 }
 const loadStaffCases = (signal) => getAllPages(staffPath, { signal })
 const loadOwnerCases = (signal) => getAllPages(ownerPath, { signal })
-const loadPlayerCases = (signal) => getAllPages('/me/complaints', { signal })
 
 /** Booking tại quầy đã có hiệu lực mới có cái để khiếu nại; đang giữ chỗ hoặc hết hạn thì chưa phát sinh giao dịch. */
 const WALK_IN_COMPLAINABLE = ['CONFIRMED', 'IN_USE', 'COMPLETED', 'CANCELLED_BY_FACILITY', 'CANCELLED_BY_PLAYER']
@@ -27,32 +32,8 @@ const walkInStatusLabels = {
 /** FR110, FR111: Staff chọn loại khiếu nại như Player; khiếu nại chậm xác nhận chỉ Player gửi (BR58). */
 const walkInTypes = [['COURT_SERVICE', 'Dịch vụ sân'], ['PAYMENT_ISSUE', 'Vấn đề thanh toán'], ['OTHER', 'Khác']]
 
-/** UC33 #2, FR111: khách tại quầy khiếu nại trực tiếp thì Staff tạo khiếu nại thay khách (trong 24 giờ, BR49). */
-function WalkInComplaintForm({ refresh }) {
-  const [date, setDate] = useState(today)
-  const loadWalkIns = useCallback(async (signal) => date
-    ? (await getAllPages('/staff/bookings', { signal, params: { date } }))
-      .filter((item) => WALK_IN_COMPLAINABLE.includes(item.status))
-    : [], [date])
-  const bookings = useResource(loadWalkIns, date)
-  return <Section title="Lập khiếu nại thay khách tại quầy" resource={bookings}>
-    <p className="cw-muted">Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của đặt sân. nhân viên kiểm tra rồi chuyển chủ sân quyết định.</p>
-    <Field label="Ngày đặt sân" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-    {bookings.data?.length === 0 && <p>Không có đặt sân tại quầy trong ngày này.</p>}
-    {bookings.data?.length > 0 && <ActionForm key={date} label="Lập khiếu nại" after={refresh}
-      action={(form) => api.post(staffPath, { ...form, bookingId: Number(form.bookingId) })}>
-      <Field label="đặt sân tại quầy" name="bookingId" required options={[
-        ['', "Chọn đặt sân"], ...bookings.data.map((item) => [item.id, item.bookingCode + ' · ' + item.customerName + ' · '
-          + item.startTime + ' · ' + (walkInStatusLabels[item.status] ?? item.status)]),
-      ]} />
-      <Field label="Loại khiếu nại" name="complaintType" required options={walkInTypes} />
-      <Field label="Nội dung khách phản ánh" name="content" required maxLength={1000} />
-    </ActionForm>}
-  </Section>
-}
-
 function OwnerDecision({ complaint, refresh }) {
-  const latePayment = complaint.complaintType === 'LATE_PAYMENT_CONFIRMATION'
+  const latePayment = complaint.complaintType === latePaymentType
   const [result, setResult] = useState(latePayment ? 'LATE_PAYMENT_CONFIRMED' : 'REFUND')
   // BR58, FR116 (D176): chọn phương án này thì hệ thống tặng người chơi phiếu ưu đãi bồi thường.
   const results = latePayment ? [['LATE_PAYMENT_CONFIRMED', 'Xác nhận thanh toán trễ · tặng người chơi phiếu ưu đãi 10.000 đ']] :
@@ -84,50 +65,6 @@ function OwnerDecision({ complaint, refresh }) {
   </>
 }
 
-function CaseDetails({ id, role, refreshList }) {
-  const owner = role === 'owner'
-  const path = owner ? ownerPath : role === 'player' ? '/complaints' : staffPath
-  const load = useCallback((signal) => api.get(path + '/' + id, { signal }).then((response) => response.data.data), [id, path])
-  const detail = useResource(load, id)
-  const item = detail.data
-  const container = useRef(null)
-  // Chi tiết mở ngay dưới dòng vừa bấm; cuộn tới để không bị khuất dưới danh sách.
-  useEffect(() => { container.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }, [])
-  function refresh() {
-    detail.reload()
-    refreshList()
-  }
-  return <div ref={container}><Section title={'Chi tiết khiếu nại #' + id} resource={detail}>
-    {item && <>
-      <div className="cw-record"><strong>{item.bookingCode ?? 'Lịch đặt #' + item.bookingId}</strong>
-        <StatusPill tone={statusTone(item.status)}>
-          {labels[item.status] ?? item.status}
-        </StatusPill>
-      </div>
-      <p className="cw-muted">
-        {typeLabels[item.complaintType] ?? item.complaintType}
-        {item.playerName && ' · ' + item.playerName}
-        {' · Gửi lúc ' + formatCreatedAt(item.createdAt)}
-      </p>
-      <p>{item.content}</p>
-      {item.staffNote && <p>Ghi chú của nhân viên: {item.staffNote}</p>}
-      {item.rejectReason && <p>Lý do từ chối: {item.rejectReason}</p>}
-      {item.result && <p>Kết quả: {resultLabels[item.result] ?? item.result}
-        {item.result === 'POINTS' && item.compensationPoints ? ' (' + item.compensationPoints + ' điểm)' : ''}</p>}
-      {owner && item.result === 'REFUND' && <Link className="underline" to={'/owner/workspace?tab=refund&complaintId=' + item.id}>Mở yêu cầu hoàn tiền</Link>}
-      {role === 'staff' && item.status === 'SUBMITTED' && <ActionForm label="Chuyển chủ sân" after={refresh}
-        action={(form) => api.post(staffPath + '/' + id + '/forward', form)}>
-        <Field label="Ghi chú khi chuyển chủ sân" name="staffNote" required maxLength={1000} />
-      </ActionForm>}
-      {owner && item.status === 'PENDING_OWNER' && item.complaintType === 'LATE_PAYMENT_CONFIRMATION' &&
-        <p><Link className="underline" to={`/staff/confirm-payments?paymentId=${item.paymentId}${item.reschedulePayment ? '&type=reschedule' : ''}`}>
-          Mở giao dịch để yêu cầu bổ sung hoặc từ chối
-        </Link></p>}
-      {owner && item.status === 'PENDING_OWNER' && <OwnerDecision complaint={item} refresh={refresh} />}
-    </>}
-  </Section></div>
-}
-
 const typeLabels = {
   COURT_SERVICE: 'Dịch vụ sân',
   PAYMENT_ISSUE: 'Vấn đề thanh toán',
@@ -135,123 +72,205 @@ const typeLabels = {
   LATE_PAYMENT_CONFIRMATION: 'Xác nhận thanh toán trễ',
 }
 
-function statusTone(status) {
-  return status === 'RESOLVED' ? 'positive' : status === 'REJECTED' ? 'negative' : 'pending'
-}
-
 function formatCreatedAt(value) {
   return value ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : ''
 }
 
-function CaseList({ role = 'staff' }) {
-  const cases = useResource(role === 'owner' ? loadOwnerCases : role === 'player' ? loadPlayerCases : loadStaffCases)
+export function PlayerComplaintsPage() {
+  return <PlayerComplaintWorkspace />
+}
+
+/** UC33 #2, FR111: khách tại quầy khiếu nại trực tiếp thì Staff tạo khiếu nại thay khách (trong 24 giờ, BR49). */
+function WalkInComplaintForm({ refresh }) {
+  const [date, setDate] = useState(today)
+  const loadWalkIns = useCallback(async (signal) => date
+    ? (await getAllPages('/staff/bookings', { signal, params: { date } }))
+      .filter((item) => WALK_IN_COMPLAINABLE.includes(item.status))
+    : [], [date])
+  const bookings = useResource(loadWalkIns, date)
+  return <div className={styles.walkIn}>
+    <p className={styles.muted}>Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của đặt sân. Nhân viên kiểm tra rồi chuyển chủ sân quyết định.</p>
+    <Field label="Ngày đặt sân" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+    {bookings.loading && <p className={styles.muted} role="status">Đang tải đặt sân tại quầy…</p>}
+    {bookings.error && <p className={styles.error} role="alert">{bookings.error}{' '}
+      <button type="button" className={styles.link} onClick={bookings.reload}>Thử lại</button></p>}
+    {bookings.data?.length === 0 && <p className={styles.muted}>Không có đặt sân tại quầy trong ngày này.</p>}
+    {bookings.data?.length > 0 && <ActionForm key={date} label="Lập khiếu nại" after={refresh}
+      action={(form) => api.post(staffPath, { ...form, bookingId: Number(form.bookingId) })}>
+      <Field label="Đặt sân tại quầy" name="bookingId" required options={[
+        ['', 'Chọn đặt sân'], ...bookings.data.map((item) => [item.id, item.bookingCode + ' · ' + item.customerName + ' · '
+          + item.startTime + ' · ' + (walkInStatusLabels[item.status] ?? item.status)]),
+      ]} />
+      <Field label="Loại khiếu nại" name="complaintType" required options={walkInTypes} />
+      <Field label="Nội dung khách phản ánh" name="content" required maxLength={1000} />
+    </ActionForm>}
+  </div>
+}
+
+const STATUS_BADGE = { SUBMITTED: styles.badgeWarning, PENDING_OWNER: styles.badgeWarning, RESOLVED: styles.badgeSuccess, REJECTED: styles.badgeDanger }
+
+function StatusBadgeText({ status }) {
+  return <span className={`${styles.badge} ${STATUS_BADGE[status] ?? ''}`}>{labels[status] ?? status}</span>
+}
+
+/** Người gửi: Player gửi online thì có tên người chơi; không có người chơi là khiếu nại Staff lập thay khách tại quầy. */
+const sourceOf = (item) => (item.playerId ? 'Online' : 'Tại quầy')
+const customerOf = (item) => item.playerName || 'Khách tại quầy'
+
+/** Chi tiết khiếu nại trong ngăn bên phải: thông tin, nội dung, diễn biến và thao tác theo vai trò (UC33 #3–#6). */
+function ManagerDetail({ id, role, refreshList, onClose }) {
+  const owner = role === 'owner'
+  const path = owner ? ownerPath : staffPath
+  const load = useCallback((signal) => api.get(path + '/' + id, { signal }).then((response) => response.data.data), [id, path])
+  const detail = useResource(load, id)
+  const item = detail.data
+  function refresh() {
+    detail.reload()
+    refreshList()
+  }
+  const title = item ? `#${item.id} · ${typeLabels[item.complaintType] ?? item.complaintType}` : `Khiếu nại #${id}`
+  return <Drawer title={title} onClose={onClose}>
+    {detail.loading && <p className={styles.muted} role="status">Đang tải chi tiết…</p>}
+    {detail.error && <p className={styles.error} role="alert">{detail.error}{' '}
+      <button type="button" className={styles.link} onClick={detail.reload}>Thử lại</button></p>}
+    {item && <>
+      <div className={styles.detailHead}>
+        <StatusBadgeText status={item.status} />
+        <span className={styles.muted}>{sourceOf(item)} · gửi lúc {formatCreatedAt(item.createdAt)}</span>
+      </div>
+      <dl className={styles.kv}>
+        <dt>Khách</dt><dd>{customerOf(item)}</dd>
+        <dt>Booking</dt><dd>{item.bookingCode ?? 'Lịch đặt #' + item.bookingId}</dd>
+        <dt>Loại</dt><dd>{typeLabels[item.complaintType] ?? item.complaintType}</dd>
+        {item.locationName && <><dt>Địa điểm</dt><dd>{item.locationName}</dd></>}
+      </dl>
+      <section>
+        <h3 className={styles.sectionTitle}>Nội dung khách gửi</h3>
+        <p className={styles.contentBox}>{item.content}</p>
+        <ComplaintEvidence complaintId={id} />
+      </section>
+      <section>
+        <h3 className={styles.sectionTitle}>Diễn biến</h3>
+        <ol className={styles.timeline}>
+          <li className={styles.done}><b>{formatCreatedAt(item.createdAt)}</b> · {item.playerId ? 'Khách gửi khiếu nại online' : 'Nhân viên lập khiếu nại thay khách tại quầy'}</li>
+          {item.complaintType === latePaymentType
+            ? <li className={styles.done}>Khiếu nại chậm xác nhận thanh toán gửi thẳng chủ sân (BR58)</li>
+            : <li className={item.status === 'SUBMITTED' ? '' : styles.done}>
+              {item.staffNote ? <>Nhân viên kiểm tra và chuyển chủ sân: <i>{item.staffNote}</i></> : 'Chờ nhân viên kiểm tra và chuyển chủ sân'}
+            </li>}
+          <li className={['RESOLVED', 'REJECTED'].includes(item.status) ? styles.done : ''}>
+            {item.status === 'RESOLVED'
+              ? <>Chủ sân quyết định: <b>{resultLabels[item.result] ?? item.result}</b>{item.result === 'POINTS' && item.compensationPoints ? ` (${item.compensationPoints} điểm)` : ''}{item.decidedAt ? ` · ${formatCreatedAt(item.decidedAt)}` : ''}</>
+              : item.status === 'REJECTED'
+                ? <>Chủ sân từ chối: <i>{item.rejectReason}</i>{item.decidedAt ? ` · ${formatCreatedAt(item.decidedAt)}` : ''}</>
+                : 'Chủ sân quyết định: từ chối / xác nhận thanh toán muộn / hoàn tiền / điểm bồi hoàn / ghi nhận không bồi hoàn'}
+          </li>
+        </ol>
+      </section>
+
+      {owner && item.result === 'REFUND' && <Link className={styles.link} to={'/owner/workspace?tab=refund&complaintId=' + item.id}>Mở yêu cầu hoàn tiền</Link>}
+
+      {role === 'staff' && item.status === 'SUBMITTED' && <section className={styles.actionBox}>
+        <h3 className={styles.sectionTitle}>Chuyển chủ sân</h3>
+        <ActionForm label="Chuyển chủ sân ›" after={refresh}
+          action={(form) => api.post(staffPath + '/' + id + '/forward', form)}>
+          <Field label="Kết quả kiểm tra của nhân viên" name="staffNote" required maxLength={1000} />
+        </ActionForm>
+        <p className={styles.muted}>Ghi những gì đã kiểm tra tại sân để chủ sân quyết định. Nhân viên không quyết định hoàn tiền hay bồi hoàn.</p>
+      </section>}
+      {role === 'staff' && item.status === 'PENDING_OWNER' && <p className={styles.notice}>Đã chuyển chủ sân, đang chờ chủ sân quyết định.</p>}
+
+      {owner && item.status === 'PENDING_OWNER' && item.complaintType === latePaymentType &&
+        <Link className={styles.link} to={`/staff/confirm-payments?paymentId=${item.paymentId}${item.reschedulePayment ? '&type=reschedule' : ''}`}>
+          Mở giao dịch để xác nhận, yêu cầu bổ sung hoặc từ chối
+        </Link>}
+      {owner && item.status === 'PENDING_OWNER' && <section className={styles.actionBox}>
+        <h3 className={styles.sectionTitle}>Quyết định của chủ sân</h3>
+        <OwnerDecision complaint={item} refresh={refresh} />
+      </section>}
+    </>}
+  </Drawer>
+}
+
+/** Bảng khiếu nại của Staff và Owner: tab trạng thái, tìm kiếm, lọc loại; bấm dòng mở ngăn chi tiết. */
+function ManagerBoard({ role, revision = 0 }) {
+  const owner = role === 'owner'
+  const cases = useResource(owner ? loadOwnerCases : loadStaffCases, revision)
   const [params] = useSearchParams()
   const requestedId = params.get('complaintId')
   const requestedCase = /^[1-9]\d*$/.test(requestedId || '') ? requestedId : ''
   const [selection, setSelection] = useState({ request: requestedCase, id: requestedCase })
-  const id = selection.request === requestedCase ? selection.id : requestedCase
-  const setId = (value) => setSelection({ request: requestedCase, id: value })
+  const openId = selection.request === requestedCase ? selection.id : requestedCase
+  const setOpenId = (value) => setSelection({ request: requestedCase, id: value })
   const [status, setStatus] = useState('')
-  // D65: Owner chỉ nhận khiếu nại Staff đã chuyển lên, nên không có mục "Chờ Staff chuyển".
-  const statusOptions = Object.entries(labels).filter(([value]) => role !== 'owner' || value !== 'SUBMITTED')
-  const visible = cases.data
-    ?.filter((item) => !status || item.status === status)
+  const [type, setType] = useState('')
+  const [query, setQuery] = useState('')
+  // Owner thấy khiếu nại đã được nhân viên chuyển và khiếu nại chậm xác nhận gửi thẳng; không có tab Mới gửi.
+  const statuses = Object.keys(labels).filter((value) => !owner || value !== 'SUBMITTED')
+  const all = cases.data ?? []
+  const count = (value) => all.filter((item) => item.status === value).length
+  const text = query.trim().toLowerCase()
+  const visible = all
+    .filter((item) => !status || item.status === status)
+    .filter((item) => !type || item.complaintType === type)
+    .filter((item) => !text || [item.id, item.bookingCode, item.playerName, item.content].join(' ').toLowerCase().includes(text))
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-  return <>
-    <Section title={role === 'player' ? 'Khiếu nại của tôi' : 'Khiếu nại tại địa điểm'} resource={cases}>
-      {role === 'owner' && <p className="cw-muted">
-        Khiếu nại của người chơi hiện ở đây sau khi nhân viên kiểm tra và chuyển lên; khiếu nại xác nhận thanh toán trễ đến thẳng chủ sân.
-      </p>}
-      <Field label="Trạng thái" value={status} options={[[ '', 'Tất cả' ], ...statusOptions]}
-        onChange={(event) => { setStatus(event.target.value); setId('') }} />
-      {visible?.length > 0 && <ul className="cw-records">
-        {visible.map((item) => {
-          const selected = String(item.id) === String(id)
-          return <li key={item.id} className="cw-record"
-            style={selected ? { borderColor: 'var(--cw-accent, #059669)', borderWidth: 2, display: 'block' } : undefined}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px 14px' }}>
-              <div>
-                <div className="cw-record-title">#{item.id} · {item.bookingCode || "Mã đặt sân #" + item.bookingId}</div>
-                <small>
-                  {typeLabels[item.complaintType] ?? item.complaintType}
-                  {role !== 'player' && item.playerName && ' · ' + item.playerName}
-                  {' · ' + formatCreatedAt(item.createdAt)}
-                </small>
-              </div>
-              <StatusPill tone={statusTone(item.status)}>{labels[item.status] ?? item.status}</StatusPill>
-              <button type="button" className="cw-secondary" onClick={() => setId(selected ? '' : String(item.id))}>
-                {selected ? 'Đóng chi tiết' : 'Xem chi tiết'}
-              </button>
-            </div>
-            {selected && <div style={{ marginTop: 12 }}>
-              <CaseDetails key={item.id} id={String(item.id)} role={role} refreshList={cases.reload} />
-            </div>}
-          </li>
-        })}
-      </ul>}
-      {visible?.length === 0 && <EmptyState>Không có khiếu nại trong mục này.</EmptyState>}
-    </Section>
-    {id && visible && !visible.some((item) => String(item.id) === String(id)) &&
-      <CaseDetails key={id} id={id} role={role} refreshList={cases.reload} />}
-  </>
+  const urgentStatus = owner ? 'PENDING_OWNER' : 'SUBMITTED'
+
+  return <section className={styles.board} aria-label="Khiếu nại tại địa điểm">
+    <div className={styles.tabs} role="tablist" aria-label="Lọc theo trạng thái">
+      {[['', 'Tất cả', all.length], ...statuses.map((value) => [value, labels[value], count(value)])].map(([value, label, n]) =>
+        <button key={value || 'all'} type="button" role="tab" aria-selected={status === value}
+          className={status === value ? styles.tabOn : ''} onClick={() => setStatus(value)}>
+          {label}<span className={value === urgentStatus && n > 0 ? styles.countHot : styles.count}>{n}</span>
+        </button>)}
+    </div>
+    <div className={styles.toolbar}>
+      <input className={styles.search} type="search" aria-label="Tìm khiếu nại" placeholder="Mã khiếu nại, mã booking, tên khách, nội dung…"
+        value={query} onChange={(event) => setQuery(event.target.value)} />
+      <select className={styles.select} aria-label="Lọc theo loại" value={type} onChange={(event) => setType(event.target.value)}>
+        <option value="">Loại: Tất cả</option>
+        {Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select>
+    </div>
+    {cases.loading && <p className={styles.empty} role="status">Đang tải khiếu nại…</p>}
+    {cases.error && <p className={styles.empty} role="alert">{cases.error}{' '}
+      <button type="button" className={styles.link} onClick={cases.reload}>Thử lại</button></p>}
+    {cases.data && visible.length === 0 && <p className={styles.empty}>Không có khiếu nại trong mục này.</p>}
+    {visible.length > 0 && <div className={styles.tableWrap}>
+      <table className={styles.table}>
+        <thead><tr><th>Mã</th><th>Khách</th><th>Booking</th><th>Loại</th><th>Trạng thái</th><th>Gửi lúc</th><th aria-label="Thao tác" /></tr></thead>
+        <tbody>{visible.map((item) => {
+          const selected = String(item.id) === String(openId)
+          return <tr key={item.id} className={selected ? styles.rowOn : item.status === urgentStatus ? styles.rowNew : ''}>
+            <td><b>#{item.id}</b><small>{sourceOf(item)}</small></td>
+            <td><b>{customerOf(item)}</b></td>
+            <td><b>{item.bookingCode ?? 'Lịch đặt #' + item.bookingId}</b></td>
+            <td>{typeLabels[item.complaintType] ?? item.complaintType}</td>
+            <td><StatusBadgeText status={item.status} /></td>
+            <td>{formatCreatedAt(item.createdAt)}</td>
+            <td><button type="button" className={styles.viewButton} onClick={() => setOpenId(String(item.id))}>Xem</button></td>
+          </tr>
+        })}</tbody>
+      </table>
+    </div>}
+    {openId && <ManagerDetail key={openId} id={openId} role={role} refreshList={cases.reload} onClose={() => setOpenId('')} />}
+  </section>
 }
 
 export function OwnerCourtComplaints() {
-  return <CaseList role="owner" />
-}
-
-function StaffComplaints() {
-  const [revision, setRevision] = useState(0)
-  return <>
-    <Link className="underline" to="/staff/confirm-payments">Xác nhận thanh toán</Link>
-    <WalkInComplaintForm refresh={() => setRevision((value) => value + 1)} />
-    <CaseList key={revision} />
-  </>
-}
-
-function PlayerComplaintForm({ bookingId, paymentId, refresh }) {
-  const loadBooking = useCallback((signal) => api.get('/bookings/' + bookingId, { signal }).then((response) => response.data.data), [bookingId])
-  const booking = useResource(loadBooking, bookingId)
-  const item = booking.data
-  const types = [['COURT_SERVICE', 'Dịch vụ sân'], ['PAYMENT_ISSUE', 'Vấn đề thanh toán'], ['OTHER', 'Khác']]
-  const targetPaymentId = paymentId || item?.paymentId
-  const loadEligibility = useCallback(async (signal) => {
-    if (!targetPaymentId) return false
-    return isLatePaymentEligible(bookingId, targetPaymentId, signal)
-  }, [bookingId, targetPaymentId])
-  const eligibility = useResource(loadEligibility, targetPaymentId)
-  if (eligibility.data) types.push(['LATE_PAYMENT_CONFIRMATION', "Xác nhận thanh toán trễ · chủ sân xác nhận thì nhận phiếu ưu đãi 10.000 đ"])
-
-  return <Section title="Gửi khiếu nại" resource={booking}>
-    {item && <>
-      <p>{item.bookingCode} · {item.playDate}</p>
-      <p className="cw-muted">
-        Khiếu nại phải gửi trong 24 giờ kể từ giờ kết thúc của đặt sân. Nhân viên sân kiểm tra rồi chuyển chủ sân quyết định.
-      </p>
-      <ActionForm label="Gửi khiếu nại" after={() => { eligibility.reload(); refresh() }} action={(form) => api.post('/complaints', {
-        ...form, bookingId: item.id ?? Number(bookingId),
-        paymentId: form.complaintType === 'LATE_PAYMENT_CONFIRMATION' ? targetPaymentId : null,
-      })}>
-        <Field label="Loại khiếu nại" name="complaintType" options={types} required />
-        <Field label="Nội dung" name="content" maxLength={1000} required />
-      </ActionForm>
-    </>}
-  </Section>
-}
-
-export function PlayerComplaintsPage() {
-  const [params] = useSearchParams()
-  const [revision, setRevision] = useState(0)
-  const bookingId = params.get('bookingId')
-  return <WorkspaceLayout role="player" title="Khiếu nại">
-    {bookingId && /^[1-9]\d*$/.test(bookingId) &&
-      <PlayerComplaintForm key={bookingId + ':' + params.get('paymentId')} bookingId={bookingId}
-        paymentId={/^[1-9]\d*$/.test(params.get('paymentId') || '') ? params.get('paymentId') : null} refresh={() => setRevision((value) => value + 1)} />}
-    <Link to="/my-bookings" className="cw-secondary justify-self-start">Chọn lịch đặt sân để gửi khiếu nại</Link>
-    <CaseList role="player" key={revision} />
-  </WorkspaceLayout>
+  return <ManagerBoard role="owner" />
 }
 
 export default function CourtComplaintsPage() {
-  return <WorkspaceLayout role="staff" title="Khiếu nại của khách"><StaffComplaints /></WorkspaceLayout>
+  const [revision, setRevision] = useState(0)
+  const [creating, setCreating] = useState(false)
+  return <ManagementLayout role="staff" title="Khiếu nại của khách"
+    subtitle="Tiếp nhận, kiểm tra, bổ sung thông tin rồi chuyển chủ sân. Chỉ chủ sân quyết định kết quả."
+    actions={<button type="button" className={styles.primary} onClick={() => setCreating(true)}>+ Tạo khiếu nại hộ khách</button>}>
+    <ManagerBoard role="staff" revision={revision} />
+    {creating && <Modal title="Tạo khiếu nại hộ khách tại quầy" onClose={() => setCreating(false)} className={styles.modal}>
+      <WalkInComplaintForm refresh={() => { setRevision((value) => value + 1); setCreating(false) }} />
+    </Modal>}
+  </ManagementLayout>
 }

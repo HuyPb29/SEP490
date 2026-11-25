@@ -16,7 +16,12 @@ export function StatusBadge({ status, category = 'booking', tone, children, clas
   const toneClass = TONE_CLASSES[finalTone] || styles.badgeNeutral;
   const classes = [styles.badge, toneClass, className].filter(Boolean).join(' ');
 
-  return <span className={classes}>{children || resolved.label}</span>;
+  const slotStyle = category === 'slot' && resolved.slot ? {
+    background: `var(--slot-${resolved.slot}-bg)`,
+    borderColor: `var(--slot-${resolved.slot}-border)`,
+    color: `var(--slot-${resolved.slot}-text)`,
+  } : undefined;
+  return <span className={classes} style={slotStyle}><span className={styles.badgeDot} aria-hidden="true" />{children || resolved.label}</span>;
 }
 
 export default StatusBadge;

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { errorMessage } from '../../utils/formatters';
 import NotificationBell from '../notification/NotificationBell';
+import { handleMenuKeyDown } from '../common/menuKeyboard';
 import styles from './AppLayouts.module.css';
 
 const ROLE_LABELS = {
@@ -21,16 +22,21 @@ export function UserMenu({ user: userProp }) {
   const [signingOut, setSigningOut] = useState(false);
   const [logoutError, setLogoutError] = useState('');
   const menuRef = useRef(null);
+  const triggerRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
+    menuRef.current?.querySelector('[role="menuitem"]')?.focus();
     const handlePointer = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setOpen(false);
       }
     };
     const handleKey = (event) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', handlePointer);
     document.addEventListener('keydown', handleKey);
@@ -100,6 +106,7 @@ export function UserMenu({ user: userProp }) {
         <button
           type="button"
           className={styles.userTrigger}
+          ref={triggerRef}
           aria-label={displayName}
           aria-expanded={open}
           aria-haspopup="menu"
@@ -128,7 +135,7 @@ export function UserMenu({ user: userProp }) {
         </button>
 
         {open && (
-          <div className={styles.userDropdown} role="menu" aria-label="Menu người dùng">
+          <div className={styles.userDropdown} role="menu" aria-label="Menu người dùng" onKeyDown={handleMenuKeyDown}>
             <div className={styles.dropdownHeader}>
               <strong>{displayName}</strong>
               <small>{roleLabel}</small>

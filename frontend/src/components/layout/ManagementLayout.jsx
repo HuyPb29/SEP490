@@ -6,6 +6,7 @@ import { PageHeader } from '../common/PageHeader';
 import styles from './AppLayouts.module.css';
 import { UserMenu } from './UserMenu';
 import NavigationDrawer from './NavigationDrawer';
+import LocationSwitcher from './LocationSwitcher';
 
 export default function ManagementLayout({
   role: requiredRole,
@@ -87,10 +88,9 @@ export default function ManagementLayout({
 
   const menuItems = userRole === 'owner' ? ownerMenu : staffMenu;
   const homeUrl = userRole === 'owner' ? '/owner/workspace' : '/staff/dashboard';
-  const roleTitle = userRole === 'owner' ? 'Chủ cụm sân' : 'Nhân viên tại';
 
   const renderMenuList = (closeDrawer = false) =>
-    menuItems.map((item) => {
+    menuItems.map((item, index) => {
       if (item.onClick) {
         return (
           <button
@@ -106,7 +106,10 @@ export default function ManagementLayout({
           </button>
         );
       }
+      const group = index === 0 ? 'Vận hành' : index === 1 && userRole === 'owner' ? 'Cấu hình địa điểm' : index === (userRole === 'owner' ? 4 : 3) ? 'Dịch vụ & hỗ trợ' : null;
       return (
+        <div key={item.to} className={styles.navItem}>
+        {group && <p className={styles.navGroup}>{group}</p>}
         <NavLink
           key={item.to}
           to={item.to}
@@ -125,24 +128,13 @@ export default function ManagementLayout({
           <span>{item.label}</span>
           {Number(item.badge) > 0 && (
             <span
-              style={{
-                minWidth: 20,
-                height: 20,
-                padding: '0 6px',
-                borderRadius: 999,
-                background: '#f59e0b',
-                color: '#172033',
-                fontSize: 11,
-                fontWeight: 800,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
+              className={styles.menuBadge}
             >
               {item.badge}
             </span>
           )}
         </NavLink>
+        </div>
       );
     });
 
@@ -162,10 +154,7 @@ export default function ManagementLayout({
           </Link>
         </div>
 
-        <div className={styles.roleBadgeCard}>
-          <span>{roleTitle}</span>
-          <strong>{displayLocationName}</strong>
-        </div>
+        <LocationSwitcher locations={locations} value={activeLocationId} name={displayLocationName} onChange={handleSelectLocation} />
 
         <nav className={styles.sidebarNav} aria-label="Menu vai trò">
           {renderMenuList(false)}
@@ -185,28 +174,7 @@ export default function ManagementLayout({
               ☰
             </button>
 
-            <div className={styles.locationSelectorWrap}>
-              <span className={styles.locationLabel}>Địa điểm:</span>
-              {locations && locations.length > 0 ? (
-                <select
-                  aria-label="Chọn địa điểm làm việc"
-                  className={styles.locationSelect}
-                  value={activeLocationId}
-                  onChange={handleSelectLocation}
-                >
-                  {locations.map((loc) => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.name}
-                      {loc.status === 'LOCKED' ? ' (Đã khóa)' : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span className={styles.locationStaticPill} title={displayLocationName}>
-                  📍 {displayLocationName}
-                </span>
-              )}
-            </div>
+            <span className={styles.locationStaticPill}>{displayLocationName}</span>
           </div>
 
           <UserMenu user={user} />
@@ -249,10 +217,7 @@ export default function ManagementLayout({
               </button>
             </div>
 
-            <div className={styles.roleBadgeCard}>
-              <span>{roleTitle}</span>
-              <strong>{displayLocationName}</strong>
-            </div>
+            <LocationSwitcher locations={locations} value={activeLocationId} name={displayLocationName} onChange={handleSelectLocation} />
 
             <nav className={styles.drawerNav} aria-label="Menu vai trò di động">
               {renderMenuList(true)}

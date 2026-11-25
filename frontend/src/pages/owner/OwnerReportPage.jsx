@@ -1,163 +1,287 @@
 import { useCallback, useState } from 'react'
+import { Link } from 'react-router-dom'
 import api from '../../api'
 import { downloadVenueData, loadOwnerLocations } from '../../api/ownerApi'
 import { getSelectedLocation, selectLocation } from '../../api/session'
 import { errorMessage, money, today, useResource } from '../workspaceSupport'
 import ManagementLayout from '../../components/layout/ManagementLayout'
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  FormField,
+  Input,
+  LoadingState,
+  Table,
+  Tabs,
+  Toast,
+} from '../../components/common'
+import { shortDate } from '../../utils/formatters'
 import styles from './OwnerReportPage.module.css'
 
-const percent = (value) => (Number(value) * 100).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + '%'
+const vnd = (value) => money(value).replace(/\s*₫/, 'đ')
+const percent = (value) => (Number(value) * 100).toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '%'
 const count = (value) => Number(value).toLocaleString('vi-VN')
-const column = (key, label, format = count) => ({ key, label, format })
+const column = (key, label, format = count, kind = 'count') => ({ key, label, format, kind })
+const moneyColumn = (key, label) => column(key, label, vnd, 'money')
+const rateColumn = (key, label) => column(key, label, percent, 'rate')
 const text = (value) => (value === null || value === undefined || value === '' ? '—' : String(value))
-const day = column('date', 'Ngày', String)
-const court = column('courtName', 'Sân', String)
+const day = column('date', 'Ngày', shortDate, 'text')
+const court = column('courtName', 'Sân', String, 'text')
 
 const reports = [
   {
     // FR117, BR37: doanh thu theo ngày xác nhận trừ khoản hoàn theo ngày hoàn; khoản giảm hiển thị riêng,
     // không tính vào doanh thu; có bảng chi tiết khoản hoàn kèm kỳ thanh toán gốc.
     id: 'revenue', name: 'Doanh thu',
-    summary: [column('totalRevenue', 'Tổng thu', money), column('totalRefunds', 'Tiền đã hoàn', money),
-      column('netRevenue', 'Doanh thu ròng', money), column('voucherDiscount', "Giảm bằng phiếu ưu đãi", money),
-      column('pointDiscount', 'Giảm bằng điểm', money), column('paymentCount', 'Lượt thanh toán'), column('refundCount', 'Lượt hoàn')],
-    tables: [['daily', 'Theo ngày', [day, column('revenue', 'Tổng thu', money),
-      column('refunds', 'Hoàn tiền', money), column('net', 'Doanh thu ròng', money)]],
-    ['refundDetails', 'Chi tiết khoản hoàn', [column('refundDate', 'Ngày hoàn', String), column('bookingCode', "Đặt sân", text),
-      column('customerName', 'Khách hàng', text), column('amount', 'Số tiền hoàn', money),
-      column('originalPaymentDate', 'Kỳ thanh toán gốc', text), column('reason', 'Lý do', text)]]],
+    summary: [moneyColumn('netRevenue', 'Doanh thu thuần'), moneyColumn('totalRevenue', 'Tổng thu'),
+      moneyColumn('totalRefunds', 'Đã hoàn tiền'), moneyColumn('voucherDiscount', 'Giảm bằng phiếu ưu đãi'),
+      moneyColumn('pointDiscount', 'Giảm bằng điểm'), column('paymentCount', 'Lượt thanh toán'), column('refundCount', 'Lượt hoàn')],
+    tables: [['daily', 'Doanh thu theo ngày', [day, moneyColumn('revenue', 'Tổng thu'),
+      moneyColumn('refunds', 'Hoàn tiền'), moneyColumn('net', 'Doanh thu thuần')]],
+    ['refundDetails', 'Chi tiết khoản hoàn', [column('refundDate', 'Ngày hoàn', shortDate, 'text'), column('bookingCode', 'Mã đặt sân', text, 'text'),
+      column('customerName', 'Khách hàng', text, 'text'), moneyColumn('amount', 'Số tiền hoàn'),
+      column('originalPaymentDate', 'Kỳ thanh toán gốc', (value) => (value ? shortDate(value) : '—'), 'text'), column('reason', 'Lý do', text, 'text')]]],
   },
   {
     id: 'booking', name: 'Đặt sân',
-    summary: [column('totalBookings', "Tổng đặt sân"), column('validBookings', "đặt sân hợp lệ"),
-      column('cancelledBookings', "đặt sân đã hủy"), column('cancellationRate', 'Tỷ lệ hủy', percent)],
+    summary: [column('totalBookings', 'Tổng lượt đặt sân'), column('validBookings', 'Lượt đặt hợp lệ'),
+      column('cancelledBookings', 'Lượt đặt đã hủy'), rateColumn('cancellationRate', 'Tỷ lệ hủy')],
     tables: [['daily', 'Theo ngày', [day, column('total', 'Tổng'), column('valid', 'Hợp lệ')]],
       ['byCourt', 'Theo sân', [court, column('total', 'Tổng'), column('valid', 'Hợp lệ')]]],
   },
   {
     id: 'cancellation', name: 'Hủy và hoàn tiền',
-    summary: [column('totalCancelled', "Tổng đặt sân hủy"), column('cancelledByPlayer', "người chơi hủy"),
-      column('cancelledByFacility', 'Sân hủy'), column('cancelledAmount', "Giá trị đặt sân hủy", money),
-      column('refundRequests', 'Yêu cầu hoàn tiền'), column('refundedAmount', 'Đã hoàn', money)],
-    tables: [['daily', 'Theo ngày', [day, column('cancelledByPlayer', "người chơi hủy"), column('cancelledByFacility', 'Sân hủy')]]],
+    summary: [column('totalCancelled', 'Tổng lượt đặt bị hủy'), column('cancelledByPlayer', 'Khách hủy'),
+      column('cancelledByFacility', 'Sân hủy'), moneyColumn('cancelledAmount', 'Giá trị lượt đặt bị hủy'),
+      column('refundRequests', 'Yêu cầu hoàn tiền'), moneyColumn('refundedAmount', 'Đã hoàn')],
+    tables: [['daily', 'Theo ngày', [day, column('cancelledByPlayer', 'Khách hủy'), column('cancelledByFacility', 'Sân hủy')]]],
   },
   {
     id: 'reschedule', name: 'Đổi lịch',
     summary: [column('totalRequests', 'Tổng yêu cầu'), column('approved', 'Đã duyệt'),
-      column('freeRequests', 'Miễn phí'), column('paidRequests', 'Có phụ thu'), column('extraAmount', 'Phụ thu', money)],
+      column('freeRequests', 'Miễn phí'), column('paidRequests', 'Có phụ thu'), moneyColumn('extraAmount', 'Tiền phụ thu')],
     tables: [['daily', 'Theo ngày', [day, column('requests', 'Yêu cầu'), column('approved', 'Đã duyệt')]]],
   },
   {
-    id: 'voucher', name: "Phiếu ưu đãi",
-    summary: [column('usedCount', 'Lượt đã dùng'), column('returnedCount', 'Lượt đã trả'), column('totalDiscount', 'Tổng giảm', money)],
-    tables: [['vouchers', "Theo phiếu ưu đãi", [column('name', "Phiếu ưu đãi", String), column('code', 'Mã', String),
-      column('usedCount', 'Lượt dùng'), column('returnedCount', 'Lượt trả'), column('totalDiscount', 'Tổng giảm', money)]]],
+    id: 'voucher', name: 'Phiếu ưu đãi',
+    summary: [column('usedCount', 'Lượt đã dùng'), column('returnedCount', 'Lượt đã trả lại'), moneyColumn('totalDiscount', 'Tổng tiền giảm')],
+    tables: [['vouchers', 'Theo phiếu ưu đãi', [column('name', 'Phiếu ưu đãi', String, 'text'), column('code', 'Mã', String, 'text'),
+      column('usedCount', 'Lượt dùng'), column('returnedCount', 'Lượt trả lại'), moneyColumn('totalDiscount', 'Tổng giảm')]]],
   },
   {
-    id: 'occupancy', name: 'Lấp đầy sân',
-    summary: [column('availableSlots', "khung giờ mở"), column('bookedSlots', "khung giờ đã đặt"), column('occupancyRate', 'Tỷ lệ lấp đầy', percent)],
-    tables: [['daily', 'Theo ngày', [day, column('availableSlots', "khung giờ mở"), column('bookedSlots', "khung giờ đã đặt"),
-      column('occupancyRate', 'Tỷ lệ lấp đầy', percent)]],
-    ['byCourt', 'Theo sân', [court, column('availableSlots', "khung giờ mở"), column('bookedSlots', "khung giờ đã đặt"),
-      column('occupancyRate', 'Tỷ lệ lấp đầy', percent)]]],
+    id: 'occupancy', name: 'Tỷ lệ sử dụng sân',
+    summary: [rateColumn('occupancyRate', 'Tỷ lệ sử dụng'), column('bookedSlots', 'Khung giờ đã đặt'), column('availableSlots', 'Khung giờ mở')],
+    tables: [['daily', 'Theo ngày', [day, column('availableSlots', 'Khung giờ mở'), column('bookedSlots', 'Khung giờ đã đặt'),
+      rateColumn('occupancyRate', 'Tỷ lệ sử dụng')]],
+    ['byCourt', 'Theo sân', [court, column('availableSlots', 'Khung giờ mở'), column('bookedSlots', 'Khung giờ đã đặt'),
+      rateColumn('occupancyRate', 'Tỷ lệ sử dụng')]]],
   },
 ]
 
+const PRESETS = [['today', 'Hôm nay'], ['7d', '7 ngày'], ['month', 'Tháng này'], ['custom', 'Tùy chọn']]
+
+/** Cộng/trừ ngày trên chuỗi yyyy-mm-dd, tính theo UTC để không lệch múi giờ. */
+function addDays(iso, days) {
+  const date = new Date(`${iso}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+function daysBetween(from, to) {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
+}
+
+function presetRange(preset) {
+  const end = today()
+  if (preset === 'today') return { from: end, to: end }
+  if (preset === '7d') return { from: addDays(end, -6), to: end }
+  return { from: end.slice(0, 8) + '01', to: end }
+}
+
+/** Kỳ trước có cùng số ngày, nằm ngay trước kỳ đang xem. */
+function previousRange(from, to) {
+  const length = daysBetween(from, to) + 1
+  return { from: addDays(from, -length), to: addDays(from, -1) }
+}
+
+function Delta({ item, current, previous }) {
+  if (previous === null || previous === undefined || current === null || current === undefined) return null
+  const now = Number(current)
+  const before = Number(previous)
+  if (!Number.isFinite(now) || !Number.isFinite(before)) return null
+  let label
+  let direction = Math.sign(now - before)
+  if (item.kind === 'rate') {
+    const points = (now - before) * 100
+    label = `${points > 0 ? '+' : ''}${points.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} điểm %`
+  } else if (before === 0) {
+    if (now === 0) { label = 'Không đổi'; direction = 0 } else label = 'Mới phát sinh'
+  } else {
+    const change = ((now - before) / Math.abs(before)) * 100
+    label = `${change > 0 ? '+' : ''}${change.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%`
+  }
+  const arrow = direction > 0 ? '▲' : direction < 0 ? '▼' : '■'
+  return (
+    <p className={`${styles.delta} ${direction > 0 ? styles.deltaUp : direction < 0 ? styles.deltaDown : ''}`}>
+      <span aria-hidden="true">{arrow}</span> {label} <span className={styles.deltaHint}>so với kỳ trước</span>
+    </p>
+  )
+}
+
 function ReportTable({ title, rows = [], columns }) {
-  return <section className={styles.chartCard}>
-    <h2 className="mb-3 text-lg font-semibold">{title}</h2>
-    {!rows.length ? <p>Chưa có dữ liệu trong khoảng ngày đã chọn.</p> : <div className="overflow-x-auto">
-      <table className="w-full min-w-max text-left text-sm">
-        <thead><tr>{columns.map((field) => <th key={field.key} className="px-3 py-2" scope="col">{field.label}</th>)}</tr></thead>
-        <tbody>{rows.map((row, index) => <tr className="border-t border-slate-200"
-          key={row.date ?? row.courtId ?? row.voucherId ?? row.status ?? 'row-' + index}>
-          {columns.map((field) => <td key={field.key} className="px-3 py-2">
-            {row[field.key] == null ? '—' : field.format(row[field.key])}
-          </td>)}
-        </tr>)}</tbody>
-      </table>
-    </div>}
-  </section>
+  return (
+    <section className={styles.card} aria-label={title}>
+      <h3 className={styles.cardTitle}>{title}</h3>
+      {!rows.length ? <EmptyState title="Chưa có dữ liệu" description="Thử chọn khoảng ngày dài hơn." /> : (
+        <Table>
+          <thead>
+            <tr>{columns.map((field) => (
+              <th key={field.key} scope="col" className={field.kind === 'text' ? undefined : styles.numericHead}>{field.label}</th>
+            ))}</tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.date ?? row.courtId ?? row.voucherId ?? row.status ?? 'row-' + index}>
+                {columns.map((field) => (
+                  <td key={field.key} className={field.kind === 'text' ? undefined : styles.numeric}>
+                    {row[field.key] == null ? '—' : field.format(row[field.key])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </section>
+  )
 }
 
 function RevenueChart({ daily }) {
-  const recent = daily.slice(-7)
-  if (!recent.length) return null
-  const maximum = Math.max(1, ...recent.map((item) => Math.abs(Number(item.net))))
-  return <section className={styles.chartCard}>
-    <header className={styles.cardHeader}><h2>Doanh thu ròng · {recent.length} ngày cuối kỳ</h2><span>Triệu đồng</span></header>
-    <div className="overflow-x-auto">
-      <div className={`${styles.barChart} min-w-[360px]`}>
-        {recent.map((item) => <div className={styles.barColumn} key={item.date} title={item.date + ' · ' + money(item.net)}>
-          <span className={styles.barValue}>{(Number(item.net) / 1_000_000).toLocaleString('vi-VN', { maximumFractionDigits: 2 })}</span>
-          <div className={styles.barTrack} aria-hidden="true">
-            <div className={styles.bar} style={{ height: Math.abs(Number(item.net)) / maximum * 100 + '%',
-              backgroundColor: Number(item.net) < 0 ? '#b91c1c' : undefined }} />
-          </div>
-          <span className={styles.barLabel}>{item.date.slice(8) + '/' + item.date.slice(5, 7)}</span>
-        </div>)}
+  if (!daily.length) return null
+  const maximum = Math.max(1, ...daily.map((item) => Math.abs(Number(item.net))))
+  const total = daily.reduce((sum, item) => sum + Number(item.net || 0), 0)
+  return (
+    <section className={styles.card} aria-labelledby="revenue-chart-title">
+      <header className={styles.cardHeader}>
+        <h3 id="revenue-chart-title" className={styles.cardTitle}>Doanh thu thuần theo ngày</h3>
+        <span className={styles.cardHint}>Tổng {vnd(total)} · đơn vị cột: triệu đồng</span>
+      </header>
+      <div className={styles.chartScroller}>
+        <ol className={styles.barChart} style={{ minWidth: Math.max(320, daily.length * 36) }}
+          aria-label="Biểu đồ doanh thu thuần theo ngày">
+          {daily.map((item) => {
+            const value = Number(item.net)
+            return (
+              <li className={styles.barColumn} key={item.date} title={`${shortDate(item.date)} · ${vnd(value)}`}>
+                <span className={styles.barValue}>
+                  {(value / 1_000_000).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}
+                </span>
+                <span className={styles.barTrack} aria-hidden="true">
+                  <span className={`${styles.bar} ${value < 0 ? styles.barNegative : ''}`}
+                    style={{ height: `${(Math.abs(value) / maximum) * 100}%` }} />
+                </span>
+                <span className={styles.barLabel}>{item.date.slice(8)}/{item.date.slice(5, 7)}</span>
+                <span className={styles.srOnly}>{shortDate(item.date)}: {vnd(value)}</span>
+              </li>
+            )
+          })}
+        </ol>
       </div>
-    </div>
-  </section>
+    </section>
+  )
 }
 
 function CourtUtilization({ courts }) {
   if (!courts.length) return null
-  return <section className={`${styles.chartCard} ${styles.utilizationCard}`}>
-    <header className={styles.cardHeader}><h2>Tỷ lệ lấp đầy theo sân</h2></header>
-    <ul className={styles.utilizationList}>{courts.map((item) => <li key={item.courtId}>
-      <div className={styles.courtLabels}><span>{item.courtName}</span><strong>{percent(item.occupancyRate)}</strong></div>
-      <div className={styles.progressTrack} aria-hidden="true">
-        <div className={styles.progressBar} style={{ width: Math.min(100, Number(item.occupancyRate) * 100) + '%' }} />
-      </div>
-    </li>)}</ul>
-  </section>
+  return (
+    <section className={styles.card} aria-labelledby="utilization-title">
+      <h3 id="utilization-title" className={styles.cardTitle}>Tỷ lệ sử dụng theo sân</h3>
+      <ul className={styles.utilizationList}>
+        {courts.map((item) => (
+          <li key={item.courtId}>
+            <div className={styles.courtLabels}><span>{item.courtName}</span><strong>{percent(item.occupancyRate)}</strong></div>
+            <div className={styles.progressTrack} aria-hidden="true">
+              <div className={styles.progressBar} style={{ width: Math.min(100, Number(item.occupancyRate) * 100) + '%' }} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
 }
 
 function ReportContent({ report, resource }) {
-  const data = resource.data
-  if (resource.loading) return <p role="status">Đang tải báo cáo…</p>
-  if (resource.error) return <p role="alert" className={styles.errorMessage}>{resource.error} <button onClick={resource.reload}>Thử lại</button></p>
-  if (!data) return null
-  return <div className="space-y-5">
-    <div className={styles.statsGrid}>{report.summary.map((item) => <article className={styles.statCard} key={item.key}>
-      <h2>{item.label}</h2>
-      <p className={styles.statValue}>{item.format(data[item.key])}</p>
-    </article>)}</div>
-    {report.id === 'revenue' && <RevenueChart daily={data.daily ?? []} />}
-    {report.id === 'occupancy' && <CourtUtilization courts={data.byCourt ?? []} />}
-    {report.tables.map(([key, title, columns]) => <ReportTable key={key} title={title} rows={data[key]} columns={columns} />)}
-    {data.byStatus && <ReportTable title="Theo trạng thái" rows={Object.entries(data.byStatus).map(([status, total]) => ({ status, total }))}
-      columns={[column('status', 'Trạng thái', String), column('total', 'Số lượng')]} />}
-  </div>
+  const result = resource.data
+  if (resource.loading) return <LoadingState message="Đang tải báo cáo…" />
+  if (resource.error) return <ErrorState message={resource.error} onRetry={resource.reload} />
+  if (!result?.current) return null
+  const { current: data, previous } = result
+  return (
+    <div className={styles.reportBody}>
+      <div className={styles.statsGrid}>
+        {report.summary.map((item, index) => (
+          <article className={`${styles.statCard} ${index === 0 ? styles.statCardLead : ''}`} key={item.key}>
+            <h3>{item.label}</h3>
+            <p className={styles.statValue}>{data[item.key] == null ? '—' : item.format(data[item.key])}</p>
+            <Delta item={item} current={data[item.key]} previous={previous?.[item.key]} />
+          </article>
+        ))}
+      </div>
+      {report.id === 'revenue' && <RevenueChart daily={data.daily ?? []} />}
+      {report.id === 'occupancy' && <CourtUtilization courts={data.byCourt ?? []} />}
+      {report.tables.map(([key, title, columns]) => <ReportTable key={key} title={title} rows={data[key]} columns={columns} />)}
+      {data.byStatus && <ReportTable title="Theo trạng thái" rows={Object.entries(data.byStatus).map(([status, total]) => ({ status, total }))}
+        columns={[column('status', 'Trạng thái', String, 'text'), column('total', 'Số lượng')]} />}
+    </div>
+  )
 }
 
 export default function OwnerReportPage() {
   const locations = useResource(loadOwnerLocations)
   const [locationId, setLocationId] = useState(() => getSelectedLocation() || '')
+  const [preset, setPreset] = useState('month')
   const [endDate, setEndDate] = useState(today)
   const [startDate, setStartDate] = useState(() => today().slice(0, 8) + '01')
   const [active, setActive] = useState('revenue')
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
-  const venue = locations.data?.find((item) => String(item.id) === locationId)
+  const [exportDone, setExportDone] = useState(false)
+  const venue = locations.data?.find((item) => String(item.id) === String(locationId))
   const validDates = Boolean(startDate && endDate && startDate <= endDate)
   const enabled = venue?.status === 'ACTIVE' && validDates
   const report = reports.find((item) => item.id === active)
+
   const load = useCallback(async (signal) => {
     if (!enabled) return null
-    const { data } = await api.get('/owner/' + active + '-reports', {
-      signal, params: { from: startDate, to: endDate }, headers: { 'X-Location-Id': locationId },
-    })
-    return data.data
+    const fetchRange = (from, to) => api.get('/owner/' + active + '-reports', {
+      signal, params: { from, to }, headers: { 'X-Location-Id': locationId },
+    }).then(({ data }) => data.data)
+    const previous = previousRange(startDate, endDate)
+    // Kỳ trước chỉ để so sánh; lỗi thì vẫn hiện số liệu kỳ này.
+    const [current, before] = await Promise.all([
+      fetchRange(startDate, endDate),
+      fetchRange(previous.from, previous.to).catch(() => null),
+    ])
+    return { current, previous: before }
   }, [active, enabled, endDate, locationId, startDate])
   const data = useResource(load, [active, locationId, startDate, endDate, enabled].join(':'))
+
+  function choosePreset(value) {
+    setPreset(value)
+    if (value === 'custom') return
+    const range = presetRange(value)
+    setStartDate(range.from)
+    setEndDate(range.to)
+  }
 
   async function exportReport() {
     setExporting(true)
     setExportError('')
+    setExportDone(false)
     try {
       await downloadVenueData({ from: startDate, to: endDate })
+      setExportDone(true)
     } catch (error) {
       setExportError(errorMessage(error))
     } finally {
@@ -165,48 +289,81 @@ export default function OwnerReportPage() {
     }
   }
 
+  const changeLocation = (nextId) => {
+    selectLocation(nextId)
+    setLocationId(nextId)
+  }
+
   return (
     <ManagementLayout
       role="owner"
-      title="Báo cáo vận hành và doanh thu"
-      subtitle="Thống kê doanh thu, tỷ lệ lấp đầy, hủy sân và xuất dữ liệu Excel"
+      title="Báo cáo"
+      subtitle={venue ? `${venue.name} · Doanh thu, đặt sân, hủy, đổi lịch, phiếu ưu đãi và tỷ lệ sử dụng sân` : 'Doanh thu, đặt sân, hủy, đổi lịch, phiếu ưu đãi và tỷ lệ sử dụng sân'}
       actions={
         <div className={styles.headerActions}>
-          <label className={styles.facilityLabel}>Địa điểm
-            <select className={styles.facilitySelect} value={locationId} onChange={(event) => {
-              selectLocation(event.target.value)
-              setLocationId(event.target.value)
-            }}>
-              <option value="">Chọn địa điểm</option>
-              {locations.data?.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.status}</option>)}
-            </select>
-          </label>
-          <label>Từ ngày <input type="date" className={styles.dateInput} value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
-          <label>Đến ngày <input type="date" className={styles.dateInput} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
-          <button className={styles.exportButton} type="button" disabled={!venue || !validDates || exporting} onClick={exportReport}>
-            {exporting ? 'Đang tải…' : 'Tải Excel'}
-          </button>
+          <Link className={styles.linkButton} to="/owner/reconciliations">Xem đối soát</Link>
+          <Button variant="secondary" onClick={exportReport} loading={exporting} loadingText="Đang tạo file…"
+            disabled={!venue || !validDates}>
+            Tải Excel
+          </Button>
         </div>
       }
       locations={locations.data}
       locationId={locationId}
-      onLocationChange={(nextId) => {
-        selectLocation(nextId)
-        setLocationId(nextId)
-      }}
+      onLocationChange={changeLocation}
     >
-      {locations.loading && <p role="status">Đang tải địa điểm…</p>}
-      {locations.error && <p role="alert">{locations.error}</p>}
-      {exportError && <p role="alert" className={styles.errorMessage}>{exportError}</p>}
-      {!validDates && <p role="alert" className={styles.errorMessage}>Chọn khoảng ngày hợp lệ.</p>}
-      {venue && venue.status !== 'ACTIVE' && <p>Địa điểm đã khóa. Có thể tải dữ liệu trong thời hạn được phép.</p>}
-      {enabled && <>
-        <nav className={styles.tabs} aria-label="Loại báo cáo">
-          {reports.map((item) => <button type="button" className={`${styles.tab} ${item.id === active ? styles.tabActive : ''}`}
-            key={item.id} aria-pressed={item.id === active} onClick={() => setActive(item.id)}>{item.name}</button>)}
-        </nav>
-        <ReportContent report={report} resource={data} />
-      </>}
+      <div className={styles.page}>
+        {exportError && <Toast tone="danger" onClose={() => setExportError('')}>{exportError}</Toast>}
+        {exportDone && <Toast tone="success" onClose={() => setExportDone(false)}>Đã tải file Excel dữ liệu quản lý.</Toast>}
+
+        <section className={styles.filterBar} aria-label="Khoảng thời gian">
+          <div className={styles.segmented} role="group" aria-label="Chọn nhanh khoảng thời gian">
+            {PRESETS.map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={preset === value} onClick={() => choosePreset(value)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {preset === 'custom' ? (
+            <div className={styles.dateFields}>
+              <FormField label="Từ ngày">
+                <Input type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} />
+              </FormField>
+              <FormField label="Đến ngày" error={!validDates ? 'Ngày kết thúc phải sau ngày bắt đầu.' : undefined}>
+                <Input type="date" value={endDate} min={startDate || undefined} onChange={(event) => setEndDate(event.target.value)} />
+              </FormField>
+            </div>
+          ) : (
+            <p className={styles.rangeText}>
+              {startDate === endDate ? shortDate(startDate) : `${shortDate(startDate)} – ${shortDate(endDate)}`}
+            </p>
+          )}
+        </section>
+
+        {locations.loading && <LoadingState message="Đang tải địa điểm…" />}
+        {locations.error && <ErrorState message={locations.error} onRetry={locations.reload} />}
+        {!locations.loading && !locations.error && !venue && (
+          <EmptyState title="Chưa chọn địa điểm" description="Chọn địa điểm ở thanh bên trái để xem báo cáo." />
+        )}
+        {venue && venue.status !== 'ACTIVE' && (
+          <p className={styles.notice} role="status">
+            Địa điểm đã khóa nên không xem được báo cáo. Bạn vẫn tải được file Excel dữ liệu quản lý trong thời hạn cho phép.
+          </p>
+        )}
+
+        {enabled && (
+          <Tabs
+            label="Loại báo cáo"
+            value={active}
+            onChange={setActive}
+            items={reports.map((item) => ({
+              value: item.id,
+              label: item.name,
+              content: item.id === active ? <ReportContent report={report} resource={data} /> : null,
+            }))}
+          />
+        )}
+      </div>
     </ManagementLayout>
   )
 }

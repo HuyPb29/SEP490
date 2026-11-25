@@ -36,6 +36,7 @@ export function Button({
       aria-busy={loading || undefined}
       {...props}
     >
+      {loading && <span className={styles.buttonSpinner} aria-hidden="true" />}
       {loading ? loadingText || 'Đang xử lý…' : children}
     </button>
   );

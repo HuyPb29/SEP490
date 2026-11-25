@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from 'react';
 import { Button } from './Button';
 import styles from './CommonUI.module.css';
+import { trapDialogFocus } from './dialogFocus';
 
 export function Modal({
   open = true,
@@ -9,6 +10,7 @@ export function Modal({
   onClose,
   onDismiss,
   busy = false,
+  footer,
   className = '',
   children,
 }) {
@@ -20,7 +22,12 @@ export function Modal({
     const dialog = ref.current;
     if (!dialog) return undefined;
     if (open && !dialog.open) {
+      const trigger = document.activeElement;
       dialog.showModal();
+      return () => {
+        if (dialog.open) dialog.close();
+        if (trigger?.isConnected) trigger.focus();
+      };
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -34,6 +41,8 @@ export function Modal({
   return (
     <dialog
       ref={ref}
+      tabIndex={-1}
+      onKeyDown={trapDialogFocus}
       aria-label={title || undefined}
       aria-labelledby={!title && labelledBy ? labelledBy : title ? autoTitleId : undefined}
       className={[styles.dialogNative, className].filter(Boolean).join(' ')}
@@ -49,6 +58,7 @@ export function Modal({
         </h2>
       )}
       {children}
+      {footer && <footer className={styles.modalFooter}>{footer}</footer>}
     </dialog>
   );
 }

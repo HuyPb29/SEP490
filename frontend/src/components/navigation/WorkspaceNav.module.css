@@ -16,11 +16,11 @@
   gap: 7px;
   height: 36px;
   padding: 0 14px 0 11px;
-  color: #fff;
-  background: #14532d;
-  border: 1px solid #14532d;
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
   border-radius: 999px;
-  box-shadow: 0 6px 18px rgb(15 23 42 / 18%);
+  box-shadow: var(--shadow-md);
   font: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -30,11 +30,11 @@
 }
 
 .trigger:hover {
-  background: #166534;
+  background: var(--color-primary);
 }
 
 .triggerOpen {
-  background: #166534;
+  background: var(--color-primary);
 }
 
 /* ------------------------------------------------------------------ panel */
@@ -45,10 +45,10 @@
   left: 0;
   width: 268px;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid #e3e8f0;
+  background: var(--color-on-primary);
+  border: 1px solid var(--color-border);
   border-radius: 14px;
-  box-shadow: 0 18px 42px rgb(15 23 42 / 18%);
+  box-shadow: var(--shadow-lg);
 }
 
 .panelHead {
@@ -56,12 +56,12 @@
   flex-direction: column;
   gap: 3px;
   padding: 12px 14px 10px;
-  background: #f7faf8;
-  border-bottom: 1px solid #eef1f5;
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .roleBadge {
-  color: #128044;
+  color: var(--color-primary);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.6px;
@@ -70,7 +70,7 @@
 
 .userName {
   overflow: hidden;
-  color: #33415c;
+  color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -92,7 +92,7 @@
   gap: 10px;
   width: 100%;
   padding: 9px 10px;
-  color: #33415c;
+  color: var(--color-text-secondary);
   background: transparent;
   border: 0;
   border-radius: 9px;
@@ -104,13 +104,13 @@
 }
 
 .item:hover {
-  color: #128044;
-  background: #f1f7f3;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 
 .itemActive {
-  color: #0f6b39;
-  background: #e8f4ed;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 
 .itemLabel {
@@ -121,13 +121,13 @@
 
 .itemUc {
   flex: 0 0 auto;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 10px;
   font-weight: 650;
 }
 
 .itemActive .itemUc {
-  color: #4f9b6d;
+  color: var(--color-primary);
 }
 
 /* ----------------------------------------------------------------- logout */
@@ -135,10 +135,10 @@
 .logout {
   width: 100%;
   padding: 11px 14px;
-  color: #b91c1c;
-  background: #fdf5f5;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
   border: 0;
-  border-top: 1px solid #eef1f5;
+  border-top: 1px solid var(--color-border);
   font: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -147,5 +147,8 @@
 }
 
 .logout:hover {
-  background: #fbeaea;
+  background: var(--color-danger-bg);
 }
+
+.trigger, .item, .logout { min-height: 44px; }
+.panel { width: min(300px, calc(100vw - var(--space-8))); max-height: calc(100dvh - 100px); overflow-y: auto; }

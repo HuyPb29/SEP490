@@ -1,24 +1,25 @@
+@import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 :root {
   /* 1. Brand & Semantic Colors */
-  --color-primary: #14532d;
-  --color-primary-hover: #0f3f22;
+  --color-primary: #0F766E;
+  --color-primary-hover: #115E59;
   --color-primary-accent: #16a34a;
-  --color-primary-soft: #e4f2e8;
+  --color-primary-soft: #E6F4F1;
   --color-secondary: #f8fafc;
 
   /* 2. Surface & Background Colors */
-  --color-bg: #f6f7f3;
+  --color-bg: #F7F9F8;
   --color-surface: #ffffff;
   --color-surface-muted: #f1f5f9;
-  --color-border: #dde3da;
+  --color-border: #E2E8F0;
   --color-border-strong: #cbd5e1;
 
   /* 3. Text Colors */
-  --color-text: #142019;
+  --color-text: #0F172A;
   --color-text-secondary: #334155;
-  --color-text-muted: #55645a;
+  --color-text-muted: #64748B;
 
   /* 4. Sidebar Colors (Management & Admin) */
   --color-sidebar-bg: #0b132b;
@@ -46,6 +47,40 @@
   --color-neutral: #475569;
   --color-neutral-bg: #f1f5f9;
   --color-neutral-border: #e2e8f0;
+
+  --color-on-primary: #ffffff;
+  --color-accent-hover: #15803d;
+  --color-danger-hover: #991b1b;
+  --color-overlay: rgb(15 23 42 / 52%);
+  --color-focus-ring: rgb(15 118 110 / 22%);
+  --color-sidebar-border: rgb(148 163 184 / 22%);
+  --color-sidebar-hover: rgb(255 255 255 / 8%);
+
+  /* Slot palette: background, border and readable text. */
+  --slot-free-bg: #ecfdf5;
+  --slot-free-border: #a7d7c0;
+  --slot-free-text: #166534;
+  --slot-selected-bg: var(--color-primary);
+  --slot-selected-border: var(--color-primary-hover);
+  --slot-selected-text: var(--color-on-primary);
+  --slot-holding-bg: #fffbeb;
+  --slot-holding-border: #f5d58a;
+  --slot-holding-text: #92400e;
+  --slot-booked-bg: #e2e8f0;
+  --slot-booked-border: #94a3b8;
+  --slot-booked-text: #1e293b;
+  --slot-inuse-bg: #1e293b;
+  --slot-inuse-border: #334155;
+  --slot-inuse-text: #ffffff;
+  --slot-maintenance-bg: #fef2f2;
+  --slot-maintenance-border: #fecaca;
+  --slot-maintenance-text: #991b1b;
+  --slot-closed-bg: #f1f5f9;
+  --slot-closed-border: #cbd5e1;
+  --slot-closed-text: #475569;
+  --slot-original-bg: #ede9fe;
+  --slot-original-border: #a78bfa;
+  --slot-original-text: #5b21b6;
 
   /* 6. Typography */
   --font-sans: 'Be Vietnam Pro', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -87,9 +122,15 @@
   --header-height: 64px;
 
   /* Backward-compatible aliases for workspace.css (--cw-*) */
+  --cw-text: var(--color-text);
+  --cw-border: var(--color-border);
+  --cw-primary: var(--color-primary);
+  --cw-primary-hover: var(--color-primary-hover);
+  --cw-soft: var(--color-primary-soft);
+  --cw-dark: var(--color-sidebar-bg);
   --cw-bg: var(--color-bg);
   --cw-surface: var(--color-surface);
-  --cw-surface-muted: #eff2eb;
+  --cw-surface-muted: var(--color-surface-muted);
   --cw-ink: var(--color-text);
   --cw-muted: var(--color-text-muted);
   --cw-line: var(--color-border);
@@ -100,7 +141,7 @@
   --cw-warn-soft: var(--color-warning-bg);
   --cw-danger: var(--color-danger);
   --cw-danger-soft: var(--color-danger-bg);
-  --cw-radius: 12px;
+  --cw-radius: var(--radius-lg);
   --cw-shadow: var(--shadow-md);
 }
 
@@ -114,8 +155,17 @@ html, body {
   background-color: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
+
+#root { min-height: 100dvh; min-width: 0; }
+button, input, select, textarea { font: inherit; }
+:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 3px; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: var(--color-focus-ring); }
+img, svg { max-width: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

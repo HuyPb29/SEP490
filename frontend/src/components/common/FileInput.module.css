@@ -1,8 +1,8 @@
 .picker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; max-width: 100%; padding: 8px 0; }
-.picker > button { flex-shrink: 0; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; padding: 8px 12px; color: #065f46; font: inherit; cursor: pointer; }
+.picker > button { flex-shrink: 0; min-height: 44px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface); padding: var(--space-2) var(--space-3); color: var(--color-primary); font: inherit; cursor: pointer; }
 .picker > button:disabled { cursor: not-allowed; opacity: .5; }
-.picker:focus-within { outline: 2px solid #10b981; outline-offset: 3px; border-radius: 8px; }
-.filename { overflow-wrap: anywhere; color: #64748b; font-size: 13px; }
+.picker:focus-within { outline: 2px solid var(--color-primary); outline-offset: 3px; border-radius: var(--radius-sm); }
+.filename { overflow-wrap: anywhere; color: var(--color-text-muted); font-size: var(--text-sm); }
 .picker > .nativeInput {
   position: absolute;
   width: 1px;

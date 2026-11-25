@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button, LoadingState } from '../common'
+import styles from './GoogleLocationPicker.module.css'
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim()
 export const hasGoogleMapsKey = Boolean(API_KEY)
@@ -42,13 +44,14 @@ export function loadMaps() {
   return loadingMaps
 }
 
-export default function GoogleLocationPicker({ point, onPick, disabled, fallback }) {
+export default function GoogleLocationPicker({ point, onPick, disabled, fallback, className = '' }) {
   const container = useRef(null)
   const selection = useRef({ point, onPick, disabled })
   const mapRef = useRef(null)
   const markerRef = useRef(null)
   const userPick = useRef('')
   const [state, setState] = useState('loading')
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     selection.current = { point, onPick, disabled }
@@ -121,17 +124,26 @@ export default function GoogleLocationPicker({ point, onPick, disabled, fallback
       mapRef.current = null
       if (window.gm_authFailure === onAuthFailure) window.gm_authFailure = previousAuthFailure
     }
-  }, [])
+  }, [attempt])
 
   if (!API_KEY) return fallback
   if (state === 'error') {
     return <>
-      <p role="status">Google Maps chưa tải được. Bạn vẫn có thể ghim vị trí trên bản đồ bên dưới.</p>
+      <div className={styles.notice}><p role="status">Google Maps chưa tải được. Bạn vẫn có thể ghim vị trí trên bản đồ bên dưới.</p><Button variant="secondary" disabled={disabled} onClick={() => { setState('loading'); setAttempt(value => value + 1) }}>Thử lại Google Maps</Button></div>
       {fallback}
     </>
   }
   return <>
-    {state === 'loading' && <p role="status">Đang tải Google Maps…</p>}
-    <div ref={container} className="aspect-square w-full rounded-xl" aria-label="Google Maps chọn vị trí" />
+    {state === 'loading' && <LoadingState message="Đang tải bản đồ chọn vị trí…" />}
+    <div ref={container} tabIndex={0} onKeyDown={(event) => {
+      if (event.key !== 'Enter' || event.target !== event.currentTarget || selection.current.disabled) return
+      const center = mapRef.current?.getCenter()
+      if (!center) return
+      event.preventDefault()
+      const lat = center.lat()
+      const lng = ((center.lng() + 180) % 360 + 360) % 360 - 180
+      userPick.current = `${lat.toFixed(6)},${lng.toFixed(6)}`
+      selection.current.onPick?.(lat, lng)
+    }} className={className || styles.canvas} aria-label="Google Maps chọn vị trí" />
   </>
 }

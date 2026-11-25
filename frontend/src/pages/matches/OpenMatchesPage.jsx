@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { PublicHeader } from '../../components/layout/PublicLayout';
-import PublicFooter from '../../components/layout/PublicFooter';
+import PublicLayout from '../../components/layout/PublicLayout';
+import { Button, FormField, Input, Select, PageHeader, StatusBadge, LoadingState, EmptyState, ErrorState, Tabs, Modal, ConfirmDialog, Drawer } from '../../components/common';
+import { shortDate, uiMessage } from '../../utils/formatters';
 import { apiErrorMessage } from '../../api';
 import {
   approveJoinRequest,
@@ -24,42 +25,6 @@ import styles from './OpenMatchesPage.module.css';
 import { useResource } from '../workspaceSupport';
 import { keepMatchAfterRescheduleApi } from '../../api/bookingApi';
 
-function NotificationMatch({ id }) {
-  const load = useCallback((signal) => getMatch(id, signal), [id]);
-  const resource = useResource(load, id);
-  const [actionError, setActionError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const decide = async (keep) => {
-    setBusy(true);
-    setActionError('');
-    try {
-      await (keep ? keepMatchAfterRescheduleApi(id) : cancelMatch(id));
-      resource.reload();
-    } catch (err) {
-      setActionError(apiErrorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const match = resource.data;
-  return <section className="my-5 rounded-xl border-2 border-emerald-600 p-5" aria-label="Kèo từ thông báo">
-    {resource.loading && <p role="status">Đang tải kèo từ thông báo…</p>}
-    {resource.error && <p role="alert">{resource.error}</p>}
-    {match && <>
-      <h2 className="font-semibold">Kèo #{match.id} · {match.locationName} · {match.courtName}</h2>
-      <p>{match.playDate} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}</p>
-      <p>Chủ kèo {match.hostName} · Đội {match.teamName}</p>
-      <p>Trình độ {matchSkillLabel(match)} · {match.currentPlayers}/{match.currentPlayers + match.neededPlayers} người, cần thêm {match.neededPlayers}</p>
-      <p>Trạng thái {({ OPEN: 'Đang mở', CLOSED: 'Đã đóng', CANCELLED: 'Đã hủy', EXPIRED: 'Hết hạn' })[match.status] || match.status}</p>
-      {match.host && match.reschedulePending && <div className="mt-3 flex gap-3">
-        <button type="button" disabled={busy} onClick={() => decide(true)}>Giữ kèo ở giờ mới</button>
-        <button type="button" disabled={busy} onClick={() => decide(false)}>Hủy kèo</button>
-      </div>}
-      {actionError && <p role="alert">{actionError}</p>}
-    </>}
-  </section>;
-}
-
 const TIME_SLOTS = {
   morning: { label: 'Sáng (06:00 – 12:00)', fromMinute: 360, toMinute: 720 },
   afternoon: { label: 'Chiều (12:00 – 17:00)', fromMinute: 720, toMinute: 1020 },
@@ -71,13 +36,7 @@ function todayIso() {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
-function formatMatchDate(date) {
-  const parsedDate = new Date(`${date}T00:00:00`);
-  const weekday = new Intl.DateTimeFormat('vi-VN', { weekday: 'short' }).format(parsedDate);
-  const day = String(parsedDate.getDate()).padStart(2, '0');
-  const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
-  return `${weekday} ${day}/${month}`;
-}
+function formatMatchDate(date) { return shortDate(date); }
 
 function capacityOf(match) {
   return match.currentPlayers + match.neededPlayers;
@@ -88,6 +47,15 @@ export default function OpenMatchesPage() {
   const requestedMatch = notificationParams.get('matchId');
   const { isAuthenticated, role } = useAuth();
   const isPlayer = isAuthenticated && role === 'player';
+  const [tab, setTab] = useState('open');
+  const [detailId, setDetailId] = useState(null);
+  const [dismissedNotification, setDismissedNotification] = useState(null);
+  const [confirmation, setConfirmation] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const actionLock = useRef(false);
+  const [noticeTone, setNoticeTone] = useState('success');
+  const [loadingHosted, setLoadingHosted] = useState(isPlayer);
+  const [requestMatches, setRequestMatches] = useState([]);
 
   // Bỏ trống = mọi ngày từ hôm nay trở đi (backend chỉ trả kèo OPEN chưa qua ngày chơi).
   const [selectedDate, setSelectedDate] = useState('');
@@ -140,6 +108,7 @@ export default function OpenMatchesPage() {
 
   const loadHosted = useCallback(async () => {
     if (!isPlayer) return;
+    setLoadingHosted(true);
     try {
       const [page, joined] = await Promise.all([
         getMyMatches({ role: 'HOSTED', status: 'OPEN' }),
@@ -154,17 +123,18 @@ export default function OpenMatchesPage() {
             ]);
             return { match, requests, approved };
           } catch {
-            return { match, requests: [], approved: [] };
+            return { match, requests: [], approved: [], requestsError: 'Không tải được yêu cầu của kèo này.' };
           }
         })
       );
       setHostedMatches(hosted);
+      setRequestMatches(joined.content ?? []);
       setJoinedMatches((joined.content ?? []).filter((match) =>
         match.myJoinStatus === 'APPROVED' && (match.status === 'OPEN' || match.status === 'CLOSED')));
       setHostedError('');
     } catch (cause) {
       setHostedError(apiErrorMessage(cause, 'Không tải được kèo của bạn.'));
-    }
+    } finally { setLoadingHosted(false); }
   }, [isPlayer]);
 
   useEffect(() => {
@@ -205,6 +175,7 @@ export default function OpenMatchesPage() {
   const needsSkill = mySkill !== null && !isSkillLevel(mySkill);
 
   const submitJoinRequest = async () => {
+    if (submitting || actionLock.current) return;
     if (needsSkill && !isSkillLevel(chosenSkill)) {
       setRequestError('Hồ sơ của bạn chưa có trình độ chơi, vui lòng chọn trình độ.');
       return;
@@ -213,6 +184,8 @@ export default function OpenMatchesPage() {
       setRequestError('Vui lòng đồng ý chia sẻ số điện thoại để tham gia kèo. (MSG24)');
       return;
     }
+    actionLock.current = true;
+    setNoticeTone('success');
     setSubmitting(true);
     try {
       await sendJoinRequest(requestingMatchId, true, needsSkill ? chosenSkill : undefined);
@@ -223,6 +196,7 @@ export default function OpenMatchesPage() {
     } catch (cause) {
       setRequestError(apiErrorMessage(cause, 'Không gửi được yêu cầu tham gia.'));
     } finally {
+      actionLock.current = false;
       setSubmitting(false);
     }
   };
@@ -233,6 +207,7 @@ export default function OpenMatchesPage() {
       setNotice('Đã rút yêu cầu tham gia.');
       await reloadAll();
     } catch (cause) {
+      setNoticeTone('danger');
       setNotice(apiErrorMessage(cause, 'Không rút được yêu cầu.'));
     }
   };
@@ -242,6 +217,7 @@ export default function OpenMatchesPage() {
       await (approve ? approveJoinRequest(requestId) : rejectJoinRequest(requestId));
       setNotice(approve ? 'Đã duyệt người chơi vào kèo. (MSG75)' : 'Đã từ chối yêu cầu tham gia.');
     } catch (cause) {
+      setNoticeTone('danger');
       setNotice(apiErrorMessage(cause, 'Không xử lý được yêu cầu.'));
     }
     await reloadAll();
@@ -254,354 +230,121 @@ export default function OpenMatchesPage() {
         ? 'Kèo đã đóng. Mọi yêu cầu tham gia đang chờ đã được hủy. (MSG76)'
         : 'Kèo đã hủy. Mọi yêu cầu tham gia đang chờ đã được hủy. (MSG76)');
     } catch (cause) {
+      setNoticeTone('danger');
       setNotice(apiErrorMessage(cause, 'Không cập nhật được kèo.'));
     }
     await reloadAll();
   };
 
-  const joinArea = (match) => {
-    if (match.host) {
-      return <div className={styles.requestStatusRow}><strong>Kèo của bạn</strong></div>;
-    }
-    if (match.myJoinStatus === 'PENDING') {
-      return (
-        <div className={styles.requestStatusRow}>
-          <strong>Đang chờ chủ kèo duyệt</strong>
-          <button type="button" className={styles.withdrawButton} onClick={() => withdrawRequest(match)}>
-            Rút yêu cầu
-          </button>
-        </div>
-      );
-    }
-    if (match.myJoinStatus === 'APPROVED') {
-      return (
-        <div className={styles.requestStatusRow}>
-          <strong>Bạn đã được duyệt vào kèo</strong>
-          {match.hostPhone && <span>SĐT chủ kèo: {match.hostPhone}</span>}
-        </div>
-      );
-    }
-    if (match.myJoinStatus === 'REJECTED') {
-      // D61: bị từ chối thì không xin lại kèo đó.
-      return <div className={styles.requestStatusRow}><strong>Chủ kèo đã từ chối yêu cầu của bạn</strong></div>;
-    }
-    if (!isAuthenticated) {
-      return <Link to="/login" state={{ returnTo: '/open-matches' }} className={styles.joinButton}>Đăng nhập để xin tham gia</Link>;
-    }
-    if (!isPlayer) {
-      return (
-        <button type="button" className={styles.joinButton} disabled>
-          Đăng nhập bằng tài khoản người chơi để xin tham gia
-        </button>
-      );
-    }
-    return (
-      <button
-        type="button"
-        className={styles.joinButton}
-        disabled={match.neededPlayers === 0}
-        onClick={() => openJoinDialog(match.id)}
-      >
-        Xin tham gia
-      </button>
-    );
+  const [detailRevision, setDetailRevision] = useState(0);
+  async function runAction(action) {
+    if (actionLock.current) return;
+    actionLock.current = true;
+    setActionBusy(true);
+    setNotice('');
+    setNoticeTone('success');
+    try { await action(); setDetailRevision(value => value + 1); }
+    catch (error) { setNoticeTone('danger'); setNotice(apiErrorMessage(error)); }
+    finally { actionLock.current = false; setActionBusy(false); setConfirmation(null); }
+  }
+  const confirm = (title, message, action) => setConfirmation({ title, message, action });
+  const resetFilters = () => {
+    setSelectedDate(''); setTimeSlot('all'); setSelectedLocation(''); setSelectedSkill('');
+    setAppliedFilters({ date: '', timeSlot: 'all', locationId: '', skillLevel: '' });
   };
-
-  return (
-    <div className={styles.page}>
-      <PublicHeader />
-
-      <main className={styles.main}>
-        {/^[1-9]\d*$/.test(requestedMatch || '') && <NotificationMatch key={requestedMatch} id={requestedMatch} />}
-        <div className={styles.headingRow}>
-          <div className={styles.pageHeading}>
-            <p>GIAO LƯU</p>
-            <h1>Kèo đang tìm người chơi</h1>
-          </div>
-          {isPlayer && <Link to="/my-bookings" className={styles.headingAction}>Đến lịch đặt sân để mở kèo</Link>}
-        </div>
-
-        <form className={styles.filterBar} onSubmit={submitFilters}>
-          <label className={styles.filterField}>
-            <span>Địa điểm</span>
-            <select value={selectedLocation} onChange={(event) => setSelectedLocation(event.target.value)}>
-              <option value="">Mọi địa điểm</option>
-              {locations.map((location) => (
-                <option key={location.facility_id} value={location.facility_id}>{location.facility_name}</option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.filterField}>
-            <span>Ngày chơi</span>
-            <input
-              type="date"
-              value={selectedDate}
-              min={todayIso()}
-              onChange={(event) => setSelectedDate(event.target.value)}
-            />
-            {selectedDate && (
-              <button type="button" className={styles.clearDateButton} onClick={() => setSelectedDate('')}>
-                Mọi ngày
-              </button>
-            )}
-          </label>
-          <label className={styles.filterField}>
-            <span>Khung giờ</span>
-            <select value={timeSlot} onChange={(event) => setTimeSlot(event.target.value)}>
-              {Object.entries(TIME_SLOTS).map(([value, slot]) => (
-                <option key={value} value={value}>{slot.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.filterField}>
-            <span>Trình độ</span>
-            <select value={selectedSkill} onChange={(event) => setSelectedSkill(event.target.value)}>
-              <option value="">Mọi trình độ</option>
-              {SKILL_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
-              <option value={NO_SKILL_FILTER}>{NO_SKILL_LABEL}</option>
-            </select>
-          </label>
-          <button type="submit" className={styles.filterButton}>Lọc kèo</button>
-        </form>
-
-        <div className={styles.contentGrid}>
-          <section className={styles.matchGrid} aria-label="Danh sách kèo mở">
-            {loadingMatches && <div className={styles.emptyState} role="status">Đang tải danh sách kèo…</div>}
-            {matchesError && (
-              <div className={styles.emptyState} role="alert">
-                {matchesError}{' '}
-                <button type="button" onClick={loadMatches}>Thử lại</button>
-              </div>
-            )}
-            {!loadingMatches && !matchesError && matches.map((match) => (
-              <article className={styles.matchCard} key={match.id}>
-                <div className={styles.matchTop}>
-                  <h2>{match.locationName} · {match.courtName}</h2>
-                  <span className={styles.skillBadge} title="Trình độ của kèo do chủ kèo chọn">
-                    Trình độ: {matchSkillLabel(match)}
-                  </span>
-                </div>
-                <p className={styles.matchTime}>
-                  {formatMatchDate(match.playDate)} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}
-                </p>
-                <div className={styles.hostRow}>
-                  <span>Đội <strong>{match.teamName}</strong> · Chủ kèo: <strong>{match.hostName}</strong></span>
-                  <strong>{match.currentPlayers}/{capacityOf(match)} người</strong>
-                </div>
-                <div
-                  className={styles.progressTrack}
-                  role="progressbar"
-                  aria-label={`${match.currentPlayers} trên ${capacityOf(match)} người`}
-                  aria-valuemin={0}
-                  aria-valuemax={capacityOf(match)}
-                  aria-valuenow={match.currentPlayers}
-                >
-                  <span style={{ width: `${(match.currentPlayers / capacityOf(match)) * 100}%` }} />
-                </div>
-                <p className={styles.needPlayers}>Cần thêm {match.neededPlayers} người</p>
-                {joinArea(match)}
-              </article>
-            ))}
-            {!loadingMatches && !matchesError && matches.length === 0 && (
-              <div className={styles.emptyState}>{appliedFilters.date || appliedFilters.locationId || appliedFilters.timeSlot !== 'all' || appliedFilters.skillLevel
-                  ? 'Không có kèo phù hợp với địa điểm, ngày, khung giờ và trình độ đã chọn.'
-                  : 'Hiện chưa có kèo nào đang tìm người chơi.'}</div>
-            )}
-          </section>
-
-          {isPlayer && (
-            <aside className={styles.hostedCard} aria-label="Kèo tôi tổ chức">
-              <h2 className={styles.hostedTitle}>Kèo tôi tổ chức</h2>
-              {hostedError && <p role="alert">{hostedError}</p>}
-              {!hostedError && hostedMatches.length === 0 && (
-                <p className={styles.noRequests}>
-                  Bạn chưa có kèo đang mở. Mở kèo từ chi tiết đặt sân đã xác nhận đặt dưới tên đội của bạn.
-                </p>
-              )}
-              {hostedMatches.map(({ match, requests, approved }) => (
-                <div key={match.id}>
-                  <div className={styles.hostedSummary}>
-                    <strong>{match.locationName} · {match.courtName}</strong>
-                    <span>
-                      {formatMatchDate(match.playDate)} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}
-                      {' · '}{match.currentPlayers}/{capacityOf(match)} người
-                    </span>
-                    <span>Trình độ: {matchSkillLabel(match)}</span>
-                  </div>
-
-                  <h3 className={styles.requestsTitle}>Yêu cầu tham gia ({requests.length})</h3>
-                  {requests.length > 0 ? (
-                    <ul className={styles.requestList}>
-                      {requests.map((request) => (
-                        <li className={styles.requestItem} key={request.id}>
-                          <div className={styles.requestPerson}>
-                            <span className={styles.requestAvatar}>
-                              {(request.fullName || '?').trim().charAt(0).toUpperCase()}
-                            </span>
-                            <div>
-                              <strong>{request.fullName}</strong>
-                              {request.skillLevel && <span>Trình độ: {request.skillLevel}</span>}
-                              {request.phone && <span>SĐT: {request.phone}</span>}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className={styles.rejectButton}
-                            onClick={() => decideRequest(request.id, false)}
-                          >
-                            Từ chối
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.approveButton}
-                            onClick={() => decideRequest(request.id, true)}
-                          >
-                            Duyệt
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className={styles.noRequests}>Không có yêu cầu tham gia đang chờ.</p>
-                  )}
-
-                  {approved.length > 0 && (
-                    <>
-                      <h3 className={styles.requestsTitle}>Đã được duyệt ({approved.length})</h3>
-                      <ul className={styles.requestList}>
-                        {approved.map((request) => (
-                          <li className={styles.requestItem} key={request.id}>
-                            <div className={styles.requestPerson}>
-                              <span className={styles.requestAvatar}>
-                                {(request.fullName || '?').trim().charAt(0).toUpperCase()}
-                              </span>
-                              <div>
-                                <strong>{request.fullName}</strong>
-                                {request.skillLevel && <span>Trình độ: {request.skillLevel}</span>}
-                                {request.phone && <span>SĐT: {request.phone}</span>}
-                              </div>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-
-                  <div className={styles.hostedActions}>
-                    <button
-                      type="button"
-                      className={styles.closeMatchButton}
-                      onClick={() => finishHostedMatch(match.id, true)}
-                    >
-                      Đóng kèo
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.cancelMatchButton}
-                      onClick={() => finishHostedMatch(match.id, false)}
-                    >
-                      Hủy kèo
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              <h2 className={styles.hostedTitle}>Kèo tôi đã được duyệt</h2>
-              {joinedMatches.length === 0 && (
-                <p className={styles.noRequests}>Bạn chưa được duyệt vào kèo nào sắp diễn ra.</p>
-              )}
-              {joinedMatches.map((match) => (
-                <div className={styles.hostedSummary} key={match.id}>
-                  <strong>{match.locationName} · {match.courtName}</strong>
-                  <span>
-                    {formatMatchDate(match.playDate)} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}
-                  </span>
-                  <span>
-                    Chủ kèo: {match.hostName}{match.hostPhone ? ` · SĐT: ${match.hostPhone}` : ''}
-                  </span>
-                </div>
-              ))}
-            </aside>
-          )}
-        </div>
-
-        {notice && <p className={styles.notice} role="status">{notice}</p>}
-      </main>
-      <PublicFooter />
-
-      {requestingMatchId && (
-        <div className={styles.modalBackdrop} role="presentation" onClick={() => setRequestingMatchId(null)}>
-          <section
-            className={styles.joinModal}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="join-modal-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              className={styles.modalClose}
-              aria-label="Đóng"
-              onClick={() => {
-                setRequestingMatchId(null);
-                setRequestError('');
-              }}
-            >
-              ×
-            </button>
-            <h2 id="join-modal-title">Xin tham gia kèo</h2>
-            {matches.find((item) => item.id === requestingMatchId) && (
-              <p className={styles.noRequests}>
-                Trình độ của kèo: {matchSkillLabel(matches.find((item) => item.id === requestingMatchId))}.
-                {' '}Trình độ chỉ để tham khảo, chủ kèo sẽ xét duyệt yêu cầu của bạn.
-              </p>
-            )}
-            {needsSkill && (
-              <label className={styles.filterField}>
-                <span>Trình độ chơi của bạn</span>
-                <select
-                  value={chosenSkill}
-                  onChange={(event) => {
-                    setChosenSkill(event.target.value);
-                    setRequestError('');
-                  }}
-                >
-                  <option value="">Chọn trình độ</option>
-                  {SKILL_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
-                </select>
-                <small>Hồ sơ của bạn chưa có trình độ. Trình độ bạn chọn sẽ được lưu vào hồ sơ.</small>
-              </label>
-            )}
-            <label className={styles.consentLabel}>
-              <input
-                type="checkbox"
-                checked={sharePhone}
-                onChange={(event) => {
-                  setSharePhone(event.target.checked);
-                  setRequestError('');
-                }}
-              />
-              <span>Tôi đồng ý chia sẻ số điện thoại với chủ kèo</span>
-            </label>
-            {requestError && <p className={styles.requestError} role="alert">{requestError}</p>}
-            <div className={styles.modalActions}>
-              <button
-                type="button"
-                className={styles.modalCancel}
-                onClick={() => {
-                  setRequestingMatchId(null);
-                  setRequestError('');
-                }}
-              >
-                Hủy
-              </button>
-              <button type="button" className={styles.modalSubmit} disabled={submitting || mySkill === null} onClick={submitJoinRequest}>
-                {submitting ? 'Đang gửi…' : 'Gửi yêu cầu'}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+  const joinArea = (match, privateDetail = false) => {
+    if (match.host) return <p className={styles.helper}>Bạn là chủ kèo này.</p>;
+    if (match.myJoinStatus === 'PENDING') return <div className={styles.actions}><StatusBadge status="PENDING" category="join_request" /><Button variant="secondary" disabled={actionBusy} onClick={() => confirm('Rút yêu cầu tham gia?', 'Yêu cầu đang chờ sẽ được hủy. Chủ kèo sẽ không xét duyệt yêu cầu này nữa.', () => withdrawRequest(match))}>Rút yêu cầu</Button></div>;
+    if (match.myJoinStatus === 'APPROVED') return <div className={styles.contact}><StatusBadge status="APPROVED" category="join_request" />{privateDetail && isPlayer && match.hostPhone && <p>Số điện thoại chủ kèo: <a href={'tel:' + match.hostPhone}>{match.hostPhone}</a></p>}</div>;
+    if (match.myJoinStatus === 'REJECTED') return <div><StatusBadge status="REJECTED" category="join_request" /><p className={styles.helper}>Bạn đã bị từ chối ở kèo này và không thể gửi lại yêu cầu.</p></div>;
+    if (!isAuthenticated) return <Link to="/login" state={{ returnTo: '/open-matches' }} className={styles.linkButton}>Tham gia</Link>;
+    if (!isPlayer) return <Button disabled>Chỉ dành cho người chơi</Button>;
+    return <Button disabled={match.neededPlayers === 0 || match.status !== 'OPEN' || actionBusy} onClick={() => openJoinDialog(match.id)}>Tham gia</Button>;
+  };
+  const card = match => <article className={styles.matchCard} key={match.id} aria-label={`${match.locationName} · ${match.courtName}`}>
+    <div className={styles.dateStrip}><span>{formatMatchDate(match.playDate)}</span><strong>{formatMinute(match.startMinute)}</strong><span>đến {formatMinute(match.endMinute)}</span></div>
+    <div className={styles.cardBody}>
+      <div className={styles.cardTop}><h2>{match.locationName}</h2><StatusBadge status={match.status} category="match" /></div>
+      <p className={styles.court}>{match.courtName} · Đội {match.teamName}</p>
+      <div className={styles.skills}><span className={styles.chip}>Kèo: {matchSkillLabel(match)}</span>{isSkillLevel(match.teamSkillLevel) && <span className={styles.teamSkill}>Đội: {match.teamSkillLevel}</span>}</div>
+      <p className={styles.helper}>Chủ kèo: <strong>{match.hostName}</strong></p>
+      <div className={styles.capacity}><span><strong>{match.currentPlayers}/{capacityOf(match)}</strong> người</span><span>Cần thêm {match.neededPlayers}</span></div>
+      <progress className={styles.progress} max={Math.max(1, capacityOf(match))} value={match.currentPlayers} aria-label={`Số người: ${match.currentPlayers}/${capacityOf(match)}`} />
+      <div className={styles.cardFooter}><Button variant="secondary" onClick={() => setDetailId(match.id)}>Xem chi tiết</Button>{joinArea(match)}</div>
     </div>
-  );
+  </article>;
+  const hostedDetails = match => {
+    const hosted = hostedMatches.find(item => item.match.id === match.id);
+    if (!isPlayer || !match.host) return null;
+    return <section className={styles.hostSection} aria-label="Quản lý kèo">
+      <h3>Yêu cầu tham gia</h3>
+      {loadingHosted ? <LoadingState message="Đang tải yêu cầu…" /> : hostedError ? <ErrorState message={hostedError} onRetry={loadHosted} /> : hosted?.requestsError ? <ErrorState message={hosted.requestsError} onRetry={loadHosted} /> : <>
+        {!hosted?.requests.length ? <EmptyState title="Chưa có yêu cầu đang chờ" description="Người chơi gửi yêu cầu sẽ xuất hiện tại đây. Bạn có thể làm mới để kiểm tra." action={<Button variant="secondary" onClick={loadHosted}>Làm mới</Button>} /> :
+          <ul className={styles.people}>{hosted.requests.map(request => <li key={request.id}><div><strong>{request.fullName}</strong><p className={styles.helper}>{request.skillLevel || 'Chưa có trình độ'}</p><StatusBadge status="PENDING" category="join_request" /></div><div className={styles.actions}>
+            <Button variant="secondary" disabled={actionBusy} onClick={() => confirm('Từ chối yêu cầu?', `${request.fullName} sẽ không được tham gia và không thể gửi lại yêu cầu vào kèo này.`, () => decideRequest(request.id, false))}>Từ chối</Button>
+            <Button loading={actionBusy} onClick={() => runAction(() => decideRequest(request.id, true))}>Duyệt</Button>
+          </div></li>)}</ul>}
+        <h3>Người đã được duyệt ({hosted?.approved.length || 0})</h3>
+        {!hosted?.approved.length ? <p className={styles.helper}>Chưa có người chơi được duyệt vào kèo.</p> : <ul className={styles.people}>{hosted.approved.map(request => <li key={request.id}><div><strong>{request.fullName}</strong><p className={styles.helper}>{request.skillLevel}</p>{request.phone && <a href={'tel:' + request.phone}>{request.phone}</a>}</div><StatusBadge status="APPROVED" category="join_request" /></li>)}</ul>}
+      </>}
+      {match.status === 'OPEN' && !match.reschedulePending && <div className={styles.actions}><Button variant="secondary" disabled={actionBusy} onClick={() => confirm('Đóng kèo?', 'Kèo ngừng tuyển người. Mọi yêu cầu đang chờ sẽ bị hủy; những người đã được duyệt vẫn ở trong kèo.', () => finishHostedMatch(match.id, true))}>Đóng kèo</Button><Button variant="danger" disabled={actionBusy} onClick={() => confirm('Hủy kèo?', 'Kèo sẽ bị hủy và không nhận người chơi. Mọi yêu cầu tham gia đang chờ sẽ bị hủy. Thao tác này không hủy lịch đặt sân.', () => finishHostedMatch(match.id, false))}>Hủy kèo</Button></div>}
+    </section>;
+  };
+  const openPanel = <>
+    <form className={styles.filters} onSubmit={submitFilters}>
+      <FormField label="Địa điểm"><Select id="match-location" value={selectedLocation} onChange={event => setSelectedLocation(event.target.value)}><option value="">Mọi địa điểm</option>{locations.map(location => <option key={location.facility_id} value={location.facility_id}>{location.facility_name}</option>)}</Select></FormField>
+      <FormField label="Ngày chơi"><Input id="match-date" type="date" min={todayIso()} value={selectedDate} onChange={event => setSelectedDate(event.target.value)} /></FormField>
+      <FormField label="Khung giờ"><Select id="match-time" value={timeSlot} onChange={event => setTimeSlot(event.target.value)}>{Object.entries(TIME_SLOTS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}</Select></FormField>
+      <FormField label="Trình độ"><Select id="match-skill" value={selectedSkill} onChange={event => setSelectedSkill(event.target.value)}><option value="">Mọi trình độ</option>{SKILL_LEVELS.map(level => <option key={level}>{level}</option>)}<option value={NO_SKILL_FILTER}>{NO_SKILL_LABEL}</option></Select></FormField>
+      <Button type="submit" loading={loadingMatches}>Lọc kèo</Button><Button variant="ghost" onClick={resetFilters}>Xóa bộ lọc</Button>
+    </form>
+    <div className={styles.listHeading}><h2>Cùng ra sân, tìm đồng đội</h2><span>{!loadingMatches && !matchesError && `${matches.length} kèo đang mở`}</span></div>
+    {loadingMatches ? <LoadingState message="Đang tải danh sách kèo…" /> : matchesError ? <ErrorState message={matchesError} onRetry={loadMatches} /> : !matches.length ? <EmptyState title="Chưa có kèo phù hợp" description="Thử bỏ bớt bộ lọc hoặc chọn ngày, khung giờ khác để tìm đồng đội." action={<Button variant="secondary" onClick={resetFilters}>Xóa bộ lọc và tìm lại</Button>} /> : <div className={styles.matchGrid}>{matches.map(card)}</div>}
+  </>;
+  const allRequests = [...new Map([...requestMatches, ...joinedMatches].map(match => [match.id, match])).values()].filter(match => match.myJoinStatus);
+  const personalPanel = type => !isPlayer ? <EmptyState title="Đăng nhập để theo dõi kèo" description="Dùng tài khoản người chơi để xem yêu cầu và quản lý các kèo của bạn." action={<Link className={styles.linkButton} to="/login" state={{ returnTo: '/open-matches' }}>Đăng nhập</Link>} /> : loadingHosted ? <LoadingState message="Đang tải kèo của bạn…" /> : hostedError ? <ErrorState message={hostedError} onRetry={loadHosted} /> :
+    (type === 'hosted' ? hostedMatches : allRequests).length ? <div className={styles.matchGrid}>{(type === 'hosted' ? hostedMatches.map(item => item.match) : allRequests).map(card)}</div> : <EmptyState title={type === 'hosted' ? 'Bạn chưa có kèo đang mở' : 'Bạn chưa có yêu cầu tham gia'} description={type === 'hosted' ? 'Mở kèo từ chi tiết lịch đặt sân đã xác nhận cho đội của bạn.' : 'Khám phá kèo đang mở và gửi yêu cầu để tìm đồng đội.'} action={type === 'hosted' ? <Link className={styles.linkButton} to="/my-bookings">Đến lịch đặt sân để mở kèo</Link> : <Button onClick={() => setTab('open')}>Khám phá kèo đang mở</Button>} />;
+  const activeDetail = detailId || (/^[1-9]\d*$/.test(requestedMatch || '') && requestedMatch !== dismissedNotification ? requestedMatch : null);
+  const dismissDetail = () => { setDetailId(null); setDismissedNotification(requestedMatch); };
+
+  return <PublicLayout>
+    <PageHeader eyebrow="Giao lưu cầu lông" title="Tìm kèo, kết nối đồng đội" subtitle="Chọn lịch phù hợp, gửi yêu cầu và cùng nhau ra sân."
+      breadcrumbs={[{ label: 'Trang chủ', to: '/' }, { label: 'Kèo' }]}
+      actions={isPlayer && <Link className={styles.linkButton} to="/my-bookings">Mở kèo từ lịch đặt sân</Link>} />
+    {notice && !activeDetail && <div role={noticeTone === 'danger' ? 'alert' : 'status'} className={`${styles.notice} ${noticeTone === 'danger' ? styles.noticeError : ''}`}><span>{uiMessage(notice)}</span><Button variant="ghost" aria-label="Đóng thông báo" onClick={() => setNotice('')}>×</Button></div>}
+    <Tabs className={styles.tabs} label="Danh mục kèo" value={tab} onChange={setTab} items={[
+      { value: 'open', label: 'Kèo đang mở', content: openPanel },
+      { value: 'requests', label: 'Yêu cầu của tôi', content: personalPanel('requests') },
+      { value: 'hosted', label: 'Kèo của tôi', content: personalPanel('hosted') },
+    ]} />
+    {activeDetail && <NotificationMatch key={activeDetail} id={activeDetail} revision={detailRevision} onClose={dismissDetail} busy={actionBusy} isPlayer={isPlayer} notice={notice} noticeTone={noticeTone}
+      actions={match => <>{joinArea(match, true)}{hostedDetails(match)}{isPlayer && match.host && match.reschedulePending && <div className={styles.reschedule}><h3>Lịch sân đã thay đổi</h3><p>Kiểm tra ngày giờ mới trước khi quyết định giữ hoặc hủy kèo.</p><div className={styles.actions}><Button disabled={actionBusy} onClick={() => runAction(async () => { await keepMatchAfterRescheduleApi(match.id); setNotice('Đã giữ kèo ở giờ mới.'); await reloadAll(); })}>Giữ kèo ở giờ mới</Button><Button variant="danger" disabled={actionBusy} onClick={() => confirm('Hủy kèo sau đổi lịch?', 'Kèo sẽ bị hủy và các yêu cầu đang chờ sẽ không được xét duyệt. Lịch đặt sân được giữ nguyên.', () => finishHostedMatch(match.id, false))}>Hủy kèo</Button></div></div>}</>} />}
+    {requestingMatchId && <Modal title="Xin tham gia kèo" busy={submitting} onClose={() => { setRequestingMatchId(null); setRequestError(''); }}>
+      <div className={styles.joinBody}><p>Trình độ kèo: <strong>{matchSkillLabel(matches.find(match => match.id === requestingMatchId))}</strong>. Chủ kèo sẽ xét duyệt yêu cầu của bạn.</p>
+        {mySkill === null && <LoadingState message="Đang tải thông tin người chơi…" />}
+        {needsSkill && <FormField label="Trình độ chơi của bạn" required hint="Trình độ được chọn sẽ lưu vào hồ sơ của bạn."><Select aria-describedby={requestError ? 'join-error' : undefined} aria-invalid={Boolean(requestError && !chosenSkill)} id="join-skill" value={chosenSkill} onChange={event => { setChosenSkill(event.target.value); setRequestError(''); }}><option value="">Chọn trình độ</option>{SKILL_LEVELS.map(level => <option key={level}>{level}</option>)}</Select></FormField>}
+        <label className={styles.consent}><input id="share-phone" aria-invalid={Boolean(requestError && !sharePhone)} type="checkbox" checked={sharePhone} disabled={submitting} aria-describedby={requestError ? 'join-error' : 'join-privacy'} onChange={event => { setSharePhone(event.target.checked); setRequestError(''); }} /><span>Tôi đồng ý chia sẻ số điện thoại với chủ kèo</span></label>
+        <p id="join-privacy" className={styles.helper}>Số điện thoại không hiển thị trên danh sách kèo chung.</p>
+        {requestError && <p id="join-error" role="alert" className={styles.error}>{uiMessage(requestError)}</p>}
+        <div className={styles.actions}><Button variant="secondary" disabled={submitting} onClick={() => setRequestingMatchId(null)}>Quay lại</Button><Button loading={submitting} disabled={mySkill === null} onClick={submitJoinRequest}>Gửi yêu cầu</Button></div>
+      </div>
+    </Modal>}
+    {confirmation && <ConfirmDialog title={confirmation.title} message={confirmation.message} tone="danger" confirmText="Xác nhận" busy={actionBusy} onClose={() => setConfirmation(null)} onConfirm={() => runAction(confirmation.action)} />}
+  </PublicLayout>;
+}
+
+function NotificationMatch({ id, revision, onClose, busy, isPlayer, actions, notice, noticeTone }) {
+  const load = useCallback(signal => getMatch(id, signal), [id]);
+  const resource = useResource(load, `${id}:${revision}`);
+  const match = resource.data;
+  return <Drawer title="Chi tiết kèo" onClose={onClose} busy={busy}>
+    {notice && <p role={noticeTone === 'danger' ? 'alert' : 'status'} className={`${styles.notice} ${noticeTone === 'danger' ? styles.noticeError : ''}`}>{uiMessage(notice)}</p>}
+    {resource.loading ? <LoadingState message="Đang tải chi tiết kèo…" /> : resource.error ? <ErrorState message={resource.error} onRetry={resource.reload} /> : !match ? <EmptyState title="Chưa có thông tin kèo" description="Đóng chi tiết và chọn một kèo khác hoặc thử tải lại." action={<Button onClick={resource.reload}>Thử lại</Button>} /> : <>
+      <StatusBadge status={match.status} category="match" /><h3 className={styles.detailTitle}>{match.locationName} · {match.courtName}</h3>
+      <div className={styles.detailDate}>{formatMatchDate(match.playDate)} · {formatMinute(match.startMinute)} – {formatMinute(match.endMinute)}</div>
+      <dl className={styles.details}><dt>Đội</dt><dd>{match.teamName}</dd><dt>Chủ kèo</dt><dd>{match.hostName}</dd><dt>Trình độ kèo</dt><dd>{matchSkillLabel(match)}</dd><dt>Trình độ đội</dt><dd>{isSkillLevel(match.teamSkillLevel) ? match.teamSkillLevel : 'Chưa có thông tin'}</dd><dt>Số người</dt><dd>{match.currentPlayers}/{capacityOf(match)} · Cần thêm {match.neededPlayers}</dd></dl>
+      {isPlayer && match.host && match.hostPhone && <p className={styles.contact}>Số điện thoại chủ kèo: {match.hostPhone}</p>}
+      {actions(match)}
+    </>}
+  </Drawer>;
 }

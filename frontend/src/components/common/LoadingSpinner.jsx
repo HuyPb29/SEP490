@@ -1,31 +1,8 @@
-export default function LoadingSpinner({ message = "Đang tải…" }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '240px',
-        padding: '40px 20px',
-        color: '#475569',
-        fontSize: '14px',
-        fontWeight: 500,
-        gap: '12px',
-      }}
-    >
-      <div
-        style={{
-          width: '36px',
-          height: '36px',
-          border: '3px solid #e2e8f0',
-          borderTopColor: '#16a34a',
-          borderRadius: '50%',
-          animation: 'courtlySpinner 0.8s linear infinite',
-        }}
-      />
-      <style>{`@keyframes courtlySpinner { to { transform: rotate(360deg); } }`}</style>
-      {message && <span>{message}</span>}
-    </div>
-  )
+import styles from './CommonUI.module.css';
+
+export default function LoadingSpinner({ message = 'Đang tải…' }) {
+  return <div role="status" className={styles.spinnerState}>
+    <span className={styles.spinner} aria-hidden="true" />
+    <span>{message || 'Đang tải…'}</span>
+  </div>;
 }

@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
 import { adminExpansions, decideExpansion, expansionProof } from '../../api/courtExpansionApi'
 import { apiErrorMessage } from '../../api/locationApi'
 import { formatVnd } from '../location/serviceRegistrationTerms'
-import { Modal } from '../../components/common/Modal'
 import styles from './AdminCourtExpansions.module.css'
 
 function RequestRow({ item, reload, onBusyChange }) {
@@ -65,48 +63,36 @@ function RequestRow({ item, reload, onBusyChange }) {
   </article>
 }
 
-export default function AdminCourtExpansions() {
-  const location = useLocation()
-  const navigate = useNavigate()
-  const open = location.hash === '#court-expansions'
+/** UC06 #9, FR128: danh sách yêu cầu mua thêm sân, hiện ngay trong tab "Mua thêm sân" của trang Admin. */
+export default function AdminCourtExpansions({ onChanged }) {
   const [processing, setProcessing] = useState(false)
   const [items, setItems] = useState([])
   const [error, setError] = useState('')
-  const close = () => navigate({ pathname: location.pathname, search: location.search, hash: '' }, { replace: true })
+  const [loaded, setLoaded] = useState(false)
   const reload = async () => {
-    try { setItems(await adminExpansions()); setError('') }
+    try { setItems(await adminExpansions()); setError(''); onChanged?.() }
     catch (err) { setError(apiErrorMessage(err)) }
   }
   useEffect(() => {
     let active = true
-    adminExpansions().then((rows) => { if (active) setItems(rows) })
-      .catch((err) => { if (active) setError(apiErrorMessage(err)) })
+    adminExpansions().then((rows) => { if (active) { setItems(rows); setLoaded(true) } })
+      .catch((err) => { if (active) { setError(apiErrorMessage(err)); setLoaded(true) } })
     return () => { active = false }
   }, [])
-  const pending = items.filter((item) => item.status === 'PENDING').length
-  return <>
-    <section className={styles.summary}>
-      <div><h2>Yêu cầu thêm sân</h2><p>{pending} yêu cầu đang chờ quản trị viên xét duyệt</p></div>
-      <button type="button" onClick={() => navigate({ pathname: location.pathname, search: location.search, hash: '#court-expansions' })}>
-        Xem yêu cầu thêm sân{pending > 0 ? ` (${pending})` : ''}
-      </button>
-      {error && !open && <p role="alert" className="text-red-700">{error}</p>}
-    </section>
-    {open && <Modal labelledBy="admin-expansion-title" className={styles.dialog} busy={processing} onClose={close}>
-      <header className={styles.header}>
-        <div><h2 id="admin-expansion-title">Yêu cầu thêm sân ({pending} chờ duyệt)</h2>
-          <p>Kiểm tra chứng từ, đối chiếu tiền và xét duyệt yêu cầu</p></div>
-        <button type="button" aria-label="Đóng yêu cầu thêm sân" className={styles.close} disabled={processing} onClick={close}>×</button>
-      </header>
-      <div id="court-expansions">
-        <p>Phí tính theo số tháng còn lại của thời hạn sử dụng dịch vụ, chốt lúc chủ sân gửi đơn; duyệt muộn không tính lại.</p>
-        <p className={styles.hint}>quản trị viên đối chiếu số tiền thực nhận và ghi nhận hoàn đủ tiền thừa trước khi xác nhận. Thời hạn đã hết thì chỉ từ chối và hoàn tiền được.</p>
-        <button type="button" className="my-2 underline" disabled={processing} onClick={reload}>Làm mới danh sách yêu cầu</button>
-        {error && <p role="alert" className="text-red-700">{error}</p>}
-        {!items.length && !error && <p>Chưa có yêu cầu thêm sân.</p>}
-        {items.map((item) => <RequestRow key={`${item.id}-${item.status}-${item.approvalQuote?.startDate}`} item={item} reload={reload} onBusyChange={setProcessing} />)}
-      </div>
-      <footer className={styles.footer}><button type="button" disabled={processing} onClick={close}>Đóng</button></footer>
-    </Modal>}
-  </>
+  const pending = items.filter((item) => item.status === 'PENDING')
+  const done = items.filter((item) => item.status !== 'PENDING')
+  return <div className={styles.inline} id="court-expansions">
+    <p className={styles.hint}>Phí tính theo số tháng còn lại của thời hạn sử dụng dịch vụ, chốt lúc chủ sân gửi đơn; duyệt muộn không tính lại. Đối chiếu số tiền thực nhận và ghi nhận hoàn đủ tiền thừa trước khi xác nhận; thời hạn đã hết thì chỉ từ chối và hoàn tiền được.</p>
+    <div className={styles.toolbar}>
+      <strong>{pending.length} yêu cầu chờ duyệt</strong>
+      <button type="button" disabled={processing} onClick={reload}>Làm mới</button>
+    </div>
+    {error && <p role="alert" className={styles.error}>{error}</p>}
+    {loaded && !items.length && !error && <p className={styles.empty}>Chưa có yêu cầu mua thêm sân.</p>}
+    {pending.map((item) => <RequestRow key={`${item.id}-${item.status}-${item.approvalQuote?.startDate}`} item={item} reload={reload} onBusyChange={setProcessing} />)}
+    {done.length > 0 && <details className={styles.history}>
+      <summary>Đã xử lý ({done.length})</summary>
+      {done.map((item) => <RequestRow key={`${item.id}-${item.status}`} item={item} reload={reload} onBusyChange={setProcessing} />)}
+    </details>}
+  </div>
 }

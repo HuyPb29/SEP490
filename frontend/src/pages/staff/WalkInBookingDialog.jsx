@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import api, { apiErrorMessage } from '../../api'
 import { mapSchedule } from '../../api/facilityApi'
 import { fieldError, normalizeName, validName, validPhone } from '../../api/f1Rules'
 import { F1Dialog, F1Toast } from '../../components/F1Feedback'
 import ScheduleGrid from '../../components/schedule/ScheduleGrid'
-import { pickRange } from '../../utils/slotRanges'
+import { pickRangeTo } from '../../utils/slotRanges'
 import styles from './StaffDashboardPage.module.css'
 
 const dateFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
@@ -13,6 +13,7 @@ const expiredMessage = "Đã hết thời gian giữ chỗ. khung giờ đã đ�
 const timeLabel = (minute) =>
   String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0')
 const isFree = (slot) => slot.status === 'AVAILABLE' && slot.price != null
+const duration = (minutes) => [Math.floor(minutes / 60) && `${Math.floor(minutes / 60)} giờ`, minutes % 60 && `${minutes % 60} phút`].filter(Boolean).join(' ')
 
 function loadSchedule(venue, date, signal) {
   return api.get('/locations/' + venue + '/schedules', {
@@ -26,12 +27,13 @@ function secondsLeft(expiresAt) {
   return Math.max(0, Math.ceil((Date.parse(timestamp) - Date.now()) / 1000)) || 0
 }
 
-export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }) {
+// initialDate, initialStart, initialEnd: mở từ lịch sân Staff với dải đã chọn sẵn (UC13, UC16).
+export default function WalkInBookingDialog({ initialCourt, initialDate, initialStart, initialEnd, onClose, onChanged }) {
   const [today] = useState(() => dateFormat.format(new Date()))
-  const [date, setDate] = useState(today)
+  const [date, setDate] = useState(initialDate || today)
   const [court, setCourt] = useState(initialCourt ? String(initialCourt) : '')
-  const [start, setStart] = useState('')
-  const [end, setEnd] = useState('')
+  const [start, setStart] = useState(initialStart != null ? String(initialStart) : '')
+  const [end, setEnd] = useState(initialEnd != null ? String(initialEnd) : '')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [schedule, setSchedule] = useState(null)
@@ -90,8 +92,9 @@ export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }
     for (let minute = Number(start); free.has(minute); minute += 30) ends.push(minute + 30)
   }
 
-  // Bảng slot cả địa điểm trong ngày; booking tại quầy là một dải liền nhau trên một sân (BR43)
-  const gridSchedule = courts ? mapSchedule(schedule) : null
+  // Bảng slot cả địa điểm trong ngày; booking tại quầy là một dải gồm một hoặc nhiều slot liền nhau trên một sân
+  // (BR43, D183). Giữ cùng một object giữa các lần render để bấm chọn ô không làm bảng cuộn lại.
+  const gridSchedule = useMemo(() => (courts ? mapSchedule(schedule) : null), [courts, schedule])
   const range = court && start !== '' && end !== ''
     ? { courtId: Number(court), startMinute: Number(start), endMinute: Number(end) } : null
   const gridSelected = range ? Array.from({ length: (range.endMinute - range.startMinute) / 30 }, (_, index) =>
@@ -100,8 +103,12 @@ export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }
     .reduce((total, slot) => total + Number(slot.price || 0), 0) : 0
   const courtName = gridSchedule?.courts.find((item) => String(item.court_id) === court)?.court_name
 
+  // D183: bấm ô bắt đầu rồi bấm ô kết thúc cùng sân thì lấy cả dải nếu mọi ô ở giữa còn trống;
+  // bấm ô liền kề để kéo dài, bấm ô đầu hoặc cuối để bớt (pickRange).
   const pickSlot = (row, slot) => {
-    const next = pickRange(range, row.court_id, slot.time)
+    const free = new Set((courts.find(({ courtId }) => courtId === Number(row.court_id))?.slots || [])
+      .filter(isFree).map(({ startMinute }) => startMinute))
+    const next = pickRangeTo(range, Number(row.court_id), slot.time, (minute) => free.has(minute))
     setFields((current) => ({ ...current, courtId: undefined, startMinute: undefined, endMinute: undefined }))
     setCourt(String(row.court_id))
     setStart(next ? String(next.startMinute) : '')
@@ -242,11 +249,11 @@ export default function WalkInBookingDialog({ initialCourt, onClose, onChanged }
             {gridSchedule?.time_headers.length === 0 && <p role="status">Ngày này địa điểm không mở cửa.</p>}
             {gridSchedule?.time_headers.length > 0 && (
               <div className={styles.formField}>
-                <span>Khung giờ · bấm ô trống để chọn, bấm ô liền kề cùng sân để kéo dài</span>
-                <ScheduleGrid schedule={gridSchedule} selected={gridSelected} allowBooking={!busy} onSlot={pickSlot} />
+                <span>Khung giờ · bấm ô bắt đầu rồi bấm ô kết thúc cùng sân để chọn nhiều slot liền nhau; bấm ô đầu hoặc cuối để bớt</span>
+                <ScheduleGrid schedule={gridSchedule} selected={gridSelected} allowBooking={!busy} onSlot={pickSlot} keepNowAtLeft={false} />
                 <span aria-live="polite">
                   {range
-                    ? <>Đã chọn <strong>{courtName} · {timeLabel(range.startMinute)}–{timeLabel(range.endMinute)}</strong> · {money.format(rangePrice)}</>
+                    ? <>Đã chọn <strong>{courtName} · {timeLabel(range.startMinute)}–{timeLabel(range.endMinute)}</strong> ({duration(range.endMinute - range.startMinute)}) · {money.format(rangePrice)}</>
                     : 'Chưa chọn khung giờ.'}
                 </span>
                 {fieldMessage('courtId')}

@@ -1,572 +1,714 @@
-.page {
-  min-height: 100vh;
-  display: flex;
-  background: #f5f8f6;
-  color: #172033;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.sidebar {
-  width: 232px;
-  min-height: 100vh;
-  flex: 0 0 232px;
-  padding: 20px 14px;
-  background: #0b132b;
-  color: #f8fafc;
-}
-
-.brand {
-  height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin: 0 7px 20px;
-  font-size: 18px;
-  font-weight: 750;
-  letter-spacing: -0.02em;
-}
-
-.brandIcon {
-  width: 31px;
-  height: 31px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: #16a34a;
-  color: #ffffff;
-  font-size: 21px;
-  line-height: 1;
-}
-
-.facility {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 20px;
-  padding: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.08);
-  border-radius: 11px;
-  background: #192235;
-  font-size: 12px;
-}
-
-.facility span {
-  color: #94a3b8;
-}
-
-.facility strong {
-  color: #f8fafc;
-  font-size: 12.5px;
-}
-
-.navigation {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.navItem {
-  min-height: 37px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: #e2e8f0;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 550;
-  text-align: left;
-  cursor: pointer;
-}
-
-.navItem:hover {
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.activeNav,
-.activeNav:hover {
-  background: #16a34a;
-  color: #ffffff;
-  font-weight: 700;
-}
-
-.main {
-  flex: 1;
-  min-width: 0;
-  padding: 24px;
-}
-
-.pageTitle {
-  margin: 0 0 18px;
-  color: #172033;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  line-height: 1.2;
-}
+/* Xác nhận thanh toán (UC19, UC20, UC21) cho Staff và Owner. Màu, cỡ chữ lấy từ token trong index.css. */
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(255px, 0.48fr) minmax(0, 1fr);
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: var(--space-4);
   align-items: start;
-  gap: 16px;
 }
 
-.bookingList,
-.detailCard {
-  min-width: 0;
-  border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  background: #ffffff;
+/* ------------------------------------------------------------ thông báo */
+.successBanner,
+.errorBanner {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
 }
 
-.bookingList {
+.successBanner {
+  border-color: var(--color-success-border);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.errorBanner {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+/* ------------------------------------------------------------ hàng chờ */
+.queue {
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-4));
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.queueTabs {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 7px;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.bookingItem {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 12px;
-  border: 1px solid transparent;
-  border-radius: 13px;
-  background: #ffffff;
-  color: #172033;
+.queueTabs button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.queueTabs button.tabOn {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.tabOn .count {
+  color: var(--color-primary);
+}
+
+.searchRow {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.searchInput,
+.input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.input:focus,
+.searchInput:focus {
+  border-color: var(--color-primary);
+  outline: 3px solid var(--color-focus-ring);
+}
+
+.queueItem {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
-.bookingItem:hover {
+.queueItem:hover {
+  background: var(--color-surface-muted);
+}
+
+.queueItem:disabled {
+  cursor: wait;
+}
+
+.itemSelected,
+.itemSelected:hover {
+  background: var(--color-primary-soft);
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.itemUrgent {
+  box-shadow: inset 3px 0 0 var(--color-danger);
+}
+
+.itemUrgent.itemSelected,
+.itemUrgent.itemSelected:hover {
+  background: #fff5f5;
+  box-shadow: inset 3px 0 0 var(--color-danger);
+}
+
+.itemMoved {
   background: #f8fafc;
+  color: var(--color-text-muted);
 }
 
-.bookingSelected,
-.bookingSelected:hover {
-  border-color: #16a34a;
-  background: #e8f5ee;
-}
-
-.bookingTopline {
+.itemTop {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  white-space: nowrap;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
 }
 
-.bookingTopline strong {
-  font-size: 13px;
-  font-weight: 800;
+.itemMeta {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
 }
 
-.bookingMeta,
-.waiting,
-.overdue {
-  font-size: 11.5px;
+.wait,
+.waitUrgent,
+.waitMoved {
+  font-size: var(--text-xs);
+  font-weight: 700;
 }
 
-.bookingMeta,
-.waiting {
-  color: #71819a;
+.wait {
+  color: var(--color-text-secondary);
 }
 
-.overdue {
-  color: #b91c1c;
-  font-weight: 750;
+.waitUrgent {
+  color: var(--color-danger);
 }
 
-.emptyList {
-  padding: 18px 12px;
-  color: #71819a;
-  font-size: 13px;
+.waitMoved {
+  color: var(--color-text-muted);
 }
 
-.detailCard {
-  padding: 20px;
+.kind {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.kindNeutral {
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral);
+}
+
+.kindInfo {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.kindViolet {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.emptyList,
+.queueNote {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+/* ------------------------------------------------------------ chi tiết */
+.detail {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.detailEmpty {
+  margin: 0;
+  padding: var(--space-6);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 
 .detailHeader {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .detailHeader h2 {
-  min-width: 0;
-  margin: 0;
-  color: #172033;
-  font-size: 19px;
+  margin: 0 0 6px;
+  font-size: var(--text-xl);
   font-weight: 800;
-  letter-spacing: -0.025em;
 }
 
-.statusBadge {
-  flex-shrink: 0;
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: #dbeafe;
-  color: #1d4ed8;
-  font-size: 10px;
+.detailHeader p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
   font-weight: 700;
   white-space: nowrap;
 }
 
-.detailBody {
-  display: grid;
-  grid-template-columns: minmax(180px, 0.92fr) minmax(0, 1.08fr);
-  gap: 16px;
+.badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.proofPreview {
-  min-height: 260px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  background: #f1f5f9;
-  color: #475569;
-  font: inherit;
-  cursor: zoom-in;
+.badgeDanger {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
-.proofPreview svg,
-.proofLarge svg {
-  width: 32px;
-  height: 32px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2;
+.badgeWarning {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
-.proofPreview strong {
-  font-size: 13px;
-  font-weight: 650;
+.badgeNeutral {
+  border-color: var(--color-neutral-border);
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral);
 }
 
-.proofPreview small {
-  color: #71819a;
-  font-size: 11px;
-}
-
-.paymentInfo {
-  min-width: 0;
-}
-
-.infoList {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  margin: 0 0 11px;
-}
-
-.infoList > div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.infoList dt {
-  flex-shrink: 0;
-  color: #8190a5;
-  font-size: 12px;
-}
-
-.infoList dd {
-  min-width: 0;
-  margin: 0;
-  color: #172033;
-  font-size: 12px;
-  font-weight: 750;
-  text-align: right;
-  overflow-wrap: anywhere;
-}
-
-.ownerNote {
-  margin: 0 0 11px;
-  padding: 9px 11px;
-  border-radius: 11px;
-  background: #f1f5f9;
-  color: #475569;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.escalatedNotice {
-  margin: 14px 0 0;
-  padding: 11px 13px;
-  border: 1px solid #fecaca;
-  border-radius: 12px;
-  background: #fef2f2;
-  color: #b91c1c;
-  font-size: 12.5px;
-  font-weight: 650;
+.noticeDanger,
+.noticeNeutral {
+  margin: var(--space-4) var(--space-5) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   line-height: 1.5;
 }
 
-.ownerNote strong {
-  color: #172033;
+.noticeDanger {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: #7f1d1d;
 }
 
-.amountLabel {
-  display: block;
-  margin-bottom: 5px;
-  color: #172033;
-  font-size: 11.5px;
-  font-weight: 750;
+.noticeNeutral {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
 }
 
-.amountInput {
-  width: 100%;
-  height: 39px;
-  padding: 0 11px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #172033;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 650;
+.detailBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: var(--space-5);
+  padding: var(--space-5);
 }
 
-.reasonBox {
+.infoColumn {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+  min-width: 0;
+}
+
+.amountBox {
   display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: 16px;
-  padding: 13px;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #f8fafc;
 }
 
-.reasonBox label {
-  color: #172033;
-  font-size: 12px;
-  font-weight: 750;
+.amountBox span {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
-.reasonBox select {
-  width: 100%;
-  min-height: 40px;
-  padding: 0 11px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #172033;
-  font: inherit;
-  font-size: 12px;
+.amountBox strong {
+  font-size: 26px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
-.reasonBox p {
+.amountBox small {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.infoList {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
   margin: 0;
-  color: #8190a5;
+  font-size: var(--text-sm);
+}
+
+.infoList dt {
+  color: var(--color-text-muted);
+}
+
+.infoList dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.sessions {
+  max-height: 140px;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  font-size: var(--text-xs);
+}
+
+.sessions strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.sessions div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 2px 0;
+}
+
+.ownerNote {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--slot-holding-border);
+  border-radius: var(--radius-sm);
+  background: var(--slot-holding-bg);
+  color: #78350f;
+  font-size: var(--text-sm);
+}
+
+.formBlock {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.fieldLabel {
+  margin-top: var(--space-2);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.fieldLabel span {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.fieldError {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.hintWarning,
+.hintSuccess,
+.muted {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.hintWarning {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.hintSuccess {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+/* ------------------------------------------------------------ ảnh chứng từ */
+.proofPanel {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-sidebar-bg);
+  color: var(--color-sidebar-text);
+}
+
+.proofTools {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.proofTools span:last-child {
+  display: flex;
+  gap: 6px;
+}
+
+.proofTools button,
+.proofThumbs button,
+.proofModal header button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-sidebar-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-sidebar-text);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.proofTools button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.proofPreview {
+  display: grid;
+  place-items: center;
+  min-height: 280px;
+  overflow: hidden;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: zoom-in;
+}
+
+.proofPreview:disabled {
+  cursor: default;
+}
+
+.proofPreview img {
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  transition: transform 0.2s ease;
+}
+
+.proofThumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.proofThumbs .thumbOn {
+  border-color: #5eead4;
+  background: var(--color-sidebar-surface);
+}
+
+/* ------------------------------------------------------------ thanh nút */
+.actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.shortcutHint {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.shortcutHint kbd {
+  padding: 0 5px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  background: var(--color-surface-muted);
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
-.errorMessage {
-  margin: 12px 0 0;
-  color: #b91c1c;
-  font-size: 12px;
-}
-
-.actionMessage {
-  margin-top: 9px;
-  color: #15803d;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.actions button {
-  min-height: 39px;
-  padding: 0 13px;
-  border-radius: 11px;
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid;
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 12px;
-  font-weight: 750;
+  font-size: var(--text-sm);
+  font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.actions button:disabled {
-  opacity: 0.6;
-  cursor: wait;
+.primaryButton {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
-.rejectButton {
-  border: 1px solid #fca5a5;
-  background: #ffffff;
-  color: #b91c1c;
+.primaryButton:hover:not(:disabled) {
+  background: var(--color-primary-hover);
 }
 
-.resubmitButton {
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #334155;
+.secondaryButton {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
 }
 
-.confirmButton {
-  border: 1px solid #16a34a;
-  background: #16a34a;
-  color: #ffffff;
+.secondaryButton:hover:not(:disabled) {
+  background: var(--color-surface-muted);
 }
 
-.proofOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(15, 23, 42, 0.6);
+.dangerButton {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
-.proofModal {
-  position: relative;
-  width: min(680px, 100%);
-  min-height: 430px;
-  display: grid;
-  place-items: center;
-  padding: 28px;
-  border-radius: 18px;
-  background: #ffffff;
+.dangerButton:hover:not(:disabled) {
+  background: var(--color-danger-border);
 }
 
-.closeProof {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  padding: 7px 11px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #334155;
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.linkButton {
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
   font: inherit;
-  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
   cursor: pointer;
 }
 
-.proofLarge {
-  min-height: 320px;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  border-radius: 12px;
-  background: #f1f5f9;
-  color: #475569;
-  font-size: 14px;
+/* ------------------------------------------------------------ phóng to ảnh */
+.proofOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--color-overlay);
 }
 
-@media (max-width: 1080px) {
-  .workspace {
-    grid-template-columns: minmax(225px, 0.4fr) minmax(0, 1fr);
-  }
+.proofModal {
+  width: min(100%, 900px);
+  max-height: calc(100vh - 40px);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  background: var(--color-sidebar-bg);
+  color: var(--color-sidebar-text);
+  box-shadow: var(--shadow-lg);
+}
 
-  .detailHeader {
-    align-items: flex-start;
-    flex-direction: column;
-  }
+.proofModal header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+}
 
+.proofModal header span {
+  display: flex;
+  gap: 6px;
+}
+
+.proofLarge {
+  display: grid;
+  place-items: center;
+  min-height: 300px;
+  overflow: auto;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.proofLarge img {
+  max-width: 100%;
+  max-height: 76vh;
+  object-fit: contain;
+  transition: transform 0.2s ease;
+}
+
+/* ------------------------------------------------------------ màn hẹp */
+@media (width < 1200px) {
   .detailBody {
     grid-template-columns: 1fr;
   }
-
-  .proofPreview {
-    min-height: 180px;
-  }
 }
 
-@media (max-width: 760px) {
-  .page {
-    display: block;
-  }
-
-  .sidebar {
-    width: 100%;
-    min-height: 0;
-    padding: 12px;
-  }
-
-  .brand {
-    margin-bottom: 12px;
-  }
-
-  .facility {
-    margin-bottom: 12px;
-  }
-
-  .navigation {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .main {
-    padding: 20px 14px;
-  }
-
+@media (width < 1024px) {
   .workspace {
     grid-template-columns: 1fr;
   }
 
-  .bookingList {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .bookingItem:last-of-type {
-    grid-column: span 2;
-  }
-
-  .detailCard {
-    padding: 15px;
-  }
-
-  .actions {
-    flex-wrap: wrap;
-  }
-
-  .actions button {
-    flex: 1 1 auto;
+  .queue {
+    position: static;
   }
 }
 
-@media (max-width: 440px) {
-  .bookingList {
+@media (width < 640px) {
+  .infoList {
     grid-template-columns: 1fr;
   }
 
-  .bookingItem:last-of-type {
-    grid-column: auto;
-  }
-
-  .detailHeader h2 {
-    font-size: 17px;
-  }
-
-  .actions {
+  .detailHeader {
     flex-direction: column;
   }
 }

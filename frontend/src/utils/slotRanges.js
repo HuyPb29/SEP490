@@ -39,3 +39,20 @@ export function pickRange(range, courtId, time) {
   }
   return { courtId, startMinute: t, endMinute: t + SLOT }
 }
+
+// Như pickRange, thêm cách bấm ô bắt đầu rồi bấm ô kết thúc cùng sân: lấy cả dải nếu mọi ô ở giữa
+// còn trống (đặt tại quầy, D183). isFreeAt(minute) cho biết ô bắt đầu ở phút đó có còn trống không.
+export function pickRangeTo(range, courtId, time, isFreeAt) {
+  const t = toMinutes(time)
+  if (range && range.courtId === courtId && (t > range.endMinute || t + SLOT < range.startMinute)) {
+    const from = Math.min(range.startMinute, t)
+    const to = Math.max(range.endMinute, t + SLOT)
+    let allFree = true
+    for (let minute = from; minute < to; minute += SLOT) {
+      if (minute >= range.startMinute && minute < range.endMinute) continue
+      if (!isFreeAt(minute)) { allFree = false; break }
+    }
+    if (allFree) return { courtId, startMinute: from, endMinute: to }
+  }
+  return pickRange(range, courtId, time)
+}

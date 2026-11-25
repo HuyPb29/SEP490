@@ -36,6 +36,8 @@ public class StaffDashboardResponse {
     /** Giao dịch chờ xác nhận đã gửi quá paymentOverdueMinutes phút, cần xử lý gấp. */
     private long overduePayments;
     private int paymentOverdueMinutes;
+    /** D182: chờ quá số phút này (P24 + P36) thì giao dịch đã chuyển cho chủ sân. */
+    private int paymentTransferMinutes;
     private List<PendingPayment> pendingPayments;
     private long complaintsToForward;
     private BigDecimal todayRevenue;
@@ -84,5 +86,5 @@ public class StaffDashboardResponse {
     }
 
     public record PendingPayment(Long id, String label, BigDecimal amountDue, LocalDateTime submittedAt,
-            boolean reschedule, boolean overdue) {}
+            boolean reschedule, boolean overdue, boolean transferredToOwner) {}
 }

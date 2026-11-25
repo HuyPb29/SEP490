@@ -1,16 +1,19 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { fieldError } from '../../api/f1Rules';
-import { Button, FormField, Input, Select } from '../../components/common';
+import { Button, FormField, Input, Select, PasswordField, Toast } from '../../components/common';
 import { F1Dialog, F1Toast } from '../../components/F1Feedback';
 
-export default function AccountForm({ fields = [], label, submit, confirmation, success, after }) {
+export default function AccountForm({ fields = [], label, submit, confirmation, success, after, className = '' }) {
   const id = useId();
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
   const [toast, setToast] = useState('');
   const [pending, setPending] = useState(null);
+  const lock = useRef(false);
 
   async function execute(form, values) {
+    if (lock.current) return;
+    lock.current = true;
     setPending(null);
     setBusy(true);
     setToast('');
@@ -30,13 +33,14 @@ export default function AccountForm({ fields = [], label, submit, confirmation, 
       if (message.includes('MSG113') && !byField.currentPassword) byField.currentPassword = 'Mật khẩu hiện tại không đúng. Vui lòng nhập lại.';
       setErrors(Object.keys(byField).length ? byField : { form: message });
     } finally {
+      lock.current = false;
       setBusy(false);
     }
   }
 
   function handleSubmit(event) {
     event.preventDefault();
-    if (busy) return;
+    if (lock.current) return;
     const form = event.currentTarget;
     const values = Object.fromEntries(new FormData(form));
     const validation = Object.fromEntries(
@@ -69,10 +73,10 @@ export default function AccountForm({ fields = [], label, submit, confirmation, 
   }
 
   return (
-    <form noValidate onSubmit={handleSubmit} className="cw-form">
+    <form noValidate onSubmit={handleSubmit} className={['cw-form', className].filter(Boolean).join(' ')}>
       <fieldset disabled={busy} className="cw-form-fields">
         {fields.map(
-          ({ name, label: fieldLabel, type = 'text', autoComplete, initial, options, maxLength, required }) => {
+          ({ name, label: fieldLabel, type = 'text', autoComplete, initial, options, maxLength, required, hint }) => {
             const controlId = `${id}-${name}`;
             const errorId = `${controlId}-error`;
             const hasError = Boolean(errors[name]);
@@ -85,6 +89,8 @@ export default function AccountForm({ fields = [], label, submit, confirmation, 
               'aria-describedby': hasError ? errorId : undefined,
             };
 
+            if (type === 'password' && !options) return <PasswordField key={name} {...controlProps} label={fieldLabel}
+              error={errors[name]} hint={hint} autoComplete={autoComplete} maxLength={maxLength} />;
             return (
               <FormField
                 key={name}
@@ -92,6 +98,7 @@ export default function AccountForm({ fields = [], label, submit, confirmation, 
                 label={fieldLabel}
                 required={required}
                 error={errors[name]}
+                hint={hint}
               >
                 {options ? (
                   <Select {...controlProps}>
@@ -120,9 +127,7 @@ export default function AccountForm({ fields = [], label, submit, confirmation, 
         </Button>
       </div>
       {errors.form && (
-        <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>
-          {errors.form}
-        </p>
+        <Toast tone="danger">{errors.form}</Toast>
       )}
       <F1Toast>{toast}</F1Toast>
       {pending && (

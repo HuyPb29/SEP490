@@ -71,6 +71,45 @@ export const STATUS_CATALOG = {
     COMPLETED: { label: 'Hoàn thành', tone: 'neutral' },
     CANCELLED: { label: 'Đã hủy', tone: 'neutral' },
   },
+  slot: {
+    FREE: { label: 'Trống', tone: 'success', slot: 'free' },
+    SELECTED: { label: 'Đang chọn', tone: 'success', slot: 'selected' },
+    HOLDING: { label: 'Đang giữ chỗ', tone: 'warning', slot: 'holding' },
+    BOOKED: { label: 'Đã đặt', tone: 'neutral', slot: 'booked' },
+    IN_USE: { label: 'Đang sử dụng', tone: 'neutral', slot: 'inuse' },
+    MAINTENANCE: { label: 'Bảo trì', tone: 'danger', slot: 'maintenance' },
+    CLOSED: { label: 'Ngoài giờ', tone: 'neutral', slot: 'closed' },
+    PAST: { label: 'Đã qua', tone: 'neutral', slot: 'closed' },
+  },
+  complaint_result: {
+    REFUND: { label: 'Đã tạo yêu cầu hoàn tiền', tone: 'info' },
+    POINTS: { label: 'Cộng điểm bồi hoàn', tone: 'success' },
+    NO_COMPENSATION: { label: 'Ghi nhận, không bồi thường', tone: 'neutral' },
+    LATE_PAYMENT_CONFIRMED: { label: 'Đã xác nhận thanh toán trễ', tone: 'success' },
+  },
+  account: {
+    ACTIVE: { label: 'Hoạt động', tone: 'success' },
+    LOCKED: { label: 'Đã khóa', tone: 'danger' },
+    DISABLED: { label: 'Đã vô hiệu hóa', tone: 'danger' },
+  },
+  // Giữ nhãn loại thông báo đang dùng ở NotificationBell; attention chỉ là điểm nhấn giao diện.
+  notification: {
+    READ: { label: 'Đã đọc', tone: 'neutral' },
+    UNREAD: { label: 'Chưa đọc', tone: 'info' },
+    BOOKING_HOLD_EXPIRED: { label: 'Hết hạn giữ chỗ', tone: 'warning' },
+    BOOKING_STARTED: { label: 'Bắt đầu giờ chơi', tone: 'info' },
+    BOOKING_COMPLETED: { label: 'Hoàn thành buổi chơi', tone: 'success' },
+    BOOKING_AFFECTED: { label: 'Lịch đặt bị ảnh hưởng', tone: 'warning', attention: true },
+    SERVICE_TERM_EXPIRED: { label: 'Hết hạn dịch vụ', tone: 'danger' },
+    VOUCHER_EXPIRED: { label: 'Phiếu ưu đãi hết hạn', tone: 'warning' },
+    SERVICE_REGISTRATION_SUBMITTED: { label: 'Đơn đăng ký dịch vụ', tone: 'info' },
+    COMPLAINT_OVERDUE: { label: 'Khiếu nại quá hạn', tone: 'danger', attention: true },
+    BOOKING_ENDING_SOON: { label: 'Sắp hết giờ chơi', tone: 'warning', attention: true },
+    SERVICE_TERM_RENEWAL_REMINDER: { label: 'Sắp hết kỳ hạn', tone: 'warning' },
+    SERVICE_TERM_OVERDUE: { label: 'Quá hạn dịch vụ', tone: 'danger', attention: true },
+    RESCHEDULE_PROOF_SUBMITTED: { label: 'Chờ xác nhận phụ thu', tone: 'warning', tag: 'Phụ thu đổi lịch', attention: true },
+    VENUE_RESCHEDULE_APPROVED: { label: 'Lịch sân đã đổi', tone: 'success' },
+  },
 };
 
 export function resolveStatusMeta(status, category = 'booking') {

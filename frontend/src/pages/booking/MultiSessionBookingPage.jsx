@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiErrorMessage } from '../../api';
 import { toMinutes, toTimeLabel } from '../../api/bookingApi';
-import { PublicHeader } from '../../components/layout/PublicLayout';
-import PublicFooter from '../../components/layout/PublicFooter';
-import { useAuth } from '../../hooks/useAuth';
+import PublicLayout from '../../components/layout/PublicLayout';
+import { Button, EmptyState, ErrorState, FormStepper, Input, Select, LoadingState, Modal, PageHeader, StatusBadge, Tabs, STATUS_CATALOG } from '../../components/common';
 import { useBookingActions } from '../../hooks/useBooking';
-import { formatVnd, today as getTodayStr } from '../../utils/formatters';
+import { money, uiMessage, today as getTodayStr } from '../../utils/formatters';
 import { readPackageDraft, savePackageDraft } from '../../utils/packageDraft';
 import { groupRanges } from '../../utils/slotRanges';
 import { isBookable } from '../../utils/venueSchedule';
@@ -46,13 +45,12 @@ const durationLabel = (minutes) => {
   const text = [hours ? `${hours} giờ` : '', minutes % 60 ? '30 phút' : ''].filter(Boolean).join(' ');
   return `${text} (${minutes / 30} khung giờ)`;
 };
-const shortPrice = (price) => (price == null ? '' : `${Math.round(Number(price) / 1000)}k`);
 
 const CONFLICT_LABELS = {
-  TAKEN: 'Đã có người đặt',
-  MAINTENANCE: 'Đang bảo trì',
-  CLOSED: 'Ngoài giờ mở cửa',
-  STARTED: 'Đã qua giờ bắt đầu',
+  TAKEN: STATUS_CATALOG.slot.BOOKED.label,
+  MAINTENANCE: STATUS_CATALOG.slot.MAINTENANCE.label,
+  CLOSED: STATUS_CATALOG.slot.CLOSED.label,
+  STARTED: STATUS_CATALOG.slot.PAST.label,
 };
 
 const toDateKey = (date) => date.toLocaleDateString('en-CA');
@@ -64,7 +62,9 @@ const addMonths = (dateKey, months, minusDays = 0) => {
   const date = parseDateKey(dateKey);
   return toDateKey(new Date(date.getFullYear(), date.getMonth() + months, date.getDate() - minusDays));
 };
-const formatCurrency = formatVnd;
+const formatCurrency = value => money(value).replace(/\s*₫/, 'đ');
+const PACKAGE_STEPS = ['Thiết lập lịch', 'Xử lý buổi trùng', 'Tóm tắt & xác nhận'];
+const conflictStatus = conflict => ({ TAKEN: 'BOOKED', STARTED: 'PAST' })[conflict] || conflict;
 const sessionKey = (session) => `${session.date}|${session.courtId}|${session.startMinute}`;
 
 const TODAY_DATE = getTodayStr();
@@ -79,11 +79,11 @@ const shiftDay = (dateKey, offset) => {
 };
 const formatDay = (dateKey) => {
   const date = parseDateKey(dateKey);
-  return `${['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][date.getDay()]}, ${dateKey.slice(8)}/${dateKey.slice(5, 7)}/${dateKey.slice(0, 4)}`;
+  return `${['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'][date.getDay()]}, ${dateKey.slice(8)}/${dateKey.slice(5, 7)}/${dateKey.slice(0, 4)}`;
 };
 
 // Lịch sân một ngày để chọn buổi trên bảng slot; Player xem được tới ngày xa nhất đặt được của gói (forPackage)
-function useDaySchedule(facilityId, date, enabled, load) {
+function useDaySchedule(facilityId, date, enabled, load, revision = 0) {
   const [result, setResult] = useState(null);
   useEffect(() => {
     if (!enabled || !facilityId || !date) return undefined;
@@ -94,7 +94,7 @@ function useDaySchedule(facilityId, date, enabled, load) {
         if (!controller.signal.aborted) setResult({ date, error: apiErrorMessage(error, 'Không tải được lịch sân.') });
       });
     return () => controller.abort();
-  }, [facilityId, date, enabled, load]);
+  }, [facilityId, date, enabled, load, revision]);
   return enabled && result?.date === date ? result : null;
 }
 
@@ -126,7 +126,6 @@ export default function MultiSessionBookingPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
-  const { user } = useAuth();
   const { getLocationCourts, getVenueSchedule, previewBookingPackage } = useBookingActions();
 
   const facilityId = Number(id || location.state?.facilityId) || null;
@@ -177,6 +176,21 @@ export default function MultiSessionBookingPage() {
     parseDateKey(saved?.mode === 'custom' ? (saved.customSlots?.[0]?.date ?? today) : (saved?.fromDate ?? today)));
   const [previewError, setPreviewError] = useState('');
   const [notice, setNotice] = useState('');
+  const [step, setStep] = useState(location.state?.reviewConflicts ? 1 : 0);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
+  const [courtsLoading, setCourtsLoading] = useState(true);
+  const [courtRevision, setCourtRevision] = useState(0);
+  const [scheduleRevision, setScheduleRevision] = useState(0);
+  const [previewRevision, setPreviewRevision] = useState(0);
+  const stepTitle = useRef(null);
+  const previousStep = useRef(step);
+  useEffect(() => {
+    if (previousStep.current !== step) {
+      stepTitle.current?.focus({ preventScroll: true });
+      stepTitle.current?.scrollIntoView({ block: 'start' });
+    }
+    previousStep.current = step;
+  }, [step]);
 
   useEffect(() => {
     if (!facilityId) return;
@@ -185,8 +199,9 @@ export default function MultiSessionBookingPage() {
         setCourts(courtList);
         setCourtId((current) => current ?? courtList[0]?.court_id ?? null);
       })
-      .catch((err) => setPreviewError(apiErrorMessage(err, 'Không tải được danh sách sân.')));
-  }, [facilityId, getLocationCourts]);
+      .catch((err) => setPreviewError(apiErrorMessage(err, 'Không tải được danh sách sân.')))
+      .finally(() => setCourtsLoading(false));
+  }, [facilityId, getLocationCourts, courtRevision]);
 
   useEffect(() => {
     if (!facilityId) return undefined;
@@ -252,7 +267,7 @@ export default function MultiSessionBookingPage() {
     if (days.length === 0) return fromDate;
     return days.map((day) => firstDateOf(fromDate, day)).sort()[0];
   })();
-  const timeGrid = useDaySchedule(facilityId, representativeDate, mode === 'recurring', getVenueSchedule);
+  const timeGrid = useDaySchedule(facilityId, representativeDate, mode === 'recurring', getVenueSchedule, scheduleRevision);
   const timeRow = timeGrid?.data?.courts.find((court) => court.court_id === effectiveCourtId) ?? timeGrid?.data?.courts[0];
   const openStarts = (timeRow?.slots ?? []).filter((slot) => slot.status !== 'closed').map((slot) => toMinutes(slot.time));
   const closeMinute = openStarts.length ? Math.max(...openStarts) + 30 : 1440;
@@ -290,7 +305,7 @@ export default function MultiSessionBookingPage() {
     setCourtTouched(true);
   };
 
-  const baseResult = usePackagePreview(baseRequest, previewBookingPackage, 0);
+  const baseResult = usePackagePreview(baseRequest, previewBookingPackage, previewRevision);
   const activeBasePreview = baseResult?.data;
   const hasAdjustments = removedKeys.length > 0 || Object.keys(replacements).length > 0;
 
@@ -311,7 +326,7 @@ export default function MultiSessionBookingPage() {
     return sessions.length ? { ...baseRequest, sessions } : null;
   }, [baseRequest, activeBasePreview, hasAdjustments, removedKeys, replacements]);
 
-  const adjustedResult = usePackagePreview(adjustedRequest, previewBookingPackage, 0);
+  const adjustedResult = usePackagePreview(adjustedRequest, previewBookingPackage, previewRevision);
   const finalRequest = hasAdjustments ? adjustedRequest : baseRequest;
   const result = hasAdjustments ? adjustedResult : baseResult;
   const preview = result?.data;
@@ -380,7 +395,7 @@ export default function MultiSessionBookingPage() {
     setCustomSlots((current) => current.filter((item) => !range.items.includes(item)));
   };
 
-  const customGrid = useDaySchedule(facilityId, gridDate, mode === 'custom', getVenueSchedule);
+  const customGrid = useDaySchedule(facilityId, gridDate, mode === 'custom', getVenueSchedule, scheduleRevision);
   // Buổi tự chọn bị trùng hiện viền đỏ trên bảng (không hiện như ô đã chọn)
   const conflictCells = useMemo(() => new Set(conflictedSessions.flatMap((session) => {
     const cells = [];
@@ -417,7 +432,7 @@ export default function MultiSessionBookingPage() {
   const compensationTarget = conflictedSessions.find((session) => originalKeyOf(session) === compensationTargetKey) ?? null;
   const compensationMinDate = mode === 'recurring' && fromDate > today ? fromDate : today;
   const compensationMaxDate = mode === 'recurring' && toDate < maxAllowedDate ? toDate : maxAllowedDate;
-  const compensationGrid = useDaySchedule(facilityId, compensationDate, showCompensation, getVenueSchedule);
+  const compensationGrid = useDaySchedule(facilityId, compensationDate, showCompensation, getVenueSchedule, scheduleRevision);
 
   const openCompensation = () => {
     const first = conflictedSessions[0];
@@ -550,70 +565,48 @@ export default function MultiSessionBookingPage() {
       : weeklyChips.some((chip) => chip.missing)
         ? 'Bấm ô giờ bắt đầu cho các thứ chưa chọn giờ.' : conflictHint;
 
+  const sessionWeeks = useMemo(() => {
+    const groups = new Map();
+    [...sessions].sort((a, b) => a.date.localeCompare(b.date) || a.startMinute - b.startMinute).forEach(session => {
+      const weekday = parseDateKey(session.date).getDay();
+      const week = shiftDay(session.date, -((weekday + 6) % 7));
+      if (!groups.has(week)) groups.set(week, []);
+      groups.get(week).push(session);
+    });
+    return [...groups];
+  }, [sessions]);
+  const openSessionCompensation = session => { openCompensation(); chooseCompensationTarget(session); };
+  const removeConflict = session => {
+    if (new Set(sessions.filter(item => item !== session).map(item => item.date)).size < 2) {
+      setNotice('Gói phải có buổi trong ít nhất 2 ngày khác nhau. Vui lòng chọn khung giờ bù thay vì bỏ. (MSG92)'); return;
+    }
+    const key = originalKeyOf(session);
+    setRemovedKeys(current => [...new Set([...current, key])]);
+    setNotice('Đã bỏ buổi trùng khỏi lịch đặt.');
+  };
+  const retryCourts = () => { setPreviewError(''); setCourtsLoading(true); setCourtRevision(value => value + 1); };
+  const retrySchedule = () => setScheduleRevision(value => value + 1);
+
   const shiftMonth = (offset) =>
     setViewMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
 
-  if (!facilityId) {
-    return (
-      <div className={styles.pageWrapper + " cw-workspace"}>
-        <PublicHeader user={user} />
-        <main className={styles.mainContainer}>
-          <h1 className={styles.pageTitle}>Đặt lịch nhiều buổi</h1>
-          <p>Vui lòng mở trang đặt nhiều buổi từ trang chi tiết cụm sân.</p>
-          <Link to="/locations">‹ Tìm sân</Link>
-        </main>
-        <PublicFooter />
-      </div>
-    );
-  }
+  if (!facilityId) return <PublicLayout title="Đặt lịch nhiều buổi"><EmptyState title="Chưa chọn địa điểm" description="Mở lịch gói từ trang chi tiết địa điểm để bắt đầu." action={<Link to="/locations">Tìm sân</Link>} /></PublicLayout>;
 
   return (
-    <div className={styles.pageWrapper + " cw-workspace"}>
-      <PublicHeader user={user} />
-
-      <main className={styles.mainContainer}>
-        <div style={{ marginBottom: 10 }}>
-          <Link to={`/facilities/${facilityId}`} style={{ color: '#0d8a52', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>
-            ‹ Quay lại lịch sân {facilityName || preview?.locationName || ''}
-          </Link>
+    <PublicLayout fullWidth className={styles.pageWrapper}>
+      <div className={styles.mainContainer}>
+        <PageHeader title="Đặt gói nhiều buổi" subtitle={facilityName || preview?.locationName || 'Chủ động lịch chơi, giữ nhịp tập luyện.'}
+          backTo={{ to: '/facilities/' + facilityId, label: 'Quay lại lịch sân' }} />
+        <FormStepper steps={PACKAGE_STEPS} current={step} onChange={value => { if (value <= step) setStep(value); }} />
+        <div className={styles.stepHeader}><div><p className={styles.eyebrow}>Bước {step + 1} / 3</p><h2 ref={stepTitle} tabIndex={-1}>{PACKAGE_STEPS[step]}</h2></div>
+          {step === 1 && <Button variant="secondary" onClick={() => setStep(0)}>Chỉnh sửa thiết lập</Button>}
         </div>
-        <h1 className={styles.pageTitle}>
-          Đặt lịch nhiều buổi{facilityName || preview?.locationName ? ` · ${facilityName || preview?.locationName}` : ''}
-        </h1>
-
-        <div className={styles.layoutGrid}>
-          <aside className={styles.configCard}>
-            <div className={styles.modeSwitch} role="tablist" aria-label="Chế độ đặt nhiều buổi">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'recurring'}
-                className={`${styles.modeTab} ${mode === 'recurring' ? styles.modeTabActive : ''}`}
-                onClick={() => {
-                  resetConflictAdjustments();
-                  setMode('recurring');
-                  setNotice('');
-                  setPreviewError('');
-                }}
-              >
-                Định kỳ
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'custom'}
-                className={`${styles.modeTab} ${mode === 'custom' ? styles.modeTabActive : ''}`}
-                onClick={() => {
-                  resetConflictAdjustments();
-                  setMode('custom');
-                  setNotice('');
-                  setPreviewError('');
-                }}
-              >
-                Tự chọn ngày
-              </button>
-            </div>
-
+        {courtsLoading && <LoadingState message="Đang tải danh sách sân…" />}
+        {previewError && <ErrorState message={uiMessage(previewError)} onRetry={retryCourts} />}
+        {!courtsLoading && !previewError && !courts.length && <EmptyState title="Chưa có sân đang hoạt động" description="Chọn địa điểm khác hoặc quay lại khi sân được mở đặt." action={<Link to="/locations">Tìm sân khác</Link>} />}
+        <div className={step === 1 ? styles.reviewLayout : styles.layoutGrid}>
+          {step === 0 && <aside className={styles.configCard}>
+            <Tabs label="Chế độ đặt nhiều buổi" value={mode} onChange={value => { resetConflictAdjustments(); setMode(value); setNotice(''); setPreviewError(''); }} items={[{ value: 'recurring', label: 'Định kỳ' }, { value: 'custom', label: 'Tự chọn' }]} />
             {mode === 'recurring' && <>
             <div className={styles.fieldGroup}>
               <span className={styles.fieldLabel}>
@@ -622,9 +615,9 @@ export default function MultiSessionBookingPage() {
                   {selectedWeekdays.map((day) => WEEKDAYS.find((entry) => entry.value === day)?.label).join(', ')}
                 </em>}
               </span>
-              <div className={styles.weekdayRow}>
+              <div className={styles.weekdayRow} role="group" aria-label="Thứ trong tuần">
                 {WEEKDAYS.map((day) => (
-                  <button
+                  <Button variant="secondary"
                     key={day.value}
                     type="button"
                     aria-pressed={selectedWeekdays.includes(day.value)}
@@ -632,7 +625,7 @@ export default function MultiSessionBookingPage() {
                     onClick={() => toggleWeekday(day.value)}
                   >
                     {day.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -640,24 +633,24 @@ export default function MultiSessionBookingPage() {
             <div className={styles.fieldGroup}>
               <span className={styles.fieldLabel}>
                 Thời gian gói
-                <em className={styles.fieldLabelValue}>{formatDay(fromDate).slice(4, 9)} – {formatDay(toDate).slice(4, 9)}</em>
+                <em className={styles.fieldLabelValue}>{formatDay(fromDate).split(', ')[1]} – {formatDay(toDate).split(', ')[1]}</em>
               </span>
               <div className={styles.monthRow} role="group" aria-label="Thời gian gói">
                 {PACKAGE_MONTH_OPTIONS.map((count) => (
-                  <button key={count} type="button" aria-pressed={effectiveMonths === count} disabled={!monthAllowed(count)}
+                  <Button variant="secondary" key={count} type="button" aria-pressed={effectiveMonths === count} disabled={!monthAllowed(count)}
                     className={`${styles.weekdayBtn} ${effectiveMonths === count ? styles.weekdayBtnActive : ''}`}
                     onClick={() => { resetConflictAdjustments(); setMonths(count); }}>
                     {count} tháng
-                  </button>
+                  </Button>
                 ))}
               </div>
               <p className={styles.customModeHint}>
                 Bắt đầu từ {formatDay(fromDate)} ·{' '}
-                <button type="button" className={styles.linkBtn} onClick={() => setShowFromInput((value) => !value)}>
+                <Button variant="secondary" type="button" className={styles.linkBtn} onClick={() => setShowFromInput((value) => !value)}>
                   Đổi ngày bắt đầu
-                </button>
+                </Button>
               </p>
-              {showFromInput && <input type="date" className={styles.dateInput} aria-label="Ngày bắt đầu gói"
+              {showFromInput && <Input type="date" className={styles.dateInput} aria-label="Ngày bắt đầu gói"
                 min={today} max={latestFromDate} value={fromDate}
                 onChange={(event) => {
                   const value = event.target.value;
@@ -670,7 +663,7 @@ export default function MultiSessionBookingPage() {
 
             <div className={styles.fieldGroup}>
               <label className={styles.fieldLabel} htmlFor="court">Sân</label>
-              <select id="court" className={styles.selectInput} value={effectiveCourtId ?? courtId ?? ''}
+              <Select id="court" className={styles.selectInput} value={effectiveCourtId ?? courtId ?? ''}
                 onChange={(event) => chooseCourt(Number(event.target.value))}>
                 {courts.map((court) => {
                   const rank = courtRanking?.find((item) => item.courtId === court.court_id);
@@ -679,13 +672,13 @@ export default function MultiSessionBookingPage() {
                     {court.court_name}{status}{bestCourtId === court.court_id ? ' (ít trùng nhất)' : ''}
                   </option>;
                 })}
-              </select>
+              </Select>
               <p className={styles.customModeHint}>
                 {courtTouched
                   ? <>Bạn đã tự chọn sân.{' '}
-                    <button type="button" className={styles.linkBtn} onClick={() => { resetConflictAdjustments(); setCourtTouched(false); }}>
+                    <Button variant="secondary" type="button" className={styles.linkBtn} onClick={() => { resetConflictAdjustments(); setCourtTouched(false); }}>
                       Dùng sân ít trùng nhất
-                    </button></>
+                    </Button></>
                   : 'Tự chọn sân ít buổi trùng nhất với lịch của bạn; đổi được.'}
               </p>
             </div>
@@ -704,16 +697,16 @@ export default function MultiSessionBookingPage() {
               Định kỳ: tối thiểu 1 buổi/tuần, kéo dài từ 1 đến 12 tháng. Tất cả các buổi phải nằm trong vòng 1 năm
               kể từ hôm nay và trong thời hạn sử dụng dịch vụ của địa điểm, muộn nhất {formatDay(maxAllowedDate)}.
             </p>
-          </aside>
+          </aside>}
 
           <div className={styles.rightColumn}>
-            {mode === 'recurring' && (
+            {step === 0 && mode === 'recurring' && (
               <section className={styles.gridCard} aria-label="Khung giờ chơi hằng tuần">
                 <div className={styles.gridHeader}>
                   <h2 className={styles.gridTitle}>Khung giờ chơi</h2>
                   <label className={styles.durationField}>
                     Thời lượng mỗi buổi
-                    <select className={styles.selectInput} value={currentDuration} disabled={timeKey == null}
+                    <Select className={styles.selectInput} value={currentDuration} disabled={timeKey == null}
                       onChange={(event) => changeDuration(Number(event.target.value))}>
                       {DURATIONS.map((minutes) => (
                         <option key={minutes} value={minutes}
@@ -721,25 +714,12 @@ export default function MultiSessionBookingPage() {
                           {durationLabel(minutes)}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 </div>
 
-                {perDayTimes && selectedWeekdays.length > 0 && (
-                  <div className={styles.dayTabs} role="tablist" aria-label="Giờ chơi của từng thứ">
-                    {selectedWeekdays.map((day) => {
-                      const time = weeklyTimes[day];
-                      return (
-                        <button key={day} type="button" role="tab" aria-selected={timeKey === day}
-                          className={`${styles.dayTab} ${timeKey === day ? styles.dayTabActive : ''}`}
-                          onClick={() => setTimeTab(day)}>
-                          {WEEKDAYS.find((entry) => entry.value === day)?.label}
-                          <small>{time?.start != null ? `${toTimeLabel(time.start)}–${toTimeLabel(time.end)}` : 'chưa chọn'}</small>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                {perDayTimes && selectedWeekdays.length > 0 && <Tabs label="Giờ chơi của từng thứ" value={timeKey} onChange={setTimeTab}
+                  items={selectedWeekdays.map(day => ({ value: day, label: WEEKDAYS.find(entry => entry.value === day)?.label + (weeklyTimes[day]?.start != null ? ' · ' + toTimeLabel(weeklyTimes[day].start) : ' · Chưa chọn') }))} />}
 
                 <p className={styles.gridHint} aria-live="polite">
                   {selectedWeekdays.length === 0
@@ -751,8 +731,8 @@ export default function MultiSessionBookingPage() {
                       : "Bấm một ô để chọn giờ bắt đầu, rồi chọn thời lượng ở ô bên phải (tối thiểu 1 khung giờ = 30 phút)."}
                 </p>
 
-                {selectedWeekdays.length > 0 && !timeGrid && <p role="status">Đang tải giờ mở cửa…</p>}
-                {timeGrid?.error && <p role="alert" className={styles.pickMessage + ' ' + styles.pickError}>{timeGrid.error}</p>}
+                {selectedWeekdays.length > 0 && !timeGrid && <LoadingState message="Đang tải giờ mở cửa…" />}
+                {timeGrid?.error && <ErrorState message={uiMessage(timeGrid.error)} onRetry={retrySchedule} />}
                 {selectedWeekdays.length > 0 && timeRow && (
                   <div className={gridStyles.wrapper}>
                     <table className={gridStyles.table}>
@@ -776,12 +756,12 @@ export default function MultiSessionBookingPage() {
                                 const tone = closed ? gridStyles.closed : chosen ? gridStyles.selected : gridStyles.available;
                                 return (
                                   <td key={slot.time}>
-                                    <button type="button" className={`${gridStyles.cell} ${tone}`} disabled={closed}
+                                    <Button type="button" className={`${gridStyles.cell} ${tone}`} disabled={closed}
                                       aria-pressed={closed ? undefined : chosen}
                                       aria-label={`${slot.time}${closed ? ', ngoài giờ mở cửa' : `, ${formatCurrency(slot.price)} mỗi 30 phút`}`}
                                       onClick={() => pickStart(minute)}>
-                                      {slot.time}<small>{closed ? 'Đóng' : shortPrice(slot.price)}</small>
-                                    </button>
+                                      {slot.time}<small>{closed ? 'Đóng' : formatCurrency(slot.price)}</small>
+                                    </Button>
                                   </td>
                                 );
                               })}
@@ -795,9 +775,9 @@ export default function MultiSessionBookingPage() {
                 {selectedWeekdays.length > 0 && (
                   <p className={styles.customModeHint}>
                     Giá theo {formatDay(representativeDate)}; giá từng buổi xem ở bước sau.{' '}
-                    <button type="button" className={styles.linkBtn} onClick={togglePerDayTimes}>
+                    <Button variant="secondary" type="button" className={styles.linkBtn} onClick={togglePerDayTimes}>
                       {perDayTimes ? 'Dùng cùng một giờ cho mọi thứ' : 'Mỗi thứ chơi một giờ khác nhau?'}
-                    </button>
+                    </Button>
                   </p>
                 )}
               </section>
@@ -806,9 +786,9 @@ export default function MultiSessionBookingPage() {
             <section className={styles.calendarCard} aria-label="Lịch dự kiến các buổi đặt">
               <div className={styles.calendarHeader}>
                 <h2 className={styles.monthTitle}>
-                  <button type="button" className={styles.navBtn} onClick={() => shiftMonth(-1)} aria-label="Tháng trước">‹</button>
+                  <Button variant="secondary" type="button" className={styles.navBtn} onClick={() => shiftMonth(-1)} aria-label="Tháng trước">‹</Button>
                   {' '}{MONTH_NAMES[viewMonth.getMonth()]} {viewMonth.getFullYear()}{' '}
-                  <button type="button" className={styles.navBtn} onClick={() => shiftMonth(1)} aria-label="Tháng sau">›</button>
+                  <Button variant="secondary" type="button" className={styles.navBtn} onClick={() => shiftMonth(1)} aria-label="Tháng sau">›</Button>
                 </h2>
                 <div className={styles.legendGroup}>
                   <span className={styles.legendItem}>
@@ -823,20 +803,13 @@ export default function MultiSessionBookingPage() {
               </div>
 
               {preview?.months?.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                <div className={styles.monthSummary}>
                   {preview.months.map((m) => (
                     <span
                       key={m.month}
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        background: '#f1f5f2',
-                        color: '#28372e',
-                        padding: '4px 10px',
-                        borderRadius: 999,
-                      }}
+                      className={styles.monthChip}
                     >
-                      Tháng {m.month}: {m.totalSessions ?? m.sessions ?? 0} buổi
+                      Tháng {String(m.month).replace(/^(\d{4})-(\d{2})$/, '$2/$1')}: {m.totalSessions ?? m.sessions ?? 0} buổi
                       {Number(m.conflictSessions) > 0 ? ` (${m.conflictSessions} trùng)` : ''}
                     </span>
                   ))}
@@ -859,16 +832,16 @@ export default function MultiSessionBookingPage() {
                   const isOutOfWindow = day.dateKey < today || day.dateKey > maxAllowedDate;
 
                   return (
-                    <button
+                    <Button variant="secondary"
                       type="button"
                       key={day.dateKey}
-                      disabled={mode !== 'custom' || isOutOfWindow}
+                      disabled={isOutOfWindow || (mode !== 'custom' && day.sessions.length === 0)}
                       aria-current={mode === 'custom' && day.dateKey === gridDate ? 'date' : undefined}
-                      aria-label={`${day.day}${day.isConflicted ? ', trùng lịch' : day.isSelected ? ', có buổi' : ''}${mode === 'custom' ? ", xem bảng khung giờ ngày này" : ''}`}
+                      aria-label={`${formatDay(day.dateKey)}${day.isConflicted ? ', trùng lịch' : day.isSelected ? ', có buổi' : ''}, xem các buổi trong ngày`}
                       className={className}
-                      onClick={() => chooseGridDate(day.dateKey)}
+                      onClick={() => { setSelectedCalendarDate(day.dateKey); if (mode === 'custom' && step === 0) chooseGridDate(day.dateKey); else { setStep(1); if (day.isConflicted) openSessionCompensation(day.sessions.find(session => session.conflict)); } }}
                     >
-                      <strong className={styles.dayNumber}>{day.day}</strong>
+                      <strong className={styles.dayNumber}>{day.day}</strong><span aria-hidden="true" className={day.isConflicted ? styles.conflictDot : day.isSelected ? styles.selectedDot : styles.noDot} />
                       {day.isConflicted
                         ? <span className={styles.conflictTag}>{CONFLICT_LABELS[first?.conflict] || 'Trùng lịch'}</span>
                         : first && (
@@ -876,12 +849,12 @@ export default function MultiSessionBookingPage() {
                             {first.startTime}–{first.endTime}{day.sessions.length > 1 ? ` +${day.sessions.length - 1}` : ''}
                           </span>
                         )}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
 
-              {conflictedSessions.length > 0 && (
+              {step === 1 && conflictedSessions.length > 0 && (
                 <div className={styles.conflictResolutionBox} role="status">
                   <strong className={styles.conflictBoxTitle}>
                     {preview?.summary} — {conflictedSessions
@@ -889,46 +862,43 @@ export default function MultiSessionBookingPage() {
                       .join(', ')}
                   </strong>
                   <div className={styles.conflictActionRow}>
-                    <button type="button" className={styles.compensateBtn} onClick={openCompensation}>
+                    <Button type="button" className={styles.compensateBtn} onClick={openCompensation}>
                       Chọn khung giờ bù
-                    </button>
-                    <button type="button" className={styles.removeConflictsBtn} onClick={removeAllConflicts}>
+                    </Button>
+                    <Button variant="secondary" type="button" className={styles.removeConflictsBtn} onClick={removeAllConflicts}>
                       Bỏ tất cả buổi trùng
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
-              {finalRequest && !result && <p role="status">Đang kiểm tra lịch gói…</p>}
-              {(result?.error || previewError) &&
-                <p className={styles.notice} style={{ background: '#fef2f2', color: '#b91c1c' }} role="alert">
-                  {previewError || result.error}
-                </p>}
-              {notice && <p className={styles.notice} role="status">{notice}</p>}
+              {finalRequest && !result && <LoadingState message="Đang kiểm tra lịch gói…" />}
+              {result?.error && <ErrorState message={uiMessage(result.error)} onRetry={() => setPreviewRevision(value => value + 1)} />}
+              {notice && <p className={styles.notice} role="status">{uiMessage(notice)}</p>}
             </section>
 
-            {mode === 'custom' && (
+            {step === 0 && mode === 'custom' && (
               <section className={styles.gridCard} aria-label="Bảng khung giờ của ngày đang chọn">
                 <div className={styles.gridHeader}>
                   <h2 className={styles.gridTitle}>Bảng khung giờ {formatDay(gridDate)}</h2>
                   <div className={styles.gridDateNav}>
-                    <button type="button" className={styles.navBtn} aria-label="Ngày trước"
-                      disabled={gridDate <= today} onClick={() => chooseGridDate(shiftDay(gridDate, -1))}>‹</button>
-                    <input type="date" className={styles.dateInput} aria-label="Chọn ngày xem bảng khung giờ"
+                    <Button variant="secondary" type="button" className={styles.navBtn} aria-label="Ngày trước"
+                      disabled={gridDate <= today} onClick={() => chooseGridDate(shiftDay(gridDate, -1))}>‹</Button>
+                    <Input type="date" className={styles.dateInput} aria-label="Chọn ngày xem bảng khung giờ"
                       min={today} max={maxAllowedDate} value={gridDate}
                       onChange={(event) => {
                         chooseGridDate(event.target.value);
                         if (event.target.value) setViewMonth(parseDateKey(event.target.value));
                       }} />
-                    <button type="button" className={styles.navBtn} aria-label="Ngày sau"
-                      disabled={gridDate >= maxAllowedDate} onClick={() => chooseGridDate(shiftDay(gridDate, 1))}>›</button>
+                    <Button variant="secondary" type="button" className={styles.navBtn} aria-label="Ngày sau"
+                      disabled={gridDate >= maxAllowedDate} onClick={() => chooseGridDate(shiftDay(gridDate, 1))}>›</Button>
                   </div>
                 </div>
                 <p className={styles.gridHint}>Bấm ô trống để thêm vào gói, bấm lại ô đã chọn để bỏ. Đổi ngày khác vẫn giữ các buổi đã chọn.</p>
-                {!customGrid && <p role="status">Đang tải lịch sân…</p>}
-                {customGrid?.error && <p role="alert" className={styles.notice} style={{ background: '#fef2f2', color: '#b91c1c' }}>{customGrid.error}</p>}
+                {!customGrid && <LoadingState message="Đang tải lịch sân…" />}
+                {customGrid?.error && <ErrorState message={uiMessage(customGrid.error)} onRetry={retrySchedule} />}
                 {customGrid?.data?.time_headers.length === 0 && <p>Ngày này địa điểm không mở cửa.</p>}
                 {customGrid?.data?.time_headers.length > 0 && (
-                  <ScheduleGrid schedule={customGrid.data} selected={customGridSelected} allowBooking
+                  <ScheduleGrid role="player" schedule={customGrid.data} selected={customGridSelected} allowBooking
                     onSlot={toggleCustomSlot}
                     mark={(court, slot) => conflictCells.has(`${gridDate}|${court.court_id}|${slot.time}`) ? 'conflict' : null}
                     markLegend={conflictedSessions.length ? ['conflict'] : []} />
@@ -936,8 +906,22 @@ export default function MultiSessionBookingPage() {
               </section>
             )}
 
-            <BookingSummaryBar title={summaryTitle} hint={summaryHint}
-              disabled={!preview || distinctDays < 2 || conflictedSessions.length > 0} onContinue={goToSummary}>
+            {step === 1 && <section className={styles.sessionReview} aria-label="Danh sách buổi theo tuần">
+              <div className={styles.gridHeader}><h2 className={styles.gridTitle}>Rà soát các buổi</h2><span>{sessions.length} buổi · {conflictedSessions.length} buổi trùng</span></div>
+              {selectedCalendarDate && <p className={styles.gridHint}>Ngày đã chọn: {formatDay(selectedCalendarDate)}</p>}
+              {!sessions.length && !finalRequest && <EmptyState title="Chưa có lịch để rà soát" description="Quay lại bước thiết lập để chọn ít nhất hai ngày chơi." action={<Button variant="secondary" onClick={() => setStep(0)}>Thiết lập lịch</Button>} />}
+              {sessionWeeks.map(([week, entries]) => <div className={styles.weekGroup} key={week}><h3>Tuần {formatDay(week).split(', ')[1]} – {formatDay(shiftDay(week, 6)).split(', ')[1]}</h3>
+                {entries.map(session => <article key={sessionKey(session)} className={[styles.sessionCard, session.conflict ? styles.sessionConflict : '', selectedCalendarDate === session.date ? styles.sessionHighlighted : ''].join(' ')}>
+                  <div><h4>{formatDay(session.date)}</h4><p>{session.courtName} · {session.startTime}–{session.endTime}</p>
+                    {session.conflict ? <StatusBadge category="slot" status={conflictStatus(session.conflict)} /> : <span className={styles.validSession}><StatusBadge category="slot" status="FREE" /> · {formatCurrency(session.listAmount)}</span>}
+                  </div>
+                  {session.conflict && <div className={styles.sessionActions}><Button onClick={() => openSessionCompensation(session)}>Chọn khung giờ bù</Button><Button variant="secondary" onClick={() => removeConflict(session)}>Bỏ buổi này</Button></div>}
+                </article>)}
+              </div>)}
+            </section>}
+            <BookingSummaryBar title={summaryTitle} hint={summaryHint} sticky expandable
+              actionLabel={step === 0 ? "Rà soát lịch" : "Tiếp tục tóm tắt"} disabled={!preview || distinctDays < 2 || (step === 1 && conflictedSessions.length > 0)}
+              onContinue={() => step === 0 ? setStep(1) : goToSummary()}>
               {mode === 'custom'
                 ? <SelectedRanges ranges={customRanges} onRemove={removeCustomRange} showDate />
                 : weeklyChips.length > 0 && (
@@ -945,8 +929,8 @@ export default function MultiSessionBookingPage() {
                     {weeklyChips.map(({ day, text }) => (
                       <li key={day} className={gridStyles.chip}>
                         {text}
-                        <button type="button" className={gridStyles.chipRemove} aria-label={'Bỏ ' + text}
-                          onClick={() => toggleWeekday(day)}>×</button>
+                        <Button type="button" className={gridStyles.chipRemove} aria-label={'Bỏ ' + text}
+                          onClick={() => toggleWeekday(day)}>×</Button>
                       </li>
                     ))}
                   </ul>
@@ -954,13 +938,12 @@ export default function MultiSessionBookingPage() {
             </BookingSummaryBar>
           </div>
         </div>
-      </main>
-      <PublicFooter />
+      </div>
 
       {showCompensation && (
-        <div className={styles.modalOverlay} role="presentation" onClick={() => setShowCompensation(false)}>
-          <section className={`${styles.modalCard} ${styles.modalWide}`} role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className={styles.modalClose} aria-label="Đóng" onClick={() => setShowCompensation(false)}>×</button>
+        <Modal className={styles.compensationModal} labelledBy="modal-title" onClose={() => setShowCompensation(false)}>
+          <div className={styles.modalCard}>
+            <Button variant="secondary" type="button" className={styles.modalClose} aria-label="Đóng" onClick={() => setShowCompensation(false)}>×</Button>
             <h2 id="modal-title" className={styles.modalTitle}>Chọn khung giờ bù cho buổi trùng</h2>
             <p className={styles.modalSub}>
               Chọn buổi trùng cần bù, rồi bấm ô bắt đầu trên bảng: hệ thống tự lấy đủ thời lượng buổi. Đổi được sang ngày khác trong thời gian gói.
@@ -973,16 +956,16 @@ export default function MultiSessionBookingPage() {
                 const className = [styles.targetPill, key === compensationTargetKey ? styles.targetPillActive : picked ? styles.targetPillDone : '']
                   .filter(Boolean).join(' ');
                 return (
-                  <button key={key} type="button" className={className} aria-pressed={key === compensationTargetKey}
+                  <Button key={key} type="button" className={className} aria-pressed={key === compensationTargetKey}
                     onClick={() => chooseCompensationTarget(session)}>
                     {formatDay(session.date)} · {session.courtName} · {session.startTime}–{session.endTime}{picked ? ' ✓' : ''}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
 
             {compensationTarget && (
-              <p className={styles.notice} style={{ background: '#fef2f2', color: '#991b1b', marginBottom: 10 }}>
+              <p className={styles.notice} style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)', marginBottom: 10 }}>
                 Buổi gốc {formatDay(compensationTarget.date)} · {compensationTarget.courtName} · {compensationTarget.startTime}–{compensationTarget.endTime}
                 {' '}({CONFLICT_LABELS[compensationTarget.conflict] || 'Trùng lịch'}). Cần {compensationTarget.endMinute - compensationTarget.startMinute} phút
                 {' '}= {(compensationTarget.endMinute - compensationTarget.startMinute) / 30} ô liên tiếp.
@@ -992,18 +975,18 @@ export default function MultiSessionBookingPage() {
             <div className={styles.gridHeader}>
               <strong>{compensationDate && formatDay(compensationDate)}{compensationTarget?.date === compensationDate ? ' (ngày gốc)' : ''}</strong>
               <div className={styles.gridDateNav}>
-                <button type="button" className={styles.navBtn} aria-label="Ngày trước"
-                  disabled={compensationDate <= compensationMinDate} onClick={() => chooseCompensationDate(shiftDay(compensationDate, -1))}>‹</button>
-                <input type="date" className={styles.dateInput} aria-label="Ngày của khung giờ bù"
+                <Button variant="secondary" type="button" className={styles.navBtn} aria-label="Ngày trước"
+                  disabled={compensationDate <= compensationMinDate} onClick={() => chooseCompensationDate(shiftDay(compensationDate, -1))}>‹</Button>
+                <Input type="date" className={styles.dateInput} aria-label="Ngày của khung giờ bù"
                   min={compensationMinDate} max={compensationMaxDate} value={compensationDate}
                   onChange={(event) => chooseCompensationDate(event.target.value)} />
-                <button type="button" className={styles.navBtn} aria-label="Ngày sau"
-                  disabled={compensationDate >= compensationMaxDate} onClick={() => chooseCompensationDate(shiftDay(compensationDate, 1))}>›</button>
+                <Button variant="secondary" type="button" className={styles.navBtn} aria-label="Ngày sau"
+                  disabled={compensationDate >= compensationMaxDate} onClick={() => chooseCompensationDate(shiftDay(compensationDate, 1))}>›</Button>
               </div>
             </div>
 
-            {!compensationGrid && <p role="status">Đang tải lịch sân…</p>}
-            {compensationGrid?.error && <p role="alert" className={styles.pickMessage + ' ' + styles.pickError}>{compensationGrid.error}</p>}
+            {!compensationGrid && <LoadingState message="Đang tải lịch sân…" />}
+            {compensationGrid?.error && <ErrorState message={uiMessage(compensationGrid.error)} onRetry={retrySchedule} />}
             {compensationGrid?.data?.time_headers.length === 0 && <p>Ngày này địa điểm không mở cửa.</p>}
             {compensationGrid?.data?.time_headers.length > 0 && (() => {
               const pick = compensationPicks[compensationTargetKey];
@@ -1011,7 +994,7 @@ export default function MultiSessionBookingPage() {
                 ? Array.from({ length: (pick.endMinute - pick.startMinute) / 30 }, (_, index) =>
                   ({ courtId: pick.courtId, time: toTimeLabel(pick.startMinute + index * 30) }))
                 : [];
-              return <ScheduleGrid schedule={compensationGrid.data} selected={selected} allowBooking={Boolean(compensationTarget)}
+              return <ScheduleGrid role="player" schedule={compensationGrid.data} selected={selected} allowBooking={Boolean(compensationTarget)}
                 onSlot={pickCompensation} mark={compensationMark} markLegend={['conflict', 'package']} />;
             })()}
 
@@ -1024,19 +1007,19 @@ export default function MultiSessionBookingPage() {
 
             <div className={styles.modalActions}>
               {conflictedSessions.length > 1 && compensationPicks[compensationTargetKey] && (
-                <button type="button" className={styles.removeConflictsBtn} onClick={applyPickToAll}>
+                <Button variant="secondary" type="button" className={styles.removeConflictsBtn} onClick={applyPickToAll}>
                   Dùng sân và giờ này cho cả {conflictedSessions.length} buổi trùng
-                </button>
+                </Button>
               )}
-              <button type="button" className={styles.removeConflictsBtn} onClick={() => setShowCompensation(false)}>Hủy</button>
-              <button type="button" className={styles.confirmScheduleBtn} disabled={!Object.keys(compensationPicks).length}
+              <Button variant="secondary" type="button" className={styles.removeConflictsBtn} onClick={() => setShowCompensation(false)}>Quay lại</Button>
+              <Button type="button" className={styles.confirmScheduleBtn} disabled={!Object.keys(compensationPicks).length}
                 onClick={applyCompensation}>
                 Áp dụng khung giờ bù ({Object.keys(compensationPicks).length}/{conflictedSessions.length})
-              </button>
+              </Button>
             </div>
-          </section>
-        </div>
+          </div>
+        </Modal>
       )}
-    </div>
+    </PublicLayout>
   );
 }

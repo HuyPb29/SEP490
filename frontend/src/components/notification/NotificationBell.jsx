@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   apiErrorMessage,
@@ -11,24 +11,12 @@ import { useAuth } from '../../hooks/useAuth';
 import { notificationMessage } from '../../utils/formatters';
 import styles from './NotificationBell.module.css';
 import { notificationDestination } from '../../utils/notificationNavigation';
+import { Button, EmptyState, ErrorState, LoadingState } from '../common';
+import { STATUS_CATALOG } from '../common/statusCatalog';
 
 /** Nhãn + màu cho từng loại thông báo do job tự động sinh ra. */
-const TYPE_META = {
-  BOOKING_HOLD_EXPIRED: { label: 'Hết hạn giữ chỗ', tone: 'warn' },
-  BOOKING_STARTED: { label: 'Bắt đầu giờ chơi', tone: 'info' },
-  BOOKING_COMPLETED: { label: 'Hoàn thành buổi chơi', tone: 'ok' },
-  BOOKING_AFFECTED: { label: 'Lịch đặt bị ảnh hưởng', tone: 'warn' },
-  SERVICE_TERM_EXPIRED: { label: 'Hết hạn dịch vụ', tone: 'danger' },
-  VOUCHER_EXPIRED: { label: 'Phiếu ưu đãi hết hạn', tone: 'warn' },
-  SERVICE_REGISTRATION_SUBMITTED: { label: 'Đơn đăng ký dịch vụ', tone: 'info' },
-  COMPLAINT_OVERDUE: { label: 'Khiếu nại quá hạn', tone: 'danger' },
-  BOOKING_ENDING_SOON: { label: 'Sắp hết giờ chơi', tone: 'warn' },
-  SERVICE_TERM_RENEWAL_REMINDER: { label: 'Sắp hết kỳ hạn', tone: 'warn' },
-  SERVICE_TERM_OVERDUE: { label: 'Quá hạn dịch vụ', tone: 'danger' },
-  // tag: nhãn nổi bật trên dòng thông báo, để Staff thấy ngay phụ thu đổi lịch cần xác nhận.
-  RESCHEDULE_PROOF_SUBMITTED: { label: 'Chờ xác nhận phụ thu', tone: 'warn', tag: 'Phụ thu đổi lịch' },
-  VENUE_RESCHEDULE_APPROVED: { label: 'Lịch sân đã đổi', tone: 'ok' },
-};
+const TYPE_META = Object.fromEntries(Object.entries(STATUS_CATALOG.notification).map(([type, meta]) =>
+  [type, { ...meta, tone: { warning: 'warn', success: 'ok' }[meta.tone] || meta.tone }]));
 
 const PREVIEW_SIZE = 8;
 
@@ -57,6 +45,11 @@ export default function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [markingAll, setMarkingAll] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const pendingMarkAll = useRef(false);
+  const triggerRef = useRef(null);
+  const panelId = useId();
   const wrapperRef = useRef(null);
 
   const loadUnread = useCallback(async () => {
@@ -107,7 +100,10 @@ export default function NotificationBell() {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setOpen(false);
     };
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -146,23 +142,34 @@ export default function NotificationBell() {
   };
 
   const handleMarkAll = async () => {
+    if (pendingMarkAll.current) return;
+    pendingMarkAll.current = true;
+    setMarkingAll(true);
+    setFeedback('');
     try {
       await markAllNotificationsRead();
       setItems((current) => current.map((entry) => ({ ...entry, read: true })));
       setUnread(0);
       setError('');
+      setFeedback('Đã đánh dấu tất cả thông báo là đã đọc.');
     } catch (err) {
       setError(apiErrorMessage(err));
+    } finally {
+      pendingMarkAll.current = false;
+      setMarkingAll(false);
     }
   };
 
   return (
     <div className={styles.wrapper} ref={wrapperRef}>
       <button
+        ref={triggerRef}
         className={styles.bellButton}
         type="button"
         aria-label={unread > 0 ? `Thông báo, ${unread} chưa đọc` : 'Thông báo'}
         aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        aria-haspopup="dialog"
         onClick={toggle}
       >
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
@@ -175,21 +182,22 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className={styles.panel} role="dialog" aria-label="Thông báo">
+        <div id={panelId} className={styles.panel} role="dialog" aria-label="Thông báo">
           <div className={styles.panelHeader}>
             <strong>Thông báo</strong>
-            <button className={styles.markAll} type="button" onClick={handleMarkAll} disabled={unread === 0}>
+            <Button variant="ghost" size="sm" className={styles.markAll} onClick={handleMarkAll} disabled={unread === 0 || loading} loading={markingAll}>
               Đánh dấu đã đọc hết
-            </button>
+            </Button>
           </div>
 
-          {error && <p className={styles.error}>{error}</p>}
-          {loading && <p className={styles.empty}>Đang tải thông báo…</p>}
-          {!loading && items.length === 0 && (
-            <p className={styles.empty}>Chưa có thông báo mới.</p>
+          {error && <ErrorState message={error} onRetry={loadPreview} />}
+          {feedback && <p role="status" className={styles.feedback}>{feedback}</p>}
+          {loading && <LoadingState message="Đang tải thông báo…" />}
+          {!loading && !error && items.length === 0 && (
+            <EmptyState title="Chưa có thông báo mới" description="Thông tin về lịch đặt và hoạt động sẽ xuất hiện tại đây." action={<Button variant="secondary" size="sm" onClick={loadPreview}>Làm mới</Button>} />
           )}
 
-          <ul className={styles.list}>
+          <ul className={styles.list} hidden={loading}>
             {items.map((item) => {
               const meta = TYPE_META[item.type] ?? { label: 'Thông báo', tone: 'info' };
               return (
@@ -205,7 +213,7 @@ export default function NotificationBell() {
                       <span className={styles.itemTitle}>{notificationMessage(item.title)}</span>
                       <span className={styles.itemContent}>{notificationMessage(item.content)}</span>
                       <span className={styles.itemMeta}>
-                        {meta.label} · {relativeTime(item.createdAt)}
+                        {item.read ? 'Đã đọc' : 'Chưa đọc'} · {meta.label} · {relativeTime(item.createdAt)}
                       </span>
                     </span>
                   </button>

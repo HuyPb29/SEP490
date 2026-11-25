@@ -24,23 +24,39 @@ const STATES = {
   RESUBMIT_REQUESTED: 'Chờ bổ sung',
 };
 
-const formatMoney = (amount) => `${new Intl.NumberFormat('vi-VN').format(Number(amount || 0))} VND`;
-const todayStr = () => new Date().toLocaleDateString('en-CA');
+const COURT_BADGE = {
+  inUse: 'Đang sử dụng',
+  ending: 'Sắp hết giờ',
+  awaiting: 'Đang giữ chỗ',
+  available: 'Trống',
+  maintenance: 'Bảo trì',
+};
 
-function parseLocalExpiry(holdExpiresAt) {
-  if (!holdExpiresAt) return 0;
-  return Date.parse(
-    holdExpiresAt.includes('+') || holdExpiresAt.endsWith('Z')
-      ? holdExpiresAt
-      : `${holdExpiresAt}+07:00`
-  );
+// UC34 #4: làm nổi sân còn dưới 5 phút là hết giờ chơi.
+const ENDING_SOON_MS = 5 * 60_000;
+
+const formatMoney = (amount) => `${new Intl.NumberFormat('vi-VN').format(Number(amount || 0))} đ`;
+const todayStr = () => new Date().toLocaleDateString('en-CA');
+const hhmm = (date) => date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+// Giờ server (LocalDateTime, không có múi giờ) là giờ Việt Nam.
+function parseServerTime(value) {
+  if (!value) return 0;
+  return Date.parse(value.includes('+') || value.endsWith('Z') ? value : `${value}+07:00`);
 }
 
 function formatRemaining(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const m = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+  const h = Math.floor(totalSeconds / 3600);
+  const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
   const s = String(totalSeconds % 60).padStart(2, '0');
-  return `${m}:${s}`;
+  return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+}
+
+function formatDay(dateStr) {
+  const date = dateStr ? new Date(`${dateStr}T00:00:00+07:00`) : new Date();
+  const text = date.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 export default function StaffDashboardPage() {
@@ -54,6 +70,7 @@ export default function StaffDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [now, setNow] = useState(() => Date.now());
+  const [updatedAt, setUpdatedAt] = useState(null);
 
   // Modal Đặt sân tại quầy (UC16)
   const [showCounterBooking, setShowCounterBooking] = useState(
@@ -67,11 +84,13 @@ export default function StaffDashboardPage() {
   );
 
   const loadAll = useCallback(async () => {
+    setLoading(true);
     try {
       const dashRes = await api.get('/staff/dashboards/me');
       const dashData = dashRes.data.data;
       setDashboard(dashData);
       setError('');
+      setUpdatedAt(new Date());
 
       if (dashData?.locationId) {
         const [courtList, counterList] = await Promise.all([
@@ -97,71 +116,52 @@ export default function StaffDashboardPage() {
     return () => clearInterval(timer);
   }, [loadAll]);
 
-  // Đồng hồ đếm ngược mỗi giây cho các booking đang giữ chỗ 10 phút tại quầy (P34 / BR43)
-  useEffect(() => {
-    const hasHolding = counterBookings.some((item) => item.status === 'HOLDING' && item.holdExpiresAt);
-    if (!hasHolding) return undefined;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [counterBookings]);
-
   const todayBookings = useMemo(() => dashboard?.todayBookings ?? [], [dashboard]);
   const pendingPayments = useMemo(() => dashboard?.pendingPayments ?? [], [dashboard]);
-  // FR120, BR58: giao dịch chờ quá 15 phút trong giờ mở cửa đã chuyển cho chủ sân, Staff chỉ xem.
-  const overduePayments = useMemo(() => pendingPayments.filter((p) => p.overdue), [pendingPayments]);
+  // D182 (BR58, FR120): chờ quá 15 phút (P24) trong giờ mở cửa thì báo đỏ, Staff vẫn xử lý được;
+  // quá thêm 10 phút (P36) thì giao dịch đã chuyển cho chủ sân, Staff chỉ xem.
+  const overdueMinutes = dashboard?.paymentOverdueMinutes ?? 15;
+  const transferMinutes = dashboard?.paymentTransferMinutes ?? 25;
+  const urgentPayments = useMemo(
+    () => pendingPayments.filter((p) => p.overdue && !p.transferredToOwner), [pendingPayments]);
+  const transferredPayments = useMemo(() => pendingPayments.filter((p) => p.transferredToOwner), [pendingPayments]);
   // Phụ thu đổi lịch (UC21) Staff còn xử lý được: hiện banner và nhãn riêng để không lẫn với thanh toán đặt sân.
   // Đổi lịch miễn phí không sinh giao dịch nên không xuất hiện ở đây.
-  const surchargePayments = useMemo(() => pendingPayments.filter((p) => p.reschedule && !p.overdue), [pendingPayments]);
+  const surchargePayments = useMemo(
+    () => pendingPayments.filter((p) => p.reschedule && !p.transferredToOwner), [pendingPayments]);
 
   const nowDate = useMemo(() => new Date(now), [now]);
   const nowMinute = nowDate.getHours() * 60 + nowDate.getMinutes();
   const dayStartMs = dashboard?.date ? Date.parse(`${dashboard.date}T00:00:00+07:00`) : 0;
 
-  // Cảnh báo sân sắp hết giờ trong 5 phút (UC34 / P19)
-  const endingBookings = useMemo(() => {
-    return todayBookings.filter((booking) => {
-      const remaining = dayStartMs + booking.endMinute * 60_000 - now;
-      return booking.status === 'IN_USE' && remaining > 0 && remaining <= 5 * 60_000;
-    });
-  }, [todayBookings, dayStartMs, now]);
+  const bookingByCode = useMemo(
+    () => new Map(todayBookings.map((booking) => [booking.bookingCode, booking])), [todayBookings]);
 
-  // Tính trạng thái trực quan từng sân trên lưới Court Status (UC34)
+  // Trạng thái từng sân lúc này (UC34 #1). Ưu tiên dữ liệu sân của API bảng điều hành; tên khách lấy từ lịch hôm nay.
   const courtTiles = useMemo(() => {
     if (dashboard?.courts?.length > 0) {
       return dashboard.courts.map((c) => {
+        const current = c.bookingCode ? bookingByCode.get(c.bookingCode) : null;
+        const next = c.nextBookingCode ? bookingByCode.get(c.nextBookingCode) : null;
         if (c.status === 'MAINTENANCE') {
           return {
-            id: c.courtId,
-            name: c.courtName,
-            status: 'Bảo trì',
-            detail: c.maintenanceUntil ? `Đến ${c.maintenanceUntil.replace('T', ' ')}` : 'Tạm ngưng phục vụ',
-            type: 'maintenance',
+            id: c.courtId, name: c.courtName, type: 'maintenance',
+            detail: c.maintenanceUntil ? `Đến ${c.maintenanceUntil.replace('T', ' ').slice(0, 16)}` : 'Tạm ngưng phục vụ',
           };
         }
-        if (c.status === 'IN_USE') {
+        if (c.status === 'IN_USE' || c.status === 'HOLDING') {
           return {
-            id: c.courtId,
-            name: c.courtName,
-            status: 'Đang sử dụng',
-            detail: `${c.untilMinute != null ? `Đến ${clock(c.untilMinute)}` : ''}${c.bookingCode ? ` · ${c.bookingCode}` : ''}`,
-            type: 'inUse',
-          };
-        }
-        if (c.status === 'HOLDING') {
-          return {
-            id: c.courtId,
-            name: c.courtName,
-            status: 'Đang giữ chỗ',
-            detail: `${c.untilMinute != null ? `Đến ${clock(c.untilMinute)}` : ''}${c.bookingCode ? ` · ${c.bookingCode}` : ''}`,
-            type: 'awaiting',
+            id: c.courtId, name: c.courtName, type: c.status === 'IN_USE' ? 'inUse' : 'awaiting',
+            who: current?.customerName || c.bookingCode,
+            startMinute: current?.startMinute, endMinute: c.untilMinute ?? current?.endMinute,
+            bookingCode: c.bookingCode,
           };
         }
         return {
-          id: c.courtId,
-          name: c.courtName,
-          status: 'Đang trống',
-          detail: c.nextStartMinute != null ? `Ca kế: ${clock(c.nextStartMinute)}` : 'Nhấn để đặt tại quầy',
-          type: 'available',
+          id: c.courtId, name: c.courtName, type: 'available',
+          detail: c.nextStartMinute != null
+            ? `Booking tiếp: ${clock(c.nextStartMinute)}${next?.customerName ? ` · ${next.customerName}` : ''}`
+            : 'Trống đến hết ngày',
         };
       });
     }
@@ -169,86 +169,78 @@ export default function StaffDashboardPage() {
       const cId = court.court_id ?? court.id;
       const cName = court.court_name ?? court.name;
       if (court.active === false || court.status === 'MAINTENANCE') {
-        return {
-          id: cId,
-          name: cName,
-          status: 'Bảo trì',
-          detail: 'Tạm ngưng phục vụ',
-          type: 'maintenance',
-        };
+        return { id: cId, name: cName, type: 'maintenance', detail: 'Tạm ngưng phục vụ' };
       }
       const inUseBooking = todayBookings.find(
-        (b) =>
-          (b.courtId === cId || b.courtName === cName) &&
-          (b.status === 'IN_USE' ||
-            (b.status === 'CONFIRMED' && b.startMinute <= nowMinute && nowMinute < b.endMinute))
+        (b) => b.courtName === cName
+          && (b.status === 'IN_USE' || (b.status === 'CONFIRMED' && b.startMinute <= nowMinute && nowMinute < b.endMinute))
       );
       if (inUseBooking) {
         return {
-          id: cId,
-          name: cName,
-          status: 'Đang sử dụng',
-          detail: `Đến ${clock(inUseBooking.endMinute)} · ${inUseBooking.bookingCode}`,
-          type: 'inUse',
-        };
-      }
-      const holdingBooking = todayBookings.find(
-        (b) =>
-          (b.courtId === cId || b.courtName === cName) &&
-          (b.status === 'HOLDING' || b.status === 'AWAITING_CONFIRMATION' || b.status === 'RESUBMIT_REQUESTED') &&
-          b.endMinute > nowMinute
-      );
-      if (holdingBooking) {
-        return {
-          id: cId,
-          name: cName,
-          status: 'Đang giữ chỗ',
-          detail: `${clock(holdingBooking.startMinute)}–${clock(holdingBooking.endMinute)}`,
-          type: 'awaiting',
+          id: cId, name: cName, type: 'inUse', who: inUseBooking.customerName || inUseBooking.bookingCode,
+          startMinute: inUseBooking.startMinute, endMinute: inUseBooking.endMinute, bookingCode: inUseBooking.bookingCode,
         };
       }
       const nextConfirmed = todayBookings
-        .filter((b) => (b.courtId === cId || b.courtName === cName) && b.status === 'CONFIRMED' && b.startMinute > nowMinute)
+        .filter((b) => b.courtName === cName && b.status === 'CONFIRMED' && b.startMinute > nowMinute)
         .sort((a, b) => a.startMinute - b.startMinute)[0];
-
       return {
-        id: cId,
-        name: cName,
-        status: 'Đang trống',
-        detail: nextConfirmed ? `Ca kế: ${clock(nextConfirmed.startMinute)}` : 'Nhấn để đặt tại quầy',
-        type: 'available',
+        id: cId, name: cName, type: 'available',
+        detail: nextConfirmed
+          ? `Booking tiếp: ${clock(nextConfirmed.startMinute)}${nextConfirmed.customerName ? ` · ${nextConfirmed.customerName}` : ''}`
+          : 'Trống đến hết ngày',
       };
     });
-  }, [dashboard, courts, todayBookings, nowMinute]);
+  }, [dashboard, courts, todayBookings, bookingByCode, nowMinute]);
 
-  const courtsInUseCount = courtTiles.filter((c) => c.type === 'inUse').length;
-  const totalCourtsCount = courtTiles.length;
+  // Thời gian còn lại của sân đang chơi; dưới 5 phút thì làm nổi (UC34 #4).
+  const tiles = useMemo(() => courtTiles.map((court) => {
+    if (court.type !== 'inUse' || court.endMinute == null || !dayStartMs) return court;
+    const remaining = dayStartMs + court.endMinute * 60_000 - now;
+    return { ...court, remaining, ending: remaining > 0 && remaining <= ENDING_SOON_MS };
+  }), [courtTiles, dayStartMs, now]);
+  const endingTiles = tiles.filter((court) => court.ending);
+  const hasInUse = tiles.some((court) => court.type === 'inUse');
+
+  // Đồng hồ đếm từng giây khi có sân đang chơi hoặc đơn tại quầy đang giữ chỗ 10 phút (P34, BR43).
+  const hasHolding = counterBookings.some((item) => item.status === 'HOLDING' && item.holdExpiresAt);
+  useEffect(() => {
+    if (!hasHolding && !hasInUse) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [hasHolding, hasInUse]);
+
+  const courtsInUseCount = tiles.filter((c) => c.type === 'inUse').length;
+  const maintenanceCount = tiles.filter((c) => c.type === 'maintenance').length;
+  const freeCount = tiles.filter((c) => c.type === 'available').length;
   const remainingBookingsCount = todayBookings.filter(
     (b) => b.endMinute > nowMinute && b.status !== 'EXPIRED' && !String(b.status).startsWith('CANCELLED')
   ).length;
 
-  const statCards = [
-    {
-      label: 'Sân đang sử dụng',
-      value: `${courtsInUseCount}/${totalCourtsCount}`,
-      note: `${Math.max(0, totalCourtsCount - courtsInUseCount)} sân đang trống`,
-    },
-    {
-      label: 'Lượt đặt hôm nay',
-      value: String(todayBookings.length),
-      note: `${remainingBookingsCount} lượt còn lại · ${dashboard?.complaintsToForward ?? 0} khiếu nại`,
-    },
-    {
-      label: 'Chờ xác nhận TT',
-      value: String(dashboard?.paymentsAwaitingConfirmation ?? pendingPayments.length),
-      note: `${overduePayments.length} giao dịch đã chuyển cho chủ sân`,
-    },
-    {
-      label: 'Doanh thu hôm nay',
-      value: formatMoney(dashboard?.todayRevenue ?? 0),
-      note: 'Trước đối soát cuối ngày',
-    },
-  ];
+  // Lịch hôm nay dạng dòng thời gian theo sân (UC34 #2).
+  const timeline = useMemo(() => {
+    const names = tiles.length > 0 ? tiles.map((court) => court.name) : [...new Set(todayBookings.map((b) => b.courtName))];
+    const starts = todayBookings.map((b) => b.startMinute);
+    const ends = todayBookings.map((b) => b.endMinute);
+    let fromHour = Math.floor(Math.min(nowMinute, ...starts) / 60);
+    let toHour = Math.ceil(Math.max(nowMinute + 60, ...ends) / 60);
+    if (toHour - fromHour < 8) {
+      fromHour = Math.max(0, Math.min(fromHour, toHour - 8));
+      toHour = Math.min(24, fromHour + 8);
+    }
+    const span = (toHour - fromHour) * 60;
+    const pct = (minute) => `${((minute - fromHour * 60) / span) * 100}%`;
+    return {
+      hours: Array.from({ length: toHour - fromHour }, (_, i) => fromHour + i),
+      rows: names.map((name) => ({
+        name,
+        blocks: todayBookings.filter((b) => b.courtName === name).map((b) => ({
+          ...b, left: pct(b.startMinute), width: `${((b.endMinute - b.startMinute) / span) * 100}%`,
+        })),
+      })),
+      nowLeft: nowMinute >= fromHour * 60 && nowMinute <= toHour * 60 ? pct(nowMinute) : null,
+    };
+  }, [tiles, todayBookings, nowMinute]);
 
   const openCounterBooking = (selectedCourtId) => {
     setCounterCourt(selectedCourtId);
@@ -272,7 +264,7 @@ export default function StaffDashboardPage() {
   const handleConfirmCounterPayment = async () => {
     if (confirmingCounter || !counterPayment) return;
     const current = counterBookings.find((item) => item.id === counterPayment.id);
-    if (!current || current.status !== 'HOLDING' || parseLocalExpiry(current.holdExpiresAt) <= Date.now()) {
+    if (!current || current.status !== 'HOLDING' || parseServerTime(current.holdExpiresAt) <= Date.now()) {
       setCounterPaymentError('Đơn đã hết hạn hoặc đã được xử lý. Vui lòng tải lại danh sách.');
       return;
     }
@@ -290,25 +282,34 @@ export default function StaffDashboardPage() {
     }
   };
 
+  const paymentLabel = (payment) => payment.label || `Giao dịch #${payment.id}`;
+  const waitedMinutes = (payment) => (payment.submittedAt
+    ? Math.max(0, Math.floor((now - parseServerTime(payment.submittedAt)) / 60_000)) : null);
+
   return (
     <ManagementLayout
       role="staff"
-      title="Bảng điều hành nhân viên"
-      subtitle={`${dashboard?.locationName ? `${dashboard.locationName} · ` : ''}Ngày ${dashboard?.date || todayStr()} · ${nowDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}
+      title="Bảng điều hành"
+      subtitle={
+        <>
+          {formatDay(dashboard?.date)}{dashboard?.locationName ? ` · ${dashboard.locationName}` : ''}
+          {' · '}
+          {updatedAt ? `Cập nhật lúc ${hhmm(updatedAt)} · tự làm mới 30 giây` : 'Đang tải…'}
+          {' · '}
+          <button className={styles.inlineLink} type="button" onClick={loadAll} disabled={loading}>
+            Làm mới
+          </button>
+        </>
+      }
       actions={
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            className={styles.secondaryButton}
-            type="button"
-            onClick={loadAll}
-            disabled={loading}
-          >
-            {loading ? 'Đang tải…' : 'Làm mới'}
+        <>
+          <button className={styles.secondaryButton} type="button" onClick={() => setShowReconciliation(true)}>
+            Đối soát cuối ngày{dashboard?.reconciledToday ? ' ✓' : ''}
           </button>
           <button className={styles.primaryButton} type="button" onClick={() => openCounterBooking()}>
-            + Đặt sân tại quầy
+            + Đặt tại quầy
           </button>
-        </div>
+        </>
       }
       locationName={dashboard?.locationName}
       locationId={dashboard?.locationId}
@@ -317,279 +318,284 @@ export default function StaffDashboardPage() {
         complaints: Number(dashboard?.complaintsToForward) || 0,
       }}
     >
-
-        {error && (
-          <div className={styles.urgentBanner} role="alert" style={{ marginBottom: 16 }}>
-            <span>{error}</span>
-            <button className={styles.handleButton} type="button" onClick={loadAll}>
-              Thử lại
-            </button>
-          </div>
-        )}
-
-        <section className={styles.alerts} aria-label="Cảnh báo vận hành">
-          {overduePayments.length > 0 && (
-            <div className={styles.urgentBanner} role="alert">
-              <span>
-                {overduePayments.length === 1
-                  ? `Giao dịch ${overduePayments[0].label || `#${overduePayments[0].id}`}`
-                  : `${overduePayments.length} giao dịch`} đã chờ quá 15 phút trong giờ mở cửa và đã được chuyển cho chủ sân xử lý.
-              </span>
-              <button
-                className={styles.handleButton}
-                type="button"
-                onClick={() => openPaymentConfirmation(overduePayments[0])}
-              >
-                Xem giao dịch
-              </button>
-            </div>
-          )}
-          {surchargePayments.length > 0 && (
-            <div className={styles.warningBanner} role="status">
-              <span>
-                <span className={styles.surchargeTag}>Phụ thu đổi lịch</span>{' '}
-                {surchargePayments.length === 1
-                  ? `${surchargePayments[0].label} · ${formatMoney(surchargePayments[0].amountDue)} đang chờ xác nhận.`
-                  : `${surchargePayments.length} phụ thu đổi lịch đang chờ xác nhận.`}
-              </span>
-              <button
-                className={styles.handleButton}
-                type="button"
-                onClick={() => openPaymentConfirmation(surchargePayments[0])}
-              >
-                Xác nhận phụ thu
-              </button>
-            </div>
-          )}
-          {endingBookings.length > 0 && (
-            <div className={styles.warningBanner} role="status">
-              Sắp hết giờ chơi trong 5 phút: {endingBookings.map((b) => `${b.courtName} (${b.bookingCode} · kết thúc ${clock(b.endMinute)})`).join(', ')}
-            </div>
-          )}
-        </section>
-
-        <section className={styles.statsGrid} aria-label="Thống kê trong ngày">
-          {statCards.map((card) => (
-            <article className={styles.statCard} key={card.label}>
-              <h2 className={styles.statLabel}>{card.label}</h2>
-              <p className={styles.statValue}>{card.value}</p>
-              <p className={styles.statNote}>{card.note}</p>
-            </article>
-          ))}
-        </section>
-
-        <section className={styles.contentGrid}>
-          <article className={styles.panel}>
-            <div className={styles.panelHeader} style={{ marginBottom: 12 }}>
-              <h2 className={styles.panelTitle}>Trạng thái sân hiện tại</h2>
-              {dashboard?.locationId && (
-                <button
-                  className={styles.viewAllButton}
-                  type="button"
-                  onClick={() => navigate('/staff/schedule')}
-                >
-                  Xem bảng lịch sân ›
-                </button>
-              )}
-            </div>
-            {courtTiles.length === 0 ? (
-              <p style={{ color: '#64748b', fontSize: 13 }}>Chưa có dữ liệu sân hoạt động.</p>
-            ) : (
-              <div className={styles.courtGrid}>
-                {courtTiles.map((court) =>
-                  court.type === 'available' ? (
-                    <button
-                      className={`${styles.courtTile} ${styles[court.type]}`}
-                      key={court.id}
-                      type="button"
-                      onClick={() => openCounterBooking(court.id)}
-                    >
-                      <strong>{court.name}</strong>
-                      <span>{court.status}</span>
-                      <small>{court.detail}</small>
-                    </button>
-                  ) : (
-                    <div className={`${styles.courtTile} ${styles[court.type]}`} key={court.id}>
-                      <strong>{court.name}</strong>
-                      <span>{court.status}</span>
-                      <small>{court.detail}</small>
-                    </div>
-                  )
-                )}
+      <div className={styles.board}>
+        {(error || urgentPayments.length > 0 || transferredPayments.length > 0 || surchargePayments.length > 0
+          || endingTiles.length > 0) && (
+          <section className={styles.alerts} aria-label="Cảnh báo vận hành">
+            {error && (
+              <div className={`${styles.alert} ${styles.alertDanger}`} role="alert">
+                <span>{error}</span>
+                <button className={styles.alertButton} type="button" onClick={loadAll}>Thử lại</button>
               </div>
             )}
-          </article>
-
-          <article className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <h2 className={styles.panelTitle}>Thanh toán chờ xác nhận</h2>
-              <button
-                className={styles.viewAllButton}
-                type="button"
-                onClick={() => openPaymentConfirmation(pendingPayments.find((p) => !p.overdue) ?? pendingPayments[0])}
-              >
-                Mở bàn xác nhận ›
-              </button>
-            </div>
-            <div className={styles.transactionList}>
-              {pendingPayments.length === 0 ? (
-                <p style={{ color: '#64748b', fontSize: 13, margin: '14px 0 4px' }}>
-                  Hiện không có giao dịch nào đang chờ xác nhận.
-                </p>
-              ) : (
-                pendingPayments.map((payment) => (
-                  <button
-                    className={styles.transactionRow}
-                    key={`${payment.reschedule ? 'rs' : 'bk'}-${payment.id}`}
-                    type="button"
-                    onClick={() => openPaymentConfirmation(payment)}
-                  >
-                    <span className={styles.transactionDetails}>
-                      {payment.reschedule && <span className={styles.surchargeTag}>Phụ thu đổi lịch</span>}
-                      <strong>{payment.label || `Giao dịch #${payment.id}`}</strong>
-                      <small>{payment.submittedAt ? `Gửi lúc ${payment.submittedAt.replace('T', ' ')}` : 'Đang chờ kiểm tra chứng từ'}</small>
-                    </span>
-                    <span className={styles.transactionAmount}>
-                      <strong>{formatMoney(payment.amountDue)}</strong>
-                      <small className={payment.overdue ? styles.overdueText : ''}>
-                        {payment.overdue ? 'Đã chuyển cho chủ sân' : 'Chờ xác nhận'}
-                      </small>
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </article>
-        </section>
-
-        <section className={styles.contentGrid} style={{ marginTop: 16 }}>
-          <article className={styles.panel}>
-            <div className={styles.panelHeader} style={{ marginBottom: 10 }}>
-              <h2 className={styles.panelTitle}>Đơn đặt sân tại quầy</h2>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="date"
-                  value={counterDate}
-                  onChange={(e) => setCounterDate(e.target.value)}
-                  style={{
-                    height: 30,
-                    padding: '0 8px',
-                    borderRadius: 7,
-                    border: '1px solid #cbd5e1',
-                    fontSize: 12,
-                  }}
-                />
-                <button className={styles.viewAllButton} type="button" onClick={() => openCounterBooking()}>
-                  + Giữ chỗ mới
+            {urgentPayments.length > 0 && (
+              <div className={`${styles.alert} ${styles.alertDanger}`} role="alert">
+                <span>
+                  <b>!</b>{' '}
+                  <strong>
+                    {urgentPayments.length === 1
+                      ? `Giao dịch ${paymentLabel(urgentPayments[0])} (${formatMoney(urgentPayments[0].amountDue)})`
+                      : `${urgentPayments.length} giao dịch`}
+                  </strong>{' '}
+                  đã chờ xác nhận quá {overdueMinutes} phút. Hãy kiểm tra tiền về và xử lý ngay; quá {transferMinutes} phút
+                  giao dịch sẽ được chuyển cho chủ sân.
+                </span>
+                <button className={`${styles.alertButton} ${styles.alertButtonDanger}`} type="button"
+                  onClick={() => openPaymentConfirmation(urgentPayments[0])}>
+                  Xử lý ngay
                 </button>
               </div>
-            </div>
-            <div className={styles.transactionList}>
-              {counterBookings.length === 0 ? (
-                <p style={{ color: '#64748b', fontSize: 13, margin: '8px 0' }}>
-                  Ngày {counterDate} chưa có lượt đặt sân tại quầy.
-                </p>
-              ) : (
-                counterBookings.map((item) => {
-                  const remainingMs =
-                    item.status === 'HOLDING' && item.holdExpiresAt
-                      ? parseLocalExpiry(item.holdExpiresAt) - now
-                      : 0;
-                  const expiredHold = item.status === 'HOLDING' && item.holdExpiresAt && remainingMs <= 0;
+            )}
+            {transferredPayments.length > 0 && (
+              <div className={`${styles.alert} ${styles.alertNeutral}`} role="status">
+                <span>
+                  <b>↗</b>{' '}
+                  <strong>
+                    {transferredPayments.length === 1 ? paymentLabel(transferredPayments[0]) : `${transferredPayments.length} giao dịch`}
+                  </strong>{' '}
+                  đã chờ quá {transferMinutes} phút trong giờ mở cửa và đã được chuyển cho chủ sân xử lý. Bạn chỉ xem được.
+                </span>
+                <button className={styles.alertButton} type="button" onClick={() => openPaymentConfirmation(transferredPayments[0])}>
+                  Xem giao dịch
+                </button>
+              </div>
+            )}
+            {surchargePayments.length > 0 && (
+              <div className={`${styles.alert} ${styles.alertInfo}`} role="status">
+                <span>
+                  <span className={styles.surchargeTag}>Phụ thu đổi lịch</span>{' '}
+                  {surchargePayments.length === 1
+                    ? `${surchargePayments[0].label} · ${formatMoney(surchargePayments[0].amountDue)} đang chờ xác nhận.`
+                    : `${surchargePayments.length} phụ thu đổi lịch đang chờ xác nhận.`}
+                </span>
+                <button className={styles.alertButton} type="button" onClick={() => openPaymentConfirmation(surchargePayments[0])}>
+                  Xác nhận phụ thu
+                </button>
+              </div>
+            )}
+            {endingTiles.length > 0 && (
+              <div className={`${styles.alert} ${styles.alertWarning}`} role="status">
+                <span>
+                  <b>⏱</b>{' '}
+                  {endingTiles.map((court) => (
+                    <span key={court.id}>
+                      <strong>{court.name}</strong> kết thúc lúc {clock(court.endMinute)} (còn {Math.ceil(court.remaining / 60_000)} phút)
+                      {court.who ? ` — ${court.who}` : ''}{court.bookingCode && court.who !== court.bookingCode ? `, ${court.bookingCode}` : ''}.{' '}
+                    </span>
+                  ))}
+                </span>
+                <button className={styles.alertButton} type="button" onClick={() => navigate('/staff/schedule')}>
+                  Xem lịch sân
+                </button>
+              </div>
+            )}
+          </section>
+        )}
 
-                  return (
-                    <div
-                      className={styles.transactionRow}
-                      key={item.id}
-                      style={{ cursor: 'default' }}
-                    >
-                      <span className={styles.transactionDetails}>
-                        <strong>
-                          {item.bookingCode} · {item.customerName}
-                          {item.customerPhone ? ` (${item.customerPhone})` : ''}
-                        </strong>
-                        <small>
-                          {item.courtName} · {item.startTime}–{item.endTime} · {formatMoney(item.finalAmount)}
-                          {item.receiptNo ? ` · Biên nhận: ${item.receiptNo}` : ''}
-                        </small>
-                        {item.status === 'HOLDING' && item.holdExpiresAt && (
-                          <small className={expiredHold ? styles.overdueText : ''} style={{ color: expiredHold ? '#b91c1c' : '#b45309', fontWeight: 700 }}>
-                            {expiredHold
-                              ? "Đã hết thời gian giữ chỗ. khung giờ đã được nhả. (MSG33)"
-                              : `Đang giữ chỗ 10 phút · Còn lại: ${formatRemaining(remainingMs)}`}
-                          </small>
-                        )}
-                      </span>
-                      <span className={styles.transactionAmount}>
-                        {item.status === 'HOLDING' && item.holdExpiresAt && !expiredHold ? (
-                          <button
-                            type="button"
-                            className={styles.primaryButton}
-                            style={{ minHeight: 32, fontSize: 11.5, padding: '0 12px' }}
-                            onClick={() => { setCounterPayment(item); setCounterPaymentError(''); }}
-                          >
-                            Xác nhận đã nhận tiền
-                          </button>
-                        ) : (
-                          <strong style={{ color: item.status === 'CONFIRMED' ? '#15803d' : '#64748b' }}>
-                            {expiredHold ? STATES.EXPIRED : (STATES[item.status] || item.status)}
-                          </strong>
-                        )}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+        <section className={styles.kpis} aria-label="Thống kê trong ngày">
+          <article className={styles.kpi}>
+            <h2>Sân đang sử dụng</h2>
+            <p className={styles.kpiValue}>{courtsInUseCount} <span>/ {tiles.length} sân</span></p>
+            <p className={styles.kpiNote}>{maintenanceCount} sân bảo trì · {freeCount} sân trống</p>
           </article>
-
-          <article className={styles.panel}>
-            <div className={styles.panelHeader} style={{ marginBottom: 10 }}>
-              <h2 className={styles.panelTitle}>Lịch chơi trong ngày ({todayBookings.length})</h2>
-              <button
-                className={styles.viewAllButton}
-                type="button"
-                onClick={() => setShowReconciliation(true)}
-              >
-                Đối soát doanh thu ›
-              </button>
-            </div>
-            <div className={styles.transactionList}>
-              {todayBookings.length === 0 ? (
-                <p style={{ color: '#64748b', fontSize: 13, margin: '8px 0' }}>
-                  Hôm nay chưa có lịch chơi nào.
-                </p>
-              ) : (
-                todayBookings.map((booking) => (
-                  <div className={styles.transactionRow} key={booking.id} style={{ cursor: 'default' }}>
-                    <span className={styles.transactionDetails}>
-                      <strong>
-                        {booking.courtName} · {clock(booking.startMinute)}–{clock(booking.endMinute)}
-                      </strong>
-                      <small>
-                        {booking.bookingCode}
-                        {booking.customerName ? ` · ${booking.customerName}` : ''}
-                        {booking.customerPhone ? ` · ${booking.customerPhone}` : ''}
-                      </small>
-                    </span>
-                    <span className={styles.transactionAmount}>
-                      <strong
-                        style={{
-                          color:
-                            booking.status === 'IN_USE' || booking.status === 'CONFIRMED'
-                              ? '#0d9651'
-                              : '#475569',
-                        }}
-                      >
-                        {STATES[booking.status] ?? booking.status}
-                      </strong>
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+          <article className={styles.kpi}>
+            <h2>Lượt đặt hôm nay</h2>
+            <p className={styles.kpiValue}>{todayBookings.length}</p>
+            <p className={styles.kpiNote}>{remainingBookingsCount} lượt còn lại · {dashboard?.complaintsToForward ?? 0} khiếu nại chờ chuyển</p>
+          </article>
+          <article className={`${styles.kpi} ${urgentPayments.length > 0 ? styles.kpiHot : ''}`}>
+            <h2>Chờ xác nhận thanh toán</h2>
+            <p className={styles.kpiValue}>{dashboard?.paymentsAwaitingConfirmation ?? pendingPayments.length}</p>
+            <p className={styles.kpiNote}>
+              <span className={urgentPayments.length > 0 ? styles.textDanger : ''}>{urgentPayments.length} quá {overdueMinutes} phút</span>
+              {' · '}{transferredPayments.length} đã chuyển cho chủ sân
+            </p>
+          </article>
+          <article className={styles.kpi}>
+            <h2>Doanh thu hôm nay</h2>
+            <p className={styles.kpiValue}>{new Intl.NumberFormat('vi-VN').format(Number(dashboard?.todayRevenue ?? 0))} <span>đ</span></p>
+            <p className={styles.kpiNote}>{dashboard?.reconciledToday ? 'Đã đối soát hôm nay' : 'Trước đối soát cuối ngày'}</p>
           </article>
         </section>
+
+        <div className={styles.grid}>
+          <div className={styles.column}>
+            <section className={styles.panel}>
+              <header className={styles.panelHeader}>
+                <h2 className={styles.panelTitle}>Trạng thái sân lúc này</h2>
+                <button className={styles.linkButton} type="button" onClick={() => navigate('/staff/schedule')}>
+                  Xem lịch sân ›
+                </button>
+              </header>
+              {tiles.length === 0 ? (
+                <p className={styles.empty}>{loading ? 'Đang tải trạng thái sân…' : 'Chưa có dữ liệu sân hoạt động.'}</p>
+              ) : (
+                <div className={styles.courtGrid}>
+                  {tiles.map((court) => {
+                    const kind = court.ending ? 'ending' : court.type;
+                    return (
+                      <article key={court.id} className={`${styles.court} ${styles[kind]}`}>
+                        <h3>{court.name}</h3>
+                        <span className={styles.courtBadge}>{COURT_BADGE[kind]}</span>
+                        {court.who && <strong className={styles.courtWho}>{court.who}</strong>}
+                        {court.endMinute != null && (
+                          <span className={styles.courtTime}>
+                            {court.startMinute != null ? `${clock(court.startMinute)}–` : 'Đến '}{clock(court.endMinute)}
+                            {court.remaining > 0 ? ' · còn' : ''}
+                          </span>
+                        )}
+                        {court.remaining > 0 && <span className={styles.countdown}>{formatRemaining(court.remaining)}</span>}
+                        {court.detail && <span className={styles.courtTime}>{court.detail}</span>}
+                        {court.type === 'available' && (
+                          <button className={styles.courtAction} type="button" onClick={() => openCounterBooking(court.id)}>
+                            Đặt tại quầy
+                          </button>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className={styles.panel}>
+              <header className={styles.panelHeader}>
+                <h2 className={styles.panelTitle}>Lịch hôm nay</h2>
+                <small className={styles.muted}>Chỉ booking đã xác nhận · {todayBookings.length} lượt</small>
+              </header>
+              {timeline.rows.length === 0 ? (
+                <p className={styles.empty}>Hôm nay chưa có lịch chơi nào.</p>
+              ) : (
+                <div className={styles.timeline} role="table" aria-label="Lịch hôm nay theo sân">
+                  <div className={styles.tlRow} role="row">
+                    <span role="columnheader" />
+                    <div className={styles.tlHours} style={{ gridTemplateColumns: `repeat(${timeline.hours.length}, 1fr)` }}>
+                      {timeline.hours.map((hour) => <span key={hour}>{hour}h</span>)}
+                    </div>
+                  </div>
+                  {timeline.rows.map((row, index) => (
+                    <div className={styles.tlRow} role="row" key={row.name}>
+                      <span className={styles.tlCourt} role="rowheader">{row.name}</span>
+                      <div className={styles.tlTrack} role="cell"
+                        style={{ backgroundSize: `calc(100% / ${timeline.hours.length}) 100%` }}>
+                        {row.blocks.map((b) => (
+                          <span key={b.id} className={`${styles.tlBlock} ${styles['tl' + b.status] ?? ''}`}
+                            style={{ left: b.left, width: b.width }}
+                            title={`${clock(b.startMinute)}–${clock(b.endMinute)} · ${b.bookingCode}${b.customerName ? ` · ${b.customerName}` : ''}${b.customerPhone ? ` · ${b.customerPhone}` : ''} · ${STATES[b.status] ?? b.status}`}>
+                            {b.customerName || b.bookingCode}
+                          </span>
+                        ))}
+                        {timeline.nowLeft && (
+                          <span className={styles.tlNow} style={{ left: timeline.nowLeft }}>
+                            {index === timeline.rows.length - 1 && <em>{hhmm(nowDate)}</em>}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <div className={styles.column}>
+            <section className={styles.panel}>
+              <header className={styles.panelHeader}>
+                <h2 className={styles.panelTitle}>Thanh toán chờ xác nhận</h2>
+                <button className={styles.linkButton} type="button"
+                  onClick={() => openPaymentConfirmation(pendingPayments.find((p) => !p.transferredToOwner) ?? pendingPayments[0])}>
+                  Mở bàn xác nhận ›
+                </button>
+              </header>
+              {pendingPayments.length === 0 ? (
+                <p className={styles.empty}>Hiện không có giao dịch nào đang chờ xác nhận.</p>
+              ) : (
+                <ul className={styles.list}>
+                  {pendingPayments.map((payment) => {
+                    const waited = waitedMinutes(payment);
+                    const rowClass = payment.transferredToOwner ? styles.rowMoved : payment.overdue ? styles.rowUrgent : '';
+                    return (
+                      <li key={`${payment.reschedule ? 'rs' : 'bk'}-${payment.id}`}>
+                        <button className={`${styles.row} ${rowClass}`} type="button" onClick={() => openPaymentConfirmation(payment)}>
+                          <span className={styles.rowMain}>
+                            <strong>
+                              {payment.reschedule && <span className={styles.surchargeTag}>Phụ thu đổi lịch</span>}
+                              {paymentLabel(payment)}
+                            </strong>
+                            <small>{payment.submittedAt ? `Gửi lúc ${payment.submittedAt.slice(11, 16)}` : 'Đang chờ kiểm tra chứng từ'}</small>
+                          </span>
+                          <span className={styles.rowSide}>
+                            <strong>{formatMoney(payment.amountDue)}</strong>
+                            <small className={payment.overdue && !payment.transferredToOwner ? styles.textDanger : ''}>
+                              {payment.transferredToOwner ? 'Đã chuyển cho chủ sân'
+                                : payment.overdue ? `Quá ${overdueMinutes} phút · Xử lý gấp`
+                                  : waited != null ? `Chờ ${waited} phút` : 'Chờ xác nhận'}
+                            </small>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <p className={styles.footnote}>
+                Quá <b>{overdueMinutes} phút</b> trong giờ mở cửa: báo đỏ, vẫn xử lý được. Quá <b>{transferMinutes} phút</b>:
+                tự chuyển cho chủ sân, bạn chỉ xem.
+              </p>
+            </section>
+
+            <section className={styles.panel}>
+              <header className={styles.panelHeader}>
+                <h2 className={styles.panelTitle}>Đơn đặt tại quầy</h2>
+                <input className={styles.dateInput} type="date" aria-label="Ngày chơi của đơn tại quầy"
+                  value={counterDate} onChange={(e) => setCounterDate(e.target.value)} />
+              </header>
+              {counterBookings.length === 0 ? (
+                <p className={styles.empty}>Ngày {counterDate.split('-').reverse().join('/')} chưa có lượt đặt sân tại quầy.</p>
+              ) : (
+                <ul className={styles.list}>
+                  {counterBookings.map((item) => {
+                    const holding = item.status === 'HOLDING' && item.holdExpiresAt;
+                    const remainingMs = holding ? parseServerTime(item.holdExpiresAt) - now : 0;
+                    const expiredHold = holding && remainingMs <= 0;
+                    return (
+                      <li key={item.id} className={`${styles.row} ${styles.rowStatic}`}>
+                        <span className={styles.rowMain}>
+                          <strong>{item.customerName}{item.customerPhone ? ` · ${item.customerPhone}` : ''}</strong>
+                          <small>
+                            {item.bookingCode} · {item.courtName} · {item.startTime}–{item.endTime}
+                            {item.receiptNo ? ` · Biên nhận ${item.receiptNo}` : ''}
+                          </small>
+                          {holding && (
+                            <small className={expiredHold ? styles.textDanger : styles.textWarning}>
+                              {expiredHold
+                                ? 'Đã hết thời gian giữ chỗ, khung giờ đã được nhả. (MSG33)'
+                                : `Đang giữ chỗ 10 phút · còn ${formatRemaining(remainingMs)}`}
+                            </small>
+                          )}
+                        </span>
+                        <span className={styles.rowSide}>
+                          <strong>{formatMoney(item.finalAmount)}</strong>
+                          {holding && !expiredHold ? (
+                            <button type="button" className={styles.smallPrimary}
+                              onClick={() => { setCounterPayment(item); setCounterPaymentError(''); }}>
+                              Xác nhận đã nhận tiền
+                            </button>
+                          ) : (
+                            <small className={item.status === 'CONFIRMED' ? styles.textSuccess : ''}>
+                              {expiredHold ? STATES.EXPIRED : (STATES[item.status] || item.status)}
+                            </small>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          </div>
+        </div>
+      </div>
 
       {showCounterBooking && (
         <WalkInBookingDialog initialCourt={counterCourt} onClose={() => setShowCounterBooking(false)} onChanged={loadAll} />

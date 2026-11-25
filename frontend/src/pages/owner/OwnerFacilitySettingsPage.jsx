@@ -9,9 +9,20 @@ import {
   updateOwnerLocation,
   uploadOwnerLocationQr,
 } from '../../api/locationApi'
+import { downloadVenueData } from '../../api/ownerApi'
 import ManagementLayout from '../../components/layout/ManagementLayout'
+import {
+  Button,
+  ErrorState,
+  FormField,
+  Input,
+  LoadingState,
+  StatusBadge,
+  Toast,
+} from '../../components/common'
 import { FileInput } from '../../components/common/FileInput'
 import LocationMap from '../../components/map/LocationMap'
+import { dateTime, errorMessage, shortDate, today } from '../../utils/formatters'
 import styles from './OwnerFacilitySettingsPage.module.css'
 
 /** Khớp ràng buộc trong UpdateLocationRequest để báo lỗi ngay, khỏi gọi API. */
@@ -25,8 +36,22 @@ const LIMITS = {
   advanceBookingDays: { min: 1, max: 365 },
   pointEarningRate: { min: 1000, max: 100000 },
 }
-const STATUS_LABELS = { ACTIVE: 'Đang hoạt động', LOCKED: 'Đã khóa' }
 const DEFAULT_MAP_CENTER = { latitude: 21.028511, longitude: 105.854444 }
+
+/** Mỗi khối có nút Lưu riêng và chỉ gửi các trường của khối đó. */
+const GROUPS = {
+  profile: ['name', 'address', 'contactPhone', 'latitude', 'longitude'],
+  policy: ['advanceBookingDays', 'pointEarningRate'],
+  bank: ['bankName', 'bankAccountNo', 'bankAccountHolder'],
+}
+
+const SECTIONS = [
+  ['settings-profile', 'Hồ sơ địa điểm'],
+  ['settings-bank', 'Nhận chuyển khoản'],
+  ['settings-policy', 'Chính sách đặt sân'],
+  ['settings-service', 'Thời hạn dịch vụ'],
+  ['settings-export', 'Tải dữ liệu quản lý'],
+]
 
 /** Form luôn giữ dạng chuỗi để người dùng xoá trắng được, lúc gửi mới đổi kiểu. */
 function toForm(location) {
@@ -50,13 +75,77 @@ function toForm(location) {
   }
 }
 
-function formatDateTime(value) {
-  if (!value) return '—'
-  const [datePart, timePart = ''] = String(value).split('T')
-  const [year, month, day] = datePart.split('-')
-  const date = `${day}/${month}/${year}`
-  const time = timePart.slice(0, 5)
-  return time ? `${date} ${time}` : date
+function pick(source, keys) {
+  return Object.fromEntries(keys.map((key) => [key, source[key]]))
+}
+
+function validateGroup(form, keys) {
+  const errors = {}
+  if (keys.includes('name')) {
+    if (!form.name.trim()) errors.name = 'Tên địa điểm không được để trống.'
+    else if (form.name.trim().length > LIMITS.name) errors.name = `Tên địa điểm tối đa ${LIMITS.name} ký tự.`
+  }
+  if (keys.includes('address')) {
+    if (!form.address.trim()) errors.address = 'Địa chỉ không được để trống.'
+    else if (form.address.trim().length > LIMITS.address) errors.address = `Địa chỉ tối đa ${LIMITS.address} ký tự.`
+  }
+  if (keys.includes('contactPhone') && form.contactPhone.trim() && !PHONE_PATTERN.test(form.contactPhone.trim())) {
+    errors.contactPhone = 'Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0.'
+  }
+  const numericChecks = [
+    ['advanceBookingDays', 'Số ngày đặt trước tối đa', LIMITS.advanceBookingDays],
+    ['pointEarningRate', 'Tỷ lệ tích điểm', LIMITS.pointEarningRate],
+  ]
+  for (const [field, label, range] of numericChecks) {
+    if (!keys.includes(field)) continue
+    const raw = form[field].trim()
+    if (!raw) continue
+    const value = Number(raw)
+    if (!Number.isFinite(value)) errors[field] = `${label} phải là số.`
+    else if (value < range.min || value > range.max) {
+      errors[field] = `${label} phải trong khoảng ${range.min.toLocaleString('vi-VN')} đến ${range.max.toLocaleString('vi-VN')}.`
+    }
+  }
+  return errors
+}
+
+/** Chỉ gửi trường đã đổi: backend coi null là "giữ nguyên". */
+function buildPayload(form, original, keys) {
+  const payload = {}
+  const changed = (key) => keys.includes(key) && form[key] !== original[key]
+  if (changed('name')) payload.name = form.name.trim()
+  if (changed('address')) payload.address = form.address.trim()
+  // contactPhone có @Pattern nên không gửi chuỗi rỗng (không xoá được, chỉ thay được).
+  if (changed('contactPhone') && form.contactPhone.trim()) payload.contactPhone = form.contactPhone.trim()
+  if (changed('latitude') && form.latitude.trim()) payload.latitude = Number(form.latitude)
+  if (changed('longitude') && form.longitude.trim()) payload.longitude = Number(form.longitude)
+  if (changed('advanceBookingDays') && form.advanceBookingDays.trim()) {
+    payload.advanceBookingDays = Number(form.advanceBookingDays)
+  }
+  if (changed('pointEarningRate') && form.pointEarningRate.trim()) {
+    payload.pointEarningRate = Number(form.pointEarningRate)
+  }
+  // Nhóm ngân hàng gửi chuỗi rỗng để xoá được giá trị cũ.
+  if (changed('bankName')) payload.bankName = form.bankName.trim()
+  if (changed('bankAccountNo')) payload.bankAccountNo = form.bankAccountNo.trim()
+  if (changed('bankAccountHolder')) payload.bankAccountHolder = form.bankAccountHolder.trim()
+  return payload
+}
+
+function SettingsCard({ id, title, hint, dirty, children, footer }) {
+  return (
+    <section id={id} className={styles.card} aria-labelledby={`${id}-title`} tabIndex={-1}>
+      <header className={styles.cardHeader}>
+        <div>
+          <h2 id={`${id}-title`} className={styles.cardTitle}>{title}</h2>
+          {hint && <p className={styles.cardHint}>{hint}</p>}
+        </div>
+        {dirty && <StatusBadge tone="warning">Chưa lưu</StatusBadge>}
+      </header>
+      {children}
+      {footer && <footer className={styles.cardFooter}>{footer}</footer>}
+    </section>
+  )
 }
 
 export default function OwnerFacilitySettingsPage() {
@@ -65,20 +154,24 @@ export default function OwnerFacilitySettingsPage() {
   const requestedLocationId = Number(searchParams.get('locationId')) || null
   const [locations, setLocations] = useState([])
   const [selectedLocationId, setSelectedLocationId] = useState(null)
-  const [_loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   const [form, setForm] = useState(() => toForm(null))
   const [original, setOriginal] = useState(() => toForm(null))
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
+  const [savingGroup, setSavingGroup] = useState(null)
+  const [groupError, setGroupError] = useState({})
+  const [toast, setToast] = useState(null)
   const [qrPreview, setQrPreview] = useState('')
   const [qrError, setQrError] = useState('')
-  const [qrSavedLocationId, setQrSavedLocationId] = useState(null)
   const [uploadingQr, setUploadingQr] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locationError, setLocationError] = useState('')
+  const [exportRange, setExportRange] = useState(() => ({ from: today().slice(0, 8) + '01', to: today() }))
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   const selectedLocation = useMemo(
     () => locations.find((location) => location.id === selectedLocationId) ?? null,
@@ -114,7 +207,6 @@ export default function OwnerFacilitySettingsPage() {
     input.value = ''
     if (!image || !selectedLocationId || locked || uploadingQr) return
     setQrError('')
-    setQrSavedLocationId(null)
     if (!['image/jpeg', 'image/png'].includes(image.type) || image.size > 5 * 1024 * 1024) {
       setQrError('Chọn ảnh JPG hoặc PNG tối đa 5 MB.')
       return
@@ -124,15 +216,17 @@ export default function OwnerFacilitySettingsPage() {
       const path = await uploadOwnerLocationQr(selectedLocationId, image)
       setLocations((rows) => rows.map((row) =>
         row.id === selectedLocationId ? { ...row, qrImagePath: path } : row))
-      setQrSavedLocationId(selectedLocationId)
+      setToast({ tone: 'success', text: 'Đã lưu ảnh QR chuyển khoản.' })
     } catch (err) {
       setQrError(apiErrorMessage(err))
     } finally {
       setUploadingQr(false)
     }
   }
-  const dirty = useMemo(
-    () => Object.keys(form).some((key) => form[key] !== original[key]),
+
+  const dirtyGroup = useMemo(
+    () => Object.fromEntries(Object.entries(GROUPS).map(([group, keys]) =>
+      [group, keys.some((key) => form[key] !== original[key])])),
     [form, original],
   )
 
@@ -146,6 +240,7 @@ export default function OwnerFacilitySettingsPage() {
     if (next) storeLocationId(next.id)
     setForm(toForm(next))
     setOriginal(toForm(next))
+    setFieldErrors({})
     return next
   }, [])
 
@@ -165,7 +260,7 @@ export default function OwnerFacilitySettingsPage() {
     return () => {
       cancelled = true
     }
-  }, [loadLocations, requestedLocationId])
+  }, [loadLocations, requestedLocationId, reloadKey])
 
   const handleFacilityChange = (value) => {
     const nextId = Number(value)
@@ -175,14 +270,15 @@ export default function OwnerFacilitySettingsPage() {
     storeLocationId(nextId)
     setForm(toForm(next))
     setOriginal(toForm(next))
-    setError('')
-    setMessage('')
+    setFieldErrors({})
+    setGroupError({})
+    setToast(null)
   }
 
   const updateField = (field) => (event) => {
     const value = event.target.value
     setForm((current) => ({ ...current, [field]: value }))
-    setMessage('')
+    setFieldErrors((current) => ({ ...current, [field]: undefined }))
   }
 
   /** FR17: vị trí chỉ chọn bằng ghim trên bản đồ hoặc GPS, không nhập tay kinh độ, vĩ độ. */
@@ -193,7 +289,6 @@ export default function OwnerFacilitySettingsPage() {
       longitude: String(Number(longitude.toFixed(6))),
     }))
     setLocationError('')
-    setMessage('')
   }
 
   const handleUseCurrentLocation = () => {
@@ -218,81 +313,24 @@ export default function OwnerFacilitySettingsPage() {
     )
   }
 
-  const validate = () => {
-    if (!form.name.trim()) return 'Tên địa điểm không được để trống.'
-    if (form.name.trim().length > LIMITS.name) return `Tên địa điểm tối đa ${LIMITS.name} ký tự.`
-    if (!form.address.trim()) return 'Địa chỉ không được để trống.'
-    if (form.address.trim().length > LIMITS.address) return `Địa chỉ tối đa ${LIMITS.address} ký tự.`
-    if (form.contactPhone.trim() && !PHONE_PATTERN.test(form.contactPhone.trim())) {
-      return 'Số điện thoại liên hệ phải gồm 10 chữ số, bắt đầu bằng 0.'
-    }
-
-    const numericChecks = [
-      ['advanceBookingDays', 'Số ngày đặt trước tối đa', LIMITS.advanceBookingDays],
-      ['pointEarningRate', 'Tỷ lệ tích điểm', LIMITS.pointEarningRate],
-    ]
-    for (const [field, label, range] of numericChecks) {
-      const raw = form[field].trim()
-      if (!raw) continue
-      const value = Number(raw)
-      if (!Number.isFinite(value)) return `${label} phải là số.`
-      if (value < range.min || value > range.max) {
-        return `${label} phải trong khoảng ${range.min.toLocaleString('vi-VN')} đến ${range.max.toLocaleString('vi-VN')}.`
-      }
-    }
-    return ''
-  }
-
-  /** Chỉ gửi trường đã đổi: backend coi null là "giữ nguyên". */
-  const buildPayload = () => {
-    const payload = {}
-    if (form.name !== original.name) payload.name = form.name.trim()
-    if (form.address !== original.address) payload.address = form.address.trim()
-    // contactPhone có @Pattern nên không gửi chuỗi rỗng (không xoá được, chỉ thay được).
-    if (form.contactPhone !== original.contactPhone && form.contactPhone.trim()) {
-      payload.contactPhone = form.contactPhone.trim()
-    }
-    if (form.latitude !== original.latitude && form.latitude.trim()) {
-      payload.latitude = Number(form.latitude)
-    }
-    if (form.longitude !== original.longitude && form.longitude.trim()) {
-      payload.longitude = Number(form.longitude)
-    }
-    if (form.advanceBookingDays !== original.advanceBookingDays && form.advanceBookingDays.trim()) {
-      payload.advanceBookingDays = Number(form.advanceBookingDays)
-    }
-    if (form.pointEarningRate !== original.pointEarningRate && form.pointEarningRate.trim()) {
-      payload.pointEarningRate = Number(form.pointEarningRate)
-    }
-    // Nhóm ngân hàng gửi chuỗi rỗng để xoá được giá trị cũ.
-    if (form.bankName !== original.bankName) payload.bankName = form.bankName.trim()
-    if (form.bankAccountNo !== original.bankAccountNo) payload.bankAccountNo = form.bankAccountNo.trim()
-    if (form.bankAccountHolder !== original.bankAccountHolder) {
-      payload.bankAccountHolder = form.bankAccountHolder.trim()
-    }
-    return payload
-  }
-
-  const handleSubmit = async (event) => {
-    event.preventDefault()
+  const saveGroup = async (group) => {
+    const keys = GROUPS[group]
     if (locked) {
-      setError('Địa điểm đang bị khóa nên không lưu được thay đổi.')
+      setGroupError((current) => ({ ...current, [group]: 'Địa điểm đang bị khóa nên không lưu được thay đổi.' }))
       return
     }
-    const validation = validate()
-    if (validation) {
-      setError(validation)
-      setMessage('')
+    const errors = validateGroup(form, keys)
+    if (Object.keys(errors).length) {
+      setFieldErrors((current) => ({ ...current, ...errors }))
       return
     }
-    const payload = buildPayload()
+    const payload = buildPayload(form, original, keys)
     if (Object.keys(payload).length === 0) {
-      setMessage('Chưa có thay đổi nào.')
-      setError('')
+      setGroupError((current) => ({ ...current, [group]: 'Chưa có thay đổi nào để lưu.' }))
       return
     }
-
-    setSaving(true)
+    setSavingGroup(group)
+    setGroupError((current) => ({ ...current, [group]: '' }))
     try {
       const updated = await updateOwnerLocation(selectedLocationId, payload)
       setLocations((current) =>
@@ -300,282 +338,278 @@ export default function OwnerFacilitySettingsPage() {
           location.id === selectedLocationId ? { ...location, ...updated } : location,
         ),
       )
-      setForm(toForm(updated))
-      setOriginal(toForm(updated))
-      setError('')
-      setMessage('Đã lưu hồ sơ địa điểm.')
+      // Chỉ cập nhật trường của khối vừa lưu, giữ nguyên thay đổi chưa lưu ở khối khác.
+      const saved = pick(toForm(updated), keys)
+      setForm((current) => ({ ...current, ...saved }))
+      setOriginal((current) => ({ ...current, ...saved }))
+      setToast({ tone: 'success', text: 'Đã lưu thay đổi.' })
     } catch (err) {
-      setError(apiErrorMessage(err))
-      setMessage('')
+      setGroupError((current) => ({ ...current, [group]: apiErrorMessage(err) }))
     } finally {
-      setSaving(false)
+      setSavingGroup(null)
     }
   }
 
-  const handleReset = () => {
-    setForm(original)
-    setError('')
-    setMessage('Đã trả về các giá trị đã lưu.')
+  const resetGroup = (group) => {
+    const keys = GROUPS[group]
+    setForm((current) => ({ ...current, ...pick(original, keys) }))
+    setFieldErrors((current) => ({ ...current, ...Object.fromEntries(keys.map((key) => [key, undefined])) }))
+    setGroupError((current) => ({ ...current, [group]: '' }))
   }
 
+  const exportInvalid = !exportRange.from || !exportRange.to || exportRange.from > exportRange.to
+  const handleExport = async () => {
+    setExporting(true)
+    setExportError('')
+    try {
+      await downloadVenueData({ from: exportRange.from, to: exportRange.to })
+      setToast({ tone: 'success', text: 'Đã tải file Excel dữ liệu quản lý.' })
+    } catch (err) {
+      setExportError(errorMessage(err))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const groupFooter = (group, label) => (
+    <>
+      {groupError[group] && <p className={styles.formError} role="alert">{groupError[group]}</p>}
+      <div className={styles.footerActions}>
+        <Button variant="ghost" onClick={() => resetGroup(group)} disabled={!dirtyGroup[group] || savingGroup === group}>
+          Hoàn tác
+        </Button>
+        <Button
+          onClick={() => saveGroup(group)}
+          loading={savingGroup === group}
+          disabled={locked || !dirtyGroup[group] || Boolean(savingGroup && savingGroup !== group)}
+        >
+          {label}
+        </Button>
+      </div>
+    </>
+  )
+
+  const disabled = locked || !selectedLocationId
 
   return (
     <ManagementLayout
       role="owner"
-      title="Hồ sơ địa điểm"
-      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name} · Cấu hình thông tin địa điểm và tài khoản ngân hàng` : 'Cấu hình thông tin địa điểm và tài khoản ngân hàng'}
+      title="Cài đặt địa điểm"
+      subtitle={selectedLocation
+        ? `${selectedLocation.name} · Hồ sơ, tài khoản nhận tiền, chính sách đặt sân và thời hạn dịch vụ. Đổi địa điểm ở thanh bên trái.`
+        : 'Hồ sơ, tài khoản nhận tiền, chính sách đặt sân và thời hạn dịch vụ.'}
       locations={locations}
       locationId={selectedLocationId}
       onLocationChange={handleFacilityChange}
     >
-      <div>
-        {loadError && <p className={styles.alertError} role="alert">{loadError}</p>}
-        {locked && (
-          <p className={styles.alertWarn}>
-            Cụm sân này đã bị khóa (hết hạn kỳ hạn dịch vụ). Vui lòng gia hạn để thực hiện chỉnh sửa.
-          </p>
-        )}
+      {toast && <Toast tone={toast.tone} onClose={() => setToast(null)}>{toast.text}</Toast>}
+      {loading && <LoadingState message="Đang tải hồ sơ địa điểm…" />}
+      {!loading && loadError && <ErrorState message={loadError} onRetry={() => setReloadKey((value) => value + 1)} />}
 
-        {selectedLocationId && <ServiceRenewals key={selectedLocationId} locationId={selectedLocationId} onRefresh={() => loadLocations(selectedLocationId)} />}
-        <form onSubmit={handleSubmit}>
-          <section className={styles.card}>
-            <div className={styles.cardHeader}>
-              <div>
-                <h2 className={styles.cardTitle}>Thông tin địa điểm</h2>
-                <p className={styles.cardHint}>Hiển thị cho người chơi ở trang tìm địa điểm và trang chi tiết địa điểm.</p>
+      {!loading && !loadError && selectedLocation && (
+        <div className={styles.layout}>
+          <nav className={styles.toc} aria-label="Mục lục cài đặt">
+            <ol>
+              {SECTIONS.map(([id, label]) => (
+                <li key={id}>
+                  <a href={`#${id}`} onClick={(event) => {
+                    event.preventDefault()
+                    const target = document.getElementById(id)
+                    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    target?.focus({ preventScroll: true })
+                  }}>
+                    {label}
+                    {GROUPS[id.replace('settings-', '')] && dirtyGroup[id.replace('settings-', '')] && (
+                      <span className={styles.dirtyDot} aria-label="có thay đổi chưa lưu" />
+                    )}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </nav>
+
+          <div className={styles.content}>
+            {locked && (
+              <p className={`${styles.notice} ${styles.noticeDanger}`} role="status">
+                <strong>Địa điểm đã bị khóa.</strong> Gửi yêu cầu gia hạn ở mục "Thời hạn dịch vụ" để mở lại và chỉnh sửa.
+              </p>
+            )}
+
+            <SettingsCard
+              id="settings-profile"
+              title="Hồ sơ địa điểm"
+              hint="Hiển thị cho người chơi ở trang tìm địa điểm và trang chi tiết địa điểm."
+              dirty={dirtyGroup.profile}
+              footer={groupFooter('profile', 'Lưu hồ sơ')}
+            >
+              <div className={styles.fieldGrid}>
+                <FormField label="Tên địa điểm" required error={fieldErrors.name} className={styles.fieldWide}
+                  hint={`${form.name.length}/${LIMITS.name} ký tự`}>
+                  <Input type="text" maxLength={LIMITS.name} value={form.name} disabled={disabled}
+                    onChange={updateField('name')} />
+                </FormField>
+                <FormField label="Địa chỉ" required error={fieldErrors.address} className={styles.fieldWide}>
+                  <Input type="text" maxLength={LIMITS.address} value={form.address} disabled={disabled}
+                    onChange={updateField('address')} />
+                </FormField>
+                <FormField label="Số điện thoại liên hệ" error={fieldErrors.contactPhone}
+                  hint="10 chữ số, bắt đầu bằng 0.">
+                  <Input type="tel" inputMode="numeric" placeholder="0900000010" value={form.contactPhone}
+                    disabled={disabled} onChange={updateField('contactPhone')} />
+                </FormField>
               </div>
-            </div>
 
-            <div className={styles.fieldGrid}>
-              <label className={`${styles.field} ${styles.fieldWide}`}>
-                <span>Tên địa điểm *</span>
-                <input
-                  type="text"
-                  maxLength={LIMITS.name}
-                  value={form.name}
-                  onChange={updateField('name')}
-                  required
-                />
-              </label>
-
-              <label className={`${styles.field} ${styles.fieldWide}`}>
-                <span>Địa chỉ *</span>
-                <input
-                  type="text"
-                  maxLength={LIMITS.address}
-                  value={form.address}
-                  onChange={updateField('address')}
-                  required
-                />
-              </label>
-
-              <label className={styles.field}>
-                <span>Số điện thoại liên hệ</span>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  placeholder="0900000010"
-                  value={form.contactPhone}
-                  onChange={updateField('contactPhone')}
-                />
-              </label>
-
-              <div className={`${styles.field} ${styles.fieldWide}`}>
-                <span>Vị trí trên bản đồ</span>
-                <p className={styles.cardHint}>
-                  Bấm vào bản đồ để đặt ghim tại sân, kéo ghim để chỉnh cho đúng. Có thể kéo, phóng to bản đồ để tìm.
-                </p>
-                <div style={{ maxWidth: 420 }}>
+              <div className={styles.mapBlock}>
+                <div className={styles.mapHeader}>
+                  <div>
+                    <p className={styles.fieldLabel}>Vị trí trên bản đồ</p>
+                    <p className={styles.cardHint}>Bấm vào bản đồ để đặt ghim tại sân, kéo ghim để chỉnh cho đúng.</p>
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={handleUseCurrentLocation}
+                    loading={locating} loadingText="Đang lấy vị trí…"
+                    disabled={disabled || Boolean(savingGroup)}>
+                    Dùng vị trí hiện tại
+                  </Button>
+                </div>
+                <div className={styles.map}>
                   <LocationMap
                     initialCenter={DEFAULT_MAP_CENTER}
                     venues={form.latitude === '' || form.longitude === '' ? [] :
                       [{ facility_id: 'current', latitude: form.latitude, longitude: form.longitude }]}
                     onPick={pickLocation}
-                    pickDisabled={locked || saving || locating || !selectedLocationId}
+                    pickDisabled={disabled || Boolean(savingGroup) || locating}
                   />
                 </div>
                 <p className={styles.cardHint} aria-live="polite">
                   {form.latitude === '' || form.longitude === ''
                     ? 'Chưa chọn vị trí.'
-                    : `Đã chọn vị trí: ${form.latitude}, ${form.longitude}`}
+                    : `Ghim đang ở ${form.latitude}, ${form.longitude}.`}
                 </p>
-                <div>
-                  <button type="button" className={styles.ghostButton} onClick={handleUseCurrentLocation}
-                    disabled={locked || saving || locating || !selectedLocationId}>
-                    {locating ? 'Đang lấy vị trí…' : 'Đặt ghim tại vị trí hiện tại (GPS)'}
-                  </button>
+                {locationError && <p className={styles.formError} role="alert">{locationError}</p>}
+              </div>
+            </SettingsCard>
+
+            <SettingsCard
+              id="settings-bank"
+              title="Thông tin nhận chuyển khoản"
+              hint="Người chơi chuyển khoản theo thông tin này; nhân viên đối chiếu để xác nhận thanh toán."
+              dirty={dirtyGroup.bank}
+              footer={groupFooter('bank', 'Lưu tài khoản')}
+            >
+              <div className={styles.bankLayout}>
+                <div className={styles.fieldStack}>
+                  <FormField label="Ngân hàng">
+                    <Input type="text" maxLength={LIMITS.bankName} placeholder="Vietcombank" value={form.bankName}
+                      disabled={disabled} onChange={updateField('bankName')} />
+                  </FormField>
+                  <FormField label="Số tài khoản">
+                    <Input type="text" inputMode="numeric" maxLength={LIMITS.bankAccountNo} value={form.bankAccountNo}
+                      className={styles.accountNo} disabled={disabled} onChange={updateField('bankAccountNo')} />
+                  </FormField>
+                  <FormField label="Tên chủ tài khoản">
+                    <Input type="text" maxLength={LIMITS.bankAccountHolder} value={form.bankAccountHolder}
+                      disabled={disabled} onChange={updateField('bankAccountHolder')} />
+                  </FormField>
                 </div>
-                {locationError && <p className={styles.alertError} role="alert">{locationError}</p>}
+                <div className={styles.qrPanel}>
+                  <p className={styles.fieldLabel}>Ảnh mã QR</p>
+                  <div className={styles.qrFrame}>
+                    {qrPreview ? (
+                      <img
+                        src={qrPreview}
+                        alt="Mã QR chuyển khoản của địa điểm"
+                        className={styles.qrImage}
+                        onError={() => {
+                          setQrPreview('')
+                          setQrError('Ảnh QR đã lưu nhưng không hiển thị được. Hãy chọn lại ảnh JPG hoặc PNG.')
+                        }}
+                      />
+                    ) : (
+                      <span className={styles.qrEmpty}>{uploadingQr ? 'Đang tải ảnh…' : 'Chưa có ảnh QR'}</span>
+                    )}
+                  </div>
+                  <FormField label="Chọn ảnh QR mới" htmlFor="location-qr-upload"
+                    hint="JPG hoặc PNG, tối đa 5 MB. Ảnh được lưu ngay khi chọn." error={qrError || undefined}>
+                    <FileInput id="location-qr-upload" accept="image/jpeg,image/png" onChange={handleQrUpload}
+                      aria-describedby={qrError ? 'location-qr-upload-error' : 'location-qr-upload-hint'}
+                      disabled={uploadingQr || Boolean(savingGroup) || disabled} />
+                  </FormField>
+                </div>
               </div>
-            </div>
-          </section>
+            </SettingsCard>
 
-          <section className={styles.card}>
-            <div className={styles.cardHeader}>
-              <div>
-                <h2 className={styles.cardTitle}>Quy định đặt sân và tích điểm</h2>
-                <p className={styles.cardHint}>Áp dụng cho mọi sân của địa điểm này.</p>
+            <SettingsCard
+              id="settings-policy"
+              title="Chính sách đặt sân và tích điểm"
+              hint="Áp dụng cho mọi sân của địa điểm này."
+              dirty={dirtyGroup.policy}
+              footer={groupFooter('policy', 'Lưu chính sách')}
+            >
+              <div className={styles.fieldGrid}>
+                <FormField label="Số ngày đặt trước tối đa" error={fieldErrors.advanceBookingDays}
+                  hint="Từ 1 đến 365 ngày. Mặc định 30 ngày.">
+                  <Input type="number" min={LIMITS.advanceBookingDays.min} max={LIMITS.advanceBookingDays.max}
+                    placeholder="30" value={form.advanceBookingDays} disabled={disabled}
+                    onChange={updateField('advanceBookingDays')} />
+                </FormField>
+                <FormField label="Tỷ lệ tích điểm (số đồng được 1 điểm)" error={fieldErrors.pointEarningRate}
+                  hint="Từ 1.000 đến 100.000 đồng. Chỉ áp dụng cho các lần tích điểm sau khi lưu.">
+                  <Input type="number" min={LIMITS.pointEarningRate.min} max={LIMITS.pointEarningRate.max}
+                    step="1000" placeholder="10000" value={form.pointEarningRate} disabled={disabled}
+                    onChange={updateField('pointEarningRate')} />
+                </FormField>
               </div>
-            </div>
+            </SettingsCard>
 
-            <div className={`${styles.fieldGrid} ${styles.fieldGridNarrow}`}>
-              <label className={styles.field}>
-                <span>Số ngày đặt trước tối đa</span>
-                <input
-                  type="number"
-                  min={LIMITS.advanceBookingDays.min}
-                  max={LIMITS.advanceBookingDays.max}
-                  placeholder="30"
-                  value={form.advanceBookingDays}
-                  onChange={updateField('advanceBookingDays')}
-                />
-              </label>
+            <SettingsCard
+              id="settings-service"
+              title="Thời hạn sử dụng dịch vụ"
+              hint="Do quản trị viên ghi nhận. Gửi yêu cầu gia hạn kèm chứng từ chuyển khoản ở bên dưới."
+            >
+              <dl className={styles.facts}>
+                <div>
+                  <dt>Tình trạng</dt>
+                  <dd><StatusBadge category="location" status={selectedLocation.status} /></dd>
+                </div>
+                <div>
+                  <dt>Hết hạn sử dụng dịch vụ</dt>
+                  <dd>{selectedLocation.serviceTermEndDate ? shortDate(selectedLocation.serviceTermEndDate) : '—'}</dd>
+                </div>
+                <div><dt>Số sân</dt><dd>{selectedLocation.courts?.length ?? 0}</dd></div>
+                {selectedLocation.lockedAt && <div><dt>Thời điểm khóa</dt><dd>{dateTime(selectedLocation.lockedAt)}</dd></div>}
+                <div><dt>Ngày tạo</dt><dd>{dateTime(selectedLocation.createdAt)}</dd></div>
+                <div><dt>Cập nhật lần cuối</dt><dd>{dateTime(selectedLocation.updatedAt)}</dd></div>
+              </dl>
+              <ServiceRenewals key={selectedLocationId} locationId={selectedLocationId}
+                onRefresh={() => loadLocations(selectedLocationId)} />
+            </SettingsCard>
 
-              <label className={styles.field}>
-                <span>Tỷ lệ tích điểm (số đồng để được 1 điểm)</span>
-                <input
-                  type="number"
-                  min={LIMITS.pointEarningRate.min}
-                  max={LIMITS.pointEarningRate.max}
-                  step="1000"
-                  placeholder="10000"
-                  value={form.pointEarningRate}
-                  onChange={updateField('pointEarningRate')}
-                />
-              </label>
-            </div>
-
-            <p className={styles.note}>
-              Số ngày đặt trước tối đa: 1–365 ngày. Tỷ lệ tích điểm: 1.000–100.000 đồng được 1 điểm.
-            </p>
-          </section>
-
-          <section className={styles.card}>
-            <div className={styles.cardHeader}>
-              <div>
-                <h2 className={styles.cardTitle}>Thông tin nhận chuyển khoản</h2>
-                <p className={styles.cardHint}>Người chơi chuyển khoản theo thông tin này; nhân viên đối chiếu để xác nhận thanh toán.</p>
+            <SettingsCard
+              id="settings-export"
+              title="Tải dữ liệu quản lý"
+              hint="File Excel gồm lịch sắp tới, booking đã qua và thu chi trong khoảng ngày đã chọn."
+            >
+              <div className={styles.exportRow}>
+                <FormField label="Từ ngày" required>
+                  <Input type="date" value={exportRange.from} max={exportRange.to || undefined}
+                    onChange={(event) => setExportRange((current) => ({ ...current, from: event.target.value }))} />
+                </FormField>
+                <FormField label="Đến ngày" required
+                  error={exportRange.from && exportRange.to && exportRange.from > exportRange.to
+                    ? 'Ngày kết thúc phải sau ngày bắt đầu.' : undefined}>
+                  <Input type="date" value={exportRange.to} min={exportRange.from || undefined}
+                    onChange={(event) => setExportRange((current) => ({ ...current, to: event.target.value }))} />
+                </FormField>
+                <Button variant="secondary" className={styles.exportButton} onClick={handleExport}
+                  loading={exporting} loadingText="Đang tạo file…" disabled={exportInvalid}>
+                  Tải file Excel
+                </Button>
               </div>
-            </div>
-
-            <div className={styles.fieldGrid}>
-              <label className={styles.field}>
-                <span>Ngân hàng</span>
-                <input
-                  type="text"
-                  maxLength={LIMITS.bankName}
-                  placeholder="Vietcombank"
-                  value={form.bankName}
-                  onChange={updateField('bankName')}
-                />
-              </label>
-
-              <label className={styles.field}>
-                <span>Số tài khoản</span>
-                <input
-                  type="text"
-                  maxLength={LIMITS.bankAccountNo}
-                  value={form.bankAccountNo}
-                  onChange={updateField('bankAccountNo')}
-                />
-              </label>
-
-              <label className={styles.field}>
-                <span>Tên chủ tài khoản</span>
-                <input
-                  type="text"
-                  maxLength={LIMITS.bankAccountHolder}
-                  value={form.bankAccountHolder}
-                  onChange={updateField('bankAccountHolder')}
-                />
-              </label>
-
-              <label className={`${styles.field} ${styles.fieldWide}`}>
-                <span>Ảnh QR chuyển khoản (JPG/PNG, tối đa 5 MB)</span>
-                <FileInput
-                  accept="image/jpeg,image/png"
-                  onChange={handleQrUpload}
-                  disabled={uploadingQr || saving || locked || !selectedLocationId}
-                />
-              </label>
-            </div>
-
-            {uploadingQr && <p role="status">Đang tải ảnh QR…</p>}
-            {qrSavedLocationId === selectedLocationId && qrSavedLocationId !== null && !qrError &&
-              <p className={styles.alertOk} role="status">Ảnh QR đã được lưu.</p>}
-            {qrError && <p className={styles.alertError} role="alert">{qrError}</p>}
-            {qrPreview && (
-              <div className={styles.qrBox}>
-                <img
-                  src={qrPreview}
-                  alt="Mã QR chuyển khoản của địa điểm"
-                  className={styles.qrImage}
-                  onError={() => {
-                    setQrPreview('')
-                    setQrError('Ảnh QR đã lưu nhưng không hiển thị được. Hãy chọn lại ảnh JPG hoặc PNG.')
-                  }}
-                />
-                <span className={styles.qrHint}>Ảnh QR đã lưu</span>
-              </div>
-            )}
-          </section>
-
-          {error && <p className={styles.alertError} role="alert">{error}</p>}
-          {message && <p className={styles.alertOk}>{message}</p>}
-
-          <div className={styles.actions}>
-            <button className={styles.primaryButton} type="submit" disabled={saving || locked || !dirty}>
-              {saving ? 'Đang lưu…' : dirty ? 'Lưu thay đổi' : 'Chưa có thay đổi'}
-            </button>
-            <button className={styles.ghostButton} type="button" onClick={handleReset} disabled={!dirty || saving}>
-              Hoàn tác
-            </button>
-            <span className={styles.dirtyHint}>
-              {dirty ? 'Có thay đổi chưa lưu' : 'Đã lưu mọi thay đổi'}
-            </span>
+              {exportError && <p className={styles.formError} role="alert">{exportError}</p>}
+            </SettingsCard>
           </div>
-        </form>
-
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div>
-              <h2 className={styles.cardTitle}>Thông tin do quản trị viên quản lý</h2>
-              <p className={styles.cardHint}>Chỉ xem, không sửa ở đây.</p>
-            </div>
-          </div>
-
-          <dl className={styles.metaGrid}>
-            <div>
-              <dt>Tình trạng</dt>
-              <dd>
-                <span className={`${styles.badge} ${locked ? styles.badgeLocked : styles.badgeActive}`}>
-                  {STATUS_LABELS[selectedLocation?.status] ?? selectedLocation?.status ?? '—'}
-                </span>
-              </dd>
-            </div>
-            <div>
-              <dt>Hết hạn sử dụng dịch vụ</dt>
-              <dd>{selectedLocation?.serviceTermEndDate ? formatDateTime(selectedLocation.serviceTermEndDate) : '—'}</dd>
-            </div>
-            <div>
-              <dt>Số sân</dt>
-              <dd>{selectedLocation?.courts?.length ?? 0}</dd>
-            </div>
-            <div>
-              <dt>Thời điểm khóa</dt>
-              <dd>{formatDateTime(selectedLocation?.lockedAt)}</dd>
-            </div>
-            <div>
-              <dt>Ngày tạo</dt>
-              <dd>{formatDateTime(selectedLocation?.createdAt)}</dd>
-            </div>
-            <div>
-              <dt>Cập nhật lần cuối</dt>
-              <dd>{formatDateTime(selectedLocation?.updatedAt)}</dd>
-            </div>
-          </dl>
-        </section>
-      </div>
+        </div>
+      )}
     </ManagementLayout>
   )
 }

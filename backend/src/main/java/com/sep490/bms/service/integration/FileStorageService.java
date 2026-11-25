@@ -76,6 +76,15 @@ public class FileStorageService {
         return new PathResource(path);
     }
 
+    /** Dọn file chưa được ghi nhận khi giao dịch tạo khiếu nại rollback. */
+    public void discardImage(String relativePath) {
+        try {
+            Files.deleteIfExists(resolve(relativePath));
+        } catch (IOException ex) {
+            throw new AppException("Không thể dọn ảnh chưa được lưu", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     /** Chặn đường dẫn kiểu "../../" thoát ra ngoài thư mục lưu ảnh. */
     private Path resolve(String relativePath) {
         Path path = root.resolve(relativePath).normalize();

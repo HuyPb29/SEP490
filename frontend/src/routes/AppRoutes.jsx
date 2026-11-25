@@ -37,6 +37,7 @@ const OwnerReportPage = lazy(() => import('../pages/owner/OwnerReportPage'));
 const OwnerWorkspace = lazy(() => import('../pages/owner/OwnerWorkspace'));
 const MultiSessionBookingPage = lazy(() => import('../pages/booking/MultiSessionBookingPage'));
 const PackageSummaryPage = lazy(() => import('../pages/booking/PackageSummaryPage'));
+const StyleGuide = import.meta.env.DEV ? lazy(() => import('../pages/_StyleGuide')) : null;
 
 function PublicEntry({ signedInRoles = [], children }) {
   const { user, roleHome } = useAuth();
@@ -75,6 +76,7 @@ export default function AppRoutes() {
   return (
     <Suspense fallback={<p role="status" className="p-6">Đang tải trang…</p>}>
       <Routes key={token ? 'signed-in' : 'guest'}>
+        {import.meta.env.DEV && <Route path="/dev/style-guide" element={<StyleGuide />} />}
         {/* UC11: Tìm kiếm địa điểm */}
         <Route path="/" element={<PublicEntry><FacilitySearchPage /></PublicEntry>} />
         <Route path="/locations" element={

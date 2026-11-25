@@ -4,6 +4,9 @@ import styles from './CommonUI.module.css';
 export function LoadingState({ message = 'Đang tải dữ liệu…', className = '' }) {
   return (
     <div role="status" className={[styles.stateBox, className].filter(Boolean).join(' ')}>
+      <div className={styles.skeletonGroup} aria-hidden="true">
+        <span className={styles.skeleton} /><span className={styles.skeleton} /><span className={styles.skeleton} />
+      </div>
       <p className={styles.stateDesc}>{message}</p>
     </div>
   );

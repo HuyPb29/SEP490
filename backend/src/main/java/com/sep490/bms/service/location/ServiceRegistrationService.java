@@ -95,19 +95,74 @@ public class ServiceRegistrationService {
     @Transactional
     public ServiceRegistrationDto submit(UserPrincipal user, CreateServiceRegistrationRequest request,
             MultipartFile proof) {
-        if (user != null && user.getRole() != Role.OWNER) {
-            throw new AppException("Chỉ Owner mới được đăng ký sử dụng dịch vụ", HttpStatus.FORBIDDEN);
-        }
-        if (request == null) {
-            throw new AppException("Thiếu thông tin đơn đăng ký");
-        }
+        requireCanRegister(user, request);
         if (!Boolean.TRUE.equals(request.getTermsAccepted())) {
             throw new AppException("Vui lòng đọc và đồng ý điều khoản sử dụng dịch vụ");
         }
         if (proof == null || proof.isEmpty()) {
             throw new AppException("Vui lòng đính kèm ảnh chứng từ chuyển khoản tiền thuê");
         }
+        // Kiểm tra lại toàn bộ dù form đã gọi check(): email, số điện thoại có thể vừa bị người khác dùng (D181).
+        Draft draft = validateDraft(user, request, true);
 
+        // Kiểm tra xong mọi thứ mới lưu ảnh, để đơn bị từ chối vì dữ liệu sai không để lại file rác.
+        String proofPath = files.storeImage(proof, "service-registration-proofs");
+        LocalDateTime now = LocalDateTime.now();
+        ServiceRegistration entity = ServiceRegistration.builder()
+                .requesterId(draft.owner() == null ? null : draft.owner().getId())
+                .locationName(draft.locationName())
+                .address(draft.address())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
+                .courtCount(draft.courtCount())
+                .rentalYears(draft.rentalYears())
+                .rentalAmount(RentalFeeCalculator.amount(draft.courtCount(), draft.rentalYears()))
+                .proofImagePath(proofPath)
+                .termsAcceptedAt(now)
+                .contactName(draft.contactName())
+                .contactPhone(draft.contactPhone())
+                .contactEmail(draft.contactEmail())
+                .status(ApprovalStatus.PENDING)
+                .build();
+
+        ServiceRegistration saved = serviceRegistrationRepository.save(entity);
+        for (Account admin : accountRepository.findByRoleAndStatus(Role.ADMIN, AccountStatus.ACTIVE)) {
+            notifications.notifyOnce(admin.getId(), "SERVICE_REGISTRATION_SUBMITTED", "Có đơn đăng ký dịch vụ mới",
+                    "Địa điểm " + saved.getLocationName() + " đang chờ xét duyệt.",
+                    "SERVICE_REGISTRATION", saved.getId());
+        }
+        return ServiceRegistrationDto.fromEntity(saved, draft.contactName());
+    }
+
+    /**
+     * UC05 #2 - Kiểm tra thông tin trước khi form hiện QR chuyển khoản (FR10, D181).
+     * Chạy đúng các kiểm tra của submit() trừ điều khoản và ảnh chứng từ; không lưu gì, không giữ email/số điện thoại.
+     */
+    @Transactional(readOnly = true)
+    public void check(UserPrincipal user, CreateServiceRegistrationRequest request) {
+        requireCanRegister(user, request);
+        validateDraft(user, request, false);
+    }
+
+    /** Thông tin đơn đã kiểm tra và chuẩn hóa, dùng chung cho check() và submit(). */
+    private record Draft(Account owner, int courtCount, int rentalYears, String locationName, String address,
+            String contactName, String contactPhone, String contactEmail) {
+    }
+
+    private void requireCanRegister(UserPrincipal user, CreateServiceRegistrationRequest request) {
+        if (user != null && user.getRole() != Role.OWNER) {
+            throw new AppException("Chỉ Owner mới được đăng ký sử dụng dịch vụ", HttpStatus.FORBIDDEN);
+        }
+        if (request == null) {
+            throw new AppException("Thiếu thông tin đơn đăng ký");
+        }
+    }
+
+    /**
+     * Kiểm tra dữ liệu đơn (DR19), email và số điện thoại (MSG103, DR01), yêu cầu Chờ xử lý trùng (D180),
+     * địa điểm trùng của Owner. forSubmit = true thì khóa tài khoản Owner và email, số điện thoại tới hết giao dịch.
+     */
+    private Draft validateDraft(UserPrincipal user, CreateServiceRegistrationRequest request, boolean forSubmit) {
         int courtCount = validateCourtCount(request.getCourtCount());
         int rentalYears = validateRentalYears(request.getRentalYears());
         if (request.getLatitude() == null || request.getLongitude() == null) {
@@ -117,7 +172,7 @@ public class ServiceRegistrationService {
                 || request.getLongitude().abs().compareTo(BigDecimal.valueOf(180)) > 0) {
             throw new AppException("Tọa độ địa điểm không hợp lệ");
         }
-        Account owner = user == null ? null : lockOwner(user.getId());
+        Account owner = user == null ? null : forSubmit ? lockOwner(user.getId()) : findOwner(user.getId());
         String contactName = owner == null
                 ? requireText(request.getContactName(), "Họ tên người đại diện", 50) : owner.getFullName();
         String contactPhone = owner == null
@@ -133,7 +188,9 @@ public class ServiceRegistrationService {
             throw new AppException("Email liên hệ không hợp lệ");
         }
         if (owner == null) {
-            lockContact(contactEmail, contactPhone);
+            if (forSubmit) {
+                lockContact(contactEmail, contactPhone);
+            }
             requireAvailableContact(contactEmail, contactPhone);
             requireNoPendingGuestRegistration(contactEmail, contactPhone);
         } else {
@@ -146,34 +203,8 @@ public class ServiceRegistrationService {
                 throw new AppException("Địa điểm này đã có đơn đăng ký đang chờ duyệt.", HttpStatus.CONFLICT);
             }
         }
-
-        // Kiểm tra xong mọi thứ mới lưu ảnh, để đơn bị từ chối vì dữ liệu sai không để lại file rác.
-        String proofPath = files.storeImage(proof, "service-registration-proofs");
-        LocalDateTime now = LocalDateTime.now();
-        ServiceRegistration entity = ServiceRegistration.builder()
-                .requesterId(owner == null ? null : owner.getId())
-                .locationName(locationName)
-                .address(address)
-                .latitude(request.getLatitude())
-                .longitude(request.getLongitude())
-                .courtCount(courtCount)
-                .rentalYears(rentalYears)
-                .rentalAmount(RentalFeeCalculator.amount(courtCount, rentalYears))
-                .proofImagePath(proofPath)
-                .termsAcceptedAt(now)
-                .contactName(contactName)
-                .contactPhone(contactPhone)
-                .contactEmail(contactEmail)
-                .status(ApprovalStatus.PENDING)
-                .build();
-
-        ServiceRegistration saved = serviceRegistrationRepository.save(entity);
-        for (Account admin : accountRepository.findByRoleAndStatus(Role.ADMIN, AccountStatus.ACTIVE)) {
-            notifications.notifyOnce(admin.getId(), "SERVICE_REGISTRATION_SUBMITTED", "Có đơn đăng ký dịch vụ mới",
-                    "Địa điểm " + saved.getLocationName() + " đang chờ xét duyệt.",
-                    "SERVICE_REGISTRATION", saved.getId());
-        }
-        return ServiceRegistrationDto.fromEntity(saved, contactName);
+        return new Draft(owner, courtCount, rentalYears, locationName, address,
+                contactName, contactPhone, contactEmail);
     }
 
     /** UC05 - Owner xem các đơn mình đã gửi, lọc tuỳ chọn theo trạng thái. */
@@ -339,6 +370,11 @@ public class ServiceRegistrationService {
 
     private Account lockOwner(Long ownerId) {
         return accountRepository.findByIdForUpdate(ownerId)
+                .orElseThrow(() -> new AppException("Không tìm thấy tài khoản Owner", HttpStatus.NOT_FOUND));
+    }
+
+    private Account findOwner(Long ownerId) {
+        return accountRepository.findById(ownerId)
                 .orElseThrow(() -> new AppException("Không tìm thấy tài khoản Owner", HttpStatus.NOT_FOUND));
     }
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import styles from './WorkspaceNav.module.css';
+import { handleMenuKeyDown } from '../common/menuKeyboard';
 
 /**
  * Menu điều hướng nhanh theo vai trò dựa trên AuthContext.
@@ -52,14 +53,19 @@ export default function WorkspaceNav() {
   const { user, role, isAuthenticated, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
+  const triggerRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
+    wrapRef.current?.querySelector('[role="menuitem"]')?.focus();
     const onDown = (event) => {
       if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
     };
     const onKey = (event) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -95,7 +101,7 @@ export default function WorkspaceNav() {
   return (
     <div className={styles.wrap} ref={wrapRef}>
       {open && (
-        <div className={styles.panel} role="menu">
+        <div className={styles.panel} role="menu" aria-label="Menu quản lý" onKeyDown={handleMenuKeyDown}>
           <div className={styles.panelHead}>
             <span className={styles.roleBadge}>{ROLE_LABEL[role] || role}</span>
             {displayName && <span className={styles.userName}>{displayName}</span>}
@@ -118,7 +124,7 @@ export default function WorkspaceNav() {
             ))}
           </div>
 
-          <button type="button" className={styles.logout} onClick={handleLogout} disabled={signingOut}>
+          <button type="button" role="menuitem" className={styles.logout} onClick={handleLogout} disabled={signingOut}>
             {signingOut ? 'Đang đăng xuất…' : 'Đăng xuất'}
           </button>
           {logoutError && <p role="alert">{logoutError}</p>}
@@ -128,6 +134,8 @@ export default function WorkspaceNav() {
       <button
         type="button"
         className={`${styles.trigger} ${open ? styles.triggerOpen : ''}`}
+        ref={triggerRef}
+        aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Mở menu quản lý"
         onClick={() => setOpen((value) => !value)}

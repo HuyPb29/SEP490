@@ -12,6 +12,7 @@ import com.sep490.bms.entity.booking.*;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.feedback.Complaint;
 import com.sep490.bms.service.feedback.ComplaintService;
+import com.sep490.bms.entity.notification.Notification;
 import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.reschedule.RefundRequest;
 import com.sep490.bms.repository.operation.OperationQueryRepository;
@@ -153,7 +154,9 @@ class SrsV18IntegrationTests {
         mvc.perform(get("/api/staff/dashboards/me").header("Authorization", token(staff)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentsAwaitingConfirmation").value(1))
                 .andExpect(jsonPath("$.data.pendingPayments[0].id").value(paymentId))
-                .andExpect(jsonPath("$.data.pendingPayments[0].overdue").value(true));
+                .andExpect(jsonPath("$.data.pendingPayments[0].overdue").value(true))
+                // D182: quá 15 phút chỉ báo đỏ, chưa chuyển cho chủ sân (chuyển khi quá 25 phút).
+                .andExpect(jsonPath("$.data.pendingPayments[0].transferredToOwner").value(false));
         mvc.perform(get(eligibility).header("Authorization", token(player))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").value(true));
 
@@ -166,6 +169,20 @@ class SrsV18IntegrationTests {
         long complaintId = json.readTree(result.getResponse().getContentAsString()).at("/data/id").asLong();
         mvc.perform(post("/api/complaints").header("Authorization", token(player))
                 .contentType("application/json").content(body)).andExpect(status().isConflict());
+        assertThat(em.createQuery("""
+                select n from Notification n
+                where n.type = 'COMPLAINT_SUBMITTED' and n.refType = 'COMPLAINT' and n.refId = :id
+                """, Notification.class).setParameter("id", complaintId).getResultList())
+                .extracting(Notification::getRecipientId)
+                .containsExactly(owner.getId());
+        mvc.perform(get("/api/notifications").header("Authorization", token(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].refType").value("COMPLAINT"))
+                .andExpect(jsonPath("$.data.content[0].refId").value((int) complaintId))
+                .andExpect(jsonPath("$.data.content[0].locationId").value(location.getId().intValue()));
+        mvc.perform(get("/api/owner/complaints/" + complaintId).header("Authorization", token(owner))
+                .header("X-Location-Id", location.getId())).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PENDING_OWNER"));
         assertThat(compensationVouchers()).isEmpty();
         mvc.perform(post("/api/owner/complaints/" + complaintId + "/resolve").header("Authorization", token(owner))
                 .header("X-Location-Id", location.getId()).contentType("application/json")

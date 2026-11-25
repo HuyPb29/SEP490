@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   apiErrorMessage,
   createOpeningException,
@@ -12,6 +13,20 @@ import {
   updateOpeningHours,
 } from '../../api/locationApi'
 import ManagementLayout from '../../components/layout/ManagementLayout'
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  FormField,
+  Input,
+  LoadingState,
+  Modal,
+  Select,
+  Table,
+  Toast,
+} from '../../components/common'
+import { shortDate } from '../../utils/formatters'
 import styles from './OwnerOpeningHoursPage.module.css'
 
 /** Backend chỉ nhận bội số 30 phút: mở 00:00–23:30, đóng 00:30–24:00. */
@@ -25,23 +40,16 @@ function toTimeLabel(minutes) {
 }
 
 const OPEN_OPTIONS = Array.from({ length: DAY_MINUTES / SLOT_STEP }, (_, index) => index * SLOT_STEP)
-const CLOSE_OPTIONS = Array.from(
-  { length: DAY_MINUTES / SLOT_STEP },
-  (_, index) => (index + 1) * SLOT_STEP,
-)
+  .map((minute) => [minute, toTimeLabel(minute)])
+const CLOSE_OPTIONS = Array.from({ length: DAY_MINUTES / SLOT_STEP }, (_, index) => (index + 1) * SLOT_STEP)
+  .map((minute) => [minute, toTimeLabel(minute)])
 
-const WEEKDAY_LABELS = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ nhật"]
+const WEEKDAY_LABELS = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ nhật']
 
 function todayIso() {
   const now = new Date()
   const offset = now.getTimezoneOffset() * 60_000
   return new Date(now.getTime() - offset).toISOString().slice(0, 10)
-}
-
-function formatDate(isoDate) {
-  if (!isoDate) return '—'
-  const [year, month, day] = String(isoDate).split('-')
-  return `${day}/${month}/${year}`
 }
 
 function weekdayName(isoDate) {
@@ -67,29 +75,38 @@ function buildWeek(days) {
   })
 }
 
+/** Số khung 30 phút trong ngày, để Owner xem trước lịch sân sẽ có bao nhiêu ô. */
+function slotCount(openMinute, closeMinute) {
+  return Math.max(0, Math.floor((closeMinute - openMinute) / SLOT_STEP))
+}
+
+const emptyExceptionForm = () => ({ exceptionDate: todayIso(), openMinute: 360, closeMinute: 1080, note: '' })
+
 export default function OwnerOpeningHoursPage() {
   const [locations, setLocations] = useState([])
   const [selectedLocationId, setSelectedLocationId] = useState(null)
-  const [_loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   const [week, setWeek] = useState(() => buildWeek([]))
+  const [savedWeek, setSavedWeek] = useState(() => buildWeek([]))
+  const [weekLoading, setWeekLoading] = useState(false)
   const [weekSaving, setWeekSaving] = useState(false)
   const [weekError, setWeekError] = useState('')
-  const [weekMessage, setWeekMessage] = useState('')
+  const [confirmSave, setConfirmSave] = useState(false)
 
   const [exceptions, setExceptions] = useState([])
   const [exceptionFilter, setExceptionFilter] = useState({ from: '', to: '' })
-  const [exceptionForm, setExceptionForm] = useState({
-    exceptionDate: todayIso(),
-    openMinute: 360,
-    closeMinute: 1080,
-    note: '',
-  })
-  const [editingExceptionId, setEditingExceptionId] = useState(null)
+  const [exceptionForm, setExceptionForm] = useState(emptyExceptionForm)
+  const [exceptionModal, setExceptionModal] = useState(null)
   const [exceptionSaving, setExceptionSaving] = useState(false)
   const [exceptionError, setExceptionError] = useState('')
-  const [exceptionMessage, setExceptionMessage] = useState('')
+  const [listError, setListError] = useState('')
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const [toast, setToast] = useState(null)
 
   const selectedLocation = useMemo(
     () => locations.find((location) => location.id === selectedLocationId) ?? null,
@@ -101,9 +118,19 @@ export default function OwnerOpeningHoursPage() {
     && Boolean(selectedLocation.serviceTermEndDate)
     && selectedLocation.serviceActive === false
 
+  const weekDirty = useMemo(
+    () => week.some((day, index) => {
+      const saved = savedWeek[index]
+      return day.enabled !== saved.enabled
+        || (day.enabled && (day.openMinute !== saved.openMinute || day.closeMinute !== saved.closeMinute))
+    }),
+    [week, savedWeek],
+  )
+
   const loadWeek = useCallback(async (locationId) => {
-    const days = await getOpeningHours(locationId)
-    setWeek(buildWeek(days))
+    const days = buildWeek(await getOpeningHours(locationId))
+    setWeek(days)
+    setSavedWeek(days)
   }, [])
 
   const loadExceptions = useCallback(async (locationId, filter) => {
@@ -111,7 +138,7 @@ export default function OwnerOpeningHoursPage() {
     setExceptions(rows)
   }, [])
 
-  // Nạp danh sách địa điểm một lần, chọn địa điểm nhớ lần trước nếu còn hợp lệ.
+  // Nạp danh sách địa điểm, chọn địa điểm nhớ lần trước nếu còn hợp lệ.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -134,38 +161,39 @@ export default function OwnerOpeningHoursPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [reloadKey])
 
-  // Đổi địa điểm thì nạp lại cả 3 phần.
+  // Đổi địa điểm thì nạp lại giờ mở cửa và ngày ngoại lệ.
   useEffect(() => {
     if (!selectedLocationId) return
     let cancelled = false
     ;(async () => {
+      setWeekLoading(true)
       try {
         await loadWeek(selectedLocationId)
         if (cancelled) return
         await loadExceptions(selectedLocationId, {})
         if (cancelled) return
         setExceptionFilter({ from: '', to: '' })
-        setEditingExceptionId(null)
         setWeekError('')
-        setWeekMessage('')
-        setExceptionError('')
-        setExceptionMessage('')
+        setListError('')
       } catch (err) {
         if (!cancelled) setWeekError(apiErrorMessage(err))
+      } finally {
+        if (!cancelled) setWeekLoading(false)
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [selectedLocationId, loadWeek, loadExceptions])
+  }, [selectedLocationId, loadWeek, loadExceptions, reloadKey])
 
   const handleFacilityChange = (value) => {
     const nextId = Number(value)
     if (!Number.isInteger(nextId) || nextId <= 0) return
     setSelectedLocationId(nextId)
     storeLocationId(nextId)
+    setToast(null)
   }
 
   // ------------------------------------------------------------ giờ mở cửa
@@ -174,45 +202,37 @@ export default function OwnerOpeningHoursPage() {
     setWeek((current) =>
       current.map((day) => (day.dayOfWeek === dayOfWeek ? { ...day, ...patch } : day)),
     )
-    setWeekMessage('')
+    setWeekError('')
   }
 
-  const copyFirstDayToAll = () => {
-    const source = week[0]
-    if (!source) return
+  /** Chép giờ của một ngày sang các ngày đang mở cửa khác. */
+  const applyToOtherDays = (source) => {
     setWeek((current) =>
-      current.map((day) => ({
-        ...day,
-        enabled: day.enabled || source.enabled,
-        openMinute: source.openMinute,
-        closeMinute: source.closeMinute,
-      })),
+      current.map((day) => (day.dayOfWeek === source.dayOfWeek || !day.enabled
+        ? day
+        : { ...day, openMinute: source.openMinute, closeMinute: source.closeMinute })),
     )
-    setWeekMessage("Đã sao chép giờ Thứ Hai sang tất cả ngày đang mở. Hãy lưu thay đổi.")
+    setToast({ tone: 'info', text: `Đã áp dụng giờ ${source.label} cho các ngày đang mở cửa. Bấm "Lưu giờ mở cửa" để lưu.` })
   }
 
   const weekValidationError = () => {
     const enabledDays = week.filter((day) => day.enabled)
-    if (enabledDays.length === 0) return "Chọn ít nhất một ngày mở cửa."
+    if (enabledDays.length === 0) return 'Chọn ít nhất một ngày mở cửa.'
     const broken = enabledDays.find((day) => day.closeMinute <= day.openMinute)
     if (broken) return `${broken.label}: giờ đóng cửa phải sau giờ mở cửa.`
     return ''
   }
 
-  const handleSaveWeek = async () => {
+  const requestSaveWeek = () => {
     const validation = weekValidationError()
     if (validation) {
       setWeekError(validation)
-      setWeekMessage('')
       return
     }
-    const confirmed = window.confirm(
-      "Lưu giờ mở cửa sẽ thay thế cấu hình của cả tuần.\n\n"
-      + "Các lượt đặt sân đã xác nhận nằm ngoài giờ mở cửa mới sẽ được đánh dấu bị ảnh hưởng "
-      + "và khách bị ảnh hưởng sẽ được thông báo. Tiếp tục?",
-    )
-    if (!confirmed) return
+    setConfirmSave(true)
+  }
 
+  const handleSaveWeek = async () => {
     setWeekSaving(true)
     try {
       const payload = week
@@ -222,46 +242,56 @@ export default function OwnerOpeningHoursPage() {
           openMinute: day.openMinute,
           closeMinute: day.closeMinute,
         }))
-      const saved = await updateOpeningHours(selectedLocationId, payload)
-      setWeek(buildWeek(saved))
+      const saved = buildWeek(await updateOpeningHours(selectedLocationId, payload))
+      setWeek(saved)
+      setSavedWeek(saved)
       setWeekError('')
-      setWeekMessage("Đã lưu giờ mở cửa.")
+      setToast({ tone: 'success', text: 'Đã lưu giờ mở cửa.' })
     } catch (err) {
       setWeekError(apiErrorMessage(err))
-      setWeekMessage('')
     } finally {
       setWeekSaving(false)
+      setConfirmSave(false)
     }
   }
 
   const handleResetWeek = () => {
-    loadWeek(selectedLocationId)
-      .then(() => {
-        setWeekError('')
-        setWeekMessage("Đã khôi phục lịch đã lưu.")
-      })
-      .catch((err) => setWeekError(apiErrorMessage(err)))
+    setWeek(savedWeek)
+    setWeekError('')
   }
 
   // ------------------------------------------------------------- ngày ngoại lệ
 
-  const resetExceptionForm = () => {
-    setExceptionForm({
-      exceptionDate: todayIso(),
-      openMinute: 360,
-      closeMinute: 1080,
-      note: '',
-    })
-    setEditingExceptionId(null)
+  const openCreateException = () => {
+    setExceptionForm(emptyExceptionForm())
     setExceptionError('')
+    setExceptionModal({ id: null })
   }
+
+  const openEditException = (row) => {
+    setExceptionForm({
+      exceptionDate: row.exceptionDate,
+      openMinute: row.openMinute,
+      closeMinute: row.closeMinute,
+      note: row.note ?? '',
+    })
+    setExceptionError('')
+    setExceptionModal({ id: row.id })
+  }
+
+  const closeExceptionModal = () => {
+    if (!exceptionSaving) setExceptionModal(null)
+  }
+
+  const exceptionTimeInvalid = Number(exceptionForm.closeMinute) <= Number(exceptionForm.openMinute)
 
   const handleExceptionSubmit = async (event) => {
     event.preventDefault()
-    if (exceptionForm.closeMinute <= exceptionForm.openMinute) {
-      setExceptionError("Giờ đóng cửa phải sau giờ mở cửa.")
+    if (exceptionTimeInvalid) {
+      setExceptionError('Giờ đóng cửa phải sau giờ mở cửa.')
       return
     }
+    const editingId = exceptionModal?.id
     setExceptionSaving(true)
     try {
       const payload = {
@@ -270,338 +300,385 @@ export default function OwnerOpeningHoursPage() {
         closeMinute: Number(exceptionForm.closeMinute),
         note: exceptionForm.note?.trim() ? exceptionForm.note.trim() : null,
       }
-      if (editingExceptionId) {
-        await updateOpeningException(editingExceptionId, payload, selectedLocationId)
+      if (editingId) {
+        await updateOpeningException(editingId, payload, selectedLocationId)
       } else {
         await createOpeningException(selectedLocationId, payload)
       }
       await loadExceptions(selectedLocationId, exceptionFilter)
-      setExceptionMessage(editingExceptionId ? "Đã cập nhật ngày ngoại lệ." : "Đã thêm ngày ngoại lệ.")
-      resetExceptionForm()
+      setToast({ tone: 'success', text: editingId ? 'Đã cập nhật ngày ngoại lệ.' : 'Đã thêm ngày ngoại lệ.' })
+      setExceptionModal(null)
     } catch (err) {
       setExceptionError(apiErrorMessage(err))
-      setExceptionMessage('')
     } finally {
       setExceptionSaving(false)
     }
   }
 
-  const handleEditException = (row) => {
-    setEditingExceptionId(row.id)
-    setExceptionForm({
-      exceptionDate: row.exceptionDate,
-      openMinute: row.openMinute,
-      closeMinute: row.closeMinute,
-      note: row.note ?? '',
-    })
-    setExceptionError('')
-    setExceptionMessage('')
-  }
-
-  const handleDeleteException = async (row) => {
-    if (!window.confirm(`Xóa ngày ngoại lệ ${formatDate(row.exceptionDate)}?`)) return
+  const handleDeleteException = async () => {
+    const row = pendingDelete
+    if (!row) return
+    setDeleting(true)
     try {
       await deleteOpeningException(row.id, selectedLocationId)
       await loadExceptions(selectedLocationId, exceptionFilter)
-      if (editingExceptionId === row.id) resetExceptionForm()
-      setExceptionError('')
-      setExceptionMessage("Đã xóa ngày ngoại lệ.")
+      setToast({ tone: 'success', text: 'Đã xóa ngày ngoại lệ.' })
     } catch (err) {
-      setExceptionError(apiErrorMessage(err))
-      setExceptionMessage('')
+      setToast({ tone: 'danger', text: apiErrorMessage(err) })
+    } finally {
+      setDeleting(false)
+      setPendingDelete(null)
     }
   }
 
-  const applyExceptionFilter = async () => {
+  const applyExceptionFilter = async (filter) => {
     try {
-      await loadExceptions(selectedLocationId, exceptionFilter)
-      setExceptionError('')
+      await loadExceptions(selectedLocationId, filter)
+      setListError('')
     } catch (err) {
-      setExceptionError(apiErrorMessage(err))
+      setListError(apiErrorMessage(err))
     }
   }
 
-  const clearExceptionFilter = async () => {
+  const clearExceptionFilter = () => {
     const empty = { from: '', to: '' }
     setExceptionFilter(empty)
-    try {
-      await loadExceptions(selectedLocationId, empty)
-      setExceptionError('')
-    } catch (err) {
-      setExceptionError(apiErrorMessage(err))
-    }
+    applyExceptionFilter(empty)
   }
 
+  const filterInvalid = Boolean(exceptionFilter.from && exceptionFilter.to && exceptionFilter.from > exceptionFilter.to)
   const configuredDays = week.filter((day) => day.enabled).length
+  const totalSlots = week.reduce((sum, day) => sum + (day.enabled ? slotCount(day.openMinute, day.closeMinute) : 0), 0)
+  const readOnly = locationLocked || !selectedLocationId
 
   return (
     <ManagementLayout
       role="owner"
-      title="Giờ mở cửa &amp; khung giờ"
-      subtitle={selectedLocation ? `Cụm sân: ${selectedLocation.name} · Cấu hình giờ mở cửa, khung giờ và ngày ngoại lệ` : "Cấu hình khung giờ hoạt động, thời lượng khung giờ và ngày ngoại lệ"}
+      title="Giờ mở cửa"
+      subtitle={selectedLocation
+        ? `${selectedLocation.name} · Giờ mở cửa theo tuần và ngày ngoại lệ. Mỗi khung giờ trên lịch sân dài ${SLOT_STEP} phút.`
+        : `Giờ mở cửa theo tuần và ngày ngoại lệ. Mỗi khung giờ trên lịch sân dài ${SLOT_STEP} phút.`}
       locations={locations}
       locationId={selectedLocationId}
       onLocationChange={handleFacilityChange}
     >
-      <div>
-        {loadError && <p className={styles.alertError} role="alert">{loadError}</p>}
+      <div className={styles.page}>
+        {toast && <Toast tone={toast.tone} onClose={() => setToast(null)}>{toast.text}</Toast>}
+
+        {loading && <LoadingState message="Đang tải địa điểm…" />}
+        {!loading && loadError && (
+          <ErrorState message={loadError} onRetry={() => setReloadKey((value) => value + 1)} />
+        )}
+        {!loading && !loadError && locations.length === 0 && (
+          <EmptyState
+            title="Chưa có địa điểm"
+            description="Tài khoản chưa được gán địa điểm nào. Đăng ký sử dụng dịch vụ để bắt đầu cấu hình giờ mở cửa."
+            action={<Link className={styles.linkButton} to="/register-service">Đăng ký thêm địa điểm</Link>}
+          />
+        )}
+
         {locationLocked && (
-          <p className={styles.alertWarn}>
-            Cụm sân này đã bị khóa. Anh/chị chỉ có thể xem dữ liệu mà không thể chỉnh sửa.
+          <p className={`${styles.notice} ${styles.noticeDanger}`} role="status">
+            <strong>Địa điểm đã bị khóa.</strong> Bạn chỉ xem được dữ liệu, không chỉnh sửa giờ mở cửa.
           </p>
         )}
         {serviceExpired && (
-          <p className={styles.alertWarn}>
-            Kỳ hạn dịch vụ đã hết ngày {selectedLocation.serviceTermEndDate}. Địa điểm sẽ bị khóa khi quá hạn 10 ngày
-            nếu chưa gia hạn. Vui lòng liên hệ Quản trị viên.
+          <p className={`${styles.notice} ${styles.noticeWarning}`} role="status">
+            <span>
+              <strong>Thời hạn dịch vụ đã hết ngày {shortDate(selectedLocation.serviceTermEndDate)}.</strong>{' '}
+              Địa điểm sẽ bị khóa khi quá hạn 10 ngày nếu chưa gia hạn.
+            </span>
+            <Link className={styles.linkButton} to={`/owner/facility-settings?locationId=${selectedLocation.id}#service-renewal`}>
+              Yêu cầu gia hạn
+            </Link>
           </p>
         )}
 
-        {/* ------------------------------------------------------- tuần */}
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div>
-              <h2 className={styles.cardTitle}>Giờ mở cửa theo tuần</h2>
-              <p className={styles.cardHint}>
-                {configuredDays} trong 7 ngày đã cấu hình · ngày không được chọn sẽ đóng cửa khi lưu
-              </p>
-            </div>
-            <div className={styles.headerActions}>
-              <button className={styles.ghostButton} type="button" onClick={copyFirstDayToAll}>
-                Sao chép giờ Thứ Hai cho các ngày
-              </button>
-              <button className={styles.ghostButton} type="button" onClick={handleResetWeek}>
-                Khôi phục
-              </button>
-            </div>
-          </div>
+        {selectedLocationId && !loadError && (
+          <>
+            <section className={styles.card} aria-labelledby="week-heading">
+              <header className={styles.cardHeader}>
+                <div>
+                  <h2 id="week-heading" className={styles.cardTitle}>Giờ mở cửa theo tuần</h2>
+                  <p className={styles.cardHint}>
+                    {configuredDays}/7 ngày mở cửa · {totalSlots} khung {SLOT_STEP} phút mỗi tuần.
+                    Ngày tắt "Mở cửa" sẽ đóng cửa sau khi lưu.
+                  </p>
+                </div>
+              </header>
 
-          <table className={`${styles.table} ${styles.weekTable}`}>
-            <thead>
-              <tr>
-                <th className={styles.colToggle}>Mở cửa</th>
-                <th>Ngày</th>
-                <th>Từ</th>
-                <th>Đến</th>
-                <th className={styles.colDuration}>Thời lượng</th>
-              </tr>
-            </thead>
-            <tbody>
-              {week.map((day) => (
-                <tr key={day.dayOfWeek} className={day.enabled ? '' : styles.rowDisabled}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={day.enabled}
-                      onChange={(event) => updateDay(day.dayOfWeek, { enabled: event.target.checked })}
-                      aria-label={`Mở cửa vào ${day.label}`}
-                    />
-                  </td>
-                  <td className={styles.dayName}>{day.label}</td>
-                  <td>
-                    <select
-                      className={styles.timeSelect}
-                      value={day.openMinute}
-                      disabled={!day.enabled}
-                      onChange={(event) => updateDay(day.dayOfWeek, { openMinute: Number(event.target.value) })}
-                      aria-label={`${day.label} giờ mở cửa`}
-                    >
-                      {OPEN_OPTIONS.map((minute) => (
-                        <option key={minute} value={minute}>{toTimeLabel(minute)}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <select
-                      className={styles.timeSelect}
-                      value={day.closeMinute}
-                      disabled={!day.enabled}
-                      onChange={(event) => updateDay(day.dayOfWeek, { closeMinute: Number(event.target.value) })}
-                      aria-label={`${day.label} giờ đóng cửa`}
-                    >
-                      {CLOSE_OPTIONS.map((minute) => (
-                        <option key={minute} value={minute}>{toTimeLabel(minute)}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className={styles.colDuration}>
-                    {day.enabled
-                      ? `${((day.closeMinute - day.openMinute) / 60).toFixed(1)} h`
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {weekError && <p className={styles.alertError} role="alert">{weekError}</p>}
-          {weekMessage && <p className={styles.alertOk}>{weekMessage}</p>}
-
-          <div className={styles.cardFooter}>
-            <button
-              className={styles.primaryButton}
-              type="button"
-              onClick={handleSaveWeek}
-              disabled={weekSaving || locationLocked}
-            >
-              {weekSaving ? "Đang lưu…" : "Lưu giờ mở cửa"}
-            </button>
-          </div>
-        </section>
-
-        <section className={styles.card}>
-          <h2 className={styles.cardTitle}>Cấu hình khung giờ</h2>
-          <p>Mỗi khung giờ trên lịch sân dài {SLOT_STEP} phút.</p>
-        </section>
-
-        {/* --------------------------------------------- ngày ngoại lệ */}
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div>
-              <h2 className={styles.cardTitle}>Ngày mở cửa ngoại lệ</h2>
-              <p className={styles.cardHint}>
-                Thiết lập giờ mở cửa riêng cho một ngày cụ thể. Giờ đóng cửa phải sau giờ mở cửa.
-              </p>
-            </div>
-          </div>
-
-          <form className={styles.exceptionForm} onSubmit={handleExceptionSubmit}>
-            <label className={styles.field}>
-              <span>Ngày</span>
-              <input
-                type="date"
-                value={exceptionForm.exceptionDate}
-                onChange={(event) =>
-                  setExceptionForm((current) => ({ ...current, exceptionDate: event.target.value }))
-                }
-                required
-              />
-            </label>
-
-            <label className={styles.field}>
-              <span>Từ</span>
-              <select
-                value={exceptionForm.openMinute}
-                onChange={(event) =>
-                  setExceptionForm((current) => ({ ...current, openMinute: Number(event.target.value) }))
-                }
-              >
-                {OPEN_OPTIONS.map((minute) => (
-                  <option key={minute} value={minute}>{toTimeLabel(minute)}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.field}>
-              <span>Đến</span>
-              <select
-                value={exceptionForm.closeMinute}
-                onChange={(event) =>
-                  setExceptionForm((current) => ({ ...current, closeMinute: Number(event.target.value) }))
-                }
-              >
-                {CLOSE_OPTIONS.map((minute) => (
-                  <option key={minute} value={minute}>{toTimeLabel(minute)}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className={`${styles.field} ${styles.fieldWide}`}>
-              <span>Ghi chú</span>
-              <input
-                type="text"
-                maxLength={255}
-                placeholder="Holiday, tournament, maintenance…"
-                value={exceptionForm.note}
-                onChange={(event) => setExceptionForm((current) => ({ ...current, note: event.target.value }))}
-              />
-            </label>
-
-            <div className={styles.exceptionActions}>
-              <button className={styles.primaryButton} type="submit" disabled={exceptionSaving || locationLocked}>
-                {exceptionSaving ? "Đang lưu…" : editingExceptionId ? "Cập nhật ngày ngoại lệ" : "Thêm ngày ngoại lệ"}
-              </button>
-              {editingExceptionId && (
-                <button className={styles.ghostButton} type="button" onClick={resetExceptionForm}>
-                  Hủy chỉnh sửa
-                </button>
+              {weekLoading ? <LoadingState message="Đang tải giờ mở cửa…" /> : (
+                <Table className={styles.weekTable}>
+                  <thead>
+                    <tr>
+                      <th scope="col">Ngày</th>
+                      <th scope="col">Mở cửa</th>
+                      <th scope="col">Giờ mở</th>
+                      <th scope="col">Giờ đóng</th>
+                      <th scope="col">Số khung giờ</th>
+                      <th scope="col"><span className={styles.srOnly}>Thao tác</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {week.map((day) => {
+                      const invalid = day.enabled && day.closeMinute <= day.openMinute
+                      return (
+                        <tr key={day.dayOfWeek} className={day.enabled ? undefined : styles.rowClosed}>
+                          <td className={styles.dayName}>{day.label}</td>
+                          <td>
+                            <label className={styles.switch}>
+                              <input
+                                type="checkbox"
+                                checked={day.enabled}
+                                disabled={readOnly || weekSaving}
+                                onChange={(event) => updateDay(day.dayOfWeek, { enabled: event.target.checked })}
+                              />
+                              <span className={styles.switchTrack} aria-hidden="true" />
+                              <span>{day.enabled ? 'Mở cửa' : 'Nghỉ'}</span>
+                            </label>
+                          </td>
+                          <td>
+                            <Select
+                              className={styles.timeSelect}
+                              value={day.openMinute}
+                              disabled={!day.enabled || readOnly || weekSaving}
+                              invalid={invalid}
+                              aria-label={`${day.label}: giờ mở cửa`}
+                              options={OPEN_OPTIONS}
+                              onChange={(event) => updateDay(day.dayOfWeek, { openMinute: Number(event.target.value) })}
+                            />
+                          </td>
+                          <td>
+                            <Select
+                              className={styles.timeSelect}
+                              value={day.closeMinute}
+                              disabled={!day.enabled || readOnly || weekSaving}
+                              invalid={invalid}
+                              aria-label={`${day.label}: giờ đóng cửa`}
+                              options={CLOSE_OPTIONS}
+                              onChange={(event) => updateDay(day.dayOfWeek, { closeMinute: Number(event.target.value) })}
+                            />
+                          </td>
+                          <td className={styles.numeric}>
+                            {!day.enabled ? '—' : invalid
+                              ? <span className={styles.inlineError}>Giờ đóng phải sau giờ mở</span>
+                              : `${slotCount(day.openMinute, day.closeMinute)} khung`}
+                          </td>
+                          <td className={styles.rowAction}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={!day.enabled || invalid || readOnly || weekSaving}
+                              onClick={() => applyToOtherDays(day)}
+                            >
+                              Áp dụng cho các ngày khác
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </Table>
               )}
+
+              {weekError && <p className={styles.formError} role="alert">{weekError}</p>}
+            </section>
+
+            <section className={styles.card} aria-labelledby="exception-heading">
+              <header className={styles.cardHeader}>
+                <div>
+                  <h2 id="exception-heading" className={styles.cardTitle}>Ngày ngoại lệ</h2>
+                  <p className={styles.cardHint}>
+                    Giờ mở cửa riêng cho một ngày cụ thể (nghỉ lễ, giải đấu, đổi giờ trong ngày).
+                  </p>
+                </div>
+                <Button onClick={openCreateException} disabled={readOnly}>Thêm ngày ngoại lệ</Button>
+              </header>
+
+              <form
+                className={styles.filterRow}
+                onSubmit={(event) => { event.preventDefault(); if (!filterInvalid) applyExceptionFilter(exceptionFilter) }}
+              >
+                <FormField label="Từ ngày" className={styles.filterField}>
+                  <Input
+                    type="date"
+                    value={exceptionFilter.from}
+                    onChange={(event) => setExceptionFilter((current) => ({ ...current, from: event.target.value }))}
+                  />
+                </FormField>
+                <FormField
+                  label="Đến ngày"
+                  className={styles.filterField}
+                  error={filterInvalid ? 'Ngày kết thúc phải sau ngày bắt đầu.' : undefined}
+                >
+                  <Input
+                    type="date"
+                    value={exceptionFilter.to}
+                    onChange={(event) => setExceptionFilter((current) => ({ ...current, to: event.target.value }))}
+                  />
+                </FormField>
+                <div className={styles.filterActions}>
+                  <Button type="submit" variant="secondary" disabled={filterInvalid}>Lọc</Button>
+                  {(exceptionFilter.from || exceptionFilter.to) && (
+                    <Button variant="ghost" onClick={clearExceptionFilter}>Xóa bộ lọc</Button>
+                  )}
+                </div>
+              </form>
+
+              {listError && (
+                <ErrorState message={listError} onRetry={() => applyExceptionFilter(exceptionFilter)} />
+              )}
+              {!listError && !weekLoading && exceptions.length === 0 && (
+                <EmptyState
+                  title="Chưa có ngày ngoại lệ"
+                  description={exceptionFilter.from || exceptionFilter.to
+                    ? 'Không có ngày ngoại lệ trong khoảng đã chọn. Thử bỏ bớt điều kiện lọc.'
+                    : 'Các ngày còn lại dùng giờ mở cửa theo tuần ở trên.'}
+                  action={!readOnly && <Button variant="secondary" onClick={openCreateException}>Thêm ngày ngoại lệ</Button>}
+                />
+              )}
+              {!listError && exceptions.length > 0 && (
+                <Table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Ngày</th>
+                      <th scope="col">Giờ hoạt động</th>
+                      <th scope="col">Số khung giờ</th>
+                      <th scope="col">Ghi chú</th>
+                      <th scope="col"><span className={styles.srOnly}>Thao tác</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exceptions.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          <strong>{weekdayName(row.exceptionDate)}, {shortDate(row.exceptionDate)}</strong>
+                        </td>
+                        <td className={styles.numeric}>{row.openTime}–{row.closeTime}</td>
+                        <td className={styles.numeric}>
+                          {Math.floor((row.durationMinutes ?? 0) / SLOT_STEP)} khung
+                        </td>
+                        <td className={styles.noteCell}>{row.note || '—'}</td>
+                        <td className={styles.rowAction}>
+                          <div className={styles.rowButtons}>
+                            <Button variant="ghost" size="sm" disabled={readOnly} onClick={() => openEditException(row)}>
+                              Sửa
+                            </Button>
+                            <Button variant="ghost" size="sm" className={styles.dangerText} disabled={readOnly}
+                              onClick={() => setPendingDelete(row)}>
+                              Xóa
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
+            </section>
+          </>
+        )}
+
+        {weekDirty && (
+          <div className={styles.saveBar} role="region" aria-label="Thay đổi chưa lưu">
+            <span>Giờ mở cửa có thay đổi chưa lưu.</span>
+            <div className={styles.saveBarActions}>
+              <Button variant="secondary" onClick={handleResetWeek} disabled={weekSaving}>Hoàn tác</Button>
+              <Button onClick={requestSaveWeek} loading={weekSaving} disabled={readOnly}>Lưu giờ mở cửa</Button>
             </div>
-          </form>
-
-          {exceptionError && <p className={styles.alertError} role="alert">{exceptionError}</p>}
-          {exceptionMessage && <p className={styles.alertOk}>{exceptionMessage}</p>}
-
-          <div className={styles.filterRow}>
-            <label className={styles.inlineField}>
-              <span>Từ</span>
-              <input
-                type="date"
-                value={exceptionFilter.from}
-                onChange={(event) =>
-                  setExceptionFilter((current) => ({ ...current, from: event.target.value }))
-                }
-              />
-            </label>
-            <label className={styles.inlineField}>
-              <span>Đến</span>
-              <input
-                type="date"
-                value={exceptionFilter.to}
-                onChange={(event) =>
-                  setExceptionFilter((current) => ({ ...current, to: event.target.value }))
-                }
-              />
-            </label>
-            <button className={styles.ghostButton} type="button" onClick={applyExceptionFilter}>
-              Lọc
-            </button>
-            <button className={styles.ghostButton} type="button" onClick={clearExceptionFilter}>
-              Xóa bộ lọc
-            </button>
           </div>
-
-          {exceptions.length === 0 ? (
-            <p className={styles.empty}>Không có ngày ngoại lệ trong khoảng đã chọn.</p>
-          ) : (
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th className={styles.colDate}>Ngày</th>
-                  <th className={styles.colDay}>Ngày</th>
-                  <th className={styles.colWindow}>Giờ hoạt động</th>
-                  <th className={styles.colDuration}>Thời lượng</th>
-                  <th>Ghi chú</th>
-                  <th className={styles.colActions} />
-                </tr>
-              </thead>
-              <tbody>
-                {exceptions.map((row) => (
-                  <tr key={row.id} className={editingExceptionId === row.id ? styles.rowEditing : ''}>
-                    <td className={styles.dayName}>{formatDate(row.exceptionDate)}</td>
-                    <td>{weekdayName(row.exceptionDate)}</td>
-                    <td>{row.openTime} – {row.closeTime}</td>
-                    <td className={styles.colDuration}>{((row.durationMinutes ?? 0) / 60).toFixed(1)} h</td>
-                    <td className={styles.noteCell}>{row.note || '—'}</td>
-                    <td className={styles.colActions}>
-                      <button className={styles.linkButton} type="button" onClick={() => handleEditException(row)}>
-                        Sửa
-                      </button>
-                      <button
-                        className={styles.linkButtonDanger}
-                        type="button"
-                        onClick={() => handleDeleteException(row)}
-                      >
-                        Xóa
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
+        )}
       </div>
+
+      <ConfirmDialog
+        open={confirmSave}
+        title="Lưu giờ mở cửa?"
+        confirmText="Lưu giờ mở cửa"
+        busy={weekSaving}
+        onConfirm={handleSaveWeek}
+        onCancel={() => setConfirmSave(false)}
+      >
+        <p>Giờ mở cửa mới thay thế cấu hình của cả tuần.</p>
+        <p className={styles.dialogWarning}>
+          Booking đã xác nhận nằm ngoài giờ mở cửa mới sẽ bị đánh dấu ảnh hưởng do sân hủy lịch. Khách được thông báo
+          để chọn đổi slot miễn phí, hoàn tiền hoặc nhận điểm bồi hoàn.
+        </p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Xóa ngày ngoại lệ?"
+        tone="danger"
+        confirmText="Xóa ngày ngoại lệ"
+        busy={deleting}
+        onConfirm={handleDeleteException}
+        onCancel={() => setPendingDelete(null)}
+      >
+        {pendingDelete && (
+          <p>
+            Ngày {shortDate(pendingDelete.exceptionDate)} sẽ quay về giờ mở cửa theo tuần của{' '}
+            {weekdayName(pendingDelete.exceptionDate)}.
+          </p>
+        )}
+      </ConfirmDialog>
+
+      <Modal
+        open={Boolean(exceptionModal)}
+        title={exceptionModal?.id ? 'Sửa ngày ngoại lệ' : 'Thêm ngày ngoại lệ'}
+        onClose={closeExceptionModal}
+        busy={exceptionSaving}
+      >
+        <form className={styles.modalForm} onSubmit={handleExceptionSubmit}>
+          <FormField label="Ngày" required>
+            <Input
+              type="date"
+              required
+              value={exceptionForm.exceptionDate}
+              onChange={(event) => setExceptionForm((current) => ({ ...current, exceptionDate: event.target.value }))}
+            />
+          </FormField>
+          <div className={styles.twoCols}>
+            <FormField label="Giờ mở" required>
+              <Select
+                value={exceptionForm.openMinute}
+                options={OPEN_OPTIONS}
+                invalid={exceptionTimeInvalid}
+                onChange={(event) => setExceptionForm((current) => ({ ...current, openMinute: Number(event.target.value) }))}
+              />
+            </FormField>
+            <FormField label="Giờ đóng" required
+              error={exceptionTimeInvalid ? 'Giờ đóng cửa phải sau giờ mở cửa.' : undefined}>
+              <Select
+                value={exceptionForm.closeMinute}
+                options={CLOSE_OPTIONS}
+                invalid={exceptionTimeInvalid}
+                onChange={(event) => setExceptionForm((current) => ({ ...current, closeMinute: Number(event.target.value) }))}
+              />
+            </FormField>
+          </div>
+          {!exceptionTimeInvalid && (
+            <p className={styles.cardHint}>
+              Ngày này có {slotCount(Number(exceptionForm.openMinute), Number(exceptionForm.closeMinute))} khung {SLOT_STEP} phút.
+            </p>
+          )}
+          <FormField label="Ghi chú" hint={`${exceptionForm.note.length}/255 ký tự`}>
+            <Input
+              type="text"
+              maxLength={255}
+              placeholder="Ví dụ: Nghỉ lễ Quốc khánh, giải đấu nội bộ"
+              value={exceptionForm.note}
+              onChange={(event) => setExceptionForm((current) => ({ ...current, note: event.target.value }))}
+            />
+          </FormField>
+          {exceptionError && <p className={styles.formError} role="alert">{exceptionError}</p>}
+          <div className={styles.modalActions}>
+            <Button variant="secondary" onClick={closeExceptionModal} disabled={exceptionSaving}>Hủy</Button>
+            <Button type="submit" loading={exceptionSaving} disabled={exceptionTimeInvalid}>
+              {exceptionModal?.id ? 'Lưu thay đổi' : 'Thêm ngày ngoại lệ'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </ManagementLayout>
   )
 }

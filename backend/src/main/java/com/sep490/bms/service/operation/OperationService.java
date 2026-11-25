@@ -107,7 +107,9 @@ public class OperationService {
                         : payment.getPackageId() != null ? "Đơn/Gói #" + payment.getPackageId()
                                 : codes.get(payment.getBookingId()),
                 payment.getAmountDue(), payment.getSubmittedAt(), payment.getRescheduleRequestId() != null,
-                availability.exceededOpeningTime(locationId, payment.getSubmittedAt(), now, Payment.LATE_CONFIRMATION_WAIT)))
+                // D182: quá 15 phút (P24) báo đỏ; quá 25 phút (P24 + P36) đã chuyển cho chủ sân.
+                availability.exceededOpeningTime(locationId, payment.getSubmittedAt(), now, Payment.LATE_CONFIRMATION_WAIT),
+                availability.exceededOpeningTime(locationId, payment.getSubmittedAt(), now, Payment.OWNER_TRANSFER_WAIT)))
                 .toList();
 
         return StaffDashboardResponse.builder()
@@ -133,6 +135,7 @@ public class OperationService {
                 .pendingPayments(pendingItems)
                 .overduePayments(pendingItems.stream().filter(StaffDashboardResponse.PendingPayment::overdue).count())
                 .paymentOverdueMinutes((int) Payment.LATE_CONFIRMATION_WAIT.toMinutes())
+                .paymentTransferMinutes((int) Payment.OWNER_TRANSFER_WAIT.toMinutes())
                 .complaintsToForward(queryRepository.countComplaintsByStatus(locationId, "SUBMITTED"))
                 .todayRevenue(todayRevenue)
                 .reconciledToday(queryRepository.existsReconciliation(locationId, today))

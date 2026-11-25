@@ -6,7 +6,8 @@ import { Modal } from '../common/Modal'
 import { FileInput } from '../common/FileInput'
 import { formatVnd, SERVICE_TERMS } from '../../pages/location/serviceRegistrationTerms'
 
-function RenewalDecision({ row, refresh, onBusy }) {
+// Dùng chung: modal gia hạn của Owner/Admin và tab Yêu cầu gia hạn ở trang Admin.
+export function RenewalDecision({ row, refresh, onBusy }) {
   const [reason, setReason] = useState('')
   const [confirmed, setConfirmed] = useState(false)
   const [busy, setBusy] = useState(false)

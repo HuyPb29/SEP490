@@ -1,18 +1,26 @@
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
+import ManagementLayout from '../../components/layout/ManagementLayout'
 import ScheduleGrid from '../../components/schedule/ScheduleGrid'
 import { usePublicVenue } from '../../hooks/usePublicVenue'
 import { useLocationContext } from '../../hooks/useLocation'
 import { useVenueSchedule, useVenueSession } from '../../hooks/useVenueSchedule'
-import WorkspaceLayout, { Feedback, Modal, Section } from '../WorkspaceLayout'
-import styles from '../location/FacilityDetailPage.module.css'
+import { pickRangeTo } from '../../utils/slotRanges'
+import { Modal } from '../WorkspaceLayout'
+import WalkInBookingDialog from './WalkInBookingDialog'
+import styles from './StaffSchedulePage.module.css'
 
 /**
- * UC13 – Xem lịch sân, màn của Staff: hình sân và thông tin địa điểm → bảng giá → lịch theo ngày.
- * Staff chỉ xem, không đặt ở đây (đặt tại quầy nằm ở bảng điều hành, UC16).
- * Staff thấy tên và SĐT người đặt trên slot đã có booking, xem trước tới 12 tháng (D110, D175, FR32, FR34).
+ * UC13 – Lịch sân của Staff: lịch theo ngày, xem trước tới 12 tháng (D175, FR32); ô đã đặt hiện tên, SĐT và ghi chú
+ * cho chủ sân (FR34, FR35). Chọn một hoặc nhiều ô trống liền nhau trên một sân để đặt tại quầy (UC16, D183).
  */
 
 const dayFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
+const money = new Intl.NumberFormat('vi-VN')
+const SLOT = 30
+
+const STATUS_TEXT = {
+  booked: 'Đã đặt', in_use: 'Đang sử dụng', holding: 'Đang giữ chỗ', maintenance: 'Bảo trì', past: 'Đã qua',
+}
 
 function shiftDay(iso, days) {
   const date = new Date(iso + 'T00:00:00')
@@ -20,38 +28,41 @@ function shiftDay(iso, days) {
   return dayFormat.format(date)
 }
 
-const legend = [
-  ['slotAvailable', 'Trống'], ['slotHolding', 'Đang giữ chỗ'], ['slotBooked', 'Đã đặt'],
-  ['slotInUse', 'Đang sử dụng'], ['slotMaintenance', 'Bảo trì'], ['slotClosed', 'Ngoài giờ / đã qua'],
-]
+const viDate = (iso) => (iso ? iso.split('-').reverse().join('/') : '')
+const timeLabel = (minute) => `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
+const toMinute = (time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
 
-function CourtPicture({ facility }) {
-  return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 20, alignItems: 'center' }}>
-    <div className={styles.courtVisualCard} aria-hidden="true">
-      <svg viewBox="0 0 400 200" className={styles.courtSvg}>
-        <rect x="20" y="15" width="360" height="170" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="2" />
-        <line x1="200" y1="15" x2="200" y2="185" stroke="rgba(255,255,255,0.8)" strokeWidth="2" />
-        <line x1="65" y1="15" x2="65" y2="185" stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" />
-        <line x1="335" y1="15" x2="335" y2="185" stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" />
-        <line x1="145" y1="15" x2="145" y2="185" stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" />
-        <line x1="255" y1="15" x2="255" y2="185" stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" />
-        <line x1="20" y1="100" x2="380" y2="100" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
-      </svg>
+function dayTitle(iso) {
+  const text = new Date(iso + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+function BookerDialog({ info, onClose }) {
+  const titleId = useId()
+  return <Modal labelledBy={titleId} onDismiss={onClose}>
+    <div className={styles.booker}>
+      <header>
+        <h2 id={titleId}>{info.name || 'Khách đã đặt'}</h2>
+        {STATUS_TEXT[info.status] && <span className={`${styles.badge} ${styles['badge_' + info.status] || ''}`}>{STATUS_TEXT[info.status]}</span>}
+      </header>
+      <dl>
+        <dt>Sân · giờ</dt><dd>{info.courtName} · {info.time}–{timeLabel(toMinute(info.time) + SLOT)}</dd>
+        <dt>Người đặt</dt><dd>{info.name || '—'}</dd>
+        <dt>Số điện thoại</dt><dd>{info.phone ? <a href={'tel:' + info.phone}>{info.phone}</a> : '—'}</dd>
+      </dl>
+      {info.note && <p className={styles.note}><strong>Ghi chú cho chủ sân:</strong> {info.note}</p>}
+      <div className={styles.bookerActions}>
+        <button type="button" className={styles.secondary} onClick={onClose}>Đóng</button>
+      </div>
     </div>
-    <div style={{ display: 'grid', gap: 6 }}>
-      <h3 style={{ fontSize: '1.25rem', fontWeight: 750 }}>{facility.facility_name}</h3>
-      <p>Địa chỉ: {facility.address}</p>
-      <p>{facility.courts_count} sân hoạt động · Liên hệ: {facility.contact_phone || 'Chưa cập nhật'}</p>
-      <p className="cw-muted">Giờ mở cửa: {facility.open_hours}</p>
-    </div>
-  </div>
+  </Modal>
 }
 
 function PriceTable({ facility }) {
-  if (facility.price_error) return <Feedback tone="error">Chưa tải đủ bảng giá của mọi sân.</Feedback>
-  if (facility.price_table.length === 0) return <p>Chưa có bảng giá.</p>
-  return <div className="overflow-auto">
-    <table className={styles.priceTable}>
+  if (facility.price_error) return <p className={styles.muted}>Chưa tải đủ bảng giá của mọi sân.</p>
+  if (facility.price_table.length === 0) return <p className={styles.muted}>Chưa có bảng giá.</p>
+  return <div className={styles.tableWrap}>
+    <table className={styles.table}>
       <thead><tr><th>Sân</th><th>Ngày áp dụng</th><th>Khung giờ</th><th>Hiệu lực</th><th>Đơn giá</th></tr></thead>
       <tbody>{facility.price_table.map((row, index) => <tr key={row.id + ':' + index}>
         <td>{row.court_name}</td><td>{row.days_label}</td><td>{row.time_range}</td>
@@ -59,19 +70,6 @@ function PriceTable({ facility }) {
       </tr>)}</tbody>
     </table>
   </div>
-}
-
-function BookerDialog({ info, onClose }) {
-  const titleId = useId()
-  return <Modal labelledBy={titleId} onDismiss={onClose}>
-    <div className="cw-modal-content">
-      <h2 id={titleId}>{info.courtName} · {info.time}</h2>
-      <p>Người đặt: <strong>{info.name || '—'}</strong></p>
-      <p>Số điện thoại: <strong>{info.phone || '—'}</strong></p>
-      {info.note && <p>Ghi chú cho chủ sân: {info.note}</p>}
-      <div className="cw-modal-actions"><button type="button" className="action" onClick={onClose}>Đóng</button></div>
-    </div>
-  </Modal>
 }
 
 export default function StaffSchedulePage() {
@@ -83,57 +81,95 @@ export default function StaffSchedulePage() {
   const [requestedDate, setRequestedDate] = useState(today)
   const [revision, setRevision] = useState(0)
   const [inspecting, setInspecting] = useState(null)
+  const [range, setRange] = useState(null)
+  const [walkIn, setWalkIn] = useState(null)
 
   const venue = usePublicVenue(locationId, revision)
   const facility = venue?.data
   const { date, maxDate, current } = useVenueSchedule(locationId, requestedDate, today, token, revision)
   const schedule = current?.data
-
-  const venueResource = { loading: !venue, error: venue?.error, reload: () => setRevision((value) => value + 1) }
-  const scheduleResource = { loading: !current, error: current?.error, reload: venueResource.reload }
+  const reload = () => setRevision((value) => value + 1)
 
   function goTo(next) {
-    if (next >= today && (!maxDate || next <= maxDate)) setRequestedDate(next)
+    if (next >= today && (!maxDate || next <= maxDate)) {
+      setRange(null)
+      setRequestedDate(next)
+    }
   }
 
-  return <WorkspaceLayout role="staff" title="Lịch sân">
-    {!locationId && <Feedback tone="error">Tài khoản chưa gắn với địa điểm nào.</Feedback>}
+  const court = schedule?.courts.find((item) => item.court_id === range?.courtId)
+  const slotAt = (target, minute) => target?.slots.find((slot) => slot.time === timeLabel(minute))
+  const selected = useMemo(() => (range
+    ? Array.from({ length: (range.endMinute - range.startMinute) / SLOT }, (_, i) => ({ courtId: range.courtId, time: timeLabel(range.startMinute + i * SLOT) }))
+    : []), [range])
+  const rangePrice = range ? selected.reduce((sum, item) => sum + Number(slotAt(court, toMinute(item.time))?.price || 0), 0) : 0
 
-    <Section title="Sân của địa điểm" resource={venueResource}>
-      {facility && <CourtPicture facility={facility} />}
-    </Section>
+  // Chọn ô trống: bấm ô bắt đầu rồi bấm ô kết thúc cùng sân, hoặc bấm từng ô liền kề; bấm ô đầu/cuối để bớt (D183).
+  const pickSlot = (row, slot) => {
+    const isFreeAt = (minute) => {
+      const cell = slotAt(row, minute)
+      return cell?.status === 'available' && cell.price != null
+    }
+    setRange((current) => pickRangeTo(current, row.court_id, slot.time, isFreeAt))
+  }
 
-    <Section title="Bảng giá" resource={venueResource}>
-      {facility && <PriceTable facility={facility} />}
-    </Section>
+  return <ManagementLayout
+    role="staff"
+    title="Lịch sân"
+    subtitle="Xem lịch đến 12 tháng tới. Ô đã đặt hiện họ tên, số điện thoại và ghi chú cho chủ sân; chọn ô trống liền nhau để đặt tại quầy."
+    actions={<>
+      <button type="button" className={styles.secondary} onClick={reload}>Tải lại</button>
+      <button type="button" className={styles.secondary} disabled={date === today} onClick={() => goTo(today)}>Về hôm nay</button>
+    </>}
+  >
+    {!locationId && <p className={styles.error} role="alert">Tài khoản chưa gắn với địa điểm nào.</p>}
 
-    <Section title="Lịch sân" resource={scheduleResource}
-      actions={<button type="button" className="cw-secondary" onClick={venueResource.reload}>Tải lại</button>}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'end' }}>
-        <button type="button" className="cw-secondary" style={{ minHeight: 44 }} disabled={date <= today}
-          onClick={() => goTo(shiftDay(date, -1))}>‹ Ngày trước</button>
-        <label className="cw-field">
-          <span>Ngày</span>
-          <input type="date" value={date} min={today} max={maxDate || undefined}
-            onChange={(event) => event.target.value && goTo(event.target.value)} />
-        </label>
-        <button type="button" className="cw-secondary" style={{ minHeight: 44 }} disabled={!!maxDate && date >= maxDate}
-          onClick={() => goTo(shiftDay(date, 1))}>Ngày sau ›</button>
-        <button type="button" className="cw-secondary" style={{ minHeight: 44 }} disabled={date === today}
-          onClick={() => setRequestedDate(today)}>Hôm nay</button>
+    <section className={styles.panel} aria-label="Lịch sân theo ngày">
+      <div className={styles.dateBar}>
+        <div className={styles.dayNav}>
+          <button type="button" aria-label="Ngày trước" disabled={date <= today} onClick={() => goTo(shiftDay(date, -1))}>‹</button>
+          <strong>{dayTitle(date)}</strong>
+          <button type="button" aria-label="Ngày sau" disabled={!!maxDate && date >= maxDate} onClick={() => goTo(shiftDay(date, 1))}>›</button>
+        </div>
+        <input className={styles.dateInput} type="date" aria-label="Chọn ngày xem lịch" value={date} min={today} max={maxDate || undefined}
+          onChange={(event) => event.target.value && goTo(event.target.value)} />
+        {maxDate && <span className={styles.muted}>Xem được đến {viDate(maxDate)}</span>}
       </div>
-      {maxDate && <p className="cw-muted">Xem được đến ngày {maxDate}. Bấm vào ô đã đặt để xem người đặt và số điện thoại.</p>}
-      <div className={styles.legendRow}>
-        {legend.map(([className, text]) => <span key={className} className={styles.legendItem}>
-          <span className={styles.legendBox + ' ' + (styles[className] || '')} />{text}
-        </span>)}
+
+      <div className={styles.gridArea}>
+        {!current && <p className={styles.muted} role="status">Đang tải lịch sân…</p>}
+        {current?.error && <p className={styles.error} role="alert">{current.error} <button type="button" className={styles.link} onClick={reload}>Thử lại</button></p>}
+        {schedule && (schedule.courts.length === 0
+          ? <p className={styles.muted}>Địa điểm chưa có sân hoạt động.</p>
+          : <ScheduleGrid schedule={schedule} selected={selected} allowBooking showBooker filters
+            role={user?.role_code || 'staff'} onSlot={pickSlot} onInspect={setInspecting} keepNowAtLeft={false} />)}
       </div>
-      {schedule && (schedule.courts.length === 0
-        ? <p>Địa điểm chưa có sân hoạt động.</p>
-        : <ScheduleGrid schedule={schedule} selected={[]} allowBooking={false} showBooker
-          onSlot={() => {}} onInspect={setInspecting} />)}
-    </Section>
+
+      <div className={`${styles.selectionBar} ${range && court ? '' : styles.idle}`} aria-live="polite">
+        {range && court ? <>
+          <div>
+            <strong>Đã chọn: {court.court_name} · {timeLabel(range.startMinute)}–{timeLabel(range.endMinute)}</strong>
+            <span> · {selected.length} slot · {money.format(rangePrice)} đ · {viDate(date)}</span>
+          </div>
+          <div className={styles.barActions}>
+            <button type="button" className={styles.ghostDark} onClick={() => setRange(null)}>Bỏ chọn</button>
+            <button type="button" className={styles.primary}
+              onClick={() => setWalkIn({ court: range.courtId, date, start: range.startMinute, end: range.endMinute })}>
+              Đặt tại quầy ›
+            </button>
+          </div>
+        </> : <span className={styles.hint}>Bấm ô trống để chọn; bấm ô kết thúc cùng sân để chọn nhiều slot liền nhau. Bấm ô đã đặt để xem người đặt.</span>}
+      </div>
+    </section>
+
+    {facility && <details className={styles.panel}>
+      <summary className={styles.summary}>Bảng giá của địa điểm</summary>
+      <PriceTable facility={facility} />
+    </details>}
 
     {inspecting && <BookerDialog info={inspecting} onClose={() => setInspecting(null)} />}
-  </WorkspaceLayout>
+    {walkIn && <WalkInBookingDialog initialCourt={walkIn.court} initialDate={walkIn.date}
+      initialStart={walkIn.start} initialEnd={walkIn.end}
+      onClose={() => { setWalkIn(null); setRange(null); reload() }} onChanged={reload} />}
+  </ManagementLayout>
 }

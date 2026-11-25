@@ -741,8 +741,9 @@ public class PaymentService {
      * Khóa dòng payment rồi mới kiểm tra (FR56): hai người cùng bấm thì người sau chờ, rồi thấy giao dịch
      * đã được xử lý (MSG54). Giao dịch của địa điểm khác trả 403 (NFR07).
      */
-    /** D174: đánh dấu giao dịch đã chuyển cho chủ sân để màn Staff khóa các nút xử lý. */
+    /** D182: đánh dấu giao dịch quá 15 phút (báo đỏ) và quá 25 phút (đã chuyển cho chủ sân, khóa nút của Staff). */
     private PaymentResponse withTransfer(PaymentResponse response, Payment payment, LocalDateTime now) {
+        response.setOverdue(transferPolicy.overdue(payment, now));
         response.setTransferredToOwner(transferPolicy.transferredToOwner(payment, now));
         return response;
     }

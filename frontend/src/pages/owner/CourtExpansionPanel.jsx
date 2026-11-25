@@ -2,10 +2,37 @@ import { useEffect, useRef, useState } from 'react'
 import { expansionQuote, ownerExpansions, submitExpansion } from '../../api/courtExpansionApi'
 import { apiErrorMessage, getServiceRegistrationPaymentInfo, operatorQrUrl } from '../../api/locationApi'
 import { formatVnd } from '../location/serviceRegistrationTerms'
-import { Modal } from '../../components/common/Modal'
+import { Button, EmptyState, FormField, Input, LoadingState, Modal, StatusBadge, Toast } from '../../components/common'
+import ImageProofUpload from '../../components/upload/ImageProofUpload'
+import { shortDate } from '../../utils/formatters'
 import styles from './CourtExpansionPanel.module.css'
 
-const statuses = { PENDING: "Chờ quản trị viên duyệt", APPROVED: 'Đã duyệt', REJECTED: 'Đã từ chối' }
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png']
+const MAX_PROOF_SIZE = 5 * 1024 * 1024
+
+function CopyRow({ label, value }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(String(value))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setCopied(false)
+    }
+  }
+  return (
+    <div className={styles.copyRow}>
+      <dt>{label}</dt>
+      <dd>
+        <span>{value}</span>
+        <Button variant="ghost" size="sm" onClick={copy} aria-label={`Sao chép ${label.toLowerCase()}`}>
+          {copied ? 'Đã chép' : 'Sao chép'}
+        </Button>
+      </dd>
+    </div>
+  )
+}
 
 export default function CourtExpansionPanel({ locationId, locked, onClose }) {
   const fileInput = useRef(null)
@@ -13,135 +40,180 @@ export default function CourtExpansionPanel({ locationId, locked, onClose }) {
   const [quote, setQuote] = useState(null)
   const [payment, setPayment] = useState(null)
   const [requests, setRequests] = useState([])
+  const [requestsLoading, setRequestsLoading] = useState(true)
   const [proof, setProof] = useState(null)
-  const [proofUrl, setProofUrl] = useState(null)
   const [proofError, setProofError] = useState('')
-  const [previewOpen, setPreviewOpen] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
   const [refresh, setRefresh] = useState(0)
 
-  useEffect(() => () => { if (proofUrl) URL.revokeObjectURL(proofUrl) }, [proofUrl])
-
   const clearProof = () => {
     setProof(null)
-    setProofUrl(null)
     setProofError('')
-    setPreviewOpen(false)
     if (fileInput.current) fileInput.current.value = ''
   }
-  const chooseProof = (event) => {
-    const file = event.target.files?.[0]
+  const acceptProof = (file) => {
     if (!file) return
-    if (file.size > 5 * 1024 * 1024 || !['image/jpeg', 'image/png'].includes(file.type)) {
+    if (file.size > MAX_PROOF_SIZE || !ACCEPTED_TYPES.includes(file.type)) {
       clearProof()
       setProofError('Chỉ nhận ảnh JPG/PNG tối đa 5 MB.')
       return
     }
     setProof(file)
-    setProofUrl(URL.createObjectURL(file))
     setProofError('')
   }
 
   useEffect(() => {
     let active = true
-    if (!locationId || locked) return
+    if (!locationId || locked) return undefined
     Promise.all([ownerExpansions(locationId), getServiceRegistrationPaymentInfo()])
       .then(([rows, info]) => { if (active) { setRequests(rows); setPayment(info) } })
       .catch((err) => { if (active) setError(apiErrorMessage(err)) })
+      .finally(() => { if (active) setRequestsLoading(false) })
     return () => { active = false }
   }, [locationId, locked, refresh])
 
+  const countValid = Number.isInteger(Number(count)) && Number(count) >= 1 && Number(count) <= 100
+
   useEffect(() => {
     let active = true
-    if (!locationId || locked || !Number.isInteger(Number(count)) || Number(count) < 1 || Number(count) > 100) return
+    if (!locationId || locked || !countValid) return undefined
     expansionQuote(locationId, Number(count)).then((value) => {
       if (active) { setQuote(value); setError('') }
     }).catch((err) => { if (active) { setQuote(null); setError(apiErrorMessage(err)) } })
     return () => { active = false }
-  }, [locationId, count, locked, refresh])
+  }, [locationId, count, countValid, locked, refresh])
 
   const pending = requests.some((item) => item.status === 'PENDING')
+  const quoteReady = Boolean(quote) && quote.courtCount === Number(count)
+  // Báo giá được gọi lại mỗi khi đổi số sân; chưa có kết quả và chưa lỗi thì coi là đang tính.
+  const quoteLoading = !locked && countValid && !quoteReady && !error
   const submit = async (event) => {
     event.preventDefault()
-    if (!quote || quote.courtCount !== Number(count)) { setError('Hãy lấy báo giá trước khi gửi đơn.'); return }
+    if (!quoteReady) { setError('Hãy chờ báo giá cho số sân đã nhập trước khi gửi.'); return }
     if (!proof) { setProofError('Vui lòng chọn ảnh chứng từ chuyển khoản.'); return }
     setSaving(true)
     try {
       await submitExpansion(locationId, quote, proof)
-      setMessage("Đã gửi yêu cầu. quản trị viên kiểm tra tiền và xét duyệt; sân chỉ có hiệu lực từ ngày sau khi duyệt.")
+      setMessage('Đã gửi yêu cầu. Quản trị viên kiểm tra tiền và duyệt; sân chỉ nhận lịch từ ngày sau khi duyệt.')
       clearProof()
-      event.target.reset()
       setRefresh((value) => value + 1)
     } catch (err) { setError(apiErrorMessage(err)) }
     finally { setSaving(false) }
   }
 
-  return <Modal labelledBy="court-expansion-title" className={styles.dialog} onClose={onClose} busy={saving}>
-    <section id="court-expansion">
-    <header className={styles.header}>
-      <div><h2 id="court-expansion-title" className="text-lg font-bold">Đăng ký thêm sân con</h2>
-        <p className={styles.subtitle}>Thông tin đăng ký, thanh toán và lịch sử yêu cầu</p></div>
-      <button type="button" className={styles.close} aria-label="Đóng đăng ký thêm sân" disabled={saving} onClick={onClose}>×</button>
-    </header>
-    <p>Phí tính theo số tháng còn lại đến hết thời hạn sử dụng dịch vụ, đếm từ hôm nay: phần lẻ đến 15 ngày không tính, từ 16 ngày tính thêm một tháng. Đơn giá như đăng ký ban đầu (10.000.000 đồng cho 9 sân trong 1 năm), làm tròn tổng lên nghìn đồng.</p>
-    <p>Chuyển khoản ngay khi gửi yêu cầu. Số tiền được chốt lúc gửi, quản trị viên duyệt muộn cũng không tính lại; sân nhận lịch từ ngày sau khi được duyệt.</p>
-    {error && <p role="alert" className="my-2 text-red-700">{error}</p>}
-    {message && <p role="status" className="my-2 text-emerald-700">{message}</p>}
-    {!locked && !pending && <form onSubmit={submit} className="my-4 grid gap-3">
-      <label>Số sân muốn thêm <input className="rounded border p-2" type="number" min="1" max="100" required
-        value={count} disabled={saving} onChange={(event) => { setCount(event.target.value); setQuote(null); setMessage('') }} /></label>
-      {quote && quote.courtCount === Number(count) && <div className="rounded bg-emerald-50 p-3">
-        <p>Thời gian tính phí: {quote.startDate} → {quote.endDate}, tính {quote.months} tháng.</p>
-        <p>Đơn giá tham chiếu: {formatVnd(quote.referenceFee)} / 9 sân / năm.</p>
-        <strong>Số tiền chuyển khoản: {formatVnd(quote.amount)}</strong>
-        <p>Nội dung chuyển khoản: THEM SAN {locationId} - {count} SAN</p>
-      </div>}
-      {payment && <div className="flex flex-wrap items-start gap-4">
-        <img src={operatorQrUrl(payment.updatedAt)} alt="QR nhận phí thêm sân của bên vận hành" className="h-48 w-48 object-contain" />
-        <div><p>{payment.bankName}</p><p>{payment.bankAccountNo}</p><p>{payment.bankAccountHolder}</p></div>
-      </div>}
-      <div className={styles.upload}>
-        <p id="proof-label" className="font-bold">Ảnh chứng từ chuyển khoản</p>
-        <p id="proof-hint" className={styles.subtitle}>JPG hoặc PNG, tối đa 5 MB. Chọn ảnh rõ số tiền và mã giao dịch.</p>
-        <input ref={fileInput} type="file" accept="image/jpeg,image/png" hidden disabled={saving} onChange={chooseProof}
-          aria-labelledby="proof-label" aria-describedby="proof-hint proof-error" />
-        {proofUrl ? <>
-          <button type="button" className={styles.preview} onClick={() => setPreviewOpen(true)} aria-label="Phóng to ảnh chứng từ">
-            <img src={proofUrl} alt="Ảnh chứng từ chuyển khoản đã chọn" />
-            <span>Bấm vào ảnh để phóng to</span>
-          </button>
-          <div className={styles.fileDetails}>
-            <span title={proof?.name}>{proof?.name}</span>
-            <div><button type="button" disabled={saving} onClick={() => fileInput.current?.click()}>Đổi ảnh</button>
-              <button type="button" disabled={saving} onClick={clearProof}>Xóa ảnh</button></div>
+  return (
+    <Modal title="Đăng ký thêm sân" className={styles.dialog} onClose={onClose} busy={saving}>
+      <Button variant="ghost" className={styles.close} aria-label="Đóng đăng ký thêm sân" disabled={saving} onClick={onClose}>×</Button>
+      <div id="court-expansion" className={styles.body}>
+        <p className={styles.lead}>
+          Phí tính theo số tháng còn lại đến hết thời hạn sử dụng dịch vụ (phần lẻ đến 15 ngày không tính, từ 16 ngày tính
+          thêm một tháng), đơn giá 10.000.000đ cho 9 sân trong 1 năm, làm tròn lên nghìn đồng. Số tiền chốt lúc gửi; sân nhận
+          lịch từ ngày sau khi được duyệt.
+        </p>
+
+        {error && <Toast tone="danger" onClose={() => setError('')}>{error}</Toast>}
+        {message && <Toast tone="success" onClose={() => setMessage('')}>{message}</Toast>}
+
+        {locked && <p className={styles.notice}>Địa điểm đang bị khóa nên không đăng ký thêm sân được.</p>}
+        {!locked && pending && (
+          <p className={styles.notice}>Đã có yêu cầu chờ duyệt. Vui lòng chờ quản trị viên xử lý trước khi gửi yêu cầu mới.</p>
+        )}
+
+        {!locked && !pending && (
+          <form onSubmit={submit} className={styles.form}>
+            <section className={styles.step} aria-labelledby="expansion-step-1">
+              <h3 id="expansion-step-1"><span className={styles.stepNumber}>1</span>Số sân và số tiền</h3>
+              <FormField label="Số sân muốn thêm" required
+                error={!countValid ? 'Nhập số nguyên từ 1 đến 100.' : undefined}>
+                <Input type="number" min="1" max="100" required inputMode="numeric" className={styles.countInput}
+                  value={count} disabled={saving}
+                  onChange={(event) => { setCount(event.target.value); setQuote(null); setMessage('') }} />
+              </FormField>
+              {quoteLoading && <LoadingState message="Đang tính số tiền…" />}
+              {!quoteLoading && quoteReady && (
+                <div className={styles.quote}>
+                  <p className={styles.amount}>{formatVnd(quote.amount)}</p>
+                  <p>
+                    {quote.courtCount} sân · tính {quote.months} tháng ({shortDate(quote.startDate)} → {shortDate(quote.endDate)})
+                  </p>
+                  <p className={styles.muted}>Đơn giá tham chiếu {formatVnd(quote.referenceFee)} / 9 sân / năm.</p>
+                </div>
+              )}
+            </section>
+
+            <section className={styles.step} aria-labelledby="expansion-step-2">
+              <h3 id="expansion-step-2"><span className={styles.stepNumber}>2</span>Chuyển khoản cho bên vận hành</h3>
+              {payment ? (
+                <div className={styles.payment}>
+                  <img src={operatorQrUrl(payment.updatedAt)} alt="Mã QR nhận phí thêm sân của bên vận hành" className={styles.qr} />
+                  <dl className={styles.bank}>
+                    <CopyRow label="Ngân hàng" value={payment.bankName} />
+                    <CopyRow label="Số tài khoản" value={payment.bankAccountNo} />
+                    <CopyRow label="Chủ tài khoản" value={payment.bankAccountHolder} />
+                    {quoteReady && <CopyRow label="Số tiền" value={quote.amount} />}
+                    <CopyRow label="Nội dung" value={`THEM SAN ${locationId} - ${count} SAN`} />
+                  </dl>
+                </div>
+              ) : requestsLoading ? <LoadingState message="Đang tải thông tin chuyển khoản…" /> : (
+                <p className={styles.muted}>Chưa tải được thông tin chuyển khoản của bên vận hành.</p>
+              )}
+            </section>
+
+            <section className={styles.step} aria-labelledby="expansion-step-3">
+              <h3 id="expansion-step-3"><span className={styles.stepNumber}>3</span>Ảnh chứng từ</h3>
+              <ImageProofUpload
+                id="court-expansion-proof"
+                file={proof}
+                inputRef={fileInput}
+                disabled={saving}
+                error={proofError || undefined}
+                onChange={(event) => acceptProof(event.target.files?.[0])}
+                onDropFile={acceptProof}
+                onClear={clearProof}
+              />
+            </section>
+
+            <div className={styles.submitRow}>
+              <Button type="submit" loading={saving} loadingText="Đang gửi…" disabled={!quoteReady}>
+                Gửi yêu cầu thêm sân
+              </Button>
+            </div>
+          </form>
+        )}
+
+        <section className={styles.history} aria-labelledby="expansion-history">
+          <div className={styles.historyHead}>
+            <h3 id="expansion-history">Yêu cầu đã gửi</h3>
+            <Button variant="ghost" size="sm" disabled={saving} onClick={() => setRefresh((value) => value + 1)}>Làm mới</Button>
           </div>
-        </> : <button type="button" className={styles.chooseFile} disabled={saving} onClick={() => fileInput.current?.click()}>
-          <span aria-hidden="true" className={styles.uploadIcon}>↑</span>
-          <strong>Bấm để chọn ảnh chứng từ</strong>
-          <span>Ảnh được hiển thị tại đây sau khi chọn</span>
-        </button>}
-        <p id="proof-error" role={proofError ? 'alert' : undefined} className="text-red-700">{proofError}</p>
+          {requestsLoading && <LoadingState message="Đang tải yêu cầu…" />}
+          {!requestsLoading && requests.length === 0 && (
+            <EmptyState title="Chưa có yêu cầu" description="Các yêu cầu thêm sân và kết quả duyệt sẽ hiện ở đây." />
+          )}
+          <ul className={styles.requestList}>
+            {requests.map((item) => (
+              <li key={item.id} className={styles.request}>
+                <div className={styles.requestHead}>
+                  <strong>Yêu cầu #{item.id} · thêm {item.courtCount} sân</strong>
+                  <StatusBadge category="service_request" status={item.status} />
+                </div>
+                <p>Đã báo chuyển {formatVnd(item.quotedAmount)} · Hết hạn dịch vụ {shortDate(item.contractEnd)}</p>
+                {item.status === 'APPROVED' && (
+                  <p>Hiệu lực từ {shortDate(item.effectiveStart)} · Phí cuối {formatVnd(item.finalAmount)} · Đã hoàn {formatVnd(item.refundedAmount)}</p>
+                )}
+                {item.rejectReason && <p>Lý do từ chối: {item.rejectReason} · Đã hoàn {formatVnd(item.refundedAmount)}</p>}
+                {item.settlementNote && <p>Ghi nhận hoàn tiền: {item.settlementNote}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <div className={styles.footer}>
+          <Button variant="secondary" disabled={saving} onClick={onClose}>Đóng</Button>
+        </div>
       </div>
-      <button className="rounded bg-emerald-700 p-3 font-bold text-white disabled:opacity-50" disabled={saving || !quote || quote.courtCount !== Number(count)}>
-        {saving ? 'Đang gửi…' : 'Gửi yêu cầu thêm sân'}
-      </button>
-    </form>}
-    {pending && <p className="my-3 text-amber-700">Đã có đơn chờ duyệt. Vui lòng chờ quản trị viên xử lý trước khi gửi đơn mới.</p>}
-    <button type="button" className="my-2 underline" onClick={() => setRefresh((value) => value + 1)}>Làm mới đơn và báo giá</button>
-    <ul className="grid gap-3">{requests.map((item) => <li key={item.id} className="rounded border p-3">
-      <strong>Đơn #{item.id}: thêm {item.courtCount} sân — {statuses[item.status]}</strong>
-      <p>Đã báo chuyển: {formatVnd(item.quotedAmount)} · Hết hạn: {item.contractEnd}</p>
-      {item.status === 'APPROVED' && <p>Hiệu lực từ {item.effectiveStart} · Phí cuối: {formatVnd(item.finalAmount)} · Đã hoàn: {formatVnd(item.refundedAmount)}</p>}
-      {item.rejectReason && <p>Lý do: {item.rejectReason} · Đã hoàn: {formatVnd(item.refundedAmount)}</p>}
-      {item.settlementNote && <p>Ghi nhận hoàn tiền: {item.settlementNote}</p>}
-    </li>)}</ul>
-    <div className={styles.footer}><button type="button" disabled={saving} onClick={onClose}>Đóng</button></div>
-  </section>
-    {previewOpen && proofUrl && <Modal title="Xem ảnh chứng từ" className={styles.imageDialog} onClose={() => setPreviewOpen(false)}>
-      <button type="button" className={styles.imageClose} onClick={() => setPreviewOpen(false)}>Đóng ảnh phóng to</button>
-      <img src={proofUrl} alt="Chứng từ chuyển khoản phóng to" className={styles.fullImage} />
-    </Modal>}
-  </Modal>
+    </Modal>
+  )
 }
