@@ -1,11 +1,12 @@
-import { useCallback, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Navigate, NavLink, useNavigate } from 'react-router-dom';
 import api, { apiErrorMessage, getAllPages } from '../../api';
 import { fieldError, messages, normalizeName, validName, validPassword, validUsername } from '../../api/f1Rules';
 import { clearSession, getSavedUser, getToken, saveSession } from '../../api/session';
-import { Button, FormField, Input, Select, StatusBadge } from '../../components/common';
+import { Avatar, Button, FormField, Input, Select, StatusBadge, LoadingState, ErrorState, Toast, EmptyState as SharedEmptyState } from '../../components/common';
+import { SKILL_LEVELS } from '../../utils/skillLevels';
 import { Inbox } from '../NotificationsPage';
-import WorkspaceLayout, { EmptyState, Feedback, Modal, Section } from '../WorkspaceLayout';
+import WorkspaceLayout, { EmptyState, Modal, Section } from '../WorkspaceLayout';
 import { useResource } from '../workspaceSupport';
 import AccountForm from './AccountForm';
 import styles from './AccountPages.module.css';
@@ -20,7 +21,7 @@ const loadStaff = (signal) => api.get('/owner/staff-members', { signal }).then((
 const roles = { PLAYER: 'Người chơi', STAFF: 'Nhân viên', OWNER: 'Chủ sân', ADMIN: 'Quản trị viên' };
 const accountStatuses = { ACTIVE: 'Hoạt động', LOCKED: 'Đã khóa', DISABLED: 'Đã vô hiệu hóa' };
 
-function AccountDetails({ account }) {
+function AccountDetails({ account, className = '' }) {
   const facts = [
     ['Họ và tên', account.fullName],
     ['Tên đăng nhập', account.username],
@@ -29,15 +30,13 @@ function AccountDetails({ account }) {
     ['Vai trò', roles[account.role] ?? account.role],
     [
       'Trạng thái',
-      <StatusBadge key="status" tone={account.status === 'ACTIVE' ? 'success' : 'danger'}>
-        {accountStatuses[account.status] ?? account.status}
-      </StatusBadge>,
+      <StatusBadge key="status" status={account.status} category="account" />,
     ],
   ];
   if (account.role === 'PLAYER') facts.splice(4, 0, ['Trình độ chơi', account.skillLevel]);
   if (account.locationId) facts.push(['Địa điểm', '#' + account.locationId]);
   return (
-    <dl className="cw-facts">
+    <dl className={className || 'cw-facts'}>
       {facts.map(([label, value]) => (
         <div key={label}>
           <dt>{label}</dt>
@@ -48,8 +47,6 @@ function AccountDetails({ account }) {
   );
 }
 
-const SKILL_LEVELS = ['Mới chơi', 'Trung bình', 'Khá', 'Nâng cao'];
-
 /** Hộp thoại sửa hồ sơ: họ tên cho mọi vai trò, thêm trình độ chơi cho Player. Lưu xong trả hồ sơ mới. */
 function EditProfileDialog({ account, onClose, onSaved }) {
   const titleId = useId();
@@ -58,10 +55,11 @@ function EditProfileDialog({ account, onClose, onSaved }) {
   const isPlayer = account.role === 'PLAYER';
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
+  const lock = useRef(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (busy) return;
+    if (lock.current) return;
     const values = Object.fromEntries(new FormData(event.currentTarget));
     const nameError = fieldError(values.fullName, 'họ và tên', validName);
     setErrors({ fullName: nameError });
@@ -70,6 +68,7 @@ function EditProfileDialog({ account, onClose, onSaved }) {
     const payload = { fullName: normalizeName(values.fullName) };
     // Chỉ gửi khi đã chọn: backend chỉ nhận 4 mức (DR33), để trống thì giữ nguyên trình độ đang có.
     if (isPlayer && values.skillLevel) payload.skillLevel = values.skillLevel;
+    lock.current = true;
     setBusy(true);
     try {
       const response = await api.patch('/users/me', payload);
@@ -86,14 +85,15 @@ function EditProfileDialog({ account, onClose, onSaved }) {
       );
       setErrors(Object.keys(byField).length ? byField
         : { form: response?.message || 'Không thể lưu hồ sơ. Vui lòng thử lại.' });
+      lock.current = false;
       setBusy(false);
     }
   }
 
   return (
     <Modal labelledBy={titleId} onDismiss={onClose} busy={busy}>
-      <form noValidate onSubmit={handleSubmit} className="cw-modal-content">
-        <h2 id={titleId}>Sửa thông tin</h2>
+      <form noValidate onSubmit={handleSubmit} className={styles.editForm}>
+        <div><h2 id={titleId}>Sửa thông tin</h2><p className={styles.description}>Cập nhật thông tin hiển thị trên hồ sơ của bạn.</p></div>
         <fieldset disabled={busy} className={styles.dialogFields}>
           <FormField htmlFor={nameId} label="Họ và tên" required error={errors.fullName}>
             <Input
@@ -111,21 +111,24 @@ function EditProfileDialog({ account, onClose, onSaved }) {
             <FormField htmlFor={skillId} label="Trình độ chơi" error={errors.skillLevel}>
               <Select id={skillId} name="skillLevel" defaultValue={SKILL_LEVELS.includes(account.skillLevel) ? account.skillLevel : ''}
                 invalid={Boolean(errors.skillLevel)} aria-describedby={errors.skillLevel ? `${skillId}-error` : undefined}>
-                <option value="" disabled hidden />
+                <option value="" disabled>Chọn trình độ</option>
                 {SKILL_LEVELS.map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
               </Select>
             </FormField>
           )}
+          <FormField label="Tên đăng nhập" hint="Chỉ đọc"><Input value={account.username || ''} readOnly /></FormField>
+          <FormField label="Email" hint="Chỉ đọc"><Input value={account.email || ''} readOnly /></FormField>
+          <FormField label="Số điện thoại" hint="Chỉ đọc"><Input value={account.phone || ''} readOnly /></FormField>
           <p className={styles.dialogHint}>
             Tên đăng nhập, email và số điện thoại không đổi được tại đây.
           </p>
         </fieldset>
-        {errors.form && <Feedback tone="error">{errors.form}</Feedback>}
-        <div className="cw-modal-actions">
-          <Button variant="secondary" onClick={onClose} disabled={busy}>Huỷ</Button>
-          <Button type="submit" loading={busy} loadingText="Đang lưu…">Lưu</Button>
+        {errors.form && <Toast tone="danger">{errors.form}</Toast>}
+        <div className={styles.dialogActions}>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>Quay lại</Button>
+          <Button type="submit" loading={busy}>Lưu thay đổi</Button>
         </div>
       </form>
     </Modal>
@@ -137,26 +140,31 @@ function ProfileView() {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
   const account = profile.data;
-  const initial = (account?.fullName || account?.username || 'U').trim().slice(0, 1).toLocaleUpperCase('vi-VN');
+  const editButton = useRef(null);
+  useEffect(() => {
+    if (saved && !profile.loading && !profile.error) editButton.current?.focus({ preventScroll: true });
+  }, [saved, profile.loading, profile.error]);
 
   return (
-    <Section title="Hồ sơ của tôi" resource={profile}>
-      {account && (
+    <section className={styles.panel} aria-label="Hồ sơ của tôi">
+      <div className={styles.sectionHeading}><h2>Hồ sơ của tôi</h2><p>Thông tin cá nhân và trình độ chơi của bạn.</p></div>
+      {saved && <Toast>{messages.saved}</Toast>}
+      {profile.loading ? <LoadingState message="Đang tải hồ sơ…" /> : profile.error ? <ErrorState message={profile.error} onRetry={profile.reload} /> : account ? (
         <>
           <div className={styles.profileHead}>
-            <span className={styles.avatar} aria-hidden="true">{initial}</span>
+            <Avatar name={account.fullName || account.username} className={styles.profileAvatar} />
             <div className={styles.profileName}>
               <strong>{account.fullName || account.username}</strong>
               <span>@{account.username} · {roles[account.role] ?? account.role}</span>
             </div>
-            <Button variant="primary" onClick={() => { setSaved(false); setEditing(true); }}>
+            <Button ref={editButton} variant="primary" onClick={() => { setSaved(false); setEditing(true); }}>
               Sửa thông tin
             </Button>
           </div>
-          {saved && <Feedback tone="success">{messages.saved}</Feedback>}
-          <AccountDetails account={account} />
+          <AccountDetails account={account} className={styles.profileFacts} />
+          <p className={styles.readonlyNote}>Tên đăng nhập, email và số điện thoại chỉ đọc. Bạn có thể sửa họ tên{account.role === 'PLAYER' ? ' và trình độ chơi' : ''}.</p>
         </>
-      )}
+      ) : <SharedEmptyState title="Chưa tải được thông tin hồ sơ" description="Tải lại để lấy thông tin tài khoản của bạn." action={<Button variant="secondary" onClick={profile.reload}>Tải lại hồ sơ</Button>} />}
       {editing && account && (
         <EditProfileDialog
           account={account}
@@ -168,16 +176,18 @@ function ProfileView() {
           }}
         />
       )}
-    </Section>
+    </section>
   );
 }
 
 function ChangePasswordView() {
   const navigate = useNavigate();
   return (
-        <Section title="Đổi mật khẩu">
-          <p className="cw-muted">Sau khi đổi mật khẩu, bạn sẽ cần đăng nhập lại.</p>
+        <section className={styles.panel} aria-label="Đổi mật khẩu">
+          <div className={styles.sectionHeading}><h2>Đổi mật khẩu</h2><p>Giữ tài khoản an toàn bằng mật khẩu riêng, khó đoán.</p></div>
+          <p className={styles.securityNote}>Sau khi đổi mật khẩu, bạn sẽ cần đăng nhập lại.</p>
           <AccountForm
+            className={styles.passwordForm}
             label="Đổi mật khẩu"
             fields={[
               {
@@ -194,6 +204,7 @@ function ChangePasswordView() {
                 autoComplete: 'new-password',
                 required: true,
                 validate: validPassword,
+                hint: '8–32 ký tự, gồm ít nhất một chữ cái và một chữ số, không chứa khoảng trắng.',
               },
               {
                 name: 'confirmation',
@@ -209,7 +220,7 @@ function ChangePasswordView() {
               navigate('/login', { replace: true, state: { passwordChanged: true } });
             }}
           />
-        </Section>
+        </section>
   );
 }
 
@@ -218,9 +229,9 @@ function NotificationsView() {
 }
 
 const ACCOUNT_SECTIONS = {
-  profile: { to: '/account', label: 'Hồ sơ của tôi', view: ProfileView },
-  password: { to: '/account/password', label: 'Đổi mật khẩu', view: ChangePasswordView },
-  notifications: { to: '/account/notifications', label: 'Thông báo của tôi', view: NotificationsView },
+  profile: { to: '/account', label: 'Hồ sơ', description: 'Thông tin cá nhân', view: ProfileView },
+  password: { to: '/account/password', label: 'Mật khẩu', description: 'Bảo mật tài khoản', view: ChangePasswordView },
+  notifications: { to: '/account/notifications', label: 'Thông báo', description: 'Hoạt động mới nhất', view: NotificationsView },
 };
 
 /** Trang tài khoản của Player/Owner: thanh điều hướng bên trái giữa hồ sơ, đổi mật khẩu và thông báo. */
@@ -240,7 +251,7 @@ export function AccountPage({ section = 'profile' }) {
               end
               className={({ isActive }) => `${styles.accountNavLink} ${isActive ? styles.accountNavLinkActive : ''}`}
             >
-              {item.label}
+              <span>{item.label}<small>{item.description}</small></span><span className={styles.navArrow} aria-hidden="true">›</span>
             </NavLink>
           ))}
         </nav>

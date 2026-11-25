@@ -12,24 +12,11 @@ import { notificationMessage } from '../../utils/formatters';
 import styles from './NotificationBell.module.css';
 import { notificationDestination } from '../../utils/notificationNavigation';
 import { Button, EmptyState, ErrorState, LoadingState } from '../common';
+import { STATUS_CATALOG } from '../common/statusCatalog';
 
 /** Nhãn + màu cho từng loại thông báo do job tự động sinh ra. */
-const TYPE_META = {
-  BOOKING_HOLD_EXPIRED: { label: 'Hết hạn giữ chỗ', tone: 'warn' },
-  BOOKING_STARTED: { label: 'Bắt đầu giờ chơi', tone: 'info' },
-  BOOKING_COMPLETED: { label: 'Hoàn thành buổi chơi', tone: 'ok' },
-  BOOKING_AFFECTED: { label: 'Lịch đặt bị ảnh hưởng', tone: 'warn' },
-  SERVICE_TERM_EXPIRED: { label: 'Hết hạn dịch vụ', tone: 'danger' },
-  VOUCHER_EXPIRED: { label: 'Phiếu ưu đãi hết hạn', tone: 'warn' },
-  SERVICE_REGISTRATION_SUBMITTED: { label: 'Đơn đăng ký dịch vụ', tone: 'info' },
-  COMPLAINT_OVERDUE: { label: 'Khiếu nại quá hạn', tone: 'danger' },
-  BOOKING_ENDING_SOON: { label: 'Sắp hết giờ chơi', tone: 'warn' },
-  SERVICE_TERM_RENEWAL_REMINDER: { label: 'Sắp hết kỳ hạn', tone: 'warn' },
-  SERVICE_TERM_OVERDUE: { label: 'Quá hạn dịch vụ', tone: 'danger' },
-  // tag: nhãn nổi bật trên dòng thông báo, để Staff thấy ngay phụ thu đổi lịch cần xác nhận.
-  RESCHEDULE_PROOF_SUBMITTED: { label: 'Chờ xác nhận phụ thu', tone: 'warn', tag: 'Phụ thu đổi lịch' },
-  VENUE_RESCHEDULE_APPROVED: { label: 'Lịch sân đã đổi', tone: 'ok' },
-};
+const TYPE_META = Object.fromEntries(Object.entries(STATUS_CATALOG.notification).map(([type, meta]) =>
+  [type, { ...meta, tone: { warning: 'warn', success: 'ok' }[meta.tone] || meta.tone }]));
 
 const PREVIEW_SIZE = 8;
 

@@ -1,3 +1,100 @@
+.rewards {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+  color: var(--color-text);
+}
+
+.walletSummary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.walletSummary > div { display: grid; gap: var(--space-2); }
+.walletSummary > div + div { border-left: 1px solid var(--color-border); padding-left: var(--space-5); }
+.walletSummary span { color: var(--color-text-secondary); font-size: var(--text-sm); }
+.walletSummary strong { color: var(--color-primary); font-size: var(--text-2xl); font-variant-numeric: tabular-nums; }
+.walletSummary small { color: var(--color-text-muted); font-size: var(--text-sm); font-weight: 500; }
+.walletSummary > p { grid-column: 1 / -1; color: var(--color-text-muted); font-size: var(--text-sm); border-top: 1px solid var(--color-border); padding-top: var(--space-4); }
+
+.rewardSection, .pointsPanel { display: grid; gap: var(--space-5); min-width: 0; }
+.sectionHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-4); }
+.sectionHeading h2 { font-size: var(--text-lg); font-weight: 700; }
+.sectionHeading p { margin-top: var(--space-1); color: var(--color-text-muted); font-size: var(--text-base); }
+.count { padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); background: var(--color-neutral-bg); color: var(--color-neutral); font-size: var(--text-sm); white-space: nowrap; }
+.filters { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); align-items: end; }
+.filters > button { justify-self: start; }
+.voucherGrid, .balanceGrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+
+.ticket { min-width: 0; overflow: hidden; background: var(--color-surface); border: 1px solid var(--color-border); border-top: 3px solid var(--color-primary); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.ticket[data-state="USED"], .ticket[data-state="EXPIRED"] { border-top-color: var(--color-border-strong); }
+.ticket[data-state="UNAVAILABLE"] { border-top-color: var(--color-warning); }
+.ticketBody { padding: var(--space-5); }
+.ticketTop { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.ticketKind { color: var(--color-text-muted); font-size: var(--text-xs); }
+.ticketValue { margin-top: var(--space-5); color: var(--color-primary); font-size: var(--text-2xl); font-weight: 700; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.ticketValue > span { font-size: var(--text-md); font-weight: 500; }
+.ticket[data-state="USED"] .ticketValue, .ticket[data-state="EXPIRED"] .ticketValue { color: var(--color-text-secondary); }
+.ticket h3 { margin-top: var(--space-2); font-size: var(--text-md); font-weight: 700; overflow-wrap: anywhere; }
+.ticketMinimum { margin-top: var(--space-1); color: var(--color-text-secondary); font-size: var(--text-sm); }
+.ticketDetails { display: grid; gap: var(--space-2); margin-top: var(--space-5); font-size: var(--text-sm); }
+.ticketDetails > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); }
+.ticketDetails dt { color: var(--color-text-muted); }
+.ticketDetails dd { text-align: right; overflow-wrap: anywhere; color: var(--color-text-secondary); }
+.ticketStub { position: relative; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-4) var(--space-5); border-top: 1px dashed var(--color-border-strong); background: var(--color-bg); }
+.ticketStub::before, .ticketStub::after { content: ''; position: absolute; top: 0; width: var(--space-4); height: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-bg); transform: translateY(-50%); }
+.ticketStub::before { left: calc(var(--space-2) * -1); }
+.ticketStub::after { right: calc(var(--space-2) * -1); }
+.ticketStub code { min-width: 0; overflow-wrap: anywhere; user-select: all; font-family: var(--font-mono); font-size: var(--text-base); font-weight: 700; }
+.ticketStub button { flex-shrink: 0; }
+.ticketStub > p { color: var(--color-text-secondary); font-size: var(--text-sm); min-height: 44px; display: flex; align-items: center; }
+.copyMessage { padding: 0 var(--space-4) var(--space-4); background: var(--color-bg); overflow-wrap: anywhere; }
+.actionLink { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); background: var(--color-primary); color: var(--color-on-primary); font-size: var(--text-base); font-weight: 600; text-decoration: none; }
+.actionLink:hover { background: var(--color-primary-hover); }
+
+.pointsPanel { gap: var(--space-8); }
+.balanceCard { padding: var(--space-5); min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-xs); }
+.balanceCard h3 { font-size: var(--text-md); font-weight: 700; overflow-wrap: anywhere; }
+.pointBalance { margin-top: var(--space-4); font-size: var(--text-2xl); font-weight: 700; color: var(--color-primary); font-variant-numeric: tabular-nums; }
+.pointBalance > span { color: var(--color-text-muted); font-size: var(--text-sm); font-weight: 500; }
+.spend { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-4); font-size: var(--text-base); }
+.spend > span { color: var(--color-text-muted); }
+.progressBlock { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--color-border); font-size: var(--text-sm); }
+.progressHeading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); }
+.progress { display: block; width: 100%; height: var(--space-2); margin: var(--space-3) 0; border: 0; border-radius: var(--radius-full); overflow: hidden; background: var(--color-neutral-bg); accent-color: var(--color-primary); }
+.progress::-webkit-progress-bar { background: var(--color-neutral-bg); border-radius: var(--radius-full); }
+.progress::-webkit-progress-value { background: var(--color-primary); border-radius: var(--radius-full); }
+.progress::-moz-progress-bar { background: var(--color-primary); border-radius: var(--radius-full); }
+.progressHint { margin-top: var(--space-2); color: var(--color-text-muted); font-size: var(--text-sm); }
+.pointCredit { color: var(--color-success); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pointDebit { color: var(--color-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.transactionReason { overflow-wrap: anywhere; }
+.transactionReason p, .transactionReason small { display: block; margin-top: var(--space-1); color: var(--color-text-muted); }
+.historyTable td { overflow-wrap: anywhere; }
+
+@media (min-width: 640px) {
+  .filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .voucherGrid, .balanceGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1024px) {
+  .walletSummary { grid-template-columns: 1fr 1fr 1.4fr; padding: var(--space-6); }
+  .walletSummary > p { grid-column: auto; border-top: 0; border-left: 1px solid var(--color-border); padding: 0 0 0 var(--space-6); align-content: center; }
+  .voucherGrid, .balanceGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (width < 640px) {
+  .historyFilter { width: 100%; }
+  .historyTable td { align-items: start; }
+  .historyTable td > div { flex: 1; }
+}
+
 .createPanel,
 .campaignActions {
   padding: clamp(12px, 2vw, 20px);
@@ -220,7 +317,7 @@ dialog.createDialog {
   letter-spacing: 0.04em;
 }
 
-.ticket {
+.previewTicket {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
   overflow: hidden;
@@ -230,7 +327,7 @@ dialog.createDialog {
   box-shadow: var(--shadow-sm);
 }
 
-.ticketValue {
+.previewTicketValue {
   display: grid;
   place-content: center;
   gap: 2px;
@@ -245,12 +342,12 @@ dialog.createDialog {
   font-variant-numeric: tabular-nums;
 }
 
-.ticketValue span {
+.previewTicketValue span {
   font-size: var(--text-xs);
   font-weight: 500;
 }
 
-.ticketBody {
+.previewTicketBody {
   display: grid;
   gap: var(--space-1);
   min-width: 0;
@@ -260,11 +357,11 @@ dialog.createDialog {
   overflow-wrap: anywhere;
 }
 
-.ticketBody strong {
+.previewTicketBody strong {
   color: var(--color-text);
 }
 
-.ticketBody code {
+.previewTicketBody code {
   justify-self: start;
   padding: 2px var(--space-2);
   color: var(--color-primary-hover);
