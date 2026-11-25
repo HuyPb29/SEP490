@@ -6,6 +6,7 @@ import { searchFacilities } from '../../api/facilityApi'
 import WorkspaceLayout, { ActionForm, EmptyState, Feedback, Field, Section, StatusPill } from '../WorkspaceLayout'
 import { money, today, useResource } from '../workspaceSupport'
 import PointGrantForm from './PointGrantForm'
+import VoucherRecipients from './VoucherRecipients'
 import { useLoyaltyMilestones, usePersonalLoyaltyProgress } from '../../hooks/useLoyaltyMilestones'
 import { useVoucherCampaigns } from '../../hooks/useVoucherCampaigns'
 import { dateTime, shortDate } from '../../utils/formatters'
@@ -251,7 +252,7 @@ function VoucherForm({ voucher, save, after }) {
         <h4>Đối tượng</h4>
         <Field label="Đối tượng" name="targetGroup" value={target} onChange={(event) => setTarget(event.target.value)}
           options={Object.entries(voucherTargets)} error={errors.targetGroup}
-          hint={target === 'SPECIFIED' ? 'Chỉ người được cấp mới dùng được. Sau khi phát hành, mở chiến dịch và nhập ID người chơi ở mục Cấp voucher.' : undefined} />
+          hint={target === 'SPECIFIED' ? 'Chỉ người được cấp mới dùng được. Sau khi phát hành, mở chiến dịch để tìm và chọn người nhận theo tên đăng nhập, email hoặc số điện thoại.' : undefined} />
         {target !== 'SPECIFIED' && <Field label="Mã phiếu ưu đãi" name="code" defaultValue={voucher?.code || ''} maxLength={20}
           pattern="[A-Za-z0-9_\u002D]+" required error={errors.code || errors.codeValid} hint="Chữ, số, gạch dưới hoặc gạch ngang." />}
         {target === 'SPECIFIED' && <Field label="Hạn dùng sau khi cấp (ngày)" name="grantValidDays" type="number" min={1} max={3650}
@@ -273,8 +274,9 @@ function VoucherForm({ voucher, save, after }) {
 function CampaignCard({ item, campaigns }) {
   const { reload: refresh, save, publish } = campaigns
   const [stopped, setStopped] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const editable = item.source === 'CAMPAIGN' && ['DRAFT', 'EXPIRED'].includes(item.status)
-  return <details className={styles.campaign}>
+  return <details className={styles.campaign} onToggle={event => { if (event.target === event.currentTarget) setExpanded(event.currentTarget.open) }}>
     <summary className={styles.overview}>
       <span className={styles.campaignName}>{item.name}{item.code && <code>{item.code}</code>}</span>
       <span className={styles.campaignStatus}>
@@ -307,13 +309,7 @@ function CampaignCard({ item, campaigns }) {
           setStopped(true)
           refresh()
         }} />}
-      {item.source === 'CAMPAIGN' && item.targetGroup === 'SPECIFIED' && item.status === 'PUBLISHED' &&
-        <ActionForm label="Cấp voucher" action={(form) => api.post('/owner/vouchers/' + item.id + '/grants', {
-          playerIds: [...new Set(form.playerIds.trim().split(/[\s,]+/).map(Number))],
-        })} after={refresh}>
-          <Field label="ID người chơi" hint="Nếu cấp cho nhiều người, phân cách các ID bằng dấu phẩy."
-            name="playerIds" required pattern="[0-9]+([ ,]+[0-9]+)*" />
-        </ActionForm>}
+      {expanded && item.source === 'CAMPAIGN' && item.targetGroup === 'SPECIFIED' && <VoucherRecipients voucher={item} />}
     </div>
   </details>
 }

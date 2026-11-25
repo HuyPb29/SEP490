@@ -24,6 +24,18 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @Tag(name="F6 - UC24 Vouchers", description="Voucher campaign và cấp cá nhân; tiêu/hoàn lượt chỉ ở transaction booking nội bộ")
 public class VoucherController {
     private final VoucherService service;
+    @GetMapping("/api/owner/vouchers/recipients") @PreAuthorize("hasRole('OWNER')")
+    @Operation(summary="Tìm người nhận voucher theo tên đăng nhập, email hoặc số điện thoại")
+    public ApiResponse<PageResponse<VoucherRecipientResponse>> recipients(@AuthenticationPrincipal UserPrincipal user,
+            @RequestParam String q, @RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size) {
+        return ApiResponse.success(service.recipients(user, q, page, size));
+    }
+    @GetMapping("/api/owner/vouchers/{id}/grants") @PreAuthorize("hasRole('OWNER')")
+    @Operation(summary="Danh sách lượt đã cấp của voucher tại địa điểm được chọn")
+    public ApiResponse<PageResponse<VoucherGrantRecipientResponse>> grantRecipients(@AuthenticationPrincipal UserPrincipal user,
+            @PathVariable Long id, @RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size) {
+        return ApiResponse.success(service.grantRecipients(user, id, page, size));
+    }
     @GetMapping("/api/locations/{id}/vouchers") @SecurityRequirements
     @Operation(summary="Voucher công khai còn hiệu lực", description="Chỉ gồm voucher công khai còn phát hành; không giữ lượt, kiểm điều kiện cá nhân bằng check")
     public ApiResponse<PageResponse<VoucherResponse>> publicList(@PathVariable Long id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
