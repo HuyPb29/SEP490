@@ -29,6 +29,31 @@ public class RescheduleHistoryQuery {
 
     private final JdbcTemplate jdbc;
 
+    public Map<Long, java.math.BigDecimal> surchargesByBookingIds(Collection<Long> ids) {
+        return paidSurcharges("b.id", ids);
+    }
+
+    public Map<Long, java.math.BigDecimal> surchargesByPackageIds(Collection<Long> ids) {
+        return paidSurcharges("b.package_id", ids);
+    }
+
+    /** Chỉ cộng phụ thu đã xác nhận cho lần đổi có hiệu lực; giữ nguyên giá và ưu đãi lúc đặt. */
+    private Map<Long, java.math.BigDecimal> paidSurcharges(String key, Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) return Map.of();
+        Map<Long, java.math.BigDecimal> result = new HashMap<>();
+        String placeholders = String.join(",", Collections.nCopies(ids.size(), "?"));
+        jdbc.query("""
+                SELECT %s AS target_id, SUM(p.amount_due) AS surcharge
+                FROM payment p
+                JOIN reschedule_request r ON r.id = p.reschedule_request_id
+                JOIN booking b ON b.id = r.booking_id
+                WHERE p.status = 'CONFIRMED' AND r.status = 'APPROVED' AND %s IN (%s)
+                GROUP BY %s
+                """.formatted(key, key, placeholders, key),
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> result.put(rs.getLong("target_id"), rs.getBigDecimal("surcharge")), ids.toArray());
+        return result;
+    }
+
     /** Các lần đổi lịch thành công theo từng booking, cũ trước mới sau. */
     public Map<Long, List<RescheduleChange>> byBookingIds(Collection<Long> bookingIds) {
         if (bookingIds == null || bookingIds.isEmpty()) return Map.of();

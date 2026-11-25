@@ -199,10 +199,14 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
             </DetailRow>}
             <DetailRow label="Đặt cho">{detail.teamName || 'Cá nhân'}</DetailRow>
             <DetailRow label="Ghi chú cho chủ sân">{detail.note}</DetailRow>
-            <DetailRow label="Giá niêm yết">{currency.format(detail.listAmount ?? 0)}</DetailRow>
+            <DetailRow label={detail.rescheduleSurcharge > 0 ? 'Giá niêm yết lúc đặt' : 'Giá niêm yết'}>{currency.format(detail.listAmount ?? 0)}</DetailRow>
             {detail.voucherDiscount > 0 && <DetailRow label="Giảm bằng phiếu ưu đãi">{currency.format(detail.voucherDiscount)}</DetailRow>}
             {detail.pointDiscount > 0 && <DetailRow label="Giảm bằng điểm">{currency.format(detail.pointDiscount)}</DetailRow>}
-            <DetailRow label="Thành tiền">{currency.format(detail.finalAmount ?? 0)}</DetailRow>
+            <DetailRow label={detail.rescheduleSurcharge > 0 ? 'Tiền đặt gốc sau ưu đãi' : 'Thành tiền'}>{currency.format(detail.finalAmount ?? 0)}</DetailRow>
+            {detail.rescheduleSurcharge > 0 && <>
+              <DetailRow label="Phụ thu đổi lịch đã thanh toán">{currency.format(detail.rescheduleSurcharge)}</DetailRow>
+              <DetailRow label="Tổng tiền gồm phụ thu">{currency.format(detail.totalAmount ?? (Number(detail.finalAmount || 0) + Number(detail.rescheduleSurcharge)))}</DetailRow>
+            </>}
             <DetailRow label="Mã biên nhận">{detail.receiptNo}</DetailRow>
             {currentStatus === 'holding' && Number.isFinite(seconds) && <DetailRow label="Thời gian giữ chỗ">
               {seconds > 0 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
@@ -230,7 +234,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
                   <td>{duration > 0 ? duration + ' phút' : '—'}</td>
                   <td>{session.bookedHalfHours > 0 && session.listAmount != null
                     ? currency.format(session.listAmount * 2 / session.bookedHalfHours) + '/giờ' : '—'}</td>
-                  <td>{session.finalAmount == null ? '—' : currency.format(session.finalAmount)}</td>
+                  <td>{session.finalAmount == null ? '—' : currency.format(session.totalAmount ?? session.finalAmount)}{session.rescheduleSurcharge > 0 && <small> (gồm phụ thu {currency.format(session.rescheduleSurcharge)})</small>}</td>
                 </tr>
               })}</tbody>
             </Table>

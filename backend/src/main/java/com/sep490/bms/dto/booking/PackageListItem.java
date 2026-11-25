@@ -34,6 +34,14 @@ public class PackageListItem {
     private long sessionCount;
     private List<DaySession> daySessions;
     private BigDecimal finalAmount;
+    /** Phụ thu đổi lịch đã được xác nhận; giá gốc finalAmount không thay đổi. */
+    @Builder.Default
+    private BigDecimal rescheduleSurcharge = BigDecimal.ZERO;
+
+    public BigDecimal getTotalAmount() {
+        return (finalAmount == null ? BigDecimal.ZERO : finalAmount)
+                .add(rescheduleSurcharge == null ? BigDecimal.ZERO : rescheduleSurcharge);
+    }
     /** Trạng thái thanh toán của gói; Đang giữ chỗ đã quá hạn hiện là Hết hạn (BR03). */
     private BookingStatus status;
     /** Chỉ có khi đang giữ chỗ: mốc để đếm ngược (FR52). */

@@ -467,7 +467,12 @@ function PaymentDesk({ role, surcharge }) {
 
                   <dl className={styles.infoList}>
                     {surcharge ? (
-                      <><dt>Yêu cầu đổi lịch</dt><dd>#{activePayment.rescheduleRequestId || selectedId}</dd></>
+                      <><dt>Mã đặt sân</dt><dd className={styles.mono}>{activeDetail.bookingCode || activePayment.bookingCode || '—'}</dd>
+                        <dt>Khách / SĐT</dt><dd>{activeDetail.customerName || '—'}{activeDetail.customerPhone ? ` · ${activeDetail.customerPhone}` : ''}</dd>
+                        <dt>Sân đổi đến</dt><dd>{activeDetail.courtName || '—'}</dd>
+                        <dt>Thời gian chơi mới</dt><dd>{activeDetail.playDate ? `${activeDetail.playDate} · ${activeDetail.startTime}–${activeDetail.endTime}` : '—'}</dd>
+                        <dt>Nội dung CK chuẩn</dt><dd className={styles.mono}>{activeDetail.transferContent || '—'}</dd>
+                        <dt>Yêu cầu đổi lịch</dt><dd>#{activePayment.rescheduleRequestId || selectedId}</dd></>
                     ) : (
                       <>
                         <dt>Khách / SĐT</dt>

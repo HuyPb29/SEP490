@@ -167,6 +167,25 @@ class BookingChangeApiTests {
                 .doesNotContain(disabledStaff.getId());
     }
 
+    @Test void surchargeQueueAndDetailsExposeBookingReconciliationFields() throws Exception {
+        Account staff = createStaff(AccountStatus.ACTIVE);
+        Long id = create(660);
+        mvc.perform(paymentProof(id)).andExpect(status().isOk());
+        Long payment = jdbc.queryForObject("select id from payment where reschedule_request_id=?", Long.class, id);
+        mvc.perform(get("/api/staff/reschedule-payments").header("Authorization",token(staff)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].bookingCode").value(booking.getBookingCode()));
+        mvc.perform(get("/api/staff/reschedule-payments/"+payment).header("Authorization",token(staff)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.bookingCode").value(booking.getBookingCode()))
+                .andExpect(jsonPath("$.data.customerName").value(player.getFullName()))
+                .andExpect(jsonPath("$.data.customerPhone").value(player.getPhone()))
+                .andExpect(jsonPath("$.data.courtName").isNotEmpty())
+                .andExpect(jsonPath("$.data.startTime").value("10:00"))
+                .andExpect(jsonPath("$.data.endTime").value("11:00"))
+                .andExpect(jsonPath("$.data.transferContent").value(booking.getBookingCode()+" DL"+id));
+        mvc.perform(get("/api/staff/reschedule-payments/"+payment).header("Authorization",token(other)))
+                .andExpect(status().isForbidden());
+    }
+
     private Account createStaff(AccountStatus status) {
         Account staff = accounts.saveAndFlush(Account.builder()
                 .username("staff" + UUID.randomUUID().toString().substring(0, 8))

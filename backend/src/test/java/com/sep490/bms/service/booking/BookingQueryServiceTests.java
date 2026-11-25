@@ -66,11 +66,12 @@ class BookingQueryServiceTests {
     private final BookingService bookingService = mock(BookingService.class);
     private final PaymentService payments = mock(PaymentService.class);
     private final ReviewService reviews = mock(ReviewService.class);
+    private final com.sep490.bms.repository.reschedule.RescheduleHistoryQuery history = mock(com.sep490.bms.repository.reschedule.RescheduleHistoryQuery.class);
     private final BookingQueryService service =
             new BookingQueryService(bookings, packages, mock(com.sep490.bms.repository.booking.BookingSlotRepository.class),
                     courts, teams, locations, bookingService, payments, reviews,
                     mock(com.sep490.bms.service.reschedule.RescheduleService.class),
-                    mock(com.sep490.bms.repository.reschedule.RescheduleHistoryQuery.class));
+                    history);
 
     private final UserPrincipal player = UserPrincipal.builder().id(PLAYER).role(Role.PLAYER).build();
 
@@ -117,6 +118,23 @@ class BookingQueryServiceTests {
         PageResponse<BookingListItem> page = service.listMyBookings(player, null, 0, 20, NOW);
 
         assertThat(page.getContent()).extracting(BookingListItem::isCanReview).containsExactly(true, false, false);
+    }
+
+    @Test
+    void listAndDetailIncludeConfirmedSurchargeWithoutChangingOriginalPrice() {
+        Booking original = booking(1L, BookingStatus.CONFIRMED, null);
+        original.setListAmount(new BigDecimal("95000"));
+        original.setFinalAmount(new BigDecimal("95000"));
+        repositoryReturns(original);
+        when(bookingService.getForPlayer(1L, PLAYER)).thenReturn(original);
+        when(history.surchargesByBookingIds(List.of(1L))).thenReturn(Map.of(1L, new BigDecimal("95000")));
+        var list = service.listMyBookings(player, null, 0, 20, NOW).getContent().get(0);
+        var detail = service.getMyBooking(player, 1L, NOW);
+        assertThat(list.getTotalAmount()).isEqualByComparingTo("190000");
+        assertThat(detail.getTotalAmount()).isEqualByComparingTo("190000");
+        assertThat(detail.getRescheduleSurcharge()).isEqualByComparingTo("95000");
+        assertThat(detail.getListAmount()).isEqualByComparingTo("95000");
+        assertThat(original.getFinalAmount()).isEqualByComparingTo("95000");
     }
 
     @Test

@@ -44,6 +44,9 @@ public class RescheduleRequest {
     @Column(name = "new_court_id", nullable = false)
     private Long newCourtId;
 
+    @jakarta.persistence.Transient
+    private String newCourtName;
+
     @Column(name = "new_date", nullable = false)
     private LocalDate newDate;
 

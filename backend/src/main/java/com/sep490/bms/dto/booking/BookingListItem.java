@@ -34,6 +34,14 @@ public class BookingListItem {
     private BigDecimal listAmount;
     private Long bookedHalfHours;
     private BigDecimal finalAmount;
+    /** Phụ thu đổi lịch đã được xác nhận; giá gốc finalAmount không thay đổi. */
+    @Builder.Default
+    private BigDecimal rescheduleSurcharge = BigDecimal.ZERO;
+
+    public BigDecimal getTotalAmount() {
+        return (finalAmount == null ? BigDecimal.ZERO : finalAmount)
+                .add(rescheduleSurcharge == null ? BigDecimal.ZERO : rescheduleSurcharge);
+    }
     /** Đang giữ chỗ đã quá hạn hiện là Hết hạn, dù job UC37 chưa kịp đổi trạng thái (BR03). */
     private BookingStatus status;
     /** Chỉ có khi đang giữ chỗ: màn hình đếm ngược đến mốc này (FR52, MSG32). */

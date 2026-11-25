@@ -113,6 +113,10 @@ public class Payment {
     @Transient
     private boolean overdue;
 
+    /** Mã booking để đối chiếu và tìm phụ thu đổi lịch; không lưu lại vào payment. */
+    @Transient
+    private String bookingCode;
+
     /**
      * Player đã gửi lại chứng từ (UC18 #4): chờ Staff xem lại. Tính lại thời điểm gửi để
      * mốc chậm xác nhận (BR58, P24) bắt đầu từ lần gửi này.

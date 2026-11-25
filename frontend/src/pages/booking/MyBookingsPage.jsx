@@ -723,8 +723,9 @@ export default function MyBookingsPage() {
                   {/* Khối phải: Giá tiền thực trả (final_amount) + Các nút thao tác theo trạng thái */}
                   <div className={styles.cardRight}>
                     <strong className={styles.priceText}>
-                      {formatVnd(item.final_amount)}
+                      {formatVnd(item.total_amount ?? item.final_amount)}
                     </strong>
+                    {item.reschedule_surcharge > 0 && <span className={styles.subNoteLine}>Gồm phụ thu đổi lịch {formatVnd(item.reschedule_surcharge)}</span>}
 
                     <div className={styles.actionGroup}>
                       {/* Nút Xem chi tiết (UC17 #3-5, FR35, FR51, FR52, FR57) */}
