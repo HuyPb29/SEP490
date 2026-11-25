@@ -157,9 +157,10 @@ export default function BookingPaymentPage() {
   const remainingSeconds = Number.isFinite(deadline) ? Math.max(0, Math.ceil((deadline - clock) / 1000)) : null;
 
   const formatCountdown = (totalSecs) => {
-    const mins = String(Math.floor(totalSecs / 60)).padStart(2, '0');
+    const hours = Math.floor(totalSecs / 3600);
+    const mins = String(Math.floor(totalSecs / 60) % 60).padStart(2, '0');
     const secs = String(totalSecs % 60).padStart(2, '0');
-    return `${mins}:${secs}`;
+    return hours > 0 ? `${String(hours).padStart(2, '0')}:${mins}:${secs}` : `${mins}:${secs}`;
   };
 
   // DR21: Kiểm tra định dạng JPG/PNG và dung lượng <= 5MB
@@ -253,7 +254,7 @@ export default function BookingPaymentPage() {
   </div>;
   const transferRows = [
     ['Ngân hàng', bankInfo.bankName, 'ngân hàng'], ['Số tài khoản', bankInfo.bankAccountNo, 'số tài khoản'],
-    ['Tên chủ tài khoản', bankInfo.bankAccountHolder, 'tên chủ tài khoản'], ['Nội dung chuyển khoản', bookingData.code, 'nội dung chuyển khoản'],
+    ['Tên chủ tài khoản', bankInfo.bankAccountHolder, 'tên chủ tài khoản'], ['Nội dung chuyển khoản', bankInfo.transferContent || bookingData.code, 'nội dung chuyển khoản'],
   ];
   return <PublicLayout>
     <div className={styles.container}>

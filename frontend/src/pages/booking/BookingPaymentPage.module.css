@@ -13,7 +13,7 @@
 .qrArea { margin-block: var(--space-6); display: grid; justify-items: center; gap: var(--space-3); }
 .qrImage { width: min(280px, 100%); aspect-ratio: 1; object-fit: contain; padding: var(--space-3); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
 .bankDetails { margin: 0; }
-.bankDetails > div { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); border-top: 1px solid var(--color-border); padding-block: var(--space-4); }
+.bankDetails > div { display: flex; flex-wrap: nowrap; justify-content: space-between; align-items: center; gap: var(--space-3); border-top: 1px solid var(--color-border); padding-block: var(--space-4); }
 .bankDetails > div > div { min-width: 0; }
 .bankDetails dt, .details dt { color: var(--color-text-muted); font-size: var(--text-xs); }
 .bankDetails dd { margin: var(--space-2) 0 0; font-size: var(--text-md); font-weight: 600; overflow-wrap: anywhere; user-select: text; }
@@ -26,7 +26,7 @@
 .timer { padding: var(--space-4); border: 1px solid var(--color-primary); border-radius: var(--radius-md); background: var(--color-primary-soft); color: var(--color-primary-hover); }
 .timer > div { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .timer span { font-size: var(--text-sm); font-weight: 500; }
-.timer strong { font-size: var(--text-2xl); font-variant-numeric: tabular-nums; font-weight: 700; }
+.timer strong { font-size: var(--text-2xl); font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
 .timer p { font-size: var(--text-xs); margin: var(--space-2) 0 0; line-height: 1.7; }
 .timerWarning { background: var(--color-warning-bg); border-color: var(--color-warning-border); color: var(--color-warning); }
 .timerExpired { background: var(--color-danger-bg); border-color: var(--color-danger-border); color: var(--color-danger); }
