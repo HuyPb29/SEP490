@@ -15,17 +15,18 @@ import {
 import { Button } from '../../components/common/Button';
 import { FormField, Input, Select, Textarea } from '../../components/common/FormField';
 import { Modal } from '../../components/common/Modal';
-import { StatusBadge } from '../../components/common/StatusBadge';
-import { Table } from '../../components/common/Table';
 import ManagementLayout from '../../components/layout/ManagementLayout';
 import { useAuth } from '../../hooks/useAuth';
+import styles from './MaintenanceRequestsPage.module.css';
 
-const STATUS_FILTERS = [
-  { value: '', label: 'Tất cả trạng thái' },
+/** UC10 – Bảo trì sân: Staff (và Owner) tạo, rút yêu cầu; Owner duyệt hoặc từ chối (FR23–FR25, BR16, BR17). */
+
+const STATUS_TABS = [
   { value: 'PENDING', label: 'Chờ duyệt' },
   { value: 'APPROVED', label: 'Đã duyệt' },
   { value: 'REJECTED', label: 'Bị từ chối' },
   { value: 'CANCELLED', label: 'Đã rút' },
+  { value: '', label: 'Tất cả' },
 ];
 
 const STATUS_LABELS = {
@@ -33,6 +34,15 @@ const STATUS_LABELS = {
   APPROVED: 'Đã duyệt',
   REJECTED: 'Bị từ chối',
   CANCELLED: 'Đã rút',
+  COMPLETED: 'Hoàn thành',
+};
+
+const STATUS_TONE = {
+  PENDING: 'badgeWarning',
+  APPROVED: 'badgeSuccess',
+  REJECTED: 'badgeDanger',
+  CANCELLED: 'badgeNeutral',
+  COMPLETED: 'badgeNeutral',
 };
 
 /** LocalDateTime "2026-11-10T19:00:00" -> "10/11/2026 19:00". */
@@ -41,6 +51,26 @@ function formatDateTime(value) {
   const [datePart, timePart = ''] = String(value).split('T');
   const [year, month, day] = datePart.split('-');
   return `${day}/${month}/${year} ${timePart.slice(0, 5)}`;
+}
+
+/** Hai mốc cùng ngày thì ghi gọn "25/11/2026 · 07:00–11:00". */
+function formatRange(startAt, endAt) {
+  if (!startAt || !endAt) return '—';
+  const [startDate, startTime = ''] = String(startAt).split('T');
+  const [endDate, endTime = ''] = String(endAt).split('T');
+  if (startDate === endDate) {
+    const [year, month, day] = startDate.split('-');
+    return `${day}/${month}/${year} · ${startTime.slice(0, 5)}–${endTime.slice(0, 5)}`;
+  }
+  return `${formatDateTime(startAt)} → ${formatDateTime(endAt)}`;
+}
+
+function formatDuration(minutes) {
+  if (!minutes) return '';
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const rest = minutes % 60;
+  return [days && `${days} ngày`, hours && `${hours} giờ`, rest && `${rest} phút`].filter(Boolean).join(' ');
 }
 
 function defaultStartAt() {
@@ -74,10 +104,12 @@ export default function MaintenanceRequestsPage() {
   const [selectedLocationId, setSelectedLocationId] = useState(() => getStoredLocationId());
   const [staffCourts, setStaffCourts] = useState([]);
   const [requests, setRequests] = useState([]);
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('PENDING');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [formError, setFormError] = useState('');
   const [rejectTarget, setRejectTarget] = useState(null);
   const [approveTarget, setApproveTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -88,8 +120,10 @@ export default function MaintenanceRequestsPage() {
     locations.find((location) => String(location.id) === String(selectedLocationId)) || null;
   const courts = isOwner ? (selectedLocation?.courts ?? []) : staffCourts;
   const ownerLocationId = isOwner ? selectedLocation?.id : undefined;
+  const canCreate = isStaff || (isOwner && selectedLocation?.status === 'ACTIVE');
 
-  const loadRequests = useCallback(async (status = statusFilter) => {
+  // Tải mọi trạng thái một lần, lọc theo tab ở giao diện để tab hiện được số đếm.
+  const loadRequests = useCallback(async () => {
     if ((!isOwner && !isStaff) || (isOwner && !ownerLocationId)) {
       setRequests([]);
       setLoading(false);
@@ -97,7 +131,7 @@ export default function MaintenanceRequestsPage() {
     }
     setLoading(true);
     try {
-      const list = await getMaintenanceRequests(isOwner ? 'OWNER' : 'STAFF', status || null, ownerLocationId);
+      const list = await getMaintenanceRequests(isOwner ? 'OWNER' : 'STAFF', null, ownerLocationId);
       setRequests(list);
       setActionError('');
     } catch (err) {
@@ -105,7 +139,7 @@ export default function MaintenanceRequestsPage() {
     } finally {
       setLoading(false);
     }
-  }, [isOwner, isStaff, statusFilter, ownerLocationId]);
+  }, [isOwner, isStaff, ownerLocationId]);
 
   useEffect(() => {
     let active = true;
@@ -146,7 +180,7 @@ export default function MaintenanceRequestsPage() {
     let active = true;
     if ((!isOwner && !isStaff) || (isOwner && !ownerLocationId)) return undefined;
     setLoading(true);
-    getMaintenanceRequests(isOwner ? 'OWNER' : 'STAFF', statusFilter || null, ownerLocationId)
+    getMaintenanceRequests(isOwner ? 'OWNER' : 'STAFF', null, ownerLocationId)
       .then((list) => {
         if (!active) return;
         setRequests(list);
@@ -161,29 +195,35 @@ export default function MaintenanceRequestsPage() {
     return () => {
       active = false;
     };
-  }, [isOwner, isStaff, statusFilter, ownerLocationId]);
+  }, [isOwner, isStaff, ownerLocationId]);
+
+  const openCreate = () => {
+    setForm(emptyForm());
+    setFormError('');
+    setCreating(true);
+  };
 
   const handleCreateSubmit = async (event) => {
     event.preventDefault();
     if (!form.courtId) {
-      setActionError('Vui lòng chọn sân cần bảo trì.');
+      setFormError('Vui lòng chọn sân cần bảo trì.');
       return;
     }
     if (!form.startAt || !form.endAt) {
-      setActionError('Vui lòng chọn đầy đủ thời gian bắt đầu và kết thúc.');
+      setFormError('Vui lòng chọn đầy đủ thời gian bắt đầu và kết thúc.');
       return;
     }
     if (new Date(`${form.startAt}:00`) >= new Date(`${form.endAt}:00`)) {
-      setActionError('Thời gian kết thúc phải sau thời gian bắt đầu.');
+      setFormError('Thời gian kết thúc phải sau thời gian bắt đầu.');
       return;
     }
     if (!form.reason.trim()) {
-      setActionError('Vui lòng nhập lý do bảo trì.');
+      setFormError('Vui lòng nhập lý do bảo trì.');
       return;
     }
 
     setSaving(true);
-    setActionError('');
+    setFormError('');
     setStatusMessage('');
     try {
       await createMaintenanceRequest({
@@ -193,11 +233,13 @@ export default function MaintenanceRequestsPage() {
         reason: form.reason.trim(),
       }, ownerLocationId);
       setForm(emptyForm());
-      await loadRequests(statusFilter);
+      setCreating(false);
+      setStatusFilter('PENDING');
+      await loadRequests();
       setStatusMessage('Đã gửi yêu cầu bảo trì thành công.');
     } catch (err) {
-      if (err.response?.status === 409) await loadRequests(statusFilter);
-      setActionError(apiErrorMessage(err));
+      if (err.response?.status === 409) await loadRequests();
+      setFormError(apiErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -214,11 +256,11 @@ export default function MaintenanceRequestsPage() {
         return;
       }
       await approveMaintenanceRequest(id, ownerLocationId, impact.bookings);
-      await loadRequests(statusFilter);
+      await loadRequests();
       setStatusMessage('Đã duyệt yêu cầu bảo trì.');
     } catch (err) {
       if (err.response?.status === 409) {
-        await loadRequests(statusFilter);
+        await loadRequests();
         try { setApproveTarget(await getMaintenanceImpact(id, ownerLocationId)); }
         catch { setApproveTarget(null); }
       }
@@ -235,11 +277,11 @@ export default function MaintenanceRequestsPage() {
     try {
       await approveMaintenanceRequest(approveTarget.maintenanceId, ownerLocationId, approveTarget.bookings);
       setApproveTarget(null);
-      await loadRequests(statusFilter);
+      await loadRequests();
       setStatusMessage("Đã duyệt bảo trì và xử lý các đặt sân bị ảnh hưởng.");
     } catch (err) {
       if (err.response?.status === 409) {
-        await loadRequests(statusFilter);
+        await loadRequests();
         try { setApproveTarget(await getMaintenanceImpact(approveTarget.maintenanceId, ownerLocationId)); }
         catch { setApproveTarget(null); }
       }
@@ -253,10 +295,10 @@ export default function MaintenanceRequestsPage() {
     setStatusMessage('');
     try {
       await cancelMaintenanceRequest(id, null, ownerLocationId);
-      await loadRequests(statusFilter);
+      await loadRequests();
       setStatusMessage('Đã rút yêu cầu bảo trì.');
     } catch (err) {
-      if (err.response?.status === 409) await loadRequests(statusFilter);
+      if (err.response?.status === 409) await loadRequests();
       setActionError(apiErrorMessage(err));
     } finally {
       setSaving(false);
@@ -276,7 +318,7 @@ export default function MaintenanceRequestsPage() {
       await rejectMaintenanceRequest(rejectTarget.id, rejectReason.trim(), ownerLocationId);
       setRejectTarget(null);
       setRejectReason('');
-      await loadRequests(statusFilter);
+      await loadRequests();
       setActionError('');
       setStatusMessage('Đã từ chối yêu cầu bảo trì.');
     } catch (err) {
@@ -284,7 +326,7 @@ export default function MaintenanceRequestsPage() {
         setRejectTarget(null);
         setApproveTarget(null);
         setRejectReason('');
-        await loadRequests(statusFilter);
+        await loadRequests();
       }
       setActionError(apiErrorMessage(err));
     } finally {
@@ -292,14 +334,16 @@ export default function MaintenanceRequestsPage() {
     }
   };
 
-  const pendingCount = requests.filter((request) => request.status === 'PENDING').length;
+  const countOf = (status) => (status ? requests.filter((request) => request.status === status).length : requests.length);
+  const pendingCount = countOf('PENDING');
+  const visible = requests
+    .filter((request) => !statusFilter || request.status === statusFilter)
+    .sort((a, b) => String(a.startAt).localeCompare(String(b.startAt)));
 
   if (!isOwner && !isStaff) {
     return (
       <ManagementLayout role="staff" title="Yêu cầu bảo trì">
-        <div className="cw-card text-center py-8">
-          <p className="cw-muted">Trang này chỉ dành cho Chủ địa điểm (chủ sân) hoặc Nhân viên (nhân viên).</p>
-        </div>
+        <p className={styles.empty}>Trang này chỉ dành cho chủ sân hoặc nhân viên của địa điểm.</p>
       </ManagementLayout>
     );
   }
@@ -307,12 +351,13 @@ export default function MaintenanceRequestsPage() {
   return (
     <ManagementLayout
       role={isOwner ? 'owner' : 'staff'}
-      title="Quản lý bảo trì sân"
-      subtitle={
-        isOwner
-          ? `Có ${pendingCount} yêu cầu đang chờ phê duyệt`
-          : 'Tạo và theo dõi yêu cầu bảo trì định kỳ hoặc đột xuất'
-      }
+      title={isOwner ? 'Duyệt yêu cầu bảo trì' : 'Yêu cầu bảo trì'}
+      subtitle={isOwner
+        ? `Có ${pendingCount} yêu cầu đang chờ duyệt. Khi duyệt, sân bị khóa trong khoảng thời gian đó; booking bị ảnh hưởng được xử lý theo quy trình sân hủy lịch.`
+        : 'Nhân viên tạo yêu cầu, chủ sân duyệt. Khi được duyệt, sân bị khóa trong khoảng thời gian đó; booking bị ảnh hưởng được xử lý theo quy trình sân hủy lịch.'}
+      actions={canCreate && (
+        <button type="button" className={styles.primary} onClick={openCreate}>+ Tạo yêu cầu bảo trì</button>
+      )}
       locations={locations}
       locationId={selectedLocationId}
       onLocationChange={(nextId) => {
@@ -324,243 +369,173 @@ export default function MaintenanceRequestsPage() {
         setApproveTarget(null);
         setRejectReason('');
         setForm(emptyForm());
+        setCreating(false);
         setLoading(Boolean(nextId));
         setActionError('');
         setStatusMessage('');
       }}
     >
-      <div className="space-y-6">
-        {statusMessage && (
-          <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm" role="status">
-            {statusMessage}
-          </div>
-        )}
+      {statusMessage && <p className={styles.success} role="status">{statusMessage}</p>}
+      {actionError && !approveTarget && !rejectTarget && <p className={styles.error} role="alert">{actionError}</p>}
 
-        {actionError && (
-          <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-sm" role="alert">
-            {actionError}
-          </div>
-        )}
+      <section className={styles.board} aria-label="Danh sách yêu cầu bảo trì">
+        <div className={styles.tabs} role="tablist" aria-label="Lọc theo trạng thái">
+          {STATUS_TABS.map((tab) => {
+            const n = countOf(tab.value);
+            return (
+              <button key={tab.value || 'all'} type="button" role="tab" aria-selected={statusFilter === tab.value}
+                className={statusFilter === tab.value ? styles.tabOn : ''} onClick={() => setStatusFilter(tab.value)}>
+                {tab.label}<span className={tab.value === 'PENDING' && n > 0 ? styles.countHot : styles.count}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
 
-        {(isStaff || (isOwner && selectedLocation?.status === 'ACTIVE')) && (
-          <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
-            <h2 className="text-base font-bold text-slate-800 mb-4">Gửi yêu cầu bảo trì mới</h2>
-            {isOwner && <p className="mb-4 text-sm text-slate-600">Yêu cầu mới ở trạng thái chờ duyệt. Hãy kiểm tra rồi duyệt để khóa lịch bảo trì.</p>}
-            <form onSubmit={handleCreateSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <FormField label="Sân cần bảo trì" htmlFor="maintenance-court" required>
-                  <Select
-                    id="maintenance-court"
-                    value={form.courtId}
-                    onChange={(event) => setForm({ ...form, courtId: event.target.value })}
-                    disabled={saving}
-                  >
-                    <option value="">-- Chọn sân --</option>
-                    {courts.map((court) => (
-                      <option key={court.id} value={court.id}>{court.name}</option>
-                    ))}
-                  </Select>
-                </FormField>
-
-                <FormField label="Thời gian bắt đầu" htmlFor="maintenance-start" required>
-                  <Input
-                    id="maintenance-start"
-                    type="datetime-local"
-                    step={1800}
-                    value={form.startAt}
-                    onChange={(event) => setForm({ ...form, startAt: event.target.value })}
-                    disabled={saving}
-                  />
-                </FormField>
-
-                <FormField label="Thời gian kết thúc" htmlFor="maintenance-end" required>
-                  <Input
-                    id="maintenance-end"
-                    type="datetime-local"
-                    step={1800}
-                    value={form.endAt}
-                    onChange={(event) => setForm({ ...form, endAt: event.target.value })}
-                    disabled={saving}
-                  />
-                </FormField>
-              </div>
-
-              <FormField label="Lý do bảo trì" htmlFor="maintenance-reason" required>
-                <Textarea
-                  id="maintenance-reason"
-                  rows={2}
-                  maxLength={500}
-                  value={form.reason}
-                  onChange={(event) => setForm({ ...form, reason: event.target.value })}
-                  placeholder="Mô tả lý do hoặc nội dung bảo trì..."
-                  disabled={saving}
-                />
-              </FormField>
-
-              <div className="flex justify-end">
-                <Button type="submit" variant="primary" loading={saving}>
-                  Gửi yêu cầu
-                </Button>
-              </div>
-            </form>
-          </section>
-        )}
-
-        <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <h2 className="text-base font-bold text-slate-800">
-              Danh sách yêu cầu bảo trì {pendingCount > 0 && <span className="text-amber-600">({pendingCount} chờ duyệt)</span>}
-            </h2>
-            <div className="w-full sm:w-56">
-              <Select
-                value={statusFilter}
-                onChange={(event) => {
-                  setStatusFilter(event.target.value);
-                  setLoading(true);
-                }}
-              >
-                {STATUS_FILTERS.map((item) => (
-                  <option key={item.value} value={item.value}>{item.label}</option>
-                ))}
-              </Select>
-            </div>
-          </div>
-
-          {loading ? (
-            <p className="text-center text-slate-500 py-8" role="status">Đang tải danh sách yêu cầu…</p>
-          ) : requests.length === 0 ? (
-            <div className="text-center text-slate-500 py-10">
-              Chưa có yêu cầu bảo trì nào trong danh mục này.
-            </div>
-          ) : (
-            <Table>
-              <thead>
-                <tr>
-                  <th>Sân</th>
-                  <th>Thời gian bắt đầu</th>
-                  <th>Thời gian kết thúc</th>
-                  <th>Lý do</th>
-                  <th>Trạng thái</th>
-                  <th className="text-right">Hành động</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map((request) => {
-                  const isOwn = String(request.requestedBy) === String(currentUser?.user_id);
-                  return (
-                    <tr key={request.id}>
-                      <td className="font-medium text-slate-900">{request.courtName}</td>
-                      <td>{formatDateTime(request.startAt)}</td>
-                      <td>{formatDateTime(request.endAt)}</td>
-                      <td className="max-w-xs truncate" title={request.reason}>{request.reason}</td>
-                      <td>
-                        <StatusBadge status={request.status}>
-                          {STATUS_LABELS[request.status] ?? request.status}
-                        </StatusBadge>
-                        {request.rejectionReason && (
-                          <div className="text-xs text-rose-600 mt-1">
-                            Lý do: {request.rejectionReason}
-                          </div>
+        {loading ? (
+          <p className={styles.empty} role="status">Đang tải danh sách yêu cầu…</p>
+        ) : visible.length === 0 ? (
+          <p className={styles.empty}>Không có yêu cầu bảo trì trong mục này.</p>
+        ) : (
+          <div className={styles.cards}>
+            {visible.map((request) => {
+              const isOwn = String(request.requestedBy) === String(currentUser?.user_id);
+              const canDecide = isOwner && request.status === 'PENDING';
+              const canWithdraw = (isStaff || isOwner) && isOwn && request.status === 'PENDING';
+              const rejectNote = request.rejectReason ?? request.rejectionReason;
+              return (
+                <article key={request.id} className={styles.card}>
+                  <header>
+                    <h3>{request.courtName}</h3>
+                    <span className={`${styles.badge} ${styles[STATUS_TONE[request.status]] ?? ''}`}>
+                      {STATUS_LABELS[request.status] ?? request.status}
+                    </span>
+                  </header>
+                  <p className={styles.range}>
+                    <strong>{formatRange(request.startAt, request.endAt)}</strong>
+                    {request.durationMinutes ? <span> · {formatDuration(request.durationMinutes)}</span> : null}
+                  </p>
+                  <p className={styles.reason}>{request.reason}</p>
+                  <p className={styles.meta}>
+                    Gửi bởi {isOwn ? 'bạn' : request.requesterName || 'nhân viên'}
+                    {request.status === 'APPROVED' && request.approverName ? ` · Duyệt bởi ${request.approverName}` : ''}
+                    {request.status === 'REJECTED' && request.approverName ? ` · Từ chối bởi ${request.approverName}` : ''}
+                    {request.status === 'CANCELLED' && request.cancellerName ? ` · Rút bởi ${request.cancellerName}` : ''}
+                    {request.decidedAt && request.status !== 'PENDING' ? ` · ${formatDateTime(request.decidedAt)}` : ''}
+                  </p>
+                  {request.status === 'REJECTED' && rejectNote && (
+                    <p className={styles.rejectNote}><strong>Lý do từ chối:</strong> {rejectNote}</p>
+                  )}
+                  {(canDecide || canWithdraw || request.status === 'PENDING') && (
+                    <footer>
+                      <span className={styles.meta}>
+                        {request.status === 'PENDING' && !isOwner ? 'Chủ sân sẽ thấy số booking bị ảnh hưởng trước khi duyệt.' : ''}
+                      </span>
+                      <span className={styles.cardActions}>
+                        {canWithdraw && (
+                          <Button size="sm" variant="secondary" onClick={() => handleCancel(request.id)} disabled={saving}>Rút yêu cầu</Button>
                         )}
-                      </td>
-                      <td className="text-right whitespace-nowrap">
-                        <div className="inline-flex gap-2">
-                          {isOwner && request.status === 'PENDING' && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="primary"
-                                onClick={() => handleApprove(request.id)}
-                                disabled={saving}
-                              >
-                                Duyệt
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                onClick={() => {
-                                  setRejectTarget(request);
-                                  setRejectReason('');
-                                  setActionError('');
-                                }}
-                                disabled={saving}
-                              >
-                                Từ chối
-                              </Button>
-                            </>
-                          )}
-                          {(isStaff || isOwner) && isOwn && request.status === 'PENDING' && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => handleCancel(request.id)}
-                              disabled={saving}
-                            >
-                              Rút yêu cầu
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Table>
-          )}
-        </section>
+                        {canDecide && <>
+                          <Button size="sm" variant="danger" disabled={saving}
+                            onClick={() => { setRejectTarget(request); setRejectReason(''); setActionError(''); }}>
+                            Từ chối
+                          </Button>
+                          <Button size="sm" variant="primary" onClick={() => handleApprove(request.id)} disabled={saving}>Duyệt</Button>
+                        </>}
+                      </span>
+                    </footer>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
-        {approveTarget && (
-          <Modal title="Xác nhận duyệt bảo trì" busy={saving} onClose={() => setApproveTarget(null)}>
-            <p className="mb-3 font-semibold">Sân: {approveTarget.courtName}</p>
-            {actionError && <p role="alert" className="mb-3 text-rose-700">{actionError}</p>}
-            <p className="mb-3">Thay đổi này ảnh hưởng <strong>{approveTarget.affectedCount} đặt sân đã xác nhận</strong>. Khách sẽ được thông báo để chọn cách xử lý. Tiếp tục?</p>
-            <ul className="mb-4 max-h-64 space-y-2 overflow-y-auto">
-              {approveTarget.bookings.map((booking) => (
-                <li key={booking.id} className="rounded-lg border border-slate-200 p-3 text-sm">
-                  <strong>{booking.bookingCode}</strong><br />
-                  {formatDateTime(`${booking.playDate}T${booking.startTime}`)} – {booking.endTime}
-                  {booking.bookingType === 'WALK_IN' && <p className="text-amber-700">Đơn tại quầy sẽ chuyển Sân hủy để nhân viên tiếp nhận xử lý cho khách.</p>}
-                </li>
-              ))}
-            </ul>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" disabled={saving} onClick={() => setApproveTarget(null)}>Quay lại</Button>
-              <Button type="button" variant="danger" loading={saving} onClick={confirmApprove}>Xác nhận duyệt bảo trì</Button>
-            </div>
-          </Modal>
-        )}
-        {rejectTarget && (
-          <Modal
-            isOpen={true}
-            onClose={() => setRejectTarget(null)}
-            title="Từ chối yêu cầu bảo trì"
-          >
-            <form onSubmit={handleRejectSubmit} className="space-y-4">
-              <p className="text-sm text-slate-600">
-                Bạn đang từ chối yêu cầu bảo trì cho sân <strong>{rejectTarget.courtName}</strong> (
-                {formatDateTime(rejectTarget.startAt)} – {formatDateTime(rejectTarget.endAt)}).
-              </p>
-              <FormField label="Lý do từ chối" required>
-                <Textarea
-                  rows={3}
-                  value={rejectReason}
-                  onChange={(event) => setRejectReason(event.target.value)}
-                  placeholder="Nhập lý do từ chối để nhân viên nắm thông tin..."
-                  required
-                />
+      {creating && (
+        <Modal title="Tạo yêu cầu bảo trì" busy={saving} onClose={() => setCreating(false)} className={styles.modal}>
+          <form onSubmit={handleCreateSubmit} className={styles.form} noValidate>
+            <p className={styles.meta}>
+              {isOwner
+                ? 'Yêu cầu mới ở trạng thái chờ duyệt. Hãy kiểm tra rồi duyệt để khóa lịch bảo trì.'
+                : 'Gửi chủ sân duyệt. Sân chưa bị khóa cho đến khi được duyệt.'}
+            </p>
+            <FormField label="Sân cần bảo trì" htmlFor="maintenance-court" required>
+              <Select id="maintenance-court" value={form.courtId} disabled={saving}
+                onChange={(event) => setForm({ ...form, courtId: event.target.value })}>
+                <option value="">-- Chọn sân --</option>
+                {courts.map((court) => <option key={court.id} value={court.id}>{court.name}</option>)}
+              </Select>
+            </FormField>
+            <div className={styles.formRow}>
+              <FormField label="Bắt đầu" htmlFor="maintenance-start" required>
+                <Input id="maintenance-start" type="datetime-local" step={1800} value={form.startAt} disabled={saving}
+                  onChange={(event) => setForm({ ...form, startAt: event.target.value })} />
               </FormField>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="secondary" onClick={() => setRejectTarget(null)} disabled={saving}>
-                  Hủy
-                </Button>
-                <Button type="submit" variant="danger" loading={saving}>
-                  Xác nhận từ chối
-                </Button>
-              </div>
-            </form>
-          </Modal>
-        )}
-      </div>
+              <FormField label="Kết thúc" htmlFor="maintenance-end" required>
+                <Input id="maintenance-end" type="datetime-local" step={1800} value={form.endAt} disabled={saving}
+                  onChange={(event) => setForm({ ...form, endAt: event.target.value })} />
+              </FormField>
+            </div>
+            <p className={styles.meta}>Theo slot 30 phút, trong giờ mở cửa của địa điểm.</p>
+            <FormField label="Lý do bảo trì" htmlFor="maintenance-reason" required>
+              <Textarea id="maintenance-reason" rows={3} maxLength={500} value={form.reason} disabled={saving}
+                placeholder="Mô tả lý do hoặc nội dung bảo trì…"
+                onChange={(event) => setForm({ ...form, reason: event.target.value })} />
+            </FormField>
+            <p className={styles.info}>
+              {isOwner
+                ? 'Khi duyệt, bạn sẽ thấy số booking bị ảnh hưởng; khách được chọn đổi slot miễn phí, hoàn tiền hoặc nhận điểm bồi hoàn.'
+                : 'Chủ sân sẽ thấy số booking bị ảnh hưởng trước khi duyệt. Nếu được duyệt, khách có booking trong khung giờ này được chọn đổi slot miễn phí, hoàn tiền hoặc nhận điểm bồi hoàn.'}
+            </p>
+            {formError && <p className={styles.error} role="alert">{formError}</p>}
+            <div className={styles.modalActions}>
+              <Button type="button" variant="secondary" disabled={saving} onClick={() => setCreating(false)}>Hủy</Button>
+              <Button type="submit" variant="primary" loading={saving}>Gửi yêu cầu</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {approveTarget && (
+        <Modal title="Xác nhận duyệt bảo trì" busy={saving} onClose={() => setApproveTarget(null)} className={styles.modal}>
+          <p className={styles.modalLead}>Sân: <strong>{approveTarget.courtName}</strong></p>
+          {actionError && <p role="alert" className={styles.error}>{actionError}</p>}
+          <p className={styles.warning}>Thay đổi này ảnh hưởng <strong>{approveTarget.affectedCount} đặt sân đã xác nhận</strong>. Khách sẽ được thông báo để chọn cách xử lý. Tiếp tục?</p>
+          <ul className={styles.impact}>
+            {approveTarget.bookings.map((booking) => (
+              <li key={booking.id}>
+                <strong>{booking.bookingCode}</strong>
+                <span>{formatDateTime(`${booking.playDate}T${booking.startTime}`)} – {booking.endTime}</span>
+                {booking.bookingType === 'WALK_IN' && <small>Đơn tại quầy sẽ chuyển Sân hủy để nhân viên tiếp nhận xử lý cho khách.</small>}
+              </li>
+            ))}
+          </ul>
+          <div className={styles.modalActions}>
+            <Button type="button" variant="secondary" disabled={saving} onClick={() => setApproveTarget(null)}>Quay lại</Button>
+            <Button type="button" variant="danger" loading={saving} onClick={confirmApprove}>Xác nhận duyệt bảo trì</Button>
+          </div>
+        </Modal>
+      )}
+
+      {rejectTarget && (
+        <Modal onClose={() => setRejectTarget(null)} title="Từ chối yêu cầu bảo trì" busy={saving} className={styles.modal}>
+          <form onSubmit={handleRejectSubmit} className={styles.form}>
+            <p className={styles.meta}>
+              Bạn đang từ chối yêu cầu bảo trì sân <strong>{rejectTarget.courtName}</strong> ({formatRange(rejectTarget.startAt, rejectTarget.endAt)}).
+            </p>
+            {actionError && <p role="alert" className={styles.error}>{actionError}</p>}
+            <FormField label="Lý do từ chối" required>
+              <Textarea rows={3} value={rejectReason} required
+                placeholder="Nhập lý do để nhân viên nắm thông tin…"
+                onChange={(event) => setRejectReason(event.target.value)} />
+            </FormField>
+            <div className={styles.modalActions}>
+              <Button type="button" variant="secondary" onClick={() => setRejectTarget(null)} disabled={saving}>Hủy</Button>
+              <Button type="submit" variant="danger" loading={saving}>Xác nhận từ chối</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </ManagementLayout>
   );
 }
