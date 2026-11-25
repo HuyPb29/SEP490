@@ -866,6 +866,19 @@ CREATE INDEX ix_complaint_location ON complaint (location_id, status);
 CREATE INDEX ix_complaint_booking ON complaint (booking_id);
 CREATE INDEX ix_complaint_payment ON complaint (payment_id);
 
+-- complaint_evidence: Ảnh minh chứng của khiếu nại, không bắt buộc, mỗi khiếu nại tối đa một ảnh,
+-- chỉ đính kèm lúc Player gửi (FR110, DR34, D184). Ảnh lưu trên ổ đĩa backend, bảng chỉ giữ đường dẫn (A03).
+CREATE TABLE complaint_evidence (
+    complaint_id BIGINT NOT NULL,
+    image_path NVARCHAR(500) NOT NULL,
+    content_type VARCHAR(30) NOT NULL,
+    size_bytes BIGINT NOT NULL,
+    created_at DATETIME2 NOT NULL,
+    CONSTRAINT pk_complaint_evidence PRIMARY KEY (complaint_id),
+    CONSTRAINT ck_complaint_evidence_size CHECK (size_bytes > 0 AND size_bytes <= 5242880),
+    CONSTRAINT ck_complaint_evidence_type CHECK (content_type IN ('image/jpeg', 'image/png'))
+);
+
 -- notification: Thông báo trong ứng dụng (FR124, FR119, FR120).
 CREATE TABLE notification (
     id BIGINT IDENTITY(1,1) NOT NULL,
@@ -970,6 +983,7 @@ ALTER TABLE complaint ADD CONSTRAINT fk_complaint_player_id FOREIGN KEY (player_
 ALTER TABLE complaint ADD CONSTRAINT fk_complaint_created_by FOREIGN KEY (created_by) REFERENCES account (id);
 ALTER TABLE complaint ADD CONSTRAINT fk_complaint_handled_by FOREIGN KEY (handled_by) REFERENCES account (id);
 ALTER TABLE complaint ADD CONSTRAINT fk_complaint_decided_by FOREIGN KEY (decided_by) REFERENCES account (id);
+ALTER TABLE complaint_evidence ADD CONSTRAINT fk_complaint_evidence_complaint FOREIGN KEY (complaint_id) REFERENCES complaint (id);
 ALTER TABLE notification ADD CONSTRAINT fk_notification_recipient_id FOREIGN KEY (recipient_id) REFERENCES account (id);
 -- Khóa ngoại kép: bảo đảm cột lặp lại khớp với bảng cha (không kiểm tra khi cột khóa ngoại để trống)
 ALTER TABLE booking ADD CONSTRAINT fkc_booking_court_location FOREIGN KEY (court_id, location_id) REFERENCES court (id, location_id);
