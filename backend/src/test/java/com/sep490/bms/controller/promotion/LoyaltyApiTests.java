@@ -407,7 +407,7 @@ class LoyaltyApiTests {
     @Test void openApiIncludesPointGrantLookupsAndOwnerLocationHeader() throws Exception {
         String body=mvc.perform(get("/v3/api-docs/f6-loyalty")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         JsonNode api=json.readTree(body);
-        assertThat(api.path("paths").size()).isEqualTo(7); // eight operations, GET/POST share one path
+        assertThat(api.path("paths").size()).isEqualTo(8); // nine operations (incl. GET /api/me/loyalty-milestones, D184), GET/POST share one path
         assertThat(api.at("/paths/~1api~1owner~1loyalty-milestones/post/responses/201").isMissingNode()).isFalse();
         assertThat(api.at("/paths/~1api~1owner~1loyalty-adjustments/post/parameters").toString()).contains("X-Location-Id");
         assertThat(api.at("/paths/~1api~1owner~1loyalty-adjustments~1players/get/parameters").toString()).contains("X-Location-Id");
