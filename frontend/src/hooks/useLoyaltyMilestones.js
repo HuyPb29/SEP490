@@ -10,5 +10,5 @@ export function useLoyaltyMilestones(locationId) {
 
 export function usePersonalLoyaltyProgress(locationId) {
   const load = useCallback((signal) => getPersonalLoyaltyProgress(locationId, signal), [locationId])
-  return useResource(load, locationId)
+  return useResource(load, locationId, 5000)
 }

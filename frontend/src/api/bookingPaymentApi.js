@@ -113,7 +113,7 @@ export async function decideReschedulePayment(paymentId, decision, payload) {
 }
 
 export async function listPendingStaffBookingPayments(signal) {
-  return getAllPages('/staff/payments', { signal, params: { status: 'AWAITING_CONFIRMATION' } });
+  return getAllPages('/staff/payments', { signal });
 }
 
 export async function getStaffBookingPaymentDetails(paymentId, signal) {

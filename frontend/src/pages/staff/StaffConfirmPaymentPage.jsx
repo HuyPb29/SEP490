@@ -153,6 +153,22 @@ function PaymentDesk({ role, surcharge }) {
   }, [requestedId, revision, surcharge, listPendingReschedulePayments, listPendingStaffBookingPayments]);
 
   useEffect(() => {
+    if (isProcessing) return undefined;
+    const refresh = () => setRevision(value => value + 1);
+    const timer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('bms-data-changed', refresh);
+    window.addEventListener('online', refresh);
+    const visible = () => { if (!document.hidden) refresh(); };
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      clearInterval(timer); window.removeEventListener('focus', refresh);
+      window.removeEventListener('bms-data-changed', refresh); window.removeEventListener('online', refresh);
+      document.removeEventListener('visibilitychange', visible);
+    };
+  }, [isProcessing]);
+
+  useEffect(() => {
     if (!selectedId || loadingQueue) return undefined;
     const controller = new AbortController();
     const { signal } = controller;
@@ -162,16 +178,16 @@ function PaymentDesk({ role, surcharge }) {
       setDetail(data);
       setDetailError(null);
       const proofs = data.proofs ?? [];
-      setSelectedProofId((surcharge ? proofs.at(-1) : proofs[0])?.id ?? null);
+      setSelectedProofId(current => proofs.some(proof => proof.id === current) ? current : (surcharge ? proofs.at(-1) : proofs[0])?.id ?? null);
     }).catch((error) => {
       if (!signal.aborted) setDetailError({ id: selectedId, message: apiErrorMessage(error, 'Không tải được chi tiết giao dịch.') });
     });
     return () => controller.abort();
-  }, [selectedId, loadingQueue, surcharge, getStaffReschedulePaymentDetails, getStaffBookingPaymentDetails]);
+  }, [selectedId, loadingQueue, revision, surcharge, getStaffReschedulePaymentDetails, getStaffBookingPaymentDetails]);
 
-  // Cập nhật số phút đã chờ mỗi 30 giây.
+  // Đồng hồ chạy mỗi giây, dữ liệu/quyền xử lý vẫn do server quyết định.
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -179,11 +195,11 @@ function PaymentDesk({ role, surcharge }) {
   const activeDetail = !loadingQueue && selectedId && payment?.id === selectedId ? detail : null;
   const activePayment = activeDetail ? payment : null;
   const queueItem = queue.find(({ id }) => id === selectedId);
-  // D182 (BR58): chờ quá 15 phút (P24) trong giờ mở cửa thì báo đỏ, Staff vẫn xử lý; quá 25 phút (P24 + P36)
+  // D182 (BR58): chờ từ 10 phút (cảnh báo vận hành) trong giờ mở cửa thì báo đỏ, Staff vẫn xử lý; quá 25 phút (P24 + P36)
   // thì giao dịch đã chuyển cho chủ sân, Staff chỉ xem, Owner vẫn xử lý.
-  const transferredToOwner = activePayment?.transferredToOwner ?? Boolean(queueItem?.transferredToOwner);
-  const overdue = activePayment?.overdue ?? Boolean(queueItem?.overdue);
-  const canDecide = activePayment?.status === 'AWAITING_CONFIRMATION' && !(transferredToOwner && role !== 'owner');
+  const transferredToOwner = queueItem?.transferredToOwner ?? Boolean(activePayment?.transferredToOwner);
+  const overdue = queueItem?.overdue ?? Boolean(activePayment?.overdue);
+  const canDecide = Boolean(queueItem) && activePayment?.status === 'AWAITING_CONFIRMATION' && !(transferredToOwner && role !== 'owner');
   const proofs = surcharge ? (activeDetail?.proofs ?? []).slice().reverse() : activeDetail?.proofs ?? [];
   const activeProofId = proofs.some(({ id }) => id === selectedProofId) ? selectedProofId : null;
   const proofKey = selectedId && activeProofId ? selectedId + ':' + activeProofId : '';
@@ -335,7 +351,7 @@ function PaymentDesk({ role, surcharge }) {
   const statusBadge = activePayment?.status !== 'AWAITING_CONFIRMATION'
     ? { text: 'Đã được xử lý', tone: styles.badgeNeutral }
     : transferredToOwner ? { text: 'Đã chuyển cho chủ sân', tone: styles.badgeNeutral }
-      : overdue ? { text: 'Quá 15 phút', tone: styles.badgeDanger }
+      : overdue ? { text: 'Từ 10 phút', tone: styles.badgeDanger }
         : { text: 'Chờ xác nhận', tone: styles.badgeWarning };
   const bookingCount = surcharge ? otherCount : queue.length;
   const surchargeCount = surcharge ? queue.length : otherCount;
@@ -403,7 +419,7 @@ function PaymentDesk({ role, surcharge }) {
                 </span>
                 <span className={item.transferredToOwner ? styles.waitMoved : item.overdue ? styles.waitUrgent : styles.wait}>
                   {item.transferredToOwner ? 'Đã chuyển cho chủ sân'
-                    : item.overdue ? 'Quá 15 phút · Xử lý gấp'
+                    : item.overdue ? 'Từ 10 phút · Xử lý gấp'
                       : itemWaited != null ? `Chờ ${itemWaited} phút` : 'Chờ xác nhận'}
                 </span>
               </button>
@@ -448,7 +464,7 @@ function PaymentDesk({ role, surcharge }) {
               )}
               {overdue && !transferredToOwner && activePayment.status === 'AWAITING_CONFIRMATION' && (
                 <p role="alert" className={styles.noticeDanger}>
-                  <b>!</b> Giao dịch đã chờ{waited != null ? <> <b>{waited} phút</b></> : ' quá 15 phút'}. Hãy kiểm tra tiền về và xử lý ngay;
+                  <b>!</b> Giao dịch đã chờ{waited != null ? <> <b>{waited} phút</b></> : ' từ 10 phút'}. Hãy kiểm tra tiền về và xử lý ngay;
                   quá 25 phút trong giờ mở cửa giao dịch sẽ được chuyển cho chủ sân và bạn không xử lý được nữa.
                 </p>
               )}

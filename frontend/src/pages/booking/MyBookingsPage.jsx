@@ -1,4 +1,5 @@
 import HistoryDetailDialog from './HistoryDetailDialog';
+import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { bookingStartsAfter, canPayHistoryEntry, canRescheduleBooking } from '../../api/bookingHistory';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
@@ -191,7 +192,6 @@ export default function MyBookingsPage() {
   useEffect(() => {
     if (!isPlayer) return undefined;
     const controller = new AbortController();
-    let timer;
     async function refreshAffected() {
       try {
         if (document.visibilityState === 'hidden') return;
@@ -205,19 +205,17 @@ export default function MyBookingsPage() {
           setAffectedReady(false);
           setAffectedError(error.response?.data?.message || "Không tải được đặt sân bị ảnh hưởng.");
         }
-      } finally {
-        if (!controller.signal.aborted) timer = setTimeout(refreshAffected, 12_000);
       }
     }
-    refreshAffected();
-    return () => { controller.abort(); clearTimeout(timer); };
+    const stop = subscribeLiveRefresh(refreshAffected, 5000, true);
+    return () => { controller.abort(); stop(); };
   }, [isPlayer, affectedRevision, getMyAffectedBookingsApi]);
 
   useEffect(() => {
-    if (!isPlayer || loading || fetchError) return undefined;
+    if (!isPlayer || loading) return undefined;
     let active = true;
     let updating = false;
-    const timer = setInterval(async () => {
+    const stop = subscribeLiveRefresh(async () => {
       if (updating || document.visibilityState === 'hidden') return;
       updating = true;
       try {
@@ -225,18 +223,18 @@ export default function MyBookingsPage() {
           getMyBookingsApi(),
           Promise.allSettled(expandedPackages.map(getPackageSessionsApi)),
         ]);
-        if (active) setBookings((current) => [
+        if (active) { setFetchError(''); setBookings((current) => [
           ...items,
           ...packages.flatMap((result, index) => result.status === 'fulfilled' ? result.value
             : current.filter((item) => item.package_id === expandedPackages[index])),
-        ]);
+        ]); }
       } catch {
         // Keep the last successful list while polling.
       } finally {
         updating = false;
       }
-    }, 12_000);
-    return () => { active = false; clearInterval(timer); };
+    });
+    return () => { active = false; stop(); };
   }, [isPlayer, loading, fetchError, reload, expandedPackages, getMyBookingsApi, getPackageSessionsApi]);
 
   useEffect(() => {

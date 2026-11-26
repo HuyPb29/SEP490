@@ -15,7 +15,7 @@ export function useCheckoutVouchers(locationId, orderAmount) {
       .then((items) => { if (!controller.signal.aborted) setResult({ key, items }); })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setResult({ key, error: "Không tải được phiếu ưu đãi. Bạn vẫn có thể kiểm tra mã đã biết." });
+          setResult({ key, error: "Không tải được phiếu ưu đãi. Vui lòng thử lại hoặc tiếp tục không dùng voucher." });
         }
       });
     return () => controller.abort();

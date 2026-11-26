@@ -5,6 +5,7 @@
   gap: var(--space-4);
   min-width: 0;
 }
+.tabBadge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; margin-left: 6px; padding: 2px 6px; border-radius: var(--radius-full); background: var(--color-danger, #b91c1c); color: #fff; font-size: var(--text-xs); }
 
 /* Tab ngang dính dưới tiêu đề trang, giữ ?tab= trên URL. */
 .tabBar {

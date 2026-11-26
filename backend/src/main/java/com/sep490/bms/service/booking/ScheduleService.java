@@ -192,7 +192,8 @@ public class ScheduleService {
         } else if (!view.isOpen(start)) {
             cell.setStatus(SlotStatus.CLOSED);
         } else {
-            cell.setStatus(view.isPast(start) ? SlotStatus.PAST : SlotStatus.AVAILABLE);
+            cell.setStatus(view.isPast(start) ? SlotStatus.PAST
+                    : view.prices().getOrDefault(courtId, Map.of()).containsKey(start) ? SlotStatus.AVAILABLE : SlotStatus.CLOSED);
         }
         if (cell.getStatus() != SlotStatus.CLOSED) {
             cell.setPrice(view.prices().getOrDefault(courtId, Map.of()).get(start));

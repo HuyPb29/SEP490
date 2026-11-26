@@ -13,6 +13,7 @@ import styles from './NotificationBell.module.css';
 import { notificationDestination } from '../../utils/notificationNavigation';
 import { Button, EmptyState, ErrorState, LoadingState } from '../common';
 import { STATUS_CATALOG } from '../common/statusCatalog';
+import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 
 /** Nhãn + màu cho từng loại thông báo do job tự động sinh ra. */
 const TYPE_META = Object.fromEntries(Object.entries(STATUS_CATALOG.notification).map(([type, meta]) =>
@@ -61,9 +62,9 @@ export default function NotificationBell() {
     }
   }, [isAuthenticated]);
 
-  const loadPreview = useCallback(async () => {
+  const loadPreview = useCallback(async (quiet = false) => {
     if (!isAuthenticated) return;
-    setLoading(true);
+    if (quiet !== true) setLoading(true);
     try {
       const page = await getNotifications({ page: 0, size: PREVIEW_SIZE });
       setItems(page.content ?? []);
@@ -71,28 +72,30 @@ export default function NotificationBell() {
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (quiet !== true) setLoading(false);
     }
   }, [isAuthenticated]);
 
-  // Đếm lại mỗi phút để bắt kịp job tự động (job chạy 60 giây/lần).
+  // Cập nhật mỗi 5 giây và ngay khi quay lại cửa sổ hoặc hoàn tất thao tác.
   useEffect(() => {
     if (!isAuthenticated) return undefined;
     let active = true;
-    const poll = () => {
-      getUnreadCount()
+    const poll = () => getUnreadCount()
         .then((count) => {
           if (active) setUnread(count);
         })
         .catch(() => {});
-    };
-    poll();
-    const timer = setInterval(poll, 60_000);
+    const stop = subscribeLiveRefresh(poll, 5000, true);
     return () => {
       active = false;
-      clearInterval(timer);
+      stop();
     };
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    return subscribeLiveRefresh(() => loadPreview(true));
+  }, [open, loadPreview]);
 
   useEffect(() => {
     if (!open) return undefined;

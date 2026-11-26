@@ -184,7 +184,7 @@ class PaymentConfirmationTests {
 
     @Test
     void overdueButNotYetTransferredStaffStillDecides() {
-        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.CONFIRMATION_ALERT_WAIT.minusNanos(1)))).thenReturn(true);
         when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.OWNER_TRANSFER_WAIT))).thenReturn(false);
 
         PaymentResponse result = service.confirm(staff, PAYMENT, null, NOW);
@@ -217,7 +217,7 @@ class PaymentConfirmationTests {
 
     @Test
     void pendingListFlagsOverduePaymentsBeforeTransfer() {
-        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.CONFIRMATION_ALERT_WAIT.minusNanos(1)))).thenReturn(true);
         when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.OWNER_TRANSFER_WAIT))).thenReturn(false);
         when(payments.findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
                 LOCATION, PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(0, 20)))

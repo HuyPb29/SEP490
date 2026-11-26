@@ -334,6 +334,8 @@
 
 /* 6. Modal & ConfirmDialog */
 .dialogNative {
+  position: fixed;
+  inset: 0;
   margin: auto;
   width: min(94vw, 480px);
   max-height: 88dvh;
@@ -440,6 +442,7 @@
 
 /* 8. Toast */
 .toast {
+  pointer-events: none;
   position: fixed;
   right: 16px;
   bottom: 20px;
@@ -455,6 +458,8 @@
   font-size: var(--text-sm);
   font-weight: 650;
 }
+
+.toast button, .toast a { pointer-events: auto; }
 
 .toastSuccess {
   border: 1px solid var(--color-success-border);

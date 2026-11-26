@@ -1,7 +1,6 @@
 package com.sep490.bms.service.promotion;
 
 import java.math.BigDecimal;
-import java.util.HashSet;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,15 +36,9 @@ public class PlayerLoyaltyProgressService {
         for (int i = 0; i < active.size(); i++) {
             LoyaltyTier tier = active.get(i);
             Voucher voucher = vouchers.findById(tier.getVoucherId()).orElse(null);
-            // Match reward(): the highest active monetary tier repeats, even if its voucher is stopped.
             if (voucher == null || voucher.getStatus() != VoucherStatus.PUBLISHED) continue;
-            var issued = new HashSet<BigDecimal>();
-            rewards.findByPlayerIdAndLoyaltyTierId(user.getId(), tier.getId())
-                    .forEach(r -> issued.add(r.getReachedAmount().stripTrailingZeros()));
+            if (!rewards.findByPlayerIdAndLoyaltyTierId(user.getId(), tier.getId()).isEmpty()) continue;
             BigDecimal target = tier.getMilestoneAmount();
-            if (i == active.size() - 1) {
-                while (issued.contains(target.stripTrailingZeros())) target = target.add(tier.getMilestoneAmount());
-            } else if (issued.contains(target.stripTrailingZeros())) continue;
             if (next == null || target.compareTo(next) < 0) {
                 next = target;
                 reward = voucher;

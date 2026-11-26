@@ -50,20 +50,20 @@ class PlayerLoyaltyProgressTests {
         verify(balances, never()).save(any());
         verify(rewards, never()).save(any());
     }
-    @Test void lowerAwardIsNotRepeatedAndHighestRepeatsAtExactMultiples() {
+    @Test void noMilestoneRepeatsAfterBeingAwarded() {
         var configured = List.of(tier(1, 500), tier(2, 1000));
         when(tiers.findByLocationIdOrderByMilestoneAmountAsc(1L)).thenReturn(configured);
         issued(1, n(500)); issued(2, n(1000), n(2000));
         balance.setTotalPaid(n(2300));
-        assertThat(service.progress(player, 1L).nextMilestoneAmount()).isEqualByComparingTo("3000");
+        assertThat(service.progress(player, 1L).nextMilestoneAmount()).isNull();
     }
     @Test void refundDoesNotOfferAlreadyIssuedAmountAgainRegardlessOfDecimalScale() {
         var configured = List.of(tier(2, 1000));
         when(tiers.findByLocationIdOrderByMilestoneAmountAsc(1L)).thenReturn(configured);
         issued(2, new BigDecimal("1000.00"), n(2000));
         var result = service.progress(player, 1L);
-        assertThat(result.nextMilestoneAmount()).isEqualByComparingTo("3000");
-        assertThat(result.remainingAmount()).isEqualByComparingTo("2600");
+        assertThat(result.nextMilestoneAmount()).isNull();
+        assertThat(result.remainingAmount()).isNull();
     }
     @Test void reachedButUnissuedThresholdRemainsVisibleUntilNextPayment() {
         var configured = List.of(tier(2, 1000));

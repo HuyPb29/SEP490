@@ -1,3 +1,4 @@
+import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { bookingTimestamp } from '../../api/bookingHistory';
 import { useState, useEffect, useRef } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
@@ -22,6 +23,8 @@ export default function BookingPaymentPage() {
   const fileInputRef = useRef(null);
   const submitLock = useRef(false);
   const feedbackRef = useRef(null);
+  const proofRef = useRef(null);
+  const [proofStarted, setProofStarted] = useState(false);
   const [qrAttempt, setQrAttempt] = useState(0);
   const [qrError, setQrError] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
@@ -117,11 +120,10 @@ export default function BookingPaymentPage() {
         if (!controller.signal.aborted) setEligiblePayment(null);
       }
     };
-    check();
-    const timerId = setInterval(check, 30_000);
+    const stop = subscribeLiveRefresh(check, 5000, true);
     return () => {
       controller.abort();
-      clearInterval(timerId);
+      stop();
     };
   }, [awaiting, bookingId, paymentId, isLatePaymentEligible]);
 
@@ -129,7 +131,6 @@ export default function BookingPaymentPage() {
   useEffect(() => {
     if (!trackStatus || submitting) return undefined;
     const controller = new AbortController();
-    let timer;
     const checkStatus = async () => {
       try {
         if (document.visibilityState !== 'hidden') {
@@ -138,12 +139,10 @@ export default function BookingPaymentPage() {
         }
       } catch {
         // Keep the last payment state if this refresh fails.
-      } finally {
-        if (!controller.signal.aborted) timer = setTimeout(checkStatus, 5_000);
       }
     };
-    timer = setTimeout(checkStatus, 5_000);
-    return () => { controller.abort(); clearTimeout(timer); };
+    const stop = subscribeLiveRefresh(checkStatus);
+    return () => { controller.abort(); stop(); };
   }, [trackStatus, submitting, kind, id, loadPayment]);
 
   const deadline = bookingData?.deadlineMs;
@@ -168,6 +167,7 @@ export default function BookingPaymentPage() {
     setErrorMessage('');
     setToastSuccess('');
     if (!file || submitting) return;
+    setProofStarted(true);
     setSelectedFile(null);
 
     const ext = file.name.split('.').pop()?.toLowerCase();
@@ -192,6 +192,7 @@ export default function BookingPaymentPage() {
     if (submitLock.current || submitting || !bookingData?.canPay || (!Number.isFinite(deadline) || deadline <= Date.now())) return;
     setErrorMessage('');
     if (!selectedFile) {
+      setProofStarted(true);
       setErrorMessage('Vui lòng đính kèm ảnh chứng từ thanh toán.');
       return;
     }
@@ -244,6 +245,15 @@ export default function BookingPaymentPage() {
   const finalAmount = bookingData.amount;
   const bankInfo = bookingData.instructions ?? {};
   const canSubmit = bookingData.canPay && !isExpired && !deadlineElapsed && Number.isFinite(deadline);
+  const proofSent = Boolean(isConfirmedWait || isConfirmedDone);
+  const proofStep = selectedFile || submitting ? 2 : proofStarted || bookingData.resubmitting ? 1 : 0;
+  const proofSteps = ['Chuyển khoản', 'Chọn chứng từ', 'Gửi chứng từ'];
+  const proofNote = proofSent
+    ? isConfirmedDone ? 'Sân đã xác nhận thanh toán.' : 'Đã gửi chứng từ. Chờ sân xác nhận khoản chuyển.'
+    : submitting ? 'Đang gửi chứng từ, vui lòng đợi…'
+    : proofStep === 2 ? errorMessage ? 'Chưa gửi thành công. Kiểm tra lỗi bên dưới rồi thử lại.' : 'Ảnh đã sẵn sàng. Kiểm tra lại và bấm gửi chứng từ.'
+    : proofStep === 1 ? 'Chọn ảnh chuyển khoản rõ số tiền, tài khoản nhận và nội dung.'
+    : 'Chuyển khoản trong ứng dụng ngân hàng, sau đó chọn ảnh chứng từ để gửi.';
   const title = kind === 'reschedule' ? 'Thanh toán chênh lệch đổi lịch' : kind === 'package' ? 'Thanh toán đơn / gói đặt sân' : 'Thanh toán đơn đặt lẻ';
   const status = bookingData.resubmitting && bookingData.canPay ? 'RESUBMIT_REQUESTED' : bookingData.status;
   const statusCategory = kind === 'reschedule' && ['PENDING_PAYMENT', 'APPROVED', 'REJECTED', 'EXPIRED'].includes(status) ? 'reschedule' : 'booking';
@@ -263,7 +273,19 @@ export default function BookingPaymentPage() {
       <PageHeader eyebrow="Thanh toán chuyển khoản" title={title} subtitle={`Mã giao dịch: ${bookingData.code}`}
         breadcrumbs={[{ label: 'Lịch đặt sân của tôi', to: '/my-bookings' }, { label: 'Thanh toán' }]} actions={badge} />
       {toastSuccess && <p ref={feedbackRef} tabIndex={-1} className={styles.success} role="status">✓ {uiMessage(toastSuccess)}</p>}
-      <ol className={styles.steps} aria-label="Các bước chuyển khoản"><li>1. Chuyển khoản</li><li>2. Tải chứng từ</li><li>3. Gửi</li></ol>
+      {(canSubmit || proofSent) && <section className={styles.proofProgress} aria-label="Tiến trình gửi chứng từ">
+        <ol className={styles.steps} aria-label="Các bước chuyển khoản">
+          {proofSteps.map((label, index) => {
+            const done = proofSent || index < proofStep;
+            const active = !proofSent && index === proofStep;
+            return <li key={label} data-state={done ? 'complete' : active ? 'current' : 'upcoming'} aria-current={active ? 'step' : undefined}>
+              <span className={styles.progressNumber} aria-hidden="true">{done ? '✓' : index + 1}</span>
+              <span><strong>{label}</strong><small>{done ? 'Đã hoàn tất bước' : active ? submitting ? 'Đang gửi…' : 'Bước hiện tại' : 'Bước tiếp theo'}</small></span>
+            </li>;
+          })}
+        </ol>
+        <p className={styles.progressNote} role="status">{proofNote}</p>
+      </section>}
       {bookingData.resubmitting && <section className={styles.resubmit} aria-labelledby="resubmit-heading"><h2 id="resubmit-heading">Nhân viên yêu cầu bổ sung chứng từ</h2><p>Lý do: <strong>{uiMessage(bookingData.reason) || 'Vui lòng gửi lại ảnh rõ thông tin chuyển khoản.'}</strong></p><p>{bookingData.resubmitsLeft != null && (bookingData.resubmitsLeft > 0 ? `Còn ${bookingData.resubmitsLeft} lượt gửi lại.` : 'Yêu cầu bổ sung cuối đang mở.')} {Number.isFinite(deadline) && `Hạn gửi lại: ${formatDateTime(new Date(deadline).toISOString())}.`}</p>{bookingData.receivedAmount > 0 && <p>Đã ghi nhận <strong>{formatVnd(bookingData.receivedAmount)}</strong>. Số tiền còn thiếu: <strong>{formatVnd(bookingData.amount)}</strong>.</p>}</section>}
       <div className={styles.contentGrid}>
         <div className={styles.leftColumn}>
@@ -273,6 +295,11 @@ export default function BookingPaymentPage() {
             <dl className={styles.bankDetails} id="bank-details" tabIndex={-1}>{transferRows.map(([label, value, copyLabel]) => <div key={label}><div><dt>{label}</dt><dd>{value || '—'}</dd></div><Button variant="secondary" size="sm" disabled={!value} aria-label={'Sao chép ' + copyLabel} onClick={() => copyTransferField(value, copyLabel)}>Sao chép</Button></div>)}</dl>
             {copyStatus && <p className={copyStatus.startsWith('Không thể') ? styles.errorBanner : styles.copyNotice} role="status">{copyStatus}</p>}
             <p className={styles.helper}>Chuyển đúng số tiền và nội dung để nhân viên dễ đối chiếu.</p>
+            <Button variant="secondary" disabled={submitting} onClick={() => {
+              setProofStarted(true);
+              proofRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              document.getElementById('proof-heading')?.focus({ preventScroll: true });
+            }}>Đã chuyển khoản, chọn chứng từ</Button>
           </section> : <section className={styles.card} aria-labelledby="payment-status-heading"><h2 id="payment-status-heading">Tình trạng thanh toán</h2><div className={styles.statusLine}>{badge}</div>
             {isConfirmedWait ? <div role="status" className={styles.pending}><h3>Chứng từ đang chờ xác nhận</h3><p>{kind === 'reschedule' ? 'Cơ sở đang kiểm tra phụ thu. Lịch cũ được giữ trong lúc chờ.' : 'Nhân viên đang kiểm tra khoản chuyển. Bạn không cần gửi lại chứng từ trong lúc chờ.'}</p>{kind === 'reschedule' && bookingData.approveDeadline && <p>Hạn xử lý: {formatDateTime(bookingData.approveDeadline)}</p>}</div> : isConfirmedDone ? <section className={styles.receipt} aria-labelledby="receipt-heading"><span className={styles.receiptIcon} aria-hidden="true">✓</span><h3 id="receipt-heading">Biên nhận thanh toán</h3><dl className={styles.details}><dt>Mã biên nhận</dt><dd>{bookingData.receiptNo || 'Chưa có mã biên nhận'}</dd><dt>Mã đặt sân</dt><dd>{bookingData.code}</dd><dt>Số tiền phải thu</dt><dd>{formatVnd(bookingData.amount)}</dd>{bookingData.receivedAmount != null && <><dt>Đã ghi nhận</dt><dd>{formatVnd(bookingData.receivedAmount)}</dd></>}{bookingData.confirmedAt && <><dt>Xác nhận lúc</dt><dd>{formatDateTime(bookingData.confirmedAt)}</dd></>}</dl></section> : isRejected ? <div className={styles.errorBanner} role="alert"><h3>Thanh toán bị từ chối</h3>{bookingData.rejectReason && <p>Lý do: {uiMessage(bookingData.rejectReason)}</p>}</div> : isExpired || deadlineElapsed ? <div className={styles.errorBanner} role="alert"><h3>{isExpired ? 'Đơn đã hết hạn' : 'Đã hết hạn gửi chứng từ'}</h3><p>{bookingData.resubmitting ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ.' : deadlineElapsed ? 'Form đã khóa. Hệ thống đang kiểm tra trạng thái đơn từ máy chủ.' : 'Đã hết thời gian giữ chỗ. Khung giờ đã được nhả.'}</p></div> : bookingData.canPay && !Number.isFinite(deadline) ? <ErrorState message="Chưa tải được hạn thanh toán hợp lệ. Vui lòng tải lại thông tin trước khi chuyển khoản." onRetry={retryPayment} /> : <p className={styles.helper}>Hiện không có thao tác gửi chứng từ cho trạng thái này.</p>}
             <div className={styles.statusActions}><Link to="/my-bookings" className={styles.linkButton}>Về lịch đặt sân</Link>{isRejected && bookingId && <Link className={styles.outlineLink} to={`/my-complaints?bookingId=${bookingId}`}>Gửi khiếu nại</Link>}</div>
@@ -282,9 +309,9 @@ export default function BookingPaymentPage() {
         </div>
         <aside className={styles.rightColumn} aria-label="Tóm tắt và chứng từ"><section className={styles.card} aria-labelledby="summary-heading"><h2 id="summary-heading">Tóm tắt giao dịch</h2><dl className={styles.details}><dt>Thanh toán cho</dt><dd>{kind === 'reschedule' ? 'Chênh lệch đổi lịch' : kind === 'package' ? 'Đơn / gói đặt sân' : 'Đơn đặt lẻ'}</dd><dt>Mã giao dịch</dt><dd>{bookingData.code}</dd><dt>Số tiền</dt><dd><strong>{formatVnd(finalAmount)}</strong></dd><dt>Trạng thái</dt><dd>{badge}</dd></dl></section>
           {(bookingData.canPay || isExpired) && <div className={styles.desktopTimer}>{timer()}</div>}
-          {bookingData.canPay && !isExpired && <section className={styles.card} aria-labelledby="proof-heading"><header className={styles.cardHeader}><span className={styles.stepNumber}>2</span><h2 id="proof-heading">Tải chứng từ chuyển khoản</h2></header><ImageProofUpload file={selectedFile} inputRef={fileInputRef} onChange={handleFileChange} onDropFile={validateAndSetFile} onClear={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} error={errorMessage ? uiMessage(errorMessage) : undefined} disabled={submitting || !canSubmit} />
+          {bookingData.canPay && !isExpired && <section ref={proofRef} className={styles.card} aria-labelledby="proof-heading" onFocusCapture={() => { if (canSubmit) setProofStarted(true); }} onPointerDownCapture={() => { if (canSubmit) setProofStarted(true); }}><header className={styles.cardHeader}><span className={styles.stepNumber}>2</span><h2 id="proof-heading" tabIndex={-1}>Tải chứng từ chuyển khoản</h2></header><ImageProofUpload file={selectedFile} inputRef={fileInputRef} onChange={handleFileChange} onDropFile={validateAndSetFile} onClear={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} error={errorMessage ? uiMessage(errorMessage) : undefined} disabled={submitting || !canSubmit} />
             <div className={styles.afterSubmit}><strong>Sau khi gửi chứng từ</strong><p>Nhân viên sẽ đối chiếu khoản chuyển. Nếu cần bổ sung ảnh, lý do và hạn gửi lại sẽ hiện tại đây và trong lịch đặt sân.</p></div>
-            <div ref={!toastSuccess ? feedbackRef : undefined} tabIndex={-1} className={styles.submitArea}><Button className={styles.submitButton} loading={submitting} disabled={!canSubmit || isConfirmedWait || remainingSeconds === null} onClick={handleSubmitPayment}>{bookingData.resubmitting ? 'Gửi lại chứng từ' : 'Tôi đã chuyển khoản'}</Button><p className={styles.helper}>Bước 3 · Chỉ gửi sau khi bạn đã hoàn tất chuyển khoản.</p></div>
+            <div ref={!toastSuccess ? feedbackRef : undefined} tabIndex={-1} className={styles.submitArea}><Button className={styles.submitButton} loading={submitting} disabled={!canSubmit || isConfirmedWait || remainingSeconds === null} onClick={handleSubmitPayment}>{bookingData.resubmitting ? 'Gửi lại chứng từ' : 'Gửi chứng từ'}</Button><p className={styles.helper}>Bước 3 · Chỉ gửi sau khi bạn đã hoàn tất chuyển khoản.</p></div>
           </section>}
         </aside>
       </div>

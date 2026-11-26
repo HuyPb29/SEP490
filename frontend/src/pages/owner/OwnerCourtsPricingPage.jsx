@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   apiErrorMessage,
@@ -238,6 +238,7 @@ export default function OwnerCourtsPricingPage() {
   const [ruleModal, setRuleModal] = useState(null)
   const [ruleError, setRuleError] = useState('')
   const [pendingDeleteRule, setPendingDeleteRule] = useState(null)
+  const priceRuleBatch = useRef({ key: '', completed: new Set() })
 
   const [openingDays, setOpeningDays] = useState([])
   const [hoursLoading, setHoursLoading] = useState(false)
@@ -408,12 +409,14 @@ export default function OwnerCourtsPricingPage() {
   }
 
   const openCreateRule = () => {
+    priceRuleBatch.current = { key: '', completed: new Set() }
     setRuleForm(emptyRuleForm(selectedCourt?.id ?? 'all'))
     setRuleError('')
     setRuleModal({ id: null })
   }
 
   const openEditRule = (rule) => {
+    priceRuleBatch.current = { key: '', completed: new Set() }
     setRuleForm({
       courtId: String(rule.courtId),
       days: rule.days?.length ? [...rule.days] : [...WEEKEND_VALUES],
@@ -470,8 +473,12 @@ export default function OwnerCourtsPricingPage() {
         text = 'Đã cập nhật mức giá.'
       } else if (ruleForm.courtId === 'all') {
         // Bảng giá lưu theo từng sân, nên "Tất cả sân" = tạo lần lượt cho mọi sân.
+        const key = JSON.stringify([selectedLocationId, payload])
+        if (priceRuleBatch.current.key !== key) priceRuleBatch.current = { key, completed: new Set() }
         for (const court of courts) {
+          if (priceRuleBatch.current.completed.has(court.id)) continue
           await createPriceRule(court.id, payload, selectedLocationId)
+          priceRuleBatch.current.completed.add(court.id)
         }
         text = `Đã thêm mức giá cho ${courts.length} sân.`
       } else {
@@ -481,7 +488,11 @@ export default function OwnerCourtsPricingPage() {
       await loadPriceRules(selectedLocationId, courts)
       setToast({ tone: 'success', text })
     } catch (err) {
-      setRuleError(apiErrorMessage(err))
+      const completed = ruleForm.courtId === 'all' ? priceRuleBatch.current.completed.size : 0
+      if (completed) {
+        await loadPriceRules(selectedLocationId, courts)
+        setRuleError(`Đã thêm mức giá cho ${completed}/${courts.length} sân. ${apiErrorMessage(err)} Giữ nguyên thông tin và bấm Thêm mức giá để tiếp tục các sân còn lại.`)
+      } else setRuleError(apiErrorMessage(err))
     } finally {
       setSaving(false)
     }

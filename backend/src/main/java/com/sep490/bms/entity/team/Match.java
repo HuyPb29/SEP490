@@ -21,6 +21,7 @@ import lombok.Setter;
  * Lưu kèo mở từ booking, số người hiện có, số chỗ cần tuyển và trạng thái.
  */
 @Entity
+@jakarta.persistence.EntityListeners(com.sep490.bms.service.notification.RealtimeEntityListener.class)
 // "match" là từ khóa của SQL Server nên phải quote tên bảng.
 @Table(name = "`match`")
 @Getter

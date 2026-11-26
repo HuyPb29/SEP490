@@ -1,3 +1,4 @@
+import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api, { apiErrorMessage } from '../../api'
@@ -119,7 +120,6 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
   useEffect(() => {
     const controller = new AbortController()
     const { signal } = controller
-    let timer
     async function load() {
       try {
         const data = await getHistoryDetail(item, signal)
@@ -143,12 +143,10 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
         }
       } catch (cause) {
         if (!signal.aborted) setError(apiErrorMessage(cause, 'Không tải được chi tiết lịch đặt sân.'))
-      } finally {
-        if (!signal.aborted) timer = setTimeout(load, 10_000)
       }
     }
-    load()
-    return () => { controller.abort(); clearTimeout(timer) }
+    const stop = subscribeLiveRefresh(load, 5000, true)
+    return () => { controller.abort(); stop() }
   }, [item, revision])
 
   const seconds = Math.max(0, Math.ceil((detail?.holdDeadlineMs - now) / 1000))

@@ -133,9 +133,7 @@ public class PriceRuleService {
         Court court = courtManagementService.requireCourt(entity.getCourtId());
         requireActiveLocation(location);
         priceRuleRepository.delete(entity);
-        if (court.isActive()) {
-            priceCoverage.requireCourtCoverage(location, court);
-        }
+        // Owner có thể thay bảng giá từng dòng; slot thiếu giá tạm đóng với lịch mới.
     }
 
     // --------------------------------------------------------------- helpers
@@ -147,9 +145,7 @@ public class PriceRuleService {
 
     private PriceRuleDto saveAndCheckCoverage(Location location, Court court, PriceRule entity) {
         PriceRule saved = priceRuleRepository.save(entity);
-        if (court.isActive()) {
-            priceCoverage.requireCourtCoverage(location, court);
-        }
+        // Kiểm phủ kín khi bật sân; chỉnh giá cho phép cấu hình dần từng khung.
         return PriceRuleDto.fromEntity(saved, court.getName());
     }
 

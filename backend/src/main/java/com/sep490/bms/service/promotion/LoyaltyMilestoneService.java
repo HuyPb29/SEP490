@@ -55,8 +55,10 @@ public class LoyaltyMilestoneService {
         if(tiers.existsByLocationIdAndMilestoneAmount(l.getId(),r.milestoneAmount()))
             throw new AppException("Mốc chi tiêu đã tồn tại",HttpStatus.CONFLICT);
         Voucher v=template(l.getId(),r);
-        return response(tiers.saveAndFlush(LoyaltyTier.builder().locationId(l.getId())
-                .milestoneAmount(r.milestoneAmount()).voucherId(v.getId()).build()));
+        LoyaltyTier tier = tiers.saveAndFlush(LoyaltyTier.builder().locationId(l.getId())
+                .milestoneAmount(r.milestoneAmount()).voucherId(v.getId()).build());
+        rewardExistingBalances(tier);
+        return response(tier);
     }
     @Transactional
     public LoyaltyMilestoneResponse update(UserPrincipal user,Long id,@Valid LoyaltyMilestoneUpdateRequest r) {
@@ -72,7 +74,9 @@ public class LoyaltyMilestoneService {
         // A fresh template preserves the value/expiry of grants already issued (BR52).
         t.setVoucherId(template(location,r.settings()).getId());
         t.setMilestoneAmount(r.settings().milestoneAmount()); t.setActive(r.active());
-        return response(tiers.saveAndFlush(t));
+        tiers.saveAndFlush(t);
+        rewardExistingBalances(t);
+        return response(t);
     }
     private Voucher template(Long location,LoyaltyMilestoneRequest r) {
         return vouchers.saveAndFlush(Voucher.builder().locationId(location).name(r.name().trim()).source(VoucherSource.LOYALTY)
@@ -83,19 +87,34 @@ public class LoyaltyMilestoneService {
     @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void reward(PlayerLocationBalance balance) {
         List<LoyaltyTier> active=configured(balance.getLocationId()).stream().filter(LoyaltyTier::isActive).toList();
-        for(int i=0;i<active.size();i++) {
-            LoyaltyTier t=active.get(i);
+        for (LoyaltyTier t : active) rewardTier(balance, t);
+    }
+    private void rewardExistingBalances(LoyaltyTier tier) {
+        if (!tier.isActive()) return;
+        // ownerLocation đã khóa location, cùng khóa mà payment accrual dùng trước ví điểm.
+        var balances = em.createQuery("select b from PlayerLocationBalance b where b.locationId=:l and b.totalPaid>=:amount order by b.id", PlayerLocationBalance.class)
+                .setParameter("l", tier.getLocationId()).setParameter("amount", tier.getMilestoneAmount())
+                .setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
+        for (var balance : balances) {
+            em.refresh(balance, LockModeType.PESSIMISTIC_WRITE);
+            rewardTier(balance, tier);
+        }
+    }
+    private void rewardTier(PlayerLocationBalance balance, LoyaltyTier t) {
             Voucher v=vouchers.lockById(t.getVoucherId()).orElseThrow();
             em.refresh(v,LockModeType.PESSIMISTIC_WRITE);
-            if(v.getStatus()!=VoucherStatus.PUBLISHED) continue;
+            if(v.getStatus()!=VoucherStatus.PUBLISHED) return;
             List<BigDecimal> issued=em.createQuery("select r.reachedAmount from LoyaltyReward r where r.playerId=:p and r.loyaltyTierId=:t",BigDecimal.class)
                     .setParameter("p",balance.getPlayerId()).setParameter("t",t.getId()).getResultList();
-            for(BigDecimal reached:MonetaryMilestones.due(balance.getTotalPaid(),t.getMilestoneAmount(),i==active.size()-1,issued)) {
+            for(BigDecimal reached:MonetaryMilestones.due(balance.getTotalPaid(),t.getMilestoneAmount(),issued)) {
                     VoucherGrant g=grants.saveAndFlush(VoucherGrant.builder().voucherId(v.getId()).playerId(balance.getPlayerId())
                             .expiresAt(LocalDateTime.now().plusDays(v.getGrantValidDays())).note("Loyalty reward: total spend "+reached.toPlainString()).build());
                     rewards.saveAndFlush(LoyaltyReward.builder().playerId(balance.getPlayerId()).loyaltyTierId(t.getId())
                             .reachedAmount(reached).voucherGrantId(g.getId()).build());
+                    em.persist(com.sep490.bms.entity.notification.Notification.builder().recipientId(balance.getPlayerId())
+                            .type("LOYALTY_REWARD").title("Bạn nhận được ưu đãi tích lũy")
+                            .content("Bạn đã đạt mốc chi tiêu " + reached.toPlainString() + " đồng và nhận được " + v.getName())
+                            .refType("VOUCHER").refId(v.getId()).build());
             }
-        }
     }
 }

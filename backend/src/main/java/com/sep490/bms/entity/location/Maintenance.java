@@ -23,6 +23,7 @@ import lombok.Setter;
  * Lưu thời gian bảo trì sân, người gửi yêu cầu và quyết định xử lý.
  */
 @Entity
+@jakarta.persistence.EntityListeners(com.sep490.bms.service.notification.RealtimeEntityListener.class)
 @Table(name = "maintenance")
 @Getter
 @Setter

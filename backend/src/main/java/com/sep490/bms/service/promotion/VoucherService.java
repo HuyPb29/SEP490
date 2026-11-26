@@ -137,6 +137,7 @@ public class VoucherService {
         return VoucherResponse.from(vouchers.saveAndFlush(v));
     }
     private void configure(Voucher v,VoucherWriteRequest r) {
+        requireBudget(r.discountType(), r.discountValue(), r.budget());
         if(r.validTo().isBefore(LocalDate.now())) throw new AppException("Voucher đã hết hạn");
         String code=r.code()==null ? null:r.code().toUpperCase(Locale.ROOT);
         if(code!=null && !code.equals(v.getCode()) && vouchers.existsByLocationIdAndCode(v.getLocationId(),code))
@@ -150,12 +151,18 @@ public class VoucherService {
     @Transactional
     public VoucherResponse publish(UserPrincipal user,Long id) {
         Voucher v=owned(user,id);
+        requireBudget(v.getDiscountType(), v.getDiscountValue(), v.getBudget());
         if (v.getStatus() == VoucherStatus.DISABLED || v.getStatus() == VoucherStatus.STOPPED
                 || v.getSource() != VoucherSource.CAMPAIGN)
             throw new AppException("Voucher không thể phát hành", HttpStatus.CONFLICT);
         if(v.getValidFrom()==null || v.getValidTo()==null || v.getValidTo().isBefore(LocalDate.now()))
             throw new AppException("Ngày hiệu lực voucher không hợp lệ");
         v.setStatus(VoucherStatus.PUBLISHED); return VoucherResponse.from(vouchers.saveAndFlush(v));
+    }
+    private void requireBudget(DiscountType type, BigDecimal discount, BigDecimal budget) {
+        if (type == DiscountType.AMOUNT && budget != null && discount != null && budget.compareTo(discount) < 0)
+            throw new AppException("Ngân sách phải lớn hơn hoặc bằng số tiền giảm của một voucher", HttpStatus.BAD_REQUEST,
+                    java.util.Map.of("budget", "Ngân sách phải lớn hơn hoặc bằng số tiền giảm của một voucher"));
     }
     @Transactional
     public VoucherResponse stop(UserPrincipal user, Long id) {

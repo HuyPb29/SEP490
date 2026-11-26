@@ -198,7 +198,7 @@ export default function WalkInBookingDialog({ initialCourt, initialDate, initial
   const fieldMessage = (key) => fields[key] && <span className={styles.errorMessage} role="alert">{fields[key]}</span>
 
   return (
-    <div className={styles.modalOverlay}>
+    <div className={styles.modalOverlay} onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
       <section className={styles.modal + ' ' + styles.modalWide} role="dialog" aria-modal="true" aria-labelledby="walk-in-title">
         <h2 id="walk-in-title" className={styles.modalTitle}>Đặt sân tại quầy</h2>
         {booking ? (

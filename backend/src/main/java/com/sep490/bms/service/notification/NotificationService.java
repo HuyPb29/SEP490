@@ -33,6 +33,7 @@ public class NotificationService {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final NotificationRepository notificationRepository;
+    private final RealtimeUpdates realtimeUpdates;
 
     /** UC37 - Danh sách thông báo của chính người đang đăng nhập. */
     @Transactional(readOnly = true)
@@ -84,7 +85,9 @@ public class NotificationService {
     /** UC37 - Đánh dấu tất cả đã đọc, trả về số bản ghi vừa đổi. */
     @Transactional
     public int markAllRead(UserPrincipal user) {
-        return notificationRepository.markAllRead(user.getId());
+        int updated = notificationRepository.markAllRead(user.getId());
+        if (updated > 0) realtimeUpdates.changed(user.getId());
+        return updated;
     }
 
     /**

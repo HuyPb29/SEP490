@@ -1,4 +1,5 @@
 import { ConfirmDialog } from '../../components/common/Modal';
+import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api, { apiErrorMessage, getAllPages } from '../../api';
@@ -83,8 +84,8 @@ export default function StaffDashboardPage() {
     () => new URLSearchParams(location.search).get('modal') === 'reconciliation'
   );
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (quiet = false) => {
+    if (quiet !== true) setLoading(true);
     try {
       const dashRes = await api.get('/staff/dashboards/me');
       const dashData = dashRes.data.data;
@@ -109,18 +110,19 @@ export default function StaffDashboardPage() {
 
   useEffect(() => {
     Promise.resolve().then(() => loadAll());
-    const timer = setInterval(() => {
-      setNow(Date.now());
-      loadAll();
-    }, 30_000);
-    return () => clearInterval(timer);
+    return subscribeLiveRefresh(() => loadAll(true));
   }, [loadAll]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const todayBookings = useMemo(() => dashboard?.todayBookings ?? [], [dashboard]);
   const pendingPayments = useMemo(() => dashboard?.pendingPayments ?? [], [dashboard]);
-  // D182 (BR58, FR120): chờ quá 15 phút (P24) trong giờ mở cửa thì báo đỏ, Staff vẫn xử lý được;
+  // D182 (BR58, FR120): chờ từ 10 phút (cảnh báo vận hành) trong giờ mở cửa thì báo đỏ, Staff vẫn xử lý được;
   // quá thêm 10 phút (P36) thì giao dịch đã chuyển cho chủ sân, Staff chỉ xem.
-  const overdueMinutes = dashboard?.paymentOverdueMinutes ?? 15;
+  const overdueMinutes = dashboard?.paymentOverdueMinutes ?? 10;
   const transferMinutes = dashboard?.paymentTransferMinutes ?? 25;
   const urgentPayments = useMemo(
     () => pendingPayments.filter((p) => p.overdue && !p.transferredToOwner), [pendingPayments]);

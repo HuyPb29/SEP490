@@ -155,6 +155,7 @@ export default function OwnerMaintenancePage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="approve-modal-title"
+          onMouseDown={event => { if (event.target === event.currentTarget && !processingId) setApproveConfirmTarget(null); }}
         >
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
@@ -212,6 +213,7 @@ export default function OwnerMaintenancePage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="reject-modal-title"
+          onMouseDown={event => { if (event.target === event.currentTarget && !processingId) setRejectTarget(null); }}
         >
           <div className={styles.modal}>
             <div className={styles.modalHeader}>

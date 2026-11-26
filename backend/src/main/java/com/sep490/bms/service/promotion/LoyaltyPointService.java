@@ -187,7 +187,8 @@ public class LoyaltyPointService {
         restore(null,p.getId(),p.getPlayerId(),p.getLocationId());
     }
     private void failed(BookingStatus s) {
-        if(s!=BookingStatus.EXPIRED && s!=BookingStatus.PAYMENT_REJECTED) throw new AppException("Chỉ hoàn điểm đơn hết hạn hoặc bị từ chối thanh toán");
+        if(s!=BookingStatus.EXPIRED && s!=BookingStatus.PAYMENT_REJECTED && s!=BookingStatus.CANCELLED_BY_FACILITY)
+            throw new AppException("Chỉ hoàn điểm đơn hết hạn, bị từ chối thanh toán hoặc sân hủy trước xác nhận");
     }
     private void restore(Long booking,Long pkg,Long player,Long location) {
         if(player==null) return;

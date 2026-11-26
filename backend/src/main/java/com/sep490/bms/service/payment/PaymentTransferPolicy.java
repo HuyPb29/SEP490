@@ -16,8 +16,8 @@ import com.sep490.bms.service.booking.SlotAvailabilityService;
 import lombok.RequiredArgsConstructor;
 
 /**
- * D182 (BR58, P24, P36, FR120): giao dịch chờ xác nhận quá 15 phút (P24, chỉ tính trong giờ mở cửa) thì màn Staff
- * báo đỏ; Staff vẫn xử lý được. Quá thêm 10 phút (P36), tức 25 phút, mà Staff vẫn chưa xử lý thì giao dịch được
+ * Cảnh báo vận hành từ 10 phút chờ trong giờ mở cửa; hạn khiếu nại P24 vẫn là 15 phút. Màn Staff
+ * báo đỏ; Staff vẫn xử lý được. Quá 25 phút (P24 + P36), giao dịch được
  * chuyển cho chủ sân: từ lúc đó Staff không xác nhận, yêu cầu bổ sung hay từ chối được nữa; Owner xử lý.
  * Mốc tính từ lần gửi chứng từ gần nhất, như BR58. Áp cho thanh toán booking lẻ, gói, đơn đặt lẻ
  * và phụ thu đổi lịch.
@@ -32,9 +32,9 @@ public class PaymentTransferPolicy {
 
     private final SlotAvailabilityService availability;
 
-    /** Giao dịch đang chờ xác nhận đã quá 15 phút (P24) trong giờ mở cửa: màn Staff báo đỏ. */
+    /** Giao dịch đang chờ xác nhận từ 10 phút trong giờ mở cửa: màn Staff/Owner báo đỏ. */
     public boolean overdue(Payment payment, LocalDateTime now) {
-        return waitedLongerThan(payment, now, Payment.LATE_CONFIRMATION_WAIT);
+        return waitedLongerThan(payment, now, Payment.CONFIRMATION_ALERT_WAIT.minusNanos(1));
     }
 
     /** Giao dịch đang chờ xác nhận đã quá 25 phút (P24 + P36) trong giờ mở cửa: thuộc về chủ sân. */

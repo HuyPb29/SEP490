@@ -26,6 +26,7 @@ import lombok.Setter;
  * Lưu slot đích, giá cũ, giá mới, phụ thu và trạng thái của yêu cầu đổi lịch.
  */
 @Entity
+@jakarta.persistence.EntityListeners(com.sep490.bms.service.notification.RealtimeEntityListener.class)
 @Table(name = "reschedule_request")
 @Getter
 @Setter
