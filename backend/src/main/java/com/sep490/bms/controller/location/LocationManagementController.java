@@ -47,7 +47,7 @@ public class LocationManagementController {
     @PostMapping(path = "/api/owner/locations/{id}/qr", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<String> uploadQr(@AuthenticationPrincipal UserPrincipal user, @PathVariable("id") Long id,
             @RequestParam("image") MultipartFile image) {
-        return ApiResponse.success(locationManagementService.uploadQr(user, id, image));
+        return ApiResponse.success("Đã lưu ảnh QR", locationManagementService.uploadQr(user, id, image));
     }
 
     @GetMapping("/api/owner/locations/{id}/qr")

@@ -120,6 +120,7 @@
   --container-max: 1240px;
   --sidebar-width: 248px;
   --header-height: 64px;
+  --header-offset: calc(var(--header-height) + env(safe-area-inset-top, 0px));
 
   /* Backward-compatible aliases for workspace.css (--cw-*) */
   --cw-text: var(--color-text);
@@ -166,6 +167,19 @@ button, input, select, textarea { font: inherit; }
 :focus-visible { outline: 3px solid var(--color-primary); outline-offset: 3px; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: var(--color-focus-ring); }
 img, svg { max-width: 100%; }
+:where(main, h1, h2, h3) { scroll-margin-top: calc(var(--header-offset) + var(--space-4)); }
+
+@media (width < 768px), (pointer: coarse) {
+  /* Keep editable controls readable without the focus zoom used for small text on iOS. */
+  #root input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [type="reset"], [type="hidden"]),
+  #root select, #root textarea {
+    font-size: 16px;
+    min-height: 44px;
+    max-width: 100%;
+    min-width: 0;
+    scroll-margin-block: calc(var(--header-offset) + var(--space-4)) var(--space-6);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }

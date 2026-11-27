@@ -106,8 +106,12 @@ function PaymentDesk({ role, surcharge }) {
   const [rotation, setRotation] = useState(0);
   const [showReconciliation, setShowReconciliation] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const queueRef = useRef(null);
+  const detailRef = useRef(null);
+  const pendingMobileSelection = useRef(null);
 
   const reload = () => {
+    pendingMobileSelection.current = null;
     setLoadingQueue(true);
     setSelectedId(null);
     setDetail(null);
@@ -193,6 +197,13 @@ function PaymentDesk({ role, surcharge }) {
 
   const payment = detail?.payment || detail;
   const activeDetail = !loadingQueue && selectedId && payment?.id === selectedId ? detail : null;
+  useEffect(() => {
+    if (pendingMobileSelection.current !== selectedId || (!activeDetail && detailError?.id !== selectedId)) return;
+    pendingMobileSelection.current = null;
+    if (!window.matchMedia('(max-width: 1023px)').matches) return;
+    detailRef.current?.scrollIntoView({ behavior: 'instant', block: 'start' });
+    detailRef.current?.focus({ preventScroll: true });
+  }, [activeDetail, selectedId, detailError]);
   const activePayment = activeDetail ? payment : null;
   const queueItem = queue.find(({ id }) => id === selectedId);
   // D182 (BR58): chờ từ 10 phút (cảnh báo vận hành) trong giờ mở cửa thì báo đỏ, Staff vẫn xử lý; quá 25 phút (P24 + P36)
@@ -234,6 +245,14 @@ function PaymentDesk({ role, surcharge }) {
   const filteredQueue = queue.filter((item) => (formatPaymentLabel(item) + ' ' + item.id).toLowerCase().includes(query));
 
   const handleSelectTransaction = (item) => {
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      pendingMobileSelection.current = item.id;
+      if (item.id === selectedId && (activeDetail || detailError?.id === selectedId)) {
+        pendingMobileSelection.current = null;
+        detailRef.current?.scrollIntoView({ behavior: 'instant', block: 'start' });
+        detailRef.current?.focus({ preventScroll: true });
+      }
+    }
     if (item.id === selectedId) return;
     setSelectedId(item.id);
     setDetail(null);
@@ -378,7 +397,7 @@ function PaymentDesk({ role, surcharge }) {
       )}
 
       <div className={styles.workspace}>
-        <section className={styles.queue} aria-label="Danh sách giao dịch chờ xác nhận">
+        <section ref={queueRef} tabIndex={-1} className={styles.queue} aria-label="Danh sách giao dịch chờ xác nhận">
           <div className={styles.queueTabs} role="tablist" aria-label="Loại giao dịch">
             <button type="button" role="tab" aria-selected={!surcharge} disabled={isProcessing}
               className={!surcharge ? styles.tabOn : ''} onClick={() => navigate('/staff/confirm-payments')}>
@@ -432,7 +451,12 @@ function PaymentDesk({ role, surcharge }) {
           <p className={styles.queueNote}>Cũ nhất xếp trên. Thời gian chờ chỉ tính trong giờ mở cửa.</p>
         </section>
 
-        <section className={styles.detail} aria-label="Chi tiết giao dịch đang chọn">
+        <section ref={detailRef} tabIndex={-1} className={styles.detail} aria-label="Chi tiết giao dịch đang chọn">
+          {selectedId && <button type="button" className={styles.mobileQueueBack} onClick={() => {
+            pendingMobileSelection.current = null;
+            queueRef.current?.scrollIntoView({ behavior: 'instant', block: 'start' });
+            queueRef.current?.focus({ preventScroll: true });
+          }}>← Danh sách giao dịch</button>}
           {!selectedId ? (
             <p className={styles.detailEmpty}>{loadingQueue ? 'Đang tải…' : 'Chọn một giao dịch trong hàng chờ để xem chi tiết.'}</p>
           ) : detailError?.id === selectedId ? (

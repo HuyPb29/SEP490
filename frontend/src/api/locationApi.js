@@ -48,7 +48,12 @@ export async function uploadOwnerLocationQr(locationId, image) {
   const body = new FormData()
   body.append('image', image)
   const { data } = await api.post(`/owner/locations/${locationId}/qr`, body, ownerConfig(locationId))
-  return data.data
+  // Older servers used success(String), which put the path in message instead of data.
+  const path = data.data ?? data.message
+  if (typeof path !== 'string' || !path.startsWith('location-qr/')) {
+    throw new Error('Máy chủ chưa trả đường dẫn ảnh QR đã lưu. Vui lòng tải lại thông tin địa điểm.')
+  }
+  return path
 }
 
 /** POST /api/owner/locations/{id}/courts */

@@ -732,8 +732,22 @@ button.rowUrgent:hover {
 
 @media (width < 640px) {
   .kpis {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
   }
+
+  .kpi { min-width: 0; padding: var(--space-3); }
+  .kpi h2 { min-height: 36px; line-height: 1.4; }
+  .kpiValue { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1); font-size: 24px; overflow-wrap: anywhere; }
+  .kpiValue span { font-size: var(--text-sm); }
+  .kpiNote { font-size: var(--text-xs); line-height: 1.5; }
+  .panelHeader { padding: var(--space-3) var(--space-4); gap: var(--space-2); flex-wrap: wrap; }
+  .panelTitle { flex: 1 1 150px; min-width: 0; font-size: var(--text-md); }
+  .panelHeader > small { flex: 1 1 130px; }
+  .linkButton { flex: none; min-height: 44px; white-space: nowrap; padding-inline: 0; }
+  .alertButton { min-height: 44px; white-space: normal; }
+  .modalActions { flex-wrap: wrap; }
+  .modalActions > button { flex: 1 1 120px; min-height: 44px; }
 
   .alert {
     flex-direction: column;

@@ -27,6 +27,8 @@ import com.sep490.bms.service.booking.PackageService;
 import com.sep490.bms.service.reschedule.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -262,10 +264,124 @@ class BookingChangeApiTests {
     @Autowired RescheduleService reschedules;
     @Autowired PackageService packages;
     @Autowired CancellationService cancellations;
+    @Autowired com.sep490.bms.service.payment.PaymentService payments;
+    @Autowired com.sep490.bms.service.location.CourtManagementService courts;
     MockMvc mvc; TransactionTemplate tx;
     Account owner,player,other; Location location; Long court; Booking booking;
     final List<Long> accountIds=new ArrayList<>();
     final List<Long> staffIds = new ArrayList<>();
+
+    @Test
+    void ownerQrUploadIsImmediatelyAvailableOnPlayerPaymentPage() throws Exception {
+        byte[] image = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jX6sAAAAASUVORK5CYII=");
+        jdbc.update("update booking set status='HOLDING',hold_expires_at=? where id=?",
+                LocalDateTime.now().plusMinutes(10), booking.getId());
+        var upload = mvc.perform(multipart("/api/owner/locations/" + location.getId() + "/qr")
+                .file(new org.springframework.mock.web.MockMultipartFile("image", "owner-qr.png", "image/png", image))
+                .header("Authorization", token(owner)).header("X-Location-Id", location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").isString()).andReturn();
+        String path = json.readTree(upload.getResponse().getContentAsString()).at("/data").asText();
+        assertThat(path).startsWith("location-qr/");
+        assertThat(jdbc.queryForObject("select qr_image_path from location where id=?", String.class, location.getId())).isEqualTo(path);
+        mvc.perform(get("/api/owner/locations/" + location.getId() + "/qr")
+                .header("Authorization", token(owner)).header("X-Location-Id", location.getId()))
+                .andExpect(status().isOk()).andExpect(content().contentType("image/png")).andExpect(content().bytes(image));
+        String qr = "/api/bookings/" + booking.getId() + "/payment-instructions/qr";
+        mvc.perform(get("/api/bookings/" + booking.getId() + "/payment-instructions").header("Authorization", token(player)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.qrImageUrl").value(qr));
+        mvc.perform(get(qr).header("Authorization", token(player)))
+                .andExpect(status().isOk()).andExpect(content().contentType("image/png")).andExpect(content().bytes(image));
+        mvc.perform(get(qr).header("Authorization", token(other))).andExpect(status().isForbidden());
+        mvc.perform(get(qr)).andExpect(status().isUnauthorized());
+    }
+
+    /** Real SQL Server transactions; wait until the second session is blocked by the first venue lock. */
+    @ParameterizedTest
+    @CsvSource({"true,false", "false,false", "true,true", "false,true"})
+    void sqlCourtSuspensionAndPaymentExpirySerialize(boolean ownerFirst, boolean isPackage) throws Exception {
+        Long paymentId = jdbc.queryForObject("select id from payment where booking_id=?", Long.class, booking.getId());
+        jdbc.update("update booking set status='AWAITING_CONFIRMATION' where id=?", booking.getId());
+        jdbc.update("update booking set points_used=2,point_discount=1000,voucher_discount=9000 where id=?", booking.getId());
+        jdbc.update("update payment set status='AWAITING_CONFIRMATION',received_amount=null,confirmed_by=null,confirmed_at=null,receipt_no=null,submitted_at=? where id=?",
+                LocalDateTime.now().minusMinutes(2), paymentId);
+        if (isPackage) {
+            Long packageId = tx.execute(s -> {
+                BookingPackage pkg = BookingPackage.builder().locationId(location.getId()).playerId(player.getId())
+                        .packageType(PackageType.DAY).startDate(booking.getPlayDate()).endDate(booking.getPlayDate())
+                        .listAmount(booking.getListAmount()).voucherDiscount(new BigDecimal("9000"))
+                        .pointsUsed(2).pointDiscount(new BigDecimal("1000"))
+                        .finalAmount(booking.getFinalAmount()).status(BookingStatus.AWAITING_CONFIRMATION).build();
+                em.persist(pkg); em.flush(); return pkg.getId();
+            });
+            jdbc.update("update booking set booking_type='SESSION',package_id=? where id=?", packageId, booking.getId());
+            jdbc.update("update payment set booking_id=null,package_id=? where id=?", packageId, paymentId);
+        }
+        tx.executeWithoutResult(s -> {
+            var wallet = com.sep490.bms.entity.promotion.PlayerLocationBalance.builder()
+                    .playerId(player.getId()).locationId(location.getId()).pointBalance(8).build();
+            em.persist(wallet); em.flush();
+            Long pkg = jdbc.queryForObject("select package_id from payment where id=?", Long.class, paymentId);
+            em.persist(com.sep490.bms.entity.promotion.PointTransaction.builder().balanceId(wallet.getId())
+                    .bookingId(isPackage ? null : booking.getId()).packageId(pkg).type(PointTransactionType.REDEEM)
+                    .points(-2).balanceAfter(8).reason("Concurrency test redemption").build());
+        });
+        UserPrincipal actor = UserPrincipal.builder().id(owner.getId()).role(Role.OWNER).build();
+        java.util.function.Supplier<Boolean> suspend = () -> !courts.update(actor, court,
+                com.sep490.bms.dto.location.UpdateCourtRequest.builder().isActive(false).build()).getActive();
+        LocalDateTime end = booking.getPlayDate().atStartOfDay().plusMinutes(booking.getEndMinute());
+        java.util.function.Supplier<Boolean> expire = () -> isPackage
+                ? payments.expirePackagePayment(paymentId, end) : payments.expireBookingPayment(paymentId, end);
+        CountDownLatch firstLocked = new CountDownLatch(1), releaseFirst = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger firstSession = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger secondSession = new java.util.concurrent.atomic.AtomicInteger();
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> first = pool.submit(() -> tx.execute(s -> {
+                jdbc.execute("SET LOCK_TIMEOUT 10000");
+                try {
+                    locations.findByIdForUpdate(location.getId()).orElseThrow();
+                    firstSession.set(jdbc.queryForObject("select @@SPID", Integer.class));
+                    firstLocked.countDown();
+                    try {
+                        if (!releaseFirst.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("Test venue wait timed out");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt(); throw new IllegalStateException(e);
+                    }
+                    return (ownerFirst ? suspend : expire).get();
+                } finally { jdbc.execute("SET LOCK_TIMEOUT -1"); }
+            }));
+            assertThat(firstLocked.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<Boolean> second = pool.submit(() -> tx.execute(s -> {
+                jdbc.execute("SET LOCK_TIMEOUT 10000");
+                try {
+                    secondSession.set(jdbc.queryForObject("select @@SPID", Integer.class));
+                    return (ownerFirst ? expire : suspend).get();
+                } finally { jdbc.execute("SET LOCK_TIMEOUT -1"); }
+            }));
+            long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            boolean blocked = false;
+            while (System.nanoTime() < until && !blocked) {
+                blocked = jdbc.queryForObject("select count(*) from sys.dm_exec_requests where session_id=? and blocking_session_id=?",
+                        Integer.class, secondSession.get(), firstSession.get()) > 0;
+                if (!blocked) Thread.sleep(20);
+            }
+            assertThat(blocked).as("second SQL session must wait for the first transaction").isTrue();
+            releaseFirst.countDown();
+            assertThat(first.get(15, TimeUnit.SECONDS)).isTrue();
+            assertThat(second.get(15, TimeUnit.SECONDS)).isEqualTo(!ownerFirst);
+            assertThat(bookingStatus()).isEqualTo(ownerFirst ? "CANCELLED_BY_FACILITY" : "PAYMENT_REJECTED");
+            assertThat(jdbc.queryForObject("select status from payment where id=?", String.class, paymentId)).isEqualTo("REJECTED");
+            assertThat(jdbc.queryForObject("select count(*) from booking_slot where booking_id=? and is_active=1", Integer.class, booking.getId())).isZero();
+            assertThat(jdbc.queryForObject("select point_balance from player_location_balance where player_id=? and location_id=?",
+                    Integer.class, player.getId(), location.getId())).isEqualTo(10);
+            assertThat(jdbc.queryForObject("select count(*) from point_transaction p join player_location_balance b on b.id=p.balance_id where b.location_id=? and p.type='RETURN'",
+                    Integer.class, location.getId())).isEqualTo(1);
+            assertThat(expire.get()).isFalse();
+        } finally {
+            releaseFirst.countDown(); pool.shutdownNow();
+            assertThat(pool.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
+        }
+    }
 
     @BeforeEach void setup() throws Exception {
         try(var c=Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {

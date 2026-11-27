@@ -191,8 +191,10 @@ export default function OwnerFacilitySettingsPage() {
           if (active) setQrPreview(url)
           else URL.revokeObjectURL(url)
         })
-        .catch(() => {
-          if (active) setQrError('Không tải được ảnh QR đã lưu.')
+        .catch((error) => {
+          if (active) setQrError(error.response?.status === 404
+            ? 'Tệp ảnh QR đã lưu không còn tồn tại. Vui lòng chọn lại ảnh QR đúng tài khoản của địa điểm.'
+            : 'Không tải được ảnh QR đã lưu.')
         })
     }
     return () => {

@@ -706,3 +706,16 @@ body:has(.drawerBackdrop[open]) {
   .managementTopbar { padding-inline: var(--space-3); }
   .locationStaticPill { max-width: 140px; display: block; }
 }
+
+@media (width < 768px) {
+  .publicHeader, .managementTopbar { padding-top: env(safe-area-inset-top, 0px); }
+  .managementTopbar { min-height: var(--header-offset); }
+  .publicMain, .managementMain { padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px)); }
+  .publicHeaderInner, .managementTopbar { padding-left: max(var(--space-3), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-3), env(safe-area-inset-right, 0px)); }
+  .topbarLeft { gap: var(--space-2); }
+  .locationStaticPill { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .userTrigger { min-width: 44px; padding-inline: var(--space-2); }
+  .userDropdown { position: fixed; top: calc(var(--header-offset) + var(--space-2)); right: var(--space-3); left: var(--space-3); width: auto; max-height: calc(100dvh - var(--header-offset) - var(--space-6) - env(safe-area-inset-bottom, 0px)); overflow-y: auto; overscroll-behavior: contain; }
+  .drawerPanel { width: min(340px, calc(100% - 48px)); padding-top: max(18px, env(safe-area-inset-top, 0px)); padding-bottom: max(18px, env(safe-area-inset-bottom, 0px)); }
+  .sidebarLocation select { font-size: var(--text-md); }
+}

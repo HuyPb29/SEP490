@@ -14,6 +14,7 @@ import com.sep490.bms.entity.notification.NotificationType;
 import com.sep490.bms.repository.booking.BookingRepository;
 import com.sep490.bms.service.notification.NotificationService;
 import com.sep490.bms.service.booking.BookingService;
+import com.sep490.bms.service.location.LocationQueryService;
 import com.sep490.bms.service.promotion.VoucherService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
 import jakarta.persistence.EntityManager;
@@ -41,6 +42,7 @@ public class BookingHoldExpiryJob {
     private final VoucherService vouchers;
     private final LoyaltyPointService points;
     private final EntityManager entityManager;
+    private final LocationQueryService locations;
 
     @Scheduled(
             initialDelayString = "${bms.job.booking-hold.initial-delay-ms:30000}",
@@ -53,7 +55,11 @@ public class BookingHoldExpiryJob {
         if (holds.isEmpty()) {
             return;
         }
+        // This batch is one transaction: take every venue in a stable order before any booking.
+        holds.stream().filter(b -> b.getPackageId() == null).map(Booking::getLocationId)
+                .distinct().sorted().forEach(locations::findForUpdate);
         for (Booking booking : holds) {
+            if (booking.getPackageId() != null) continue;
             // Sau khi gộp UC14/UC18, hết hold phải nhả slot và hoàn ưu đãi đã tiêu.
             // Khóa và đọc lại trước khi quyết định: Player có thể đã gửi chứng từ
             // sau lần scan; không ghi EXPIRED đè lên AWAITING_CONFIRMATION.

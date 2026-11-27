@@ -493,3 +493,25 @@
   .facilityInfoCard, .scheduleCard { padding: 14px; }
   .dateControls { width: 100%; }
 }
+
+@media (width < 768px) {
+  .mainContainer { width: calc(100% - 24px); padding: 16px 0 32px; min-width: 0; }
+  .heroGrid, .bottomGrid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .heroGrid { margin-bottom: 20px; }
+  .courtVisualCard { min-height: 0; height: 160px; padding: 16px; border-radius: 16px; overflow: hidden; }
+  .courtSvg { width: min(100%, 320px); height: 128px; }
+  .facilityInfoCard, .bottomCard { min-width: 0; padding: 20px 16px; border-radius: 16px; }
+  .facilityTitle { font-size: 26px; line-height: 1.25; letter-spacing: -.025em; overflow-wrap: break-word; }
+  .ratingRow { flex-wrap: wrap; gap: 6px; }
+  .infoLine { line-height: 1.65; overflow-wrap: anywhere; }
+  .bookingActions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .bookingActions button { width: 100%; min-height: 46px; padding: 12px; white-space: normal; }
+  .bottomCard .sectionTitle { font-size: 20px; line-height: 1.4; margin-bottom: 12px; }
+  .bottomCard dl > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; padding-block: 7px; }
+  .bottomCard dl dd { margin: 0; }
+  .priceTable, .priceTable tbody { display: block; }
+  .priceTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .priceTable tr { display: block; padding: 12px; margin-bottom: 12px; border: 1px solid var(--color-border); border-radius: 12px; }
+  .priceTable td { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 12px; padding: 7px 0; border: 0; overflow-wrap: anywhere; }
+  .priceTable td::before { content: attr(data-label); color: var(--color-text-muted); }
+}

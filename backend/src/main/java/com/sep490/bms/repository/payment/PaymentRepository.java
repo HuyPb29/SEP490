@@ -25,6 +25,10 @@ import jakarta.persistence.LockModeType;
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
+    /** Scalar lookup avoids caching a stale Payment before waiting for its venue lock. */
+    @Query("select p.locationId from Payment p where p.id = :id")
+    Optional<Long> findLocationIdById(@Param("id") Long id);
+
     /**
      * Đọc và khóa dòng payment đến hết giao dịch. Player gửi lại chứng từ và Staff xử lý cùng lúc
      * thì người sau phải chờ, rồi thấy trạng thái đã đổi (FR56).

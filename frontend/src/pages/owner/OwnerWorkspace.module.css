@@ -34,6 +34,10 @@
   cursor: pointer;
 }
 
+@media (width < 1024px) {
+  .tabBar { top: var(--header-offset); scroll-padding-inline: var(--space-3); overscroll-behavior-x: contain; }
+}
+
 .tabBar button:hover {
   color: var(--color-text);
 }

@@ -127,6 +127,8 @@ public class BookingService {
     }
 
     BookingResponse createSingleBooking(UserPrincipal player, BookingRequest request, LocalDateTime now) {
+        // All paths that later acquire venue/player locks must enter through the venue first.
+        locationQueryService.findForCourtUpdate(request.courtId());
         requirePendingPaymentLimit(player.getId(), now);
         // Kiểm tra lại slot và tính lại giá niêm yết như màn tóm tắt: slot có thể vừa bị người khác giữ (FR39).
         // Voucher, điểm không kiểm tra ở bước này: lúc trừ sẽ kiểm tra lại dưới khóa dòng, lỗi báo MSG108.
@@ -185,6 +187,8 @@ public class BookingService {
      * Không kiểm tra người đặt: Staff cũng dùng hàm này; phía Player tự gọi requireBooker.
      */
     public Booking lockForPayment(Long bookingId) {
+        Long locationId = bookingRepository.findLocationIdById(bookingId).orElseThrow(BookingService::bookingNotFound);
+        locationQueryService.findForUpdate(locationId);
         return bookingRepository.findByIdForUpdate(bookingId).orElseThrow(BookingService::bookingNotFound);
     }
 

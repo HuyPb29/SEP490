@@ -27,6 +27,7 @@ export default function BookingPaymentPage() {
   const [proofStarted, setProofStarted] = useState(false);
   const [qrAttempt, setQrAttempt] = useState(0);
   const [qrError, setQrError] = useState('');
+  const [qrErrorMessage, setQrErrorMessage] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
 
   async function copyTransferField(value, label) {
@@ -84,7 +85,14 @@ export default function BookingPaymentPage() {
       objectUrl = URL.createObjectURL(image);
       setQrImage({ path: qrPath, url: objectUrl, type: image.type });
       setQrError('');
-    }).catch(() => { if (!controller.signal.aborted) setQrError(qrPath); });
+      setQrErrorMessage('');
+    }).catch((error) => {
+      if (controller.signal.aborted) return;
+      setQrErrorMessage(error.response?.status === 404
+        ? 'Tệp ảnh QR của địa điểm chưa có hoặc đã bị mất. Vui lòng liên hệ chủ sân cập nhật ảnh QR; bạn vẫn có thể chuyển khoản theo thông tin tài khoản bên dưới.'
+        : 'Không tải được mã QR. Bạn vẫn có thể dùng thông tin chuyển khoản bên dưới.');
+      setQrError(qrPath);
+    });
     return () => {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -241,7 +249,8 @@ export default function BookingPaymentPage() {
   const deadlineElapsed = bookingData.canPay && remainingSeconds === 0;
   const isConfirmedWait = bookingData.awaiting;
   const isConfirmedDone = ['CONFIRMED', 'APPROVED', 'IN_USE', 'COMPLETED'].includes(bookingData.status);
-  const isRejected = ['PAYMENT_REJECTED', 'REJECTED'].includes(bookingData.status);
+  const isFacilityCancelled = bookingData.status === 'CANCELLED_BY_FACILITY';
+  const isRejected = ['PAYMENT_REJECTED', 'REJECTED'].includes(bookingData.status) || isFacilityCancelled;
   const finalAmount = bookingData.amount;
   const bankInfo = bookingData.instructions ?? {};
   const canSubmit = bookingData.canPay && !isExpired && !deadlineElapsed && Number.isFinite(deadline);
@@ -291,7 +300,7 @@ export default function BookingPaymentPage() {
         <div className={styles.leftColumn}>
           {canSubmit ? <section className={styles.card} aria-labelledby="transfer-heading"><header className={styles.cardHeader}><span className={styles.stepNumber}>1</span><h2 id="transfer-heading">Chuyển khoản đến tài khoản sân</h2></header><p className={styles.amountLabel}>{bookingData.resubmitting && bookingData.receivedAmount > 0 ? 'Số tiền còn thiếu' : 'Số tiền cần chuyển'}</p>
             <div className={styles.amountRow}><strong>{formatVnd(finalAmount)}</strong><Button variant="ghost" aria-label="Sao chép số tiền" onClick={() => copyTransferField(finalAmount, 'số tiền')}>Sao chép</Button></div>
-            <div className={styles.qrArea}>{qrPath ? qrUrl && qrError !== qrPath ? <><img src={qrUrl} className={styles.qrImage} alt="Mã QR nhận thanh toán" onError={() => setQrError(qrPath)} /><a className={styles.outlineLink} href={qrUrl} download={'QR_' + id + (qrImage?.type === 'image/jpeg' ? '.jpg' : qrImage?.type === 'image/svg+xml' ? '.svg' : '.png')}>Lưu ảnh QR</a></> : qrError === qrPath ? <ErrorState message="Không tải được mã QR. Bạn vẫn có thể dùng thông tin chuyển khoản bên dưới." onRetry={() => { setQrImage(null); setQrError(''); setQrAttempt(value => value + 1); }} /> : <LoadingState message="Đang tải mã QR…" /> : <EmptyState title="Chưa có mã QR" description="Dùng thông tin tài khoản bên dưới để chuyển khoản thủ công." action={<Button variant="secondary" onClick={() => document.getElementById('bank-details')?.focus()}>Xem thông tin tài khoản</Button>} />}</div>
+            <div className={styles.qrArea}>{qrPath ? qrUrl && qrError !== qrPath ? <><img src={qrUrl} className={styles.qrImage} alt="Mã QR nhận thanh toán" onError={() => { setQrError(qrPath); setQrErrorMessage('Ảnh QR không hiển thị được. Vui lòng thử tải lại hoặc liên hệ chủ sân cập nhật ảnh JPG/PNG đúng tài khoản.'); }} /><a className={styles.outlineLink} href={qrUrl} download={'QR_' + id + (qrImage?.type === 'image/jpeg' ? '.jpg' : qrImage?.type === 'image/svg+xml' ? '.svg' : '.png')}>Lưu ảnh QR</a></> : qrError === qrPath ? <ErrorState message={qrErrorMessage || 'Không tải được mã QR. Bạn vẫn có thể dùng thông tin chuyển khoản bên dưới.'} onRetry={() => { setQrImage(null); setQrError(''); setQrErrorMessage(''); setQrAttempt(value => value + 1); }} /> : <LoadingState message="Đang tải mã QR…" /> : <EmptyState title="Chưa có mã QR" description="Dùng thông tin tài khoản bên dưới để chuyển khoản thủ công." action={<Button variant="secondary" onClick={() => document.getElementById('bank-details')?.focus()}>Xem thông tin tài khoản</Button>} />}</div>
             <dl className={styles.bankDetails} id="bank-details" tabIndex={-1}>{transferRows.map(([label, value, copyLabel]) => <div key={label}><div><dt>{label}</dt><dd>{value || '—'}</dd></div><Button variant="secondary" size="sm" disabled={!value} aria-label={'Sao chép ' + copyLabel} onClick={() => copyTransferField(value, copyLabel)}>Sao chép</Button></div>)}</dl>
             {copyStatus && <p className={copyStatus.startsWith('Không thể') ? styles.errorBanner : styles.copyNotice} role="status">{copyStatus}</p>}
             <p className={styles.helper}>Chuyển đúng số tiền và nội dung để nhân viên dễ đối chiếu.</p>
@@ -301,7 +310,7 @@ export default function BookingPaymentPage() {
               document.getElementById('proof-heading')?.focus({ preventScroll: true });
             }}>Đã chuyển khoản, chọn chứng từ</Button>
           </section> : <section className={styles.card} aria-labelledby="payment-status-heading"><h2 id="payment-status-heading">Tình trạng thanh toán</h2><div className={styles.statusLine}>{badge}</div>
-            {isConfirmedWait ? <div role="status" className={styles.pending}><h3>Chứng từ đang chờ xác nhận</h3><p>{kind === 'reschedule' ? 'Cơ sở đang kiểm tra phụ thu. Lịch cũ được giữ trong lúc chờ.' : 'Nhân viên đang kiểm tra khoản chuyển. Bạn không cần gửi lại chứng từ trong lúc chờ.'}</p>{kind === 'reschedule' && bookingData.approveDeadline && <p>Hạn xử lý: {formatDateTime(bookingData.approveDeadline)}</p>}</div> : isConfirmedDone ? <section className={styles.receipt} aria-labelledby="receipt-heading"><span className={styles.receiptIcon} aria-hidden="true">✓</span><h3 id="receipt-heading">Biên nhận thanh toán</h3><dl className={styles.details}><dt>Mã biên nhận</dt><dd>{bookingData.receiptNo || 'Chưa có mã biên nhận'}</dd><dt>Mã đặt sân</dt><dd>{bookingData.code}</dd><dt>Số tiền phải thu</dt><dd>{formatVnd(bookingData.amount)}</dd>{bookingData.receivedAmount != null && <><dt>Đã ghi nhận</dt><dd>{formatVnd(bookingData.receivedAmount)}</dd></>}{bookingData.confirmedAt && <><dt>Xác nhận lúc</dt><dd>{formatDateTime(bookingData.confirmedAt)}</dd></>}</dl></section> : isRejected ? <div className={styles.errorBanner} role="alert"><h3>Thanh toán bị từ chối</h3>{bookingData.rejectReason && <p>Lý do: {uiMessage(bookingData.rejectReason)}</p>}</div> : isExpired || deadlineElapsed ? <div className={styles.errorBanner} role="alert"><h3>{isExpired ? 'Đơn đã hết hạn' : 'Đã hết hạn gửi chứng từ'}</h3><p>{bookingData.resubmitting ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ.' : deadlineElapsed ? 'Form đã khóa. Hệ thống đang kiểm tra trạng thái đơn từ máy chủ.' : 'Đã hết thời gian giữ chỗ. Khung giờ đã được nhả.'}</p></div> : bookingData.canPay && !Number.isFinite(deadline) ? <ErrorState message="Chưa tải được hạn thanh toán hợp lệ. Vui lòng tải lại thông tin trước khi chuyển khoản." onRetry={retryPayment} /> : <p className={styles.helper}>Hiện không có thao tác gửi chứng từ cho trạng thái này.</p>}
+            {isConfirmedWait ? <div role="status" className={styles.pending}><h3>Chứng từ đang chờ xác nhận</h3><p>{kind === 'reschedule' ? 'Cơ sở đang kiểm tra phụ thu. Lịch cũ được giữ trong lúc chờ.' : 'Nhân viên đang kiểm tra khoản chuyển. Bạn không cần gửi lại chứng từ trong lúc chờ.'}</p>{kind === 'reschedule' && bookingData.approveDeadline && <p>Hạn xử lý: {formatDateTime(bookingData.approveDeadline)}</p>}</div> : isConfirmedDone ? <section className={styles.receipt} aria-labelledby="receipt-heading"><span className={styles.receiptIcon} aria-hidden="true">✓</span><h3 id="receipt-heading">Biên nhận thanh toán</h3><dl className={styles.details}><dt>Mã biên nhận</dt><dd>{bookingData.receiptNo || 'Chưa có mã biên nhận'}</dd><dt>Mã đặt sân</dt><dd>{bookingData.code}</dd><dt>Số tiền phải thu</dt><dd>{formatVnd(bookingData.amount)}</dd>{bookingData.receivedAmount != null && <><dt>Đã ghi nhận</dt><dd>{formatVnd(bookingData.receivedAmount)}</dd></>}{bookingData.confirmedAt && <><dt>Xác nhận lúc</dt><dd>{formatDateTime(bookingData.confirmedAt)}</dd></>}</dl></section> : isRejected ? <div className={styles.errorBanner} role="alert"><h3>{isFacilityCancelled ? 'Sân đã hủy lịch đặt' : 'Thanh toán bị từ chối'}</h3>{bookingData.rejectReason && <p>Lý do: {uiMessage(bookingData.rejectReason)}</p>}{isFacilityCancelled && <p>Nếu đã chuyển tiền, bạn có thể gửi khiếu nại để địa điểm kiểm tra và hoàn tiền.</p>}</div> : isExpired || deadlineElapsed ? <div className={styles.errorBanner} role="alert"><h3>{isExpired ? 'Đơn đã hết hạn' : 'Đã hết hạn gửi chứng từ'}</h3><p>{bookingData.resubmitting ? 'Đã hết lượt hoặc hết hạn gửi lại chứng từ.' : deadlineElapsed ? 'Form đã khóa. Hệ thống đang kiểm tra trạng thái đơn từ máy chủ.' : 'Đã hết thời gian giữ chỗ. Khung giờ đã được nhả.'}</p></div> : bookingData.canPay && !Number.isFinite(deadline) ? <ErrorState message="Chưa tải được hạn thanh toán hợp lệ. Vui lòng tải lại thông tin trước khi chuyển khoản." onRetry={retryPayment} /> : <p className={styles.helper}>Hiện không có thao tác gửi chứng từ cho trạng thái này.</p>}
             <div className={styles.statusActions}><Link to="/my-bookings" className={styles.linkButton}>Về lịch đặt sân</Link>{isRejected && bookingId && <Link className={styles.outlineLink} to={`/my-complaints?bookingId=${bookingId}`}>Gửi khiếu nại</Link>}</div>
           </section>}
           {kind === 'reschedule' && bookingData.paymentId && <ReschedulePaymentDetail paymentId={bookingData.paymentId} />}

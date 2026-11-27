@@ -139,3 +139,13 @@
 .cw-section h2 { font-size: var(--text-lg); font-weight: 700; }
 .cw-section { border-radius: var(--radius-lg); }
 .cw-field input[aria-invalid="false"] { border-color: var(--color-border-strong); }
+
+@media (width < 640px) {
+  .cw-section { padding: var(--space-4); }
+  .cw-form-fields { grid-template-columns: minmax(0, 1fr); }
+  .cw-form-submit > button { flex: 1 1 140px; white-space: normal; }
+  .cw-workspace .action, .cw-modal .action, .cw-secondary, .cw-danger { min-height: 46px; }
+  .cw-checkout-progress { gap: var(--space-1) var(--space-2); font-size: var(--text-xs); }
+  .cw-checkout-progress li { gap: var(--space-2); }
+  .cw-checkout-progress li + li::before { width: 8px; }
+}

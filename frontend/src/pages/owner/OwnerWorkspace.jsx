@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { useActiveItemScroll } from '../../hooks/useActiveItemScroll'
 import { Link, useSearchParams } from 'react-router-dom'
 import api from '../../api'
 import { downloadVenueData, loadOwnerLocations } from '../../api/ownerApi'
@@ -430,6 +431,8 @@ function OwnerLocation() {
   const { locationId: selected } = useLocationContext()
   const requestedTab = params.get('tab')
   const tab = ownerTabs.some(([value]) => value === requestedTab) ? requestedTab : 'staff'
+  const tabBarRef = useRef(null)
+  useActiveItemScroll(tabBarRef, [tab, selected, locations.loading].join(':'), '[aria-current="page"]', ownerTabs.length)
 
   const location = locations.data?.find((item) => String(item.id) === String(selected))
 
@@ -448,7 +451,7 @@ function OwnerLocation() {
 
   return (
     <div className={styles.workspace}>
-      <nav className={styles.tabBar} aria-label="Quản lý địa điểm">
+      <nav ref={tabBarRef} className={styles.tabBar} aria-label="Quản lý địa điểm">
         {ownerTabs.map(([value, title]) => (
           <button key={value} type="button" aria-current={tab === value ? 'page' : undefined}
             onClick={() => setParams({ tab: value })}>{title}{Number(inbox[value]) > 0 && <span className={styles.tabBadge}>{inbox[value]}</span>}</button>

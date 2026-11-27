@@ -515,7 +515,8 @@ class BookingServiceTests {
 
         service.createSingleBooking(player, request(), NOW);
 
-        InOrder order = inOrder(accounts, bookings, packages);
+        InOrder order = inOrder(locations, accounts, bookings, packages);
+        order.verify(locations).findForCourtUpdate(COURT);
         order.verify(accounts).findByIdForUpdate(PLAYER);
         order.verify(bookings).countPendingPayment(PLAYER, NOW);
         order.verify(packages).countPendingPayment(PLAYER, NOW);
@@ -615,9 +616,14 @@ class BookingServiceTests {
     @Test
     void lockForPaymentReadsWithRowLock() {
         Booking locked = Booking.builder().id(30L).playerId(PLAYER).build();
+        when(bookings.findLocationIdById(30L)).thenReturn(Optional.of(LOCATION));
         when(bookings.findByIdForUpdate(30L)).thenReturn(Optional.of(locked));
 
         assertThat(service.lockForPayment(30L)).isSameAs(locked);
+        InOrder order = inOrder(bookings, locations);
+        order.verify(bookings).findLocationIdById(30L);
+        order.verify(locations).findForUpdate(LOCATION);
+        order.verify(bookings).findByIdForUpdate(30L);
         verify(bookings, never()).findById(any());
     }
 

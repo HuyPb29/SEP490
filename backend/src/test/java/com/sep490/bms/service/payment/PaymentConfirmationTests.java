@@ -102,8 +102,9 @@ class PaymentConfirmationTests {
     private final NotificationRepository notifications = mock(NotificationRepository.class);
     private final PackageService packages = mock(PackageService.class);
     private final SlotAvailabilityService availability = mock(SlotAvailabilityService.class);
+    private final LocationQueryService locationQueries = mock(LocationQueryService.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings,
-            mock(LocationQueryService.class), files, access, vouchers, points, notifications, packages, mock(RescheduleRequestRepository.class),
+            locationQueries, files, access, vouchers, points, notifications, packages, mock(RescheduleRequestRepository.class),
             new PaymentTransferPolicy(availability));
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
@@ -338,8 +339,9 @@ class PaymentConfirmationTests {
 
     /** Simulated transaction row locks, not a SQL Server deadlock reproduction. */
     @ParameterizedTest
-    @CsvSource({"true,false", "false,false", "true,true", "false,true"})
-    void courtSuspensionAndConfirmationSerializeInEitherOrder(boolean ownerFirst, boolean isPackage) throws Exception {
+    @CsvSource({"true,false,false", "false,false,false", "true,true,false", "false,true,false",
+            "true,false,true", "false,false,true", "true,true,true", "false,true,true"})
+    void courtSuspensionAndPaymentDecisionsSerializeInEitherOrder(boolean ownerFirst, boolean isPackage, boolean expiry) throws Exception {
         BookingPackage pkg = isPackage ? packagePayment() : null;
         ReentrantLock venueLock = new ReentrantLock();
         ReentrantLock paymentLock = new ReentrantLock();
@@ -359,6 +361,8 @@ class PaymentConfirmationTests {
         };
         when(locations.findByIdForUpdate(LOCATION)).thenAnswer(lockVenue);
         when(locations.findByCourtIdForUpdate(11L)).thenAnswer(lockVenue);
+        when(payments.findLocationIdById(PAYMENT)).thenReturn(Optional.of(LOCATION));
+        when(locationQueries.findForUpdate(LOCATION)).thenAnswer(call -> lockVenue.answer(call).orElseThrow());
         when(payments.findByIdForUpdate(PAYMENT)).thenAnswer(call -> {
             acquire(paymentLock);
             return Optional.of(payment);
@@ -368,6 +372,19 @@ class PaymentConfirmationTests {
             if (!venueLock.isHeldByCurrentThread()) acquire(venueLock);
             return null;
         }).when(points).accrueForConfirmedPayment(PAYMENT);
+        org.mockito.Mockito.doAnswer(call -> {
+            if (!venueLock.isHeldByCurrentThread()) acquire(venueLock);
+            return null;
+        }).when(points).restoreForFailedBooking(BOOKING);
+        org.mockito.Mockito.doAnswer(call -> {
+            if (!venueLock.isHeldByCurrentThread()) acquire(venueLock);
+            return null;
+        }).when(points).restoreForFailedPackage(PACKAGE);
+        org.mockito.Mockito.doAnswer(call -> {
+            pkg.setStatus(BookingStatus.PAYMENT_REJECTED);
+            points.restoreForFailedPackage(PACKAGE);
+            return null;
+        }).when(packages).settleFailed(any(), eq(BookingStatus.PAYMENT_REJECTED));
 
         CourtRepository courts = mock(CourtRepository.class);
         Court court = Court.builder().id(11L).locationId(LOCATION).name("Sân 1").active(true).build();
@@ -388,7 +405,11 @@ class PaymentConfirmationTests {
                 cancellations);
         Runnable suspend = () -> courtService.update(owner, 11L, UpdateCourtRequest.builder().isActive(false).build());
         Runnable confirm = () -> {
-            if (ownerFirst) {
+            if (expiry) {
+                boolean expired = isPackage ? service.expirePackagePayment(PAYMENT, FIRST_SESSION_END)
+                        : service.expireBookingPayment(PAYMENT, PLAY_END);
+                assertThat(expired).isEqualTo(!ownerFirst);
+            } else if (ownerFirst) {
                 assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW))
                         .isInstanceOf(AppException.class).hasMessageContaining("MSG54");
             } else {
@@ -403,8 +424,10 @@ class PaymentConfirmationTests {
             first.get(10, TimeUnit.SECONDS);
             second.get(10, TimeUnit.SECONDS);
             assertThat(court.isActive()).isFalse();
-            assertThat(payment.getStatus()).isEqualTo(ownerFirst ? PaymentStatus.REJECTED : PaymentStatus.CONFIRMED);
+            assertThat(payment.getStatus()).isEqualTo(ownerFirst || expiry ? PaymentStatus.REJECTED : PaymentStatus.CONFIRMED);
             if (ownerFirst) verifyNoInteractions(points);
+            else if (expiry && isPackage) verify(points).restoreForFailedPackage(PACKAGE);
+            else if (expiry) verify(points).restoreForFailedBooking(BOOKING);
             else verify(points).accrueForConfirmedPayment(PAYMENT);
         } finally {
             pool.shutdownNow();
