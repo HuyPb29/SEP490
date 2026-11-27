@@ -6,13 +6,13 @@ import VenueMapDetails from './VenueMapDetails';
 import styles from './VenueMap.module.css';
 
 function venuePoints(venues) {
-  return venues.flatMap((venue, index) => {
+  return venues.flatMap((venue) => {
     if (venue.latitude == null || venue.longitude == null ||
         String(venue.latitude).trim() === '' || String(venue.longitude).trim() === '') return [];
     const lat = Number(venue.latitude);
     const lng = Number(venue.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return [];
-    return [{ venue, number: index + 1, position: { lat, lng } }];
+    return [{ venue, position: { lat, lng } }];
   });
 }
 
@@ -51,12 +51,11 @@ function VenueMarkers({ points, onSelect, fallback, activeVenueId, onRetry }) {
     if (!map || failed) return undefined;
     const { instance, AdvancedMarkerElement, LatLngBounds } = map;
     const bounds = new LatLngBounds();
-    markerRefs.current = points.map(({ venue, position, number }) => {
+    markerRefs.current = points.map(({ venue, position }) => {
       bounds.extend(position);
       const content = document.createElement('span');
       content.className = styles.pin;
-      content.textContent = number;
-      const marker = new AdvancedMarkerElement({ map: instance, position, title: `Ghim ${number}: ${venue.facility_name}`, content });
+      const marker = new AdvancedMarkerElement({ map: instance, position, title: venue.facility_name, content });
       const listener = marker.addListener('click', () => setSelectedId(venue.facility_id));
       const setActive = (active) => {
         content.classList.toggle(styles.pinActive, active);

@@ -9,14 +9,16 @@ import styles from './VenueMap.module.css'
 
 // Ảnh bản đồ mặc định lấy từ Esri World Street Map, không cần API key.
 // Muốn đổi nguồn ảnh thì đặt VITE_LOCATION_MAP_TILE_URL và VITE_LOCATION_MAP_ATTRIBUTION.
-const DEFAULT_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
-const DEFAULT_ATTRIBUTION = 'Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), Esri Korea, Esri (Thailand), NGCC, &copy; OpenStreetMap contributors và cộng đồng GIS'
+// const DEFAULT_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+// const DEFAULT_ATTRIBUTION = 'Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), Esri Korea, Esri (Thailand), NGCC, &copy; OpenStreetMap contributors và cộng đồng GIS'
+const DEFAULT_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+const DEFAULT_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 const PIN_ZOOM = 16
 
 // Dùng divIcon thay ảnh marker mặc định của Leaflet (ảnh mặc định bị lỗi đường dẫn khi build bằng Vite).
-const venueIcon = (number = '', active = false) => L.divIcon({
+const venueIcon = (active = false) => L.divIcon({
   className: `bms-map-marker ${active ? 'bms-map-marker-active' : ''}`,
-  html: `<span class="bms-map-pin" aria-hidden="true"><span>${number}</span></span>`,
+  html: '<span class="bms-map-pin" aria-hidden="true"></span>',
   iconSize: [44, 44],
   iconAnchor: [22, 44],
 })
@@ -129,9 +131,9 @@ export default function LocationMap({ venues, onSelect, onPick, initialCenter, p
           {points.map((venue, index) =>
             <Marker key={venue.facility_id} position={positions[index]}
               ref={(marker) => { if (marker) markerRefs.current[venue.facility_id] = marker; else delete markerRefs.current[venue.facility_id] }}
-              icon={venueIcon(venues.indexOf(venue) + 1, String(venue.facility_id) === String(activeVenueId) || venue.facility_id === selectedId)}
+              icon={venueIcon(String(venue.facility_id) === String(activeVenueId) || venue.facility_id === selectedId)}
               zIndexOffset={String(venue.facility_id) === String(activeVenueId) || venue.facility_id === selectedId ? 1000 : 0}
-              title={`Ghim ${venues.indexOf(venue) + 1}: ${venue.facility_name ?? ''}`} alt={`Ghim ${venues.indexOf(venue) + 1}: ${venue.facility_name ?? ''}`}
+              title={venue.facility_name ?? 'Vị trí địa điểm'} alt={venue.facility_name ?? 'Vị trí địa điểm'}
               eventHandlers={{
                 click: () => setSelectedId(venue.facility_id),
                 keydown: (event) => {
