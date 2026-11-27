@@ -22,6 +22,15 @@ public class LocationAccessService {
     private final HttpServletRequest request;
 
     public Location selectedLocation(UserPrincipal user) {
+        return selectedLocation(user, false);
+    }
+
+    /** Caller must hold a transaction; lock the venue before payments/booking targets. */
+    public Location selectedLocationForUpdate(UserPrincipal user) {
+        return selectedLocation(user, true);
+    }
+
+    private Location selectedLocation(UserPrincipal user, boolean forUpdate) {
         String header = request.getHeader("X-Location-Id");
         Long id = null;
         if (header != null) {
@@ -38,7 +47,7 @@ public class LocationAccessService {
             throw new AppException("Không có quyền truy cập địa điểm", HttpStatus.FORBIDDEN);
         }
         if (id == null) throw new AppException("Cần gửi header X-Location-Id để chọn địa điểm");
-        Location location = locations.findById(id)
+        Location location = (forUpdate ? locations.findByIdForUpdate(id) : locations.findById(id))
                 .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
         if (user.getRole() == Role.OWNER && !user.getId().equals(location.getOwnerId())) {
             throw new AppException("Địa điểm không thuộc Owner", HttpStatus.FORBIDDEN);

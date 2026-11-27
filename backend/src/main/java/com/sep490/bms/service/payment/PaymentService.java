@@ -483,7 +483,8 @@ public class PaymentService {
     }
 
     PaymentResponse confirm(UserPrincipal user, Long paymentId, ConfirmPaymentRequest request, LocalDateTime now) {
-        Location location = locationAccessService.selectedLocation(user);
+        // Court suspension also locks Location first. Accrual must not take it after Payment.
+        Location location = locationAccessService.selectedLocationForUpdate(user);
         Payment payment = lockInLocation(location, paymentId);
         transferPolicy.requireStaffMayDecide(user, payment, now);
         BigDecimal received = request == null || request.receivedAmount() == null
@@ -527,7 +528,7 @@ public class PaymentService {
     }
 
     PaymentResponse requestResubmission(UserPrincipal user, Long paymentId, ResubmitRequest request, LocalDateTime now) {
-        Location location = locationAccessService.selectedLocation(user);
+        Location location = locationAccessService.selectedLocationForUpdate(user);
         Payment payment = lockInLocation(location, paymentId);
         transferPolicy.requireStaffMayDecide(user, payment, now);
         if (payment.getPackageId() != null) {
@@ -561,7 +562,7 @@ public class PaymentService {
      */
     @Transactional
     public PaymentResponse reject(UserPrincipal user, Long paymentId, RejectPaymentRequest request) {
-        Location location = locationAccessService.selectedLocation(user);
+        Location location = locationAccessService.selectedLocationForUpdate(user);
         Payment payment = lockInLocation(location, paymentId);
         transferPolicy.requireStaffMayDecide(user, payment, LocalDateTime.now());
         if (payment.getPackageId() != null) {

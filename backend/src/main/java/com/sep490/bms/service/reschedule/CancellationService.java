@@ -167,7 +167,7 @@ public class CancellationService {
         var candidates = em.createQuery("select b from Booking b where b.courtId=:c and b.status in :states order by b.id", Booking.class)
                 .setParameter("c", courtId).setParameter("states", states).getResultList();
         for (Booking candidate : candidates) {
-            // Thanh toán khóa trước target, giống PaymentService: tránh confirm đồng thời với đóng sân.
+            // Caller holds Location first; then Payment and target, matching staff payment decisions.
             for (Payment payment : support.basePayments(candidate)) support.lock(Payment.class, payment.getId());
             BookingPackage pkg = candidate.getPackageId() == null ? null : support.lock(BookingPackage.class, candidate.getPackageId());
             Booking booking = support.booking(candidate.getId());
