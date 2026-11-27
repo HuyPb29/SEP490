@@ -77,7 +77,8 @@ describe('xem số liệu', () => {
     await openDialog()
     vi.mocked(api.get).mockClear()
 
-    fireEvent.change(screen.getByLabelText('Ngày đối soát'), { target: { value: '2026-11-30' } })
+    // Lịch tùy chỉnh chặn ngày tương lai; bridge vẫn phải bảo vệ khi nhận giá trị ngoài UI.
+    fireEvent.change(screen.getByLabelText('Ngày đối soát', { selector: 'input' }), { target: { value: '2026-11-30' } })
 
     expect(screen.getByText('Vui lòng chọn ngày đối soát hợp lệ.')).toBeInTheDocument()
     expect(api.get).not.toHaveBeenCalled()
