@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import NotificationBell from '../notification/NotificationBell';
 import React, { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
@@ -103,13 +104,13 @@ export default function Header({ roleContext }) {
 
         {/* Right side: User Area & Notifications OR Đăng nhập/Đăng ký */}
         <div className={styles.userArea}>
-          <button type="button" className={styles.mobileMenu} aria-label="Mở menu điều hướng" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>☰</button>
+          <UiButton variant="custom" type="button" className={styles.mobileMenu} aria-label="Mở menu điều hướng" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>☰</UiButton>
           {isLoggedIn ? (
             <>
               <NotificationBell />
 
               <div className={styles.userMenuWrapper} ref={dropdownRef}>
-                <button
+                <UiButton variant="custom"
                   type="button"
                   className={styles.userProfileBtn}
                   onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -119,7 +120,7 @@ export default function Header({ roleContext }) {
                   <span className={styles.avatar}>{initial}</span>
                   <span className={styles.userName}>{displayName}</span>
                   <span className={styles.caret} aria-hidden="true">▾</span>
-                </button>
+                </UiButton>
 
                 {dropdownOpen && (
                   <div className={styles.dropdownMenu} role="menu">
@@ -130,7 +131,7 @@ export default function Header({ roleContext }) {
                       </p>
                     </div>
                     <div className={styles.dropdownDivider} />
-                    <button
+                    <UiButton variant="custom"
                       type="button"
                       className={styles.dropdownItem}
                       onClick={() => {
@@ -140,8 +141,8 @@ export default function Header({ roleContext }) {
                       role="menuitem"
                     >
                       ⚙️ Cài đặt tài khoản
-                    </button>
-                    <button
+                    </UiButton>
+                    <UiButton variant="custom"
                       type="button"
                       className={styles.dropdownItem}
                       onClick={() => {
@@ -151,9 +152,9 @@ export default function Header({ roleContext }) {
                       role="menuitem"
                     >
                       🏸 Lịch đặt sân của tôi
-                    </button>
+                    </UiButton>
                     {isOwnerRoute ? (
-                      <button
+                      <UiButton variant="custom"
                         type="button"
                         className={styles.dropdownItem}
                         onClick={() => {
@@ -163,9 +164,9 @@ export default function Header({ roleContext }) {
                         role="menuitem"
                       >
                         🌐 Xem giao diện người chơi
-                      </button>
+                      </UiButton>
                     ) : (
-                      <button
+                      <UiButton variant="custom"
                         type="button"
                         className={styles.dropdownItem}
                         onClick={() => {
@@ -175,10 +176,10 @@ export default function Header({ roleContext }) {
                         role="menuitem"
                       >
                         🏟️ Mở trang quản lý chủ sân
-                      </button>
+                      </UiButton>
                     )}
                     <div className={styles.dropdownDivider} />
-                    <button
+                    <UiButton variant="custom"
                       type="button"
                       className={`${styles.dropdownItem} ${styles.logoutItem}`}
                       onClick={() => {
@@ -188,33 +189,33 @@ export default function Header({ roleContext }) {
                       role="menuitem"
                     >
                       🚪 Đăng xuất
-                    </button>
+                    </UiButton>
                   </div>
                 )}
               </div>
             </>
           ) : (
             <div className={styles.authButtons}>
-              <button
+              <UiButton variant="custom"
                 type="button"
                 className={styles.loginBtn}
                 onClick={() => navigate('/login')}
               >
                 Đăng nhập
-              </button>
-              <button
+              </UiButton>
+              <UiButton variant="custom"
                 type="button"
                 className={styles.registerBtn}
                 onClick={() => navigate('/login', { state: { isSignUp: true } })}
               >
                 Đăng ký
-              </button>
+              </UiButton>
             </div>
           )}
         </div>
       </div>
       {drawerOpen && <NavigationDrawer label="Điều hướng di động" onClose={() => setDrawerOpen(false)}>
-        <button type="button" className={styles.drawerClose} onClick={() => setDrawerOpen(false)}>Đóng menu ✕</button>
+        <UiButton variant="custom" type="button" className={styles.drawerClose} onClick={() => setDrawerOpen(false)}>Đóng menu ✕</UiButton>
         <div className={styles.drawerLinks} onClick={(event) => { if (event.target.closest('a')) setDrawerOpen(false); }}>{navigation}</div>
       </NavigationDrawer>}
     </header>

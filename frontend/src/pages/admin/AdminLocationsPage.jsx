@@ -1,3 +1,4 @@
+import { Button as UiButton, DatePicker as UiDatePicker, Input as UiInput, Select as UiSelect } from '../../components/ui';
 import { useEffect, useMemo, useState } from 'react'
 import {
   apiErrorMessage,
@@ -294,21 +295,21 @@ export default function AdminFacilitiesPage() {
       title="Quản lý địa điểm & Đăng ký dịch vụ"
       subtitle="Kiểm duyệt đơn đăng ký của chủ sân và quản lý kỳ hạn hoạt động"
       actions={
-        <button
+        <UiButton variant="custom"
           className={styles.secondaryButton || 'cw-secondary'}
           type="button"
           onClick={loadAll}
           disabled={loading}
         >
           {loading ? 'Đang tải…' : 'Làm mới'}
-        </button>
+        </UiButton>
       }
     >
 
         {(statusMessage || (actionError && !modal)) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
             <span>{actionError || statusMessage}</span>
-            <button type="button" aria-label="Đóng thông báo" onClick={clearStatus}>×</button>
+            <UiButton variant="secondary" type="button" aria-label="Đóng thông báo" onClick={clearStatus}>×</UiButton>
           </div>
         )}
 
@@ -333,12 +334,12 @@ export default function AdminFacilitiesPage() {
                   </p>
                 </div>
                 <div className={styles.requestActions}>
-                  <button className={styles.rejectButton} type="button" onClick={() => handleReject(request)} disabled={saving}>
+                  <UiButton variant="custom" className={styles.rejectButton} type="button" onClick={() => handleReject(request)} disabled={saving}>
                     Từ chối
-                  </button>
-                  <button className={styles.approveButton} type="button" onClick={() => handleApprove(request)} disabled={saving}>
+                  </UiButton>
+                  <UiButton variant="custom" className={styles.approveButton} type="button" onClick={() => handleApprove(request)} disabled={saving}>
                     Duyệt
-                  </button>
+                  </UiButton>
                 </div>
               </article>
             ))}
@@ -359,15 +360,15 @@ export default function AdminFacilitiesPage() {
             <div className={styles.filterGroup}>
               <label className={styles.filterField}>
                 <span className={styles.visuallyHidden}>Lọc theo trạng thái</span>
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <UiSelect value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                   <option value="ALL">Tất cả trạng thái</option>
                   <option value="ACTIVE">Hoạt động</option>
                   <option value="LOCKED">Đã khóa</option>
-                </select>
+                </UiSelect>
               </label>
               <label className={styles.searchField}>
                 <span className={styles.visuallyHidden}>Tìm theo tên sân hoặc chủ sân</span>
-                <input
+                <UiInput
                   type="search"
                   placeholder="Tìm theo tên sân hoặc chủ sân"
                   value={searchKeyword}
@@ -409,17 +410,17 @@ export default function AdminFacilitiesPage() {
                   </div>
                   <span className={styles.numberCell} role="cell">{facility.courtCount ?? 0}</span>
                   <div className={styles.facilityActions} role="cell">
-                    <button className={styles.extendButton} type="button" onClick={() => openExtendModal(facility)} disabled={saving}>
+                    <UiButton variant="custom" className={styles.extendButton} type="button" onClick={() => openExtendModal(facility)} disabled={saving}>
                       Gia hạn
-                    </button>
+                    </UiButton>
                     {facility.status === 'ACTIVE' ? (
-                      <button className={styles.lockButton} type="button" onClick={() => handleLock(facility)} disabled={saving}>
+                      <UiButton variant="custom" className={styles.lockButton} type="button" onClick={() => handleLock(facility)} disabled={saving}>
                         Khóa
-                      </button>
+                      </UiButton>
                     ) : (
-                      <button className={styles.reopenButton} type="button" onClick={() => handleReopen(facility)} disabled={saving}>
+                      <UiButton variant="custom" className={styles.reopenButton} type="button" onClick={() => handleReopen(facility)} disabled={saving}>
                         Mở lại
-                      </button>
+                      </UiButton>
                     )}
                   </div>
                 </div>
@@ -464,16 +465,15 @@ export default function AdminFacilitiesPage() {
                   <>
                     <label className={styles.modalField}>
                       <span>Thời hạn gia hạn</span>
-                      <select value={modal.months} onChange={(event) => updateModalField('months', Number(event.target.value))}>
+                      <UiSelect value={modal.months} onChange={(event) => updateModalField('months', Number(event.target.value))}>
                         {EXTENSION_OPTIONS.map((option) => (
                           <option key={option.months} value={option.months}>{option.label}</option>
                         ))}
-                      </select>
+                      </UiSelect>
                     </label>
                     <label className={styles.modalField}>
                       <span>Ngày bắt đầu</span>
-                      <input
-                        type="date"
+                      <UiDatePicker
                         value={modal.startDate}
                         onChange={(event) => updateModalField('startDate', event.target.value)}
                       />
@@ -488,14 +488,14 @@ export default function AdminFacilitiesPage() {
                   </>
                 )}
                 <div className={styles.modalActions}>
-                  <button className={styles.cancelButton} type="button" onClick={closeModal} disabled={saving}>
+                  <UiButton variant="custom" className={styles.cancelButton} type="button" onClick={closeModal} disabled={saving}>
                     Hủy
-                  </button>
-                  <button className={styles.approveButton} type="submit" disabled={saving}>
+                  </UiButton>
+                  <UiButton variant="custom" className={styles.approveButton} type="submit" disabled={saving}>
                     {modal.type === 'reject'
                       ? 'Gửi từ chối'
                       : modal.reopening ? 'Gia hạn & Mở lại' : 'Xác nhận gia hạn'}
-                  </button>
+                  </UiButton>
                 </div>
               </form>
             </section>

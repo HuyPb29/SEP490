@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../../components/ui';
 import { useState } from 'react'
 import { useVenueReviews } from '../../hooks/usePublicVenue'
 import styles from './FacilityDetailPage.module.css'
@@ -8,7 +9,7 @@ export default function VenueInformation({ facility, retryVenue }) {
   return <section className={styles.bottomGrid}>
     <div className={styles.bottomCard}>
       <h2 className={styles.sectionTitle}>Danh sách sân và giờ mở cửa</h2>
-      {facility.courts_error ? <p role="alert">Không tải được danh sách sân. <button type="button" className="underline" onClick={retryVenue}>Thử lại</button></p>
+      {facility.courts_error ? <p role="alert">Không tải được danh sách sân. <UiButton variant="custom" type="button" className="underline" onClick={retryVenue}>Thử lại</UiButton></p>
         : facility.courts_list.length ? <ul>{facility.courts_list.map((court) => <li key={court.id}>{court.name}</li>)}</ul>
           : <p>Địa điểm chưa có sân đang hoạt động.</p>}
       {facility.opening_hours_list.length ? <dl>{facility.opening_hours_list.map((hour) =>
@@ -17,7 +18,7 @@ export default function VenueInformation({ facility, retryVenue }) {
     </div>
     <div className={styles.bottomCard}>
       <h2 className={styles.sectionTitle}>Bảng giá</h2>
-      {facility.price_error && <p role="alert">Chưa tải đủ bảng giá. <button type="button" className="underline" onClick={retryVenue}>Thử lại</button></p>}
+      {facility.price_error && <p role="alert">Chưa tải đủ bảng giá. <UiButton variant="custom" type="button" className="underline" onClick={retryVenue}>Thử lại</UiButton></p>}
       {facility.price_table.length > 0 ? <div className="overflow-auto"><table className={styles.priceTable}>
         <thead><tr><th>Sân / Ngày</th><th>Khung giờ</th><th>Hiệu lực</th><th>Đơn giá</th></tr></thead>
         <tbody>{facility.price_table.map((row, index) => <tr key={row.id + ':' + index}>
@@ -29,7 +30,7 @@ export default function VenueInformation({ facility, retryVenue }) {
     <div className={styles.bottomCard}>
       <h2 className={styles.sectionTitle}>Đánh giá từ người chơi</h2>
       {!reviews.current && <p role="status">Đang tải đánh giá…</p>}
-      {reviews.current?.error && <p role="alert">Không tải được đánh giá. <button type="button" className="underline" onClick={reviews.retry}>Thử lại</button></p>}
+      {reviews.current?.error && <p role="alert">Không tải được đánh giá. <UiButton variant="custom" type="button" className="underline" onClick={reviews.retry}>Thử lại</UiButton></p>}
       {reviews.current?.data?.content.length === 0 && <p>Chưa có đánh giá nào.</p>}
       {reviews.current?.data?.content.map((review) => <article key={review.id} className={styles.reviewItem}>
         <strong>{review.playerName || 'Người chơi'} · {review.rating}/5</strong>
@@ -38,8 +39,8 @@ export default function VenueInformation({ facility, retryVenue }) {
         {review.ownerReply && <p className={styles.ownerReplyBox}>Phản hồi từ chủ sân: {review.ownerReply}</p>}
       </article>)}
       {reviews.current?.data?.totalPages > 1 && <nav aria-label="Trang đánh giá" className="mt-2 flex gap-3">
-        <button type="button" disabled={!page} onClick={() => setPage(page - 1)}>Trang trước</button>
-        <button type="button" disabled={page + 1 >= reviews.current.data.totalPages} onClick={() => setPage(page + 1)}>Trang sau</button>
+        <UiButton variant="secondary" type="button" disabled={!page} onClick={() => setPage(page - 1)}>Trang trước</UiButton>
+        <UiButton variant="secondary" type="button" disabled={page + 1 >= reviews.current.data.totalPages} onClick={() => setPage(page + 1)}>Trang sau</UiButton>
       </nav>}
     </div>
   </section>

@@ -1,8 +1,9 @@
+import { Checkbox as UiCheckbox, DatePicker as UiDatePicker } from '../../components/ui';
 import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import PublicLayout from '../../components/layout/PublicLayout';
-import { Button, FormField, Input, Select, PageHeader, StatusBadge, LoadingState, EmptyState, ErrorState, Tabs, Modal, ConfirmDialog, Drawer } from '../../components/common';
+import { Button, FormField, Select, PageHeader, StatusBadge, LoadingState, EmptyState, ErrorState, Tabs, Modal, ConfirmDialog, Drawer } from '../../components/common';
 import { shortDate, uiMessage } from '../../utils/formatters';
 import { apiErrorMessage } from '../../api';
 import {
@@ -296,7 +297,7 @@ export default function OpenMatchesPage() {
   const openPanel = <>
     <form className={styles.filters} onSubmit={submitFilters}>
       <FormField label="Địa điểm"><Select id="match-location" value={selectedLocation} onChange={event => setSelectedLocation(event.target.value)}><option value="">Mọi địa điểm</option>{locations.map(location => <option key={location.facility_id} value={location.facility_id}>{location.facility_name}</option>)}</Select></FormField>
-      <FormField label="Ngày chơi"><Input id="match-date" type="date" min={todayIso()} value={selectedDate} onChange={event => setSelectedDate(event.target.value)} /></FormField>
+      <FormField label="Ngày chơi"><UiDatePicker id="match-date" min={todayIso()} value={selectedDate} onChange={event => setSelectedDate(event.target.value)} /></FormField>
       <FormField label="Khung giờ"><Select id="match-time" value={timeSlot} onChange={event => setTimeSlot(event.target.value)}>{Object.entries(TIME_SLOTS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}</Select></FormField>
       <FormField label="Trình độ"><Select id="match-skill" value={selectedSkill} onChange={event => setSelectedSkill(event.target.value)}><option value="">Mọi trình độ</option>{SKILL_LEVELS.map(level => <option key={level}>{level}</option>)}<option value={NO_SKILL_FILTER}>{NO_SKILL_LABEL}</option></Select></FormField>
       <Button type="submit" loading={loadingMatches}>Lọc kèo</Button><Button variant="ghost" onClick={resetFilters}>Xóa bộ lọc</Button>
@@ -326,7 +327,7 @@ export default function OpenMatchesPage() {
       <div className={styles.joinBody}><p>Trình độ kèo: <strong>{matchSkillLabel(matches.find(match => match.id === requestingMatchId))}</strong>. Chủ kèo sẽ xét duyệt yêu cầu của bạn.</p>
         {mySkill === null && <LoadingState message="Đang tải thông tin người chơi…" />}
         {needsSkill && <FormField label="Trình độ chơi của bạn" required hint="Trình độ được chọn sẽ lưu vào hồ sơ của bạn."><Select aria-describedby={requestError ? 'join-error' : undefined} aria-invalid={Boolean(requestError && !chosenSkill)} id="join-skill" value={chosenSkill} onChange={event => { setChosenSkill(event.target.value); setRequestError(''); }}><option value="">Chọn trình độ</option>{SKILL_LEVELS.map(level => <option key={level}>{level}</option>)}</Select></FormField>}
-        <label className={styles.consent}><input id="share-phone" aria-invalid={Boolean(requestError && !sharePhone)} type="checkbox" checked={sharePhone} disabled={submitting} aria-describedby={requestError ? 'join-error' : 'join-privacy'} onChange={event => { setSharePhone(event.target.checked); setRequestError(''); }} /><span>Tôi đồng ý chia sẻ số điện thoại với chủ kèo</span></label>
+        <label className={styles.consent}><UiCheckbox id="share-phone" aria-invalid={Boolean(requestError && !sharePhone)} checked={sharePhone} disabled={submitting} aria-describedby={requestError ? 'join-error' : 'join-privacy'} onChange={event => { setSharePhone(event.target.checked); setRequestError(''); }} /><span>Tôi đồng ý chia sẻ số điện thoại với chủ kèo</span></label>
         <p id="join-privacy" className={styles.helper}>Số điện thoại không hiển thị trên danh sách kèo chung.</p>
         {requestError && <p id="join-error" role="alert" className={styles.error}>{uiMessage(requestError)}</p>}
         <div className={styles.actions}><Button variant="secondary" disabled={submitting} onClick={() => setRequestingMatchId(null)}>Quay lại</Button><Button loading={submitting} disabled={mySkill === null} onClick={submitJoinRequest}>Gửi yêu cầu</Button></div>

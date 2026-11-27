@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { Link } from 'react-router-dom';
 import styles from './CommonUI.module.css';
 
@@ -24,9 +25,9 @@ export function PageHeader({
               ← {backTo.label || 'Quay lại'}
             </Link>
           ) : (
-            <button type="button" onClick={backTo.onClick} className={styles.backLink}>
+            <UiButton variant="custom" type="button" onClick={backTo.onClick} className={styles.backLink}>
               ← {backTo.label || 'Quay lại'}
-            </button>
+            </UiButton>
           )}
         </div>
       )}

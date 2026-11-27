@@ -1,3 +1,4 @@
+import { Select as UiSelect } from '../../components/ui';
 /**
  * OwnerLayout.jsx — shared layout for the Owner Portal.
  *
@@ -63,7 +64,7 @@ export default function OwnerLayout() {
             <label className={styles.facilityLabel} htmlFor="owner-location-select">
               Địa điểm
             </label>
-            <select
+            <UiSelect
               className={styles.facilitySelect}
               id="owner-location-select"
               value={id ?? ''}
@@ -74,7 +75,7 @@ export default function OwnerLayout() {
                   {loc.name}
                 </option>
               ))}
-            </select>
+            </UiSelect>
           </div>
 
           <nav className={styles.navigation} aria-label="Điều hướng chủ sân">

@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -103,7 +104,7 @@ export function UserMenu({ user: userProp }) {
       <NotificationBell />
 
       <div className={styles.userMenuWrap} ref={menuRef}>
-        <button
+        <UiButton variant="custom"
           type="button"
           className={styles.userTrigger}
           ref={triggerRef}
@@ -123,16 +124,16 @@ export function UserMenu({ user: userProp }) {
           <span aria-hidden="true" style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
             ▾
           </span>
-        </button>
+        </UiButton>
 
-        <button
+        <UiButton variant="custom"
           type="button"
           className={styles.signoutQuickBtn}
           disabled={signingOut}
           onClick={handleSignOut}
         >
           {signingOut ? 'Đang thoát…' : 'Đăng xuất'}
-        </button>
+        </UiButton>
 
         {open && (
           <div className={styles.userDropdown} role="menu" aria-label="Menu người dùng" onKeyDown={handleMenuKeyDown}>
@@ -173,7 +174,7 @@ export function UserMenu({ user: userProp }) {
             >
               Tất cả thông báo
             </Link>
-            <button
+            <UiButton variant="custom"
               type="button"
               role="menuitem"
               className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
@@ -181,7 +182,7 @@ export function UserMenu({ user: userProp }) {
               onClick={handleSignOut}
             >
               {signingOut ? 'Đang thoát…' : 'Đăng xuất'}
-            </button>
+            </UiButton>
           </div>
         )}
       </div>

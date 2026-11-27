@@ -1,3 +1,4 @@
+import { Button as UiButton, DatePicker as UiDatePicker } from '../../components/ui';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import courtPhoto from '../../assets/badminton-court.jpg';
@@ -30,17 +31,17 @@ function VenueCard({ venue, index, active, onSelect, onHighlight }) {
     onMouseEnter={() => onHighlight(venue.facility_id)} onMouseLeave={() => onHighlight(null)}
     onFocus={() => onHighlight(venue.facility_id)}
     onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) onHighlight(null); }}>
-    <button type="button" className={styles.venuePhoto} onClick={() => onSelect(venue)} aria-label={`Xem lịch sân ${venue.facility_name}`}>
+    <UiButton variant="custom" type="button" className={styles.venuePhoto} onClick={() => onSelect(venue)} aria-label={`Xem lịch sân ${venue.facility_name}`}>
       <img src={!imageFailed && imageUrl ? imageUrl : courtPhoto} alt={!imageFailed && imageUrl ? `Sân tại ${venue.facility_name}` : ''} loading="lazy" onError={() => setImageFailed(true)} />
       {(!imageUrl || imageFailed) && <span className={styles.photoCaption}>Ảnh minh họa</span>}
-    </button>
+    </UiButton>
     <div className={styles.venueBody}>
       <div className={styles.cardTop}><span className={styles.venueNumber} aria-label={`Ghim ${index + 1}`}>{String(index + 1).padStart(2, '0')}</span>
         <StatusBadge status="ACTIVE" category="location" />
         {venue.distance_km != null && <span className={styles.distance}><HomeIcon name="navigation" size={14} />{formatKm(venue.distance_km)}</span>}
       </div>
       <h3 id={`venue-${venue.facility_id}`} className={styles.venueName}>
-        <button type="button" onClick={() => onSelect(venue)}>{venue.facility_name}</button>
+        <UiButton variant="secondary" type="button" onClick={() => onSelect(venue)}>{venue.facility_name}</UiButton>
       </h3>
       <p className={styles.address}><HomeIcon name="pin" size={16} /><span>{venue.address || 'Địa chỉ chưa cập nhật'}</span></p>
       <div className={styles.facts}>
@@ -131,7 +132,7 @@ export default function FacilitySearchPage({ searchOnly = false }) {
               {keyword && <Button variant="ghost" size="sm" onClick={clearSearch} aria-label="Xóa từ khóa tìm kiếm"><HomeIcon name="close" size={18} /></Button>}
             </div>
           </div>
-          <div className={styles.dateField}><label htmlFor={`${formId}-date`}>Ngày chơi</label><Input id={`${formId}-date`} type="date" min={MIN_PLAY_DATE} value={playDate} onChange={(event) => setPlayDate(event.target.value)} /></div>
+          <div className={styles.dateField}><label htmlFor={`${formId}-date`}>Ngày chơi</label><UiDatePicker id={`${formId}-date`} min={MIN_PLAY_DATE} value={playDate} onChange={(event) => setPlayDate(event.target.value)} /></div>
           <Button type="submit" className={styles.submitButton} loading={loading}>Tìm sân</Button>
         </form>
       </div>

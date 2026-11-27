@@ -1,3 +1,4 @@
+import { DatePicker as UiDatePicker } from '../../components/ui';
 import { useEffect, useState } from 'react';
 import api, { apiErrorMessage } from '../../api';
 import { getSelectedLocation } from '../../api/session';
@@ -7,7 +8,6 @@ import {
   EmptyState,
   ErrorState,
   FormField,
-  Input,
   LoadingState,
   Pagination,
   StatusBadge,
@@ -73,10 +73,10 @@ function ReconciliationResults({ locationId }) {
       <section className={styles.filterBar} aria-label="Lọc theo ngày">
         <div className={styles.dateFields}>
           <FormField label="Từ ngày">
-            <Input type="date" value={from} max={to || undefined} onChange={changeFilter(setFrom)} />
+            <UiDatePicker value={from} max={to || undefined} onChange={changeFilter(setFrom)} />
           </FormField>
           <FormField label="Đến ngày" error={!validDates ? 'Ngày kết thúc phải sau ngày bắt đầu.' : undefined}>
-            <Input type="date" value={to} min={from || undefined} onChange={changeFilter(setTo)} />
+            <UiDatePicker value={to} min={from || undefined} onChange={changeFilter(setTo)} />
           </FormField>
         </div>
         {(from || to) && (

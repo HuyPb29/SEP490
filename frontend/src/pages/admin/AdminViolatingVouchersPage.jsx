@@ -1,3 +1,4 @@
+import { Button as UiButton, Input as UiInput, Select as UiSelect } from '../../components/ui';
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import styles from './AdminLocationsPage.module.css'
@@ -133,7 +134,7 @@ export default function AdminViolatingVouchersPage() {
         {(statusMessage || actionError) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
             <span>{actionError || statusMessage}</span>
-            <button type="button" aria-label="Đóng thông báo" onClick={clearNotice}>×</button>
+            <UiButton variant="secondary" type="button" aria-label="Đóng thông báo" onClick={clearNotice}>×</UiButton>
           </div>
         )}
 
@@ -143,13 +144,13 @@ export default function AdminViolatingVouchersPage() {
             <div className={styles.toolbarControls}>
               <label className={styles.filterField}>
                 <span className={styles.visuallyHidden}>Lọc theo trạng thái</span>
-                <select className={styles.filterSelect} value={selectedStatus} onChange={handleStatusChange}>
+                <UiSelect className={styles.filterSelect} value={selectedStatus} onChange={handleStatusChange}>
                   {STATUS_FILTERS.map((status) => <option key={status} value={status}>{status}</option>)}
-                </select>
+                </UiSelect>
               </label>
               <label className={styles.searchField}>
                 <span className={styles.visuallyHidden}>Tìm theo mã phiếu ưu đãi hoặc địa điểm</span>
-                <input
+                <UiInput
                   type="search"
                   placeholder="Tìm theo mã phiếu ưu đãi hoặc địa điểm"
                   value={searchKeyword}
@@ -191,11 +192,11 @@ export default function AdminViolatingVouchersPage() {
                   </span>
                 </span>
                 <div className={styles.adminRowActions} role="cell">
-                  <button className={styles.extendButton} type="button" onClick={() => handleViewOwner(voucher.ownerUsername)}>Xem chủ sân</button>
+                  <UiButton variant="custom" className={styles.extendButton} type="button" onClick={() => handleViewOwner(voucher.ownerUsername)}>Xem chủ sân</UiButton>
                   {voucher.status === "Đã vô hiệu hóa" ? (
                     <span className={styles.cellSecondary}>Đã vô hiệu hóa</span>
                   ) : (
-                    <button className={styles.lockButton} type="button" onClick={() => handleDeactivate(voucher.id)}>Vô hiệu hóa</button>
+                    <UiButton variant="custom" className={styles.lockButton} type="button" onClick={() => handleDeactivate(voucher.id)}>Vô hiệu hóa</UiButton>
                   )}
                 </div>
               </div>

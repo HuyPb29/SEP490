@@ -1,3 +1,4 @@
+import { Button as UiButton, Input as UiInput, Select as UiSelect } from '../../components/ui';
 import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import api, { getAllPages } from '../../api'
@@ -93,7 +94,7 @@ function WalkInComplaintForm({ refresh }) {
     <Field label="Ngày đặt sân" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
     {bookings.loading && <p className={styles.muted} role="status">Đang tải đặt sân tại quầy…</p>}
     {bookings.error && <p className={styles.error} role="alert">{bookings.error}{' '}
-      <button type="button" className={styles.link} onClick={bookings.reload}>Thử lại</button></p>}
+      <UiButton variant="ghost" type="button" className={styles.link} onClick={bookings.reload}>Thử lại</UiButton></p>}
     {bookings.data?.length === 0 && <p className={styles.muted}>Không có đặt sân tại quầy trong ngày này.</p>}
     {bookings.data?.length > 0 && <ActionForm key={date} label="Lập khiếu nại" after={refresh}
       action={(form) => api.post(staffPath, { ...form, bookingId: Number(form.bookingId) })}>
@@ -132,7 +133,7 @@ function ManagerDetail({ id, role, refreshList, onClose }) {
   return <Drawer title={title} onClose={onClose}>
     {detail.loading && <p className={styles.muted} role="status">Đang tải chi tiết…</p>}
     {detail.error && <p className={styles.error} role="alert">{detail.error}{' '}
-      <button type="button" className={styles.link} onClick={detail.reload}>Thử lại</button></p>}
+      <UiButton variant="ghost" type="button" className={styles.link} onClick={detail.reload}>Thử lại</UiButton></p>}
     {item && <>
       <div className={styles.detailHead}>
         <StatusBadgeText status={item.status} />
@@ -220,22 +221,22 @@ function ManagerBoard({ role, revision = 0 }) {
   return <section className={styles.board} aria-label="Khiếu nại tại địa điểm">
     <div className={styles.tabs} role="tablist" aria-label="Lọc theo trạng thái">
       {[['', 'Tất cả', all.length], ...statuses.map((value) => [value, labels[value], count(value)])].map(([value, label, n]) =>
-        <button key={value || 'all'} type="button" role="tab" aria-selected={status === value}
+        <UiButton variant="custom" key={value || 'all'} type="button" role="tab" aria-selected={status === value}
           className={status === value ? styles.tabOn : ''} onClick={() => setStatus(value)}>
           {label}<span className={value === urgentStatus && n > 0 ? styles.countHot : styles.count}>{n}</span>
-        </button>)}
+        </UiButton>)}
     </div>
     <div className={styles.toolbar}>
-      <input className={styles.search} type="search" aria-label="Tìm khiếu nại" placeholder="Mã khiếu nại, mã booking, tên khách, nội dung…"
+      <UiInput className={styles.search} type="search" aria-label="Tìm khiếu nại" placeholder="Mã khiếu nại, mã booking, tên khách, nội dung…"
         value={query} onChange={(event) => setQuery(event.target.value)} />
-      <select className={styles.select} aria-label="Lọc theo loại" value={type} onChange={(event) => setType(event.target.value)}>
+      <UiSelect className={styles.select} aria-label="Lọc theo loại" value={type} onChange={(event) => setType(event.target.value)}>
         <option value="">Loại: Tất cả</option>
         {Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select>
+      </UiSelect>
     </div>
     {cases.loading && <p className={styles.empty} role="status">Đang tải khiếu nại…</p>}
     {cases.error && <p className={styles.empty} role="alert">{cases.error}{' '}
-      <button type="button" className={styles.link} onClick={cases.reload}>Thử lại</button></p>}
+      <UiButton variant="ghost" type="button" className={styles.link} onClick={cases.reload}>Thử lại</UiButton></p>}
     {cases.data && visible.length === 0 && <p className={styles.empty}>Không có khiếu nại trong mục này.</p>}
     {visible.length > 0 && <div className={styles.tableWrap}>
       <table className={styles.table}>
@@ -249,7 +250,7 @@ function ManagerBoard({ role, revision = 0 }) {
             <td>{typeLabels[item.complaintType] ?? item.complaintType}</td>
             <td><StatusBadgeText status={item.status} /></td>
             <td>{formatCreatedAt(item.createdAt)}</td>
-            <td><button type="button" className={styles.viewButton} onClick={() => setOpenId(String(item.id))}>Xem</button></td>
+            <td><UiButton variant="custom" type="button" className={styles.viewButton} onClick={() => setOpenId(String(item.id))}>Xem</UiButton></td>
           </tr>
         })}</tbody>
       </table>
@@ -267,7 +268,7 @@ export default function CourtComplaintsPage() {
   const [creating, setCreating] = useState(false)
   return <ManagementLayout role="staff" title="Khiếu nại của khách"
     subtitle="Tiếp nhận, kiểm tra, bổ sung thông tin rồi chuyển chủ sân. Chỉ chủ sân quyết định kết quả."
-    actions={<button type="button" className={styles.primary} onClick={() => setCreating(true)}>+ Tạo khiếu nại hộ khách</button>}>
+    actions={<UiButton variant="primary" type="button" className={styles.primary} onClick={() => setCreating(true)}>+ Tạo khiếu nại hộ khách</UiButton>}>
     <ManagerBoard role="staff" revision={revision} />
     {creating && <Modal title="Tạo khiếu nại hộ khách tại quầy" onClose={() => setCreating(false)} className={styles.modal}>
       <WalkInComplaintForm refresh={() => { setRevision((value) => value + 1); setCreating(false) }} />

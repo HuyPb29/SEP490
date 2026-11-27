@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { useNavigationDrawer } from '../../hooks/useNavigationDrawer';
 import { Link, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -99,7 +100,7 @@ export default function ManagementLayout({
     menuItems.map((item, index) => {
       if (item.onClick) {
         return (
-          <button
+          <UiButton variant="custom"
             key={item.label}
             type="button"
             className={styles.sidebarLink}
@@ -109,7 +110,7 @@ export default function ManagementLayout({
             }}
           >
             <span>{item.label}</span>
-          </button>
+          </UiButton>
         );
       }
       const group = index === 0 ? 'Vận hành' : index === 1 && userRole === 'owner' ? 'Cấu hình địa điểm' : index === (userRole === 'owner' ? 4 : 3) ? 'Dịch vụ & hỗ trợ' : null;
@@ -171,7 +172,7 @@ export default function ManagementLayout({
       <div className={styles.managementBody}>
         <header className={styles.managementTopbar}>
           <div className={styles.topbarLeft}>
-            <button
+            <UiButton variant="custom"
               type="button"
               className={styles.hamburgerBtn}
               aria-label="Mở menu điều hướng"
@@ -179,7 +180,7 @@ export default function ManagementLayout({
               onClick={() => setDrawerOpen(true)}
             >
               ☰
-            </button>
+            </UiButton>
 
             <span className={styles.locationStaticPill}>{displayLocationName}</span>
           </div>
@@ -214,14 +215,14 @@ export default function ManagementLayout({
                 </span>
                 <span>Courtly</span>
               </Link>
-              <button
+              <UiButton variant="custom"
                 type="button"
                 className={styles.drawerCloseBtn}
                 aria-label="Đóng menu"
                 onClick={() => setDrawerOpen(false)}
               >
                 ✕
-              </button>
+              </UiButton>
             </div>
 
             <LocationSwitcher locations={locations} value={activeLocationId} name={displayLocationName} onChange={handleSelectLocation} />

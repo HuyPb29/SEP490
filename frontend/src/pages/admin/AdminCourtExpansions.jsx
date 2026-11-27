@@ -1,3 +1,4 @@
+import { Button as UiButton, Checkbox as UiCheckbox, Input as UiInput, NumberInput as UiNumberInput } from '../../components/ui';
 import { useEffect, useState } from 'react'
 import { adminExpansions, decideExpansion, expansionProof } from '../../api/courtExpansionApi'
 import { apiErrorMessage } from '../../api/locationApi'
@@ -39,22 +40,22 @@ function RequestRow({ item, reload, onBusyChange }) {
     <h3 className="font-bold">#{item.id} · {item.locationName} · Thêm {item.courtCount} sân</h3>
     <p>Gửi lúc {item.createdAt?.replace('T', ' ').slice(0, 19)} · {item.status === 'PENDING' ? 'Chờ duyệt' : item.status === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối'}</p>
     <p>Tiền đã báo chuyển: {formatVnd(item.quotedAmount)} · Hạn hợp đồng: {item.contractEnd}</p>
-    <button type="button" className="my-2 underline" onClick={showProof}>Xem chứng từ</button>
+    <UiButton variant="custom" type="button" className="my-2 underline" onClick={showProof}>Xem chứng từ</UiButton>
     {proofUrl && <img src={proofUrl} alt={`Chứng từ đơn thêm sân ${item.id}`} className="max-h-96 max-w-full object-contain" />}
     {error && <p role="alert" className="text-red-700">{error}</p>}
     {item.status === 'PENDING' ? <div className="grid gap-3">
       {quote && <p><strong>Phí đã chốt khi gửi: {formatVnd(quote.amount)}</strong> · Tính {quote.months} tháng ({quote.startDate} → {quote.endDate})</p>}
       <label>Số tiền thực tế đã nhận (đối chiếu ngân hàng)
-        <input className="ml-2 rounded border p-2" type="number" min="0" step="1" value={received} onChange={(event) => { setReceived(event.target.value); setChecked(false) }} /></label>
+        <UiNumberInput className="ml-2 rounded border p-2" min="0" step="1" value={received} onChange={(event) => { setReceived(event.target.value); setChecked(false) }} /></label>
       <p>Nếu duyệt: cần hoàn {formatVnd(excess)}. Nếu từ chối: cần hoàn toàn bộ {formatVnd(Number(received))} đã thực nhận.</p>
       <label>Thời gian, mã giao dịch hoàn tiền / ghi chú đối soát
-        <input className="block w-full rounded border p-2" value={note} maxLength={500} onChange={(event) => { setNote(event.target.value); setChecked(false) }} /></label>
+        <UiInput className="block w-full rounded border p-2" value={note} maxLength={500} onChange={(event) => { setNote(event.target.value); setChecked(false) }} /></label>
       <label>Lý do từ chối (bắt buộc khi từ chối)
-        <input className="block w-full rounded border p-2" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} /></label>
-      <label><input type="checkbox" checked={checked} onChange={(event) => setChecked(event.target.checked)} /> Tôi đã kiểm tra tiền thực nhận và đã hoàn khoản cần hoàn cho thao tác đã chọn. Hệ thống chỉ lưu ghi nhận, không tự chuyển tiền.</label>
+        <UiInput className="block w-full rounded border p-2" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} /></label>
+      <label><UiCheckbox checked={checked} onChange={(event) => setChecked(event.target.checked)} /> Tôi đã kiểm tra tiền thực nhận và đã hoàn khoản cần hoàn cho thao tác đã chọn. Hệ thống chỉ lưu ghi nhận, không tự chuyển tiền.</label>
       <div className="flex gap-3">
-        <button type="button" className="rounded bg-emerald-700 px-4 py-2 text-white disabled:opacity-50" disabled={busy || !quote} onClick={() => decide(true)}>Duyệt và tạo sân</button>
-        <button type="button" className="rounded border border-red-600 px-4 py-2 text-red-700" disabled={busy} onClick={() => decide(false)}>Từ chối</button>
+        <UiButton variant="custom" type="button" className="rounded bg-emerald-700 px-4 py-2 text-white disabled:opacity-50" disabled={busy || !quote} onClick={() => decide(true)}>Duyệt và tạo sân</UiButton>
+        <UiButton variant="custom" type="button" className="rounded border border-red-600 px-4 py-2 text-red-700" disabled={busy} onClick={() => decide(false)}>Từ chối</UiButton>
       </div>
     </div> : <div>
       <p>Phí cuối: {formatVnd(item.finalAmount)} · Thực nhận: {formatVnd(item.receivedAmount)} · Đã hoàn: {formatVnd(item.refundedAmount)}</p>
@@ -85,7 +86,7 @@ export default function AdminCourtExpansions({ onChanged }) {
     <p className={styles.hint}>Phí tính theo số tháng còn lại của thời hạn sử dụng dịch vụ, chốt lúc chủ sân gửi đơn; duyệt muộn không tính lại. Đối chiếu số tiền thực nhận và ghi nhận hoàn đủ tiền thừa trước khi xác nhận; thời hạn đã hết thì chỉ từ chối và hoàn tiền được.</p>
     <div className={styles.toolbar}>
       <strong>{pending.length} yêu cầu chờ duyệt</strong>
-      <button type="button" disabled={processing} onClick={reload}>Làm mới</button>
+      <UiButton variant="secondary" type="button" disabled={processing} onClick={reload}>Làm mới</UiButton>
     </div>
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {loaded && !items.length && !error && <p className={styles.empty}>Chưa có yêu cầu mua thêm sân.</p>}

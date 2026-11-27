@@ -1,3 +1,4 @@
+import { Checkbox as UiCheckbox } from '../../components/ui';
 import { useState } from 'react'
 import { useVoucherRecipients } from '../../hooks/useVoucherRecipients'
 import { ActionForm, Field } from '../WorkspaceLayout'
@@ -36,7 +37,7 @@ export default function VoucherRecipients({ voucher, onGranted }) {
           {players.loading ? <LoadingState /> : players.error ? <ErrorState message={players.error} onRetry={players.reload} />
             : players.data?.content.length === 0 ? <p>Không tìm thấy người chơi đang hoạt động.</p>
               : players.data?.content.length > 0 && <ul className={styles.recipientChoices}>{players.data.content.map(player => <li key={player.id}>
-                <label><input type="checkbox" checked={selected.some(item => item.id === player.id)}
+                <label><UiCheckbox checked={selected.some(item => item.id === player.id)}
                   disabled={selected.length >= 100 && !selected.some(item => item.id === player.id)} onChange={() => toggle(player)} />
                   <span>{player.fullName} · {player.username}</span></label>
               </li>)}</ul>}

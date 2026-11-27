@@ -1,3 +1,4 @@
+import { Button as UiButton, Input as UiInput, Select as UiSelect } from '../../components/ui';
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import styles from './AdminLocationsPage.module.css'
@@ -203,7 +204,7 @@ export default function AdminAccountsPage() {
         {(statusMessage || actionError) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
             <span>{actionError || statusMessage}</span>
-            <button type="button" aria-label="Đóng thông báo" onClick={clearNotice}>×</button>
+            <UiButton variant="secondary" type="button" aria-label="Đóng thông báo" onClick={clearNotice}>×</UiButton>
           </div>
         )}
 
@@ -213,13 +214,13 @@ export default function AdminAccountsPage() {
             <div className={styles.toolbarControls}>
               <label className={styles.filterField}>
                 <span className={styles.visuallyHidden}>Lọc theo vai trò</span>
-                <select className={styles.filterSelect} value={selectedRole} onChange={handleRoleChange}>
+                <UiSelect className={styles.filterSelect} value={selectedRole} onChange={handleRoleChange}>
                   {ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
-                </select>
+                </UiSelect>
               </label>
               <label className={styles.searchField}>
                 <span className={styles.visuallyHidden}>Tìm theo tên đăng nhập, họ tên, email hoặc số điện thoại</span>
-                <input
+                <UiInput
                   type="search"
                   placeholder="Tìm theo tên đăng nhập, họ tên, email hoặc số điện thoại"
                   value={searchKeyword}
@@ -259,13 +260,13 @@ export default function AdminAccountsPage() {
                 <span className={styles.numberCell} role="cell">{formatDate(account.createdAt)}</span>
                 <div className={styles.accountActions} role="cell">
                   {account.role !== "Quản trị viên" && (
-                    <button
+                    <UiButton variant="custom"
                       className={account.status === "Đã khóa" ? styles.reopenButton : styles.lockButton}
                       type="button"
                       onClick={() => handleAccountLock(account.id)}
                     >
                       {account.status === "Đã khóa" ? "Mở khóa" : "Khóa"}
-                    </button>
+                    </UiButton>
                   )}
                 </div>
               </div>

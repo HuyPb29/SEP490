@@ -1,3 +1,4 @@
+import { Button as UiButton, DatePicker as UiDatePicker, NumberInput as UiNumberInput } from '../../components/ui';
 import { useCallback, useRef, useState } from 'react'
 import { useActiveItemScroll } from '../../hooks/useActiveItemScroll'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -92,10 +93,10 @@ function RefundRecordForm({ item, record, onRecorded }) {
       <div className={styles.twoCols}>
         <FormField label="Số tiền thực hoàn (đồng)" required error={errors.amount}
           hint={`Gợi ý ${vnd(item.suggestedAmount)}`}>
-          <Input type="number" min={1} max={item.remainingRefundableAmount} value={form.amount} onChange={update('amount')} />
+          <UiNumberInput min={1} max={item.remainingRefundableAmount} value={form.amount} onChange={update('amount')} />
         </FormField>
         <FormField label="Ngày hoàn" required error={errors.refundDate}>
-          <Input type="date" min={item.originalPaymentDate} max={today()} value={form.refundDate} onChange={update('refundDate')} />
+          <UiDatePicker min={item.originalPaymentDate} max={today()} value={form.refundDate} onChange={update('refundDate')} />
         </FormField>
       </div>
       <FormField label="Lý do" required={differsFromSuggestion} error={errors.reason}
@@ -183,8 +184,8 @@ function Refunds() {
       </header>
       <div className={styles.segmented} role="group" aria-label="Trạng thái hoàn tiền">
         {[['PENDING_REFUND', `Chờ hoàn (${pendingCount})`], ['REFUNDED', 'Đã hoàn'], ['', 'Tất cả']].map(([value, label]) => (
-          <button key={value} type="button" aria-pressed={status === value}
-            onClick={() => { setStatus(value); setOpenId(null); setRecorded(null) }}>{label}</button>
+          <UiButton variant="secondary" key={value} type="button" aria-pressed={status === value}
+            onClick={() => { setStatus(value); setOpenId(null); setRecorded(null) }}>{label}</UiButton>
         ))}
       </div>
       {complaintId && (
@@ -326,7 +327,7 @@ function Cancellations() {
           <p className={styles.muted}>Sân hủy lịch, hoặc hủy đặt sân tại quầy theo yêu cầu của khách.</p>
         </div>
         <FormField label="Ngày chơi" className={styles.dateFilter}>
-          <Input type="date" min={today()} value={date} onChange={(event) => setDate(event.target.value)} />
+          <UiDatePicker min={today()} value={date} onChange={(event) => setDate(event.target.value)} />
         </FormField>
       </header>
       {done && <Toast tone="success" onClose={() => setDone('')}>{done}</Toast>}
@@ -453,8 +454,8 @@ function OwnerLocation() {
     <div className={styles.workspace}>
       <nav ref={tabBarRef} className={styles.tabBar} aria-label="Quản lý địa điểm">
         {ownerTabs.map(([value, title]) => (
-          <button key={value} type="button" aria-current={tab === value ? 'page' : undefined}
-            onClick={() => setParams({ tab: value })}>{title}{Number(inbox[value]) > 0 && <span className={styles.tabBadge}>{inbox[value]}</span>}</button>
+          <UiButton variant="secondary" key={value} type="button" aria-current={tab === value ? 'page' : undefined}
+            onClick={() => setParams({ tab: value })}>{title}{Number(inbox[value]) > 0 && <span className={styles.tabBadge}>{inbox[value]}</span>}</UiButton>
         ))}
       </nav>
       <div key={selected + ':' + tab} className={styles.tabContent}>

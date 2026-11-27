@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -109,7 +110,7 @@ export default function WorkspaceNav() {
 
           <div className={styles.list}>
             {screens.map((screen) => (
-              <button
+              <UiButton variant="custom"
                 type="button"
                 key={screen.to}
                 role="menuitem"
@@ -120,18 +121,18 @@ export default function WorkspaceNav() {
                 }}
               >
                 <span className={styles.itemLabel}>{screen.label}</span>
-              </button>
+              </UiButton>
             ))}
           </div>
 
-          <button type="button" role="menuitem" className={styles.logout} onClick={handleLogout} disabled={signingOut}>
+          <UiButton variant="custom" type="button" role="menuitem" className={styles.logout} onClick={handleLogout} disabled={signingOut}>
             {signingOut ? 'Đang đăng xuất…' : 'Đăng xuất'}
-          </button>
+          </UiButton>
           {logoutError && <p role="alert">{logoutError}</p>}
         </div>
       )}
 
-      <button
+      <UiButton variant="custom"
         type="button"
         className={`${styles.trigger} ${open ? styles.triggerOpen : ''}`}
         ref={triggerRef}
@@ -149,7 +150,7 @@ export default function WorkspaceNav() {
           />
         </svg>
         <span>Khu vực quản lý</span>
-      </button>
+      </UiButton>
     </div>
   );
 }

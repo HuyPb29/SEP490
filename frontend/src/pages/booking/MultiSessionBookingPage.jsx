@@ -1,9 +1,10 @@
+import { DatePicker as UiDatePicker } from '../../components/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiErrorMessage } from '../../api';
 import { toMinutes, toTimeLabel } from '../../api/bookingApi';
 import PublicLayout from '../../components/layout/PublicLayout';
-import { Button, EmptyState, ErrorState, FormStepper, Input, Select, LoadingState, Modal, PageHeader, StatusBadge, Tabs, STATUS_CATALOG } from '../../components/common';
+import { Button, EmptyState, ErrorState, FormStepper, Select, LoadingState, Modal, PageHeader, StatusBadge, Tabs, STATUS_CATALOG } from '../../components/common';
 import { useBookingActions } from '../../hooks/useBooking';
 import { money, uiMessage, today as getTodayStr } from '../../utils/formatters';
 import { readPackageDraft, savePackageDraft } from '../../utils/packageDraft';
@@ -650,7 +651,7 @@ export default function MultiSessionBookingPage() {
                   Đổi ngày bắt đầu
                 </Button>
               </p>
-              {showFromInput && <Input type="date" className={styles.dateInput} aria-label="Ngày bắt đầu gói"
+              {showFromInput && <UiDatePicker className={styles.dateInput} aria-label="Ngày bắt đầu gói"
                 min={today} max={latestFromDate} value={fromDate}
                 onChange={(event) => {
                   const value = event.target.value;
@@ -883,7 +884,7 @@ export default function MultiSessionBookingPage() {
                   <div className={styles.gridDateNav}>
                     <Button variant="secondary" type="button" className={styles.navBtn} aria-label="Ngày trước"
                       disabled={gridDate <= today} onClick={() => chooseGridDate(shiftDay(gridDate, -1))}>‹</Button>
-                    <Input type="date" className={styles.dateInput} aria-label="Chọn ngày xem bảng khung giờ"
+                    <UiDatePicker className={styles.dateInput} aria-label="Chọn ngày xem bảng khung giờ"
                       min={today} max={maxAllowedDate} value={gridDate}
                       onChange={(event) => {
                         chooseGridDate(event.target.value);
@@ -977,7 +978,7 @@ export default function MultiSessionBookingPage() {
               <div className={styles.gridDateNav}>
                 <Button variant="secondary" type="button" className={styles.navBtn} aria-label="Ngày trước"
                   disabled={compensationDate <= compensationMinDate} onClick={() => chooseCompensationDate(shiftDay(compensationDate, -1))}>‹</Button>
-                <Input type="date" className={styles.dateInput} aria-label="Ngày của khung giờ bù"
+                <UiDatePicker className={styles.dateInput} aria-label="Ngày của khung giờ bù"
                   min={compensationMinDate} max={compensationMaxDate} value={compensationDate}
                   onChange={(event) => chooseCompensationDate(event.target.value)} />
                 <Button variant="secondary" type="button" className={styles.navBtn} aria-label="Ngày sau"

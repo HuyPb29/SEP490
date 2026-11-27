@@ -1,3 +1,4 @@
+import { Button as UiButton, DatePicker as UiDatePicker, Input as UiInput } from '../../components/ui';
 import { useEffect, useMemo, useState } from 'react'
 import api, { apiErrorMessage } from '../../api'
 import { mapSchedule } from '../../api/facilityApi'
@@ -213,11 +214,11 @@ export default function WalkInBookingDialog({ initialCourt, initialDate, initial
             )}
             {error && <p className={styles.errorMessage} role="alert">{error}</p>}
             <div className={styles.modalActions}>
-              <button className={styles.secondaryButton} type="button" onClick={onClose} disabled={busy}>Đóng</button>
+              <UiButton variant="secondary" className={styles.secondaryButton} type="button" onClick={onClose} disabled={busy}>Đóng</UiButton>
               {booking.status === 'HOLDING' && remaining > 0 && (
-                <button className={styles.primaryButton} type="button" onClick={() => setConfirming(true)} disabled={busy}>
+                <UiButton variant="primary" className={styles.primaryButton} type="button" onClick={() => setConfirming(true)} disabled={busy}>
                   {busy ? 'Đang xác nhận…' : 'Xác nhận đã nhận tiền'}
-                </button>
+                </UiButton>
               )}
             </div>
           </div>
@@ -225,17 +226,17 @@ export default function WalkInBookingDialog({ initialCourt, initialDate, initial
           <form className={styles.bookingForm} onSubmit={create} noValidate>
             <label className={styles.formField}>
               Tên khách hàng
-              <input autoFocus required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} />
+              <UiInput autoFocus required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} />
               {fieldMessage('customerName')}
             </label>
             <label className={styles.formField}>
               Số điện thoại
-              <input required type="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} />
+              <UiInput required type="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} />
               {fieldMessage('customerPhone')}
             </label>
             <label className={styles.formField}>
               Ngày chơi
-              <input required type="date" min={today} max={maxDate} value={date} onChange={(event) => {
+              <UiDatePicker required min={today} max={maxDate} value={date} onChange={(event) => {
                 setSchedule(null)
                 setLoadError('')
                 clearSlots()
@@ -244,7 +245,7 @@ export default function WalkInBookingDialog({ initialCourt, initialDate, initial
               {fieldMessage('date')}
             </label>
             {!courts && !loadError && <p role="status">Đang tải lịch sân…</p>}
-            {loadError && <p role="alert">{loadError} <button type="button" onClick={reload}>Tải lại</button></p>}
+            {loadError && <p role="alert">{loadError} <UiButton variant="secondary" type="button" onClick={reload}>Tải lại</UiButton></p>}
             {courts?.length === 0 && <p role="status">Địa điểm chưa có sân đang hoạt động.</p>}
             {gridSchedule?.time_headers.length === 0 && <p role="status">Ngày này địa điểm không mở cửa.</p>}
             {gridSchedule?.time_headers.length > 0 && (
@@ -263,10 +264,10 @@ export default function WalkInBookingDialog({ initialCourt, initialDate, initial
             )}
             {error && <p className={styles.errorMessage} role="alert">{error}</p>}
             <div className={styles.modalActions}>
-              <button className={styles.secondaryButton} type="button" onClick={onClose} disabled={busy}>Đóng</button>
-              <button className={styles.primaryButton} type="submit" disabled={busy || !courts?.length}>
+              <UiButton variant="secondary" className={styles.secondaryButton} type="button" onClick={onClose} disabled={busy}>Đóng</UiButton>
+              <UiButton variant="primary" className={styles.primaryButton} type="submit" disabled={busy || !courts?.length}>
                 {busy ? 'Đang giữ chỗ…' : 'Giữ chỗ 10 phút'}
-              </button>
+              </UiButton>
             </div>
           </form>
         )}

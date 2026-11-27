@@ -1,3 +1,4 @@
+import { DatePicker as UiDatePicker, NumberInput as UiNumberInput } from '../../components/ui';
 import ServiceRenewals from '../../components/location/ServiceRenewals'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -550,13 +551,13 @@ export default function OwnerFacilitySettingsPage() {
               <div className={styles.fieldGrid}>
                 <FormField label="Số ngày đặt trước tối đa" error={fieldErrors.advanceBookingDays}
                   hint="Từ 1 đến 365 ngày. Mặc định 30 ngày.">
-                  <Input type="number" min={LIMITS.advanceBookingDays.min} max={LIMITS.advanceBookingDays.max}
+                  <UiNumberInput min={LIMITS.advanceBookingDays.min} max={LIMITS.advanceBookingDays.max}
                     placeholder="30" value={form.advanceBookingDays} disabled={disabled}
                     onChange={updateField('advanceBookingDays')} />
                 </FormField>
                 <FormField label="Tỷ lệ tích điểm (số đồng được 1 điểm)" error={fieldErrors.pointEarningRate}
                   hint="Từ 1.000 đến 100.000 đồng. Chỉ áp dụng cho các lần tích điểm sau khi lưu.">
-                  <Input type="number" min={LIMITS.pointEarningRate.min} max={LIMITS.pointEarningRate.max}
+                  <UiNumberInput min={LIMITS.pointEarningRate.min} max={LIMITS.pointEarningRate.max}
                     step="1000" placeholder="10000" value={form.pointEarningRate} disabled={disabled}
                     onChange={updateField('pointEarningRate')} />
                 </FormField>
@@ -593,13 +594,13 @@ export default function OwnerFacilitySettingsPage() {
             >
               <div className={styles.exportRow}>
                 <FormField label="Từ ngày" required>
-                  <Input type="date" value={exportRange.from} max={exportRange.to || undefined}
+                  <UiDatePicker value={exportRange.from} max={exportRange.to || undefined}
                     onChange={(event) => setExportRange((current) => ({ ...current, from: event.target.value }))} />
                 </FormField>
                 <FormField label="Đến ngày" required
                   error={exportRange.from && exportRange.to && exportRange.from > exportRange.to
                     ? 'Ngày kết thúc phải sau ngày bắt đầu.' : undefined}>
-                  <Input type="date" value={exportRange.to} min={exportRange.from || undefined}
+                  <UiDatePicker value={exportRange.to} min={exportRange.from || undefined}
                     onChange={(event) => setExportRange((current) => ({ ...current, to: event.target.value }))} />
                 </FormField>
                 <Button variant="secondary" className={styles.exportButton} onClick={handleExport}

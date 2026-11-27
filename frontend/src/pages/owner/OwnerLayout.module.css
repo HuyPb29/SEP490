@@ -44,20 +44,15 @@
 
 .facilitySelect {
   width: 100%;
-  min-height: 40px;
-  padding: 0 11px;
-  color: #f8fafc;
-  background-color: #111d39;
-  border: 1px solid #293652;
-  border-radius: 7px;
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-sidebar-text);
+  background-color: var(--color-sidebar-bg);
+  border: var(--control-border-width) solid var(--color-sidebar-border);
+  border-radius: var(--control-radius);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
-}
-
-.facilitySelect option {
-  color: #f8fafc;
-  background: #111d39;
 }
 
 .navigation {

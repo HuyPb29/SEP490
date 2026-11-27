@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../../components/ui';
 import { useState } from 'react'
 import { usePointGrant } from '../../hooks/usePointGrant'
 import { ActionForm, EmptyState, Field, Section } from '../WorkspaceLayout'
@@ -16,11 +17,11 @@ function Lookup({ title, label, search, onSearch, resource, empty, searchInput, 
     {resource?.error && <ErrorState message={resource.error} onRetry={resource.reload} />}
     {resource?.data?.content.length === 0 && <EmptyState>{empty}</EmptyState>}
     {resource?.data?.totalPages > 1 && <div className="flex flex-wrap items-center gap-2">
-      <button className="cw-secondary" type="button" disabled={search.page === 0}
-        onClick={() => onSearch({ ...search, page: search.page - 1 })}>Trang trước</button>
+      <UiButton variant="secondary" className="cw-secondary" type="button" disabled={search.page === 0}
+        onClick={() => onSearch({ ...search, page: search.page - 1 })}>Trang trước</UiButton>
       <span>Trang {search.page + 1}/{resource.data.totalPages}</span>
-      <button className="cw-secondary" type="button" disabled={search.page + 1 >= resource.data.totalPages}
-        onClick={() => onSearch({ ...search, page: search.page + 1 })}>Trang sau</button>
+      <UiButton variant="secondary" className="cw-secondary" type="button" disabled={search.page + 1 >= resource.data.totalPages}
+        onClick={() => onSearch({ ...search, page: search.page + 1 })}>Trang sau</UiButton>
     </div>}
     {children}
   </div>

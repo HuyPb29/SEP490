@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../components/ui';
 import React from 'react'
 import { Navigate, useLocation, useNavigate, Outlet } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
@@ -91,7 +92,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-              <button
+              <UiButton variant="secondary"
                 type="button"
                 onClick={() => navigate('/')}
                 style={{
@@ -107,8 +108,8 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
                 }}
               >
                 Về trang chủ
-              </button>
-              <button
+              </UiButton>
+              <UiButton variant="secondary"
                 type="button"
                 onClick={() => navigate('/login')}
                 style={{
@@ -124,7 +125,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
                 }}
               >
                 Đổi tài khoản
-              </button>
+              </UiButton>
             </div>
 
             {/* Dev/Testing Quick Role Switcher */}
@@ -149,7 +150,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
               </p>
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
                 {allowedRoles.map((r) => (
-                  <button
+                  <UiButton variant="secondary"
                     key={r}
                     type="button"
                     onClick={() => {
@@ -175,7 +176,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
                     }}
                   >
                     Chuyển sang vai trò {r}
-                  </button>
+                  </UiButton>
                 ))}
               </div>
             </div>

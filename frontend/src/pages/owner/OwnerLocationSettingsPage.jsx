@@ -1,3 +1,4 @@
+import { Button as UiButton, FileInput as UiFileInput, Input as UiInput, NumberInput as UiNumberInput } from '../../components/ui';
 /**
  * OwnerLocationSettingsPage.jsx — UC07, FR16, FR17, BR60, D140, D151
  *
@@ -288,7 +289,7 @@ export default function OwnerLocationSettingsPage() {
           <h2 id="grp-basic" className={styles.sectionTitle}>Thông tin cơ bản của địa điểm</h2>
           <div className={styles.grid2}>
             <FormField label="Tên địa điểm *" htmlFor="s-name" error={errors.facility_name}>
-              <input
+              <UiInput
                 id="s-name"
                 type="text"
                 value={form.facility_name}
@@ -297,7 +298,7 @@ export default function OwnerLocationSettingsPage() {
               />
             </FormField>
             <FormField label="Số điện thoại liên hệ" htmlFor="s-hotline">
-              <input
+              <UiInput
                 id="s-hotline"
                 type="tel"
                 value={form.contact_hotline}
@@ -307,7 +308,7 @@ export default function OwnerLocationSettingsPage() {
           </div>
 
           <FormField label="Địa chỉ *" htmlFor="s-addr" error={errors.address}>
-            <input
+            <UiInput
               id="s-addr"
               type="text"
               value={form.address}
@@ -318,7 +319,7 @@ export default function OwnerLocationSettingsPage() {
 
           <div className={styles.grid2}>
             <FormField label="Quận/huyện *" htmlFor="s-district" error={errors.district}>
-              <input
+              <UiInput
                 id="s-district"
                 type="text"
                 value={form.district}
@@ -327,7 +328,7 @@ export default function OwnerLocationSettingsPage() {
               />
             </FormField>
             <FormField label="Tỉnh/thành phố *" htmlFor="s-city" error={errors.city}>
-              <input
+              <UiInput
                 id="s-city"
                 type="text"
                 value={form.city}
@@ -339,18 +340,16 @@ export default function OwnerLocationSettingsPage() {
 
           <div className={styles.grid2}>
             <FormField label="Vĩ độ" htmlFor="s-lat" hint="e.g. 21.0362">
-              <input
+              <UiNumberInput
                 id="s-lat"
-                type="number"
                 step="any"
                 value={form.latitude}
                 onChange={(e) => set('latitude', e.target.value)}
               />
             </FormField>
             <FormField label="Kinh độ" htmlFor="s-lng" hint="e.g. 105.7885">
-              <input
+              <UiNumberInput
                 id="s-lng"
-                type="number"
                 step="any"
                 value={form.longitude}
                 onChange={(e) => set('longitude', e.target.value)}
@@ -364,7 +363,7 @@ export default function OwnerLocationSettingsPage() {
           <h2 id="grp-bank" className={styles.sectionTitle}>Mã VietQR và thông tin chuyển khoản</h2>
           <div className={styles.grid2}>
             <FormField label="Tên ngân hàng" htmlFor="s-bank">
-              <input
+              <UiInput
                 id="s-bank"
                 type="text"
                 placeholder="e.g. Vietcombank"
@@ -373,7 +372,7 @@ export default function OwnerLocationSettingsPage() {
               />
             </FormField>
             <FormField label="Số tài khoản ngân hàng" htmlFor="s-acct" error={errors.bank_account_number}>
-              <input
+              <UiInput
                 id="s-acct"
                 type="text"
                 inputMode="numeric"
@@ -385,7 +384,7 @@ export default function OwnerLocationSettingsPage() {
           </div>
 
           <FormField label="Tên chủ tài khoản" htmlFor="s-holder" hint="Theo thông tin trên tài khoản ngân hàng">
-            <input
+            <UiInput
               id="s-holder"
               type="text"
               value={form.account_holder_name}
@@ -409,16 +408,15 @@ export default function OwnerLocationSettingsPage() {
                 </div>
               )}
               <div className={styles.qrUploadArea}>
-                <button
+                <UiButton variant="custom"
                   className={styles.uploadBtn}
                   type="button"
                   onClick={() => qrInputRef.current?.click()}
                 >
                   {qrPreview ? "Đổi ảnh mã QR" : "Tải lên ảnh mã QR"}
-                </button>
-                <input
+                </UiButton>
+                <UiFileInput
                   ref={qrInputRef}
-                  type="file"
                   accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                   style={{ display: 'none' }}
                   onChange={handleQrFile}
@@ -461,9 +459,8 @@ export default function OwnerLocationSettingsPage() {
             hint="Mặc định 30 ngày. Khoảng thời gian tối đa người chơi có thể đặt trước."
             error={errors.p01}
           >
-            <input
+            <UiNumberInput
               id="p01"
-              type="number"
               min="1"
               max="365"
               value={form.p01_booking_lead_time_days}
@@ -480,9 +477,8 @@ export default function OwnerLocationSettingsPage() {
             hint="Từ 1.000 đến 100.000 đồng cho mỗi điểm. Mặc định 10.000 đồng."
             error={errors.p09}
           >
-            <input
+            <UiNumberInput
               id="p09"
-              type="number"
               min="1000"
               max="100000"
               step="1000"
@@ -515,9 +511,8 @@ export default function OwnerLocationSettingsPage() {
                       >
                         Số tiền mốc tích lũy (đồng)
                       </label>
-                      <input
+                      <UiNumberInput
                         id={`ms-amount-${idx}`}
-                        type="number"
                         min="1"
                         step="1000"
                         placeholder="e.g. 1000000"
@@ -537,9 +532,8 @@ export default function OwnerLocationSettingsPage() {
                       >
                         Giá trị phiếu ưu đãi thưởng (đồng)
                       </label>
-                      <input
+                      <UiNumberInput
                         id={`ms-voucher-${idx}`}
-                        type="number"
                         min="1"
                         step="1000"
                         placeholder="e.g. 50000"
@@ -553,33 +547,33 @@ export default function OwnerLocationSettingsPage() {
                     </div>
                   </div>
 
-                  <button
+                  <UiButton variant="custom"
                     className={styles.removeMilestoneBtn}
                     type="button"
                     onClick={() => removeMilestone(idx)}
                     aria-label={`Xóa mốc tích lũy ${idx + 1}`}
                   >
                     Xóa
-                  </button>
+                  </UiButton>
                 </div>
               ))}
             </div>
 
-            <button
+            <UiButton variant="custom"
               className={styles.addMilestoneBtn}
               type="button"
               onClick={addMilestone}
             >
               + Thêm mốc tích lũy
-            </button>
+            </UiButton>
           </div>
         </section>
 
         {/* Save button */}
         <div className={styles.formFooter}>
-          <button className={styles.saveBtn} type="submit" disabled={saving}>
+          <UiButton variant="primary" className={styles.saveBtn} type="submit" disabled={saving}>
             {saving ? "Đang lưu…" : "Lưu cài đặt"}
-          </button>
+          </UiButton>
         </div>
       </form>
     </div>

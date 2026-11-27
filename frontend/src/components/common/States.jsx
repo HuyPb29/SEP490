@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { Button } from './Button';
 import styles from './CommonUI.module.css';
 
@@ -66,16 +67,16 @@ export function Pagination({ page = 1, totalPages = 1, onPageChange }) {
 
   return (
     <nav className={styles.pagination} aria-label="Phân trang">
-      <button
+      <UiButton variant="custom"
         type="button"
         className={styles.pageBtn}
         disabled={page <= 1}
         onClick={() => onPageChange?.(page - 1)}
       >
         ‹ Trước
-      </button>
+      </UiButton>
       {pages.map((p) => (
-        <button
+        <UiButton variant="custom"
           key={p}
           type="button"
           className={[styles.pageBtn, p === page ? styles.pageBtnActive : ''].filter(Boolean).join(' ')}
@@ -83,16 +84,16 @@ export function Pagination({ page = 1, totalPages = 1, onPageChange }) {
           onClick={() => onPageChange?.(p)}
         >
           {p}
-        </button>
+        </UiButton>
       ))}
-      <button
+      <UiButton variant="custom"
         type="button"
         className={styles.pageBtn}
         disabled={page >= totalPages}
         onClick={() => onPageChange?.(page + 1)}
       >
         Sau ›
-      </button>
+      </UiButton>
     </nav>
   );
 }

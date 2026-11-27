@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 export default function BookingModeSelector({ mode, onChange, styles }) {
   const options = [
     { value: 'single', label: "Đặt sân lẻ trong ngày" },
@@ -8,7 +9,7 @@ export default function BookingModeSelector({ mode, onChange, styles }) {
   return (
     <div className={styles.bookingModeSelector} role="group" aria-label="Cách đặt sân">
       {options.map((option) => (
-        <button
+        <UiButton variant="custom"
           key={option.value}
           type="button"
           aria-pressed={mode === option.value}
@@ -16,7 +17,7 @@ export default function BookingModeSelector({ mode, onChange, styles }) {
           onClick={() => onChange(option.value)}
         >
           {option.label}
-        </button>
+        </UiButton>
       ))}
     </div>
   )

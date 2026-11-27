@@ -1,3 +1,4 @@
+import { Checkbox as UiCheckbox, NumberInput as UiNumberInput } from '../../components/ui';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import api, { apiErrorMessage } from '../../api';
 import { checkServiceRegistration, getServiceRegistrationPaymentInfo, operatorQrUrl, submitServiceRegistration } from '../../api/locationApi';
@@ -512,8 +513,8 @@ export default function ServiceRegistrationPage() {
                 <FormField label="Địa chỉ chi tiết" required error={errorText('addressDetail') || errorText('address')} hint={address ? 'Địa chỉ đầy đủ: ' + address : 'Số nhà, tên đường, thôn hoặc tổ dân phố.'}><Input id="addressDetail" maxLength={255} placeholder="Ví dụ: 24 Nguyễn Văn Huyên" value={formData.addressDetail} onChange={event => handleAddressChange('addressDetail', event.target.value)} disabled={addressDisabled} /></FormField>
                 <p className={styles.attribution}>Danh mục hành chính: <a href={attribution.source}>{attribution.author}</a> · <a href={attribution.license}>CC BY 4.0</a></p>
                 <div className={styles.row}>
-                  <FormField label="Số lượng sân" required error={errorText('courtCount')} hint="Từ 1 đến 50 sân; được khởi tạo khi đơn được duyệt."><Input id="courtCount" type="number" min={1} max={50} value={formData.courtCount} onChange={event => handleChange('courtCount', event.target.value)} disabled={addressDisabled} /></FormField>
-                  <FormField label="Số năm thuê" required error={errorText('rentalYears')} hint="Thời hạn tính từ ngày được duyệt."><Input id="rentalYears" type="number" min={1} max={MAX_RENTAL_YEARS} step={1} value={formData.rentalYears} onChange={event => handleChange('rentalYears', event.target.value)} disabled={addressDisabled} /></FormField>
+                  <FormField label="Số lượng sân" required error={errorText('courtCount')} hint="Từ 1 đến 50 sân; được khởi tạo khi đơn được duyệt."><UiNumberInput id="courtCount" min={1} max={50} value={formData.courtCount} onChange={event => handleChange('courtCount', event.target.value)} disabled={addressDisabled} /></FormField>
+                  <FormField label="Số năm thuê" required error={errorText('rentalYears')} hint="Thời hạn tính từ ngày được duyệt."><UiNumberInput id="rentalYears" min={1} max={MAX_RENTAL_YEARS} step={1} value={formData.rentalYears} onChange={event => handleChange('rentalYears', event.target.value)} disabled={addressDisabled} /></FormField>
                 </div>
               </div>
               <div hidden={step !== 1} className={styles.stepBody}>
@@ -552,7 +553,7 @@ export default function ServiceRegistrationPage() {
                   {proofFile && <Button variant="ghost" disabled={isSubmitting} onClick={() => handleProofChange(null)}>Bỏ ảnh đã chọn</Button>}
                 </FormField>
                 <section aria-labelledby="terms-title"><h3 id="terms-title">Điều khoản sử dụng dịch vụ</h3><div role="region" aria-label="Nội dung điều khoản" tabIndex={0} className={styles.terms}><ol>{SERVICE_TERMS.map(term => <li key={term}>{term}</li>)}</ol></div>
-                  <label className={styles.checkbox}><input id="terms" type="checkbox" checked={termsAccepted} disabled={isSubmitting} aria-invalid={Boolean(fieldErrors.terms)} aria-describedby={fieldErrors.terms ? 'terms-error' : undefined} onChange={event => { setTermsAccepted(event.target.checked); clearFieldError('terms'); }} /><span>Tôi đã đọc và đồng ý các điều khoản sử dụng dịch vụ.</span></label>
+                  <label className={styles.checkbox}><UiCheckbox id="terms" checked={termsAccepted} disabled={isSubmitting} aria-invalid={Boolean(fieldErrors.terms)} aria-describedby={fieldErrors.terms ? 'terms-error' : undefined} onChange={event => { setTermsAccepted(event.target.checked); clearFieldError('terms'); }} /><span>Tôi đã đọc và đồng ý các điều khoản sử dụng dịch vụ.</span></label>
                   {fieldErrors.terms && <p className={styles.error} id="terms-error" role="alert">{errorText('terms')}</p>}
                 </section>
                 </>}

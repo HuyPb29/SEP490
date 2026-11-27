@@ -1,3 +1,4 @@
+import { Button as UiButton, Input as UiInput } from '../../components/ui';
 /**
  * OwnerStaffPage.jsx — UC04 Staff Management (FR07, FR08, BR59, BR60, D150)
  *
@@ -116,7 +117,7 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
       <div className={styles.modal}>
         <div className={styles.modalHeader}>
           <h2 id="staff-modal-title">{isAdd ? "Thêm nhân viên" : "Sửa nhân viên"}</h2>
-          <button className={styles.closeBtn} type="button" onClick={onClose} aria-label="Đóng">×</button>
+          <UiButton variant="custom" className={styles.closeBtn} type="button" onClick={onClose} aria-label="Đóng">×</UiButton>
         </div>
 
         <form className={styles.modalBody} onSubmit={handleSubmit} noValidate>
@@ -125,7 +126,7 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
           {isAdd && (
             <div className={styles.field}>
               <label htmlFor="sf-username">Tên đăng nhập <span className={styles.req}>*</span></label>
-              <input
+              <UiInput
                 id="sf-username"
                 ref={firstInputRef}
                 type="text"
@@ -140,7 +141,7 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
 
           <div className={styles.field}>
             <label htmlFor="sf-fullname">Họ và tên <span className={styles.req}>*</span></label>
-            <input
+            <UiInput
               id="sf-fullname"
               ref={isAdd ? undefined : firstInputRef}
               type="text"
@@ -153,7 +154,7 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
 
           <div className={styles.field}>
             <label htmlFor="sf-phone">Số điện thoại <span className={styles.req}>*</span></label>
-            <input
+            <UiInput
               id="sf-phone"
               type="tel"
               inputMode="numeric"
@@ -167,7 +168,7 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
           {isAdd && (
             <div className={styles.field}>
               <label htmlFor="sf-password">Mật khẩu <span className={styles.req}>*</span></label>
-              <input
+              <UiInput
                 id="sf-password"
                 type="password"
                 autoComplete="new-password"
@@ -181,10 +182,10 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
           )}
 
           <div className={styles.modalActions}>
-            <button className={styles.cancelBtn} type="button" onClick={onClose}>Hủy</button>
-            <button className={styles.saveBtn} type="submit" disabled={saving}>
+            <UiButton variant="secondary" className={styles.cancelBtn} type="button" onClick={onClose}>Hủy</UiButton>
+            <UiButton variant="primary" className={styles.saveBtn} type="submit" disabled={saving}>
               {saving ? "Đang lưu…" : isAdd ? "Thêm nhân viên" : "Lưu thay đổi"}
-            </button>
+            </UiButton>
           </div>
         </form>
       </div>
@@ -236,7 +237,7 @@ function ResetPasswordModal({ staff, locationId, onClose, onDone }) {
       <div className={styles.modal}>
         <div className={styles.modalHeader}>
           <h2 id="rp-title">Cấp lại mật khẩu</h2>
-          <button className={styles.closeBtn} type="button" onClick={onClose} aria-label="Đóng">×</button>
+          <UiButton variant="custom" className={styles.closeBtn} type="button" onClick={onClose} aria-label="Đóng">×</UiButton>
         </div>
         <div className={styles.modalBody}>
           <p className={styles.modalSub}>
@@ -246,7 +247,7 @@ function ResetPasswordModal({ staff, locationId, onClose, onDone }) {
           <form onSubmit={handleSubmit} noValidate>
             <div className={styles.field}>
               <label htmlFor="rp-new">Mật khẩu mới <span className={styles.req}>*</span></label>
-              <input
+              <UiInput
                 id="rp-new"
                 ref={firstRef}
                 type="password"
@@ -260,7 +261,7 @@ function ResetPasswordModal({ staff, locationId, onClose, onDone }) {
             </div>
             <div className={styles.field}>
               <label htmlFor="rp-confirm">Xác nhận mật khẩu mới <span className={styles.req}>*</span></label>
-              <input
+              <UiInput
                 id="rp-confirm"
                 type="password"
                 autoComplete="new-password"
@@ -271,10 +272,10 @@ function ResetPasswordModal({ staff, locationId, onClose, onDone }) {
               {errors.confirmPw && <span className={styles.fieldError}>{errors.confirmPw}</span>}
             </div>
             <div className={styles.modalActions}>
-              <button className={styles.cancelBtn} type="button" onClick={onClose}>Hủy</button>
-              <button className={styles.saveBtn} type="submit" disabled={saving}>
+              <UiButton variant="secondary" className={styles.cancelBtn} type="button" onClick={onClose}>Hủy</UiButton>
+              <UiButton variant="primary" className={styles.saveBtn} type="submit" disabled={saving}>
                 {saving ? "Đang cấp lại mật khẩu…" : "Cấp lại mật khẩu"}
-              </button>
+              </UiButton>
             </div>
           </form>
         </div>
@@ -424,9 +425,9 @@ export default function OwnerStaffPage() {
           <h1 className={styles.title}>Nhân viên</h1>
           <p className={styles.sub}>Mã địa điểm #{locationId} · Quản lý tài khoản nhân viên</p>
         </div>
-        <button className={styles.addBtn} type="button" onClick={() => setAddModal(true)}>
+        <UiButton variant="primary" className={styles.addBtn} type="button" onClick={() => setAddModal(true)}>
           + Thêm nhân viên
-        </button>
+        </UiButton>
       </div>
 
       {pageError && <p className={styles.pageError} role="alert">{pageError}</p>}
@@ -437,9 +438,9 @@ export default function OwnerStaffPage() {
         <div className={styles.empty}>
           <span aria-hidden="true">👤</span>
           <p>Địa điểm chưa có nhân viên.</p>
-          <button className={styles.addBtn} type="button" onClick={() => setAddModal(true)}>
+          <UiButton variant="primary" className={styles.addBtn} type="button" onClick={() => setAddModal(true)}>
             + Thêm nhân viên đầu tiên
-          </button>
+          </UiButton>
         </div>
       ) : (
         <div className={styles.tableWrapper}>
@@ -473,27 +474,27 @@ export default function OwnerStaffPage() {
                     </td>
                     <td>
                       <div className={styles.actions}>
-                        <button
+                        <UiButton variant="custom"
                           className={styles.actionBtn}
                           type="button"
                           onClick={() => setEditTarget(member)}
                         >
                           Sửa
-                        </button>
-                        <button
+                        </UiButton>
+                        <UiButton variant="custom"
                           className={styles.actionBtn}
                           type="button"
                           onClick={() => setResetTarget(member)}
                         >
                           Cấp lại mật khẩu
-                        </button>
-                        <button
+                        </UiButton>
+                        <UiButton variant="custom"
                           className={`${styles.actionBtn} ${member.is_locked ? styles.unlockBtn : styles.lockBtn}`}
                           type="button"
                           onClick={() => handleToggleLock(member)}
                         >
                           {member.is_locked ? "Mở khóa" : "Khóa"}
-                        </button>
+                        </UiButton>
                       </div>
                     </td>
                   </tr>

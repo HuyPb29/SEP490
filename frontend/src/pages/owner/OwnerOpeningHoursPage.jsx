@@ -1,3 +1,4 @@
+import { Switch as UiSwitch, DatePicker as UiDatePicker } from '../../components/ui';
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -427,13 +428,12 @@ export default function OwnerOpeningHoursPage() {
                           <td className={styles.dayName}>{day.label}</td>
                           <td>
                             <label className={styles.switch}>
-                              <input
-                                type="checkbox"
+                              <UiSwitch
+                                aria-label={`${day.label}: mở cửa`}
                                 checked={day.enabled}
                                 disabled={readOnly || weekSaving}
                                 onChange={(event) => updateDay(day.dayOfWeek, { enabled: event.target.checked })}
                               />
-                              <span className={styles.switchTrack} aria-hidden="true" />
                               <span>{day.enabled ? 'Mở cửa' : 'Nghỉ'}</span>
                             </label>
                           </td>
@@ -500,8 +500,7 @@ export default function OwnerOpeningHoursPage() {
                 onSubmit={(event) => { event.preventDefault(); if (!filterInvalid) applyExceptionFilter(exceptionFilter) }}
               >
                 <FormField label="Từ ngày" className={styles.filterField}>
-                  <Input
-                    type="date"
+                  <UiDatePicker
                     value={exceptionFilter.from}
                     onChange={(event) => setExceptionFilter((current) => ({ ...current, from: event.target.value }))}
                   />
@@ -511,8 +510,7 @@ export default function OwnerOpeningHoursPage() {
                   className={styles.filterField}
                   error={filterInvalid ? 'Ngày kết thúc phải sau ngày bắt đầu.' : undefined}
                 >
-                  <Input
-                    type="date"
+                  <UiDatePicker
                     value={exceptionFilter.to}
                     onChange={(event) => setExceptionFilter((current) => ({ ...current, to: event.target.value }))}
                   />
@@ -630,8 +628,7 @@ export default function OwnerOpeningHoursPage() {
       >
         <form className={styles.modalForm} onSubmit={handleExceptionSubmit}>
           <FormField label="Ngày" required>
-            <Input
-              type="date"
+            <UiDatePicker
               required
               value={exceptionForm.exceptionDate}
               onChange={(event) => setExceptionForm((current) => ({ ...current, exceptionDate: event.target.value }))}

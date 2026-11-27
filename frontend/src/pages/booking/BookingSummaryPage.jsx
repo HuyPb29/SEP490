@@ -1,3 +1,4 @@
+import { NumberInput as UiNumberInput, Slider as UiSlider } from '../../components/ui';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -9,7 +10,7 @@ import { CheckoutProgress } from '../../components/common/WorkspacePrimitives';
 import CheckoutVoucherPicker from '../../components/booking/CheckoutVoucherPicker';
 import { useCheckoutVoucherSelection } from '../../hooks/useCheckoutVouchers';
 import PublicLayout from '../../components/layout/PublicLayout';
-import { Button, FormField, Input, Textarea, PageHeader, LoadingState, ErrorState, EmptyState, ConfirmDialog } from '../../components/common';
+import { Button, FormField, Textarea, PageHeader, LoadingState, ErrorState, EmptyState, ConfirmDialog } from '../../components/common';
 
 const formatVnd = amount => money(amount).replace(/\s*₫/, 'đ');
 
@@ -315,13 +316,13 @@ export default function BookingSummaryPage() {
           <section className={styles.points} aria-labelledby="points-heading"><h3 id="points-heading">Điểm thưởng tại địa điểm</h3>
             {pointsLoading ? <LoadingState message="Đang tải số dư điểm…" /> : pointsError ? <ErrorState message={uiMessage(pointsError)} onRetry={retryCheckout} /> : <p className={styles.pointBalance}>Số dư: <strong>{availablePoints} điểm</strong> · 1 điểm = {formatVnd(pointValue)}</p>}
             <FormField htmlFor="checkout-points" label="Số điểm muốn dùng" error={pointValidation || pointSubmitError ? uiMessage(pointValidation || pointSubmitError) : undefined} hint={`Tối đa ${pointsAllowed} điểm · ${checkoutPointPercent}% ${appliedVoucher ? 'số tiền còn lại sau voucher' : 'giá niêm yết'}.`}>
-              <Input id="checkout-points" type="number" min={0} max={pointsAllowed} placeholder="0" value={pointsInput} disabled={submitting || voucherLoading || pointsLoading || Boolean(pointsError)} onChange={event => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
+              <UiNumberInput id="checkout-points" min={0} max={pointsAllowed} placeholder="0" value={pointsInput} disabled={submitting || voucherLoading || pointsLoading || Boolean(pointsError)} onChange={event => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
             </FormField>
             <div className={styles.rangeHeading}><label htmlFor="checkout-points-range" className={styles.rangeLabel}>Điều chỉnh số điểm</label><output htmlFor="checkout-points checkout-points-range" className={styles.pointSaving}>Giảm {formatVnd(pointsDiscount)}</output></div>
             <div className={styles.pointsSlider}>
               <Button variant="secondary" className={styles.pointAdjust} aria-label="Giảm số điểm" disabled={pointsDisabled || sliderValue === 0} onClick={() => selectPointStop(sliderValue - 1)}>−</Button>
-              <input id="checkout-points-range" className={styles.range} type="range" min={0} max={sliderMax} step={1} value={sliderValue}
-                style={{ '--points-fill': `${sliderMax ? sliderValue / sliderMax * 100 : 0}%` }} disabled={pointsDisabled}
+              <UiSlider id="checkout-points-range" min={0} max={sliderMax} step={1} value={sliderValue}
+                disabled={pointsDisabled}
                 onChange={event => selectPointStop(Number(event.target.value))} aria-describedby="point-minimum" aria-valuetext={`${pointsUsed} điểm, giảm ${formatVnd(pointsDiscount)}`} />
               <Button variant="secondary" className={styles.pointAdjust} aria-label="Tăng số điểm" disabled={pointsDisabled || sliderValue >= sliderMax} onClick={() => selectPointStop(sliderValue + 1)}>+</Button>
             </div>

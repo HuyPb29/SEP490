@@ -1,3 +1,4 @@
+import { Button as UiButton, DatePicker as UiDatePicker, Input as UiInput } from '../../components/ui';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PublicHeader } from '../../components/layout/PublicLayout';
@@ -61,7 +62,7 @@ export default function LocationSearchPage() {
               <span className={styles.fieldIcon}>📍</span>
               <div className={styles.fieldContent}>
                 <label>TÊN HOẶC ĐỊA CHỈ</label>
-                <input
+                <UiInput
                   type="text"
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
@@ -76,8 +77,7 @@ export default function LocationSearchPage() {
               <span className={styles.fieldIcon}>📅</span>
               <div className={styles.fieldContent}>
                 <label>NGÀY CHƠI</label>
-                <input
-                  type="date"
+                <UiDatePicker
                   min={MIN_PLAY_DATE}
                   value={playDate}
                   onChange={(e) => setPlayDate(e.target.value)}
@@ -87,7 +87,7 @@ export default function LocationSearchPage() {
 
             <div className={styles.divider} />
 
-            <button
+            <UiButton variant="custom"
               type="button"
               className={`${styles.gpsBtn} ${position ? styles.gpsActive : ''}`}
               onClick={requestLocation}
@@ -95,11 +95,11 @@ export default function LocationSearchPage() {
             >
               <span className={styles.fieldIcon}>🎯</span>
               <span>Dùng vị trí của tôi</span>
-            </button>
+            </UiButton>
 
-            <button type="submit" className={styles.submitSearchBtn}>
+            <UiButton variant="custom" type="submit" className={styles.submitSearchBtn}>
               🔍 Tìm sân
-            </button>
+            </UiButton>
           </form>
         </div>
       </section>
@@ -120,20 +120,20 @@ export default function LocationSearchPage() {
           </div>
           {hasRating && (
             <div className={styles.sortGroup}>
-              <button
+              <UiButton variant="custom"
                 type="button"
                 className={`${styles.sortBtn} ${sortBy === 'nearest' ? styles.sortBtnActive : ''}`}
                 onClick={() => setSortBy('nearest')}
               >
                 Gần nhất
-              </button>
-              <button
+              </UiButton>
+              <UiButton variant="custom"
                 type="button"
                 className={`${styles.sortBtn} ${sortBy === 'rating' ? styles.sortBtnActive : ''}`}
                 onClick={() => setSortBy('rating')}
               >
                 Đánh giá cao
-              </button>
+              </UiButton>
             </div>
           )}
         </div>

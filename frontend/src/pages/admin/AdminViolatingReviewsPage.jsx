@@ -1,3 +1,4 @@
+import { Button as UiButton, Input as UiInput, Select as UiSelect } from '../../components/ui';
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import styles from './AdminLocationsPage.module.css'
@@ -156,7 +157,7 @@ export default function AdminViolatingReviewsPage() {
         {(statusMessage || actionError) && (
           <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
             <span>{actionError || statusMessage}</span>
-            <button type="button" aria-label="Đóng thông báo" onClick={clearNotice}>×</button>
+            <UiButton variant="secondary" type="button" aria-label="Đóng thông báo" onClick={clearNotice}>×</UiButton>
           </div>
         )}
 
@@ -170,13 +171,13 @@ export default function AdminViolatingReviewsPage() {
             <div className={styles.toolbarControls}>
               <label className={styles.filterField}>
                 <span className={styles.visuallyHidden}>Lọc đánh giá</span>
-                <select className={styles.filterSelect} value={selectedFilter} onChange={handleFilterChange}>
+                <UiSelect className={styles.filterSelect} value={selectedFilter} onChange={handleFilterChange}>
                   {REVIEW_FILTERS.map((filter) => <option key={filter} value={filter}>{filter}</option>)}
-                </select>
+                </UiSelect>
               </label>
               <label className={styles.searchField}>
                 <span className={styles.visuallyHidden}>Tìm theo người chơi, địa điểm hoặc nội dung đánh giá</span>
-                <input
+                <UiInput
                   type="search"
                   placeholder="Tìm theo người chơi, địa điểm hoặc nội dung đánh giá"
                   value={searchKeyword}
@@ -213,7 +214,7 @@ export default function AdminViolatingReviewsPage() {
                   </span>
                 </span>
                 <div className={styles.adminRowActions} role="cell">
-                  <button
+                  <UiButton variant="custom"
                     className={review.isHidden ? styles.reopenButton : styles.lockButton}
                     type="button"
                     disabled={review.violationType === 'low-rating-only' && !review.isHidden}
@@ -221,11 +222,11 @@ export default function AdminViolatingReviewsPage() {
                     onClick={() => handleReviewVisibility(review.id)}
                   >
                     {review.isHidden ? "Hiển thị lại" : "Ẩn đánh giá"}
-                  </button>
+                  </UiButton>
                   {review.violationType === 'spam' && (
-                    <button className={styles.extendButton} type="button" onClick={() => handleBanSpammer(review.playerUsername)}>
+                    <UiButton variant="custom" className={styles.extendButton} type="button" onClick={() => handleBanSpammer(review.playerUsername)}>
                       Khóa tài khoản phát tán nội dung rác
-                    </button>
+                    </UiButton>
                   )}
                 </div>
               </div>

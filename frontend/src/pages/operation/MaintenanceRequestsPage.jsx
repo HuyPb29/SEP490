@@ -1,3 +1,4 @@
+import { Button as UiButton, DateTimePicker as UiDateTimePicker } from '../../components/ui';
 import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -14,7 +15,7 @@ import {
   storeLocationId,
 } from '../../api/locationApi';
 import { Button } from '../../components/common/Button';
-import { FormField, Input, Select, Textarea } from '../../components/common/FormField';
+import { FormField, Select, Textarea } from '../../components/common/FormField';
 import { Modal } from '../../components/common/Modal';
 import ManagementLayout from '../../components/layout/ManagementLayout';
 import { useAuth } from '../../hooks/useAuth';
@@ -358,7 +359,7 @@ export default function MaintenanceRequestsPage() {
         ? `Có ${pendingCount} yêu cầu đang chờ duyệt. Khi duyệt, sân bị khóa trong khoảng thời gian đó; booking bị ảnh hưởng được xử lý theo quy trình sân hủy lịch.`
         : 'Nhân viên tạo yêu cầu, chủ sân duyệt. Khi được duyệt, sân bị khóa trong khoảng thời gian đó; booking bị ảnh hưởng được xử lý theo quy trình sân hủy lịch.'}
       actions={canCreate && (
-        <button type="button" className={styles.primary} onClick={openCreate}>+ Tạo yêu cầu bảo trì</button>
+        <UiButton variant="primary" type="button" className={styles.primary} onClick={openCreate}>+ Tạo yêu cầu bảo trì</UiButton>
       )}
       locations={locations}
       locationId={selectedLocationId}
@@ -385,10 +386,10 @@ export default function MaintenanceRequestsPage() {
           {STATUS_TABS.map((tab) => {
             const n = countOf(tab.value);
             return (
-              <button key={tab.value || 'all'} type="button" role="tab" aria-selected={statusFilter === tab.value}
+              <UiButton variant="custom" key={tab.value || 'all'} type="button" role="tab" aria-selected={statusFilter === tab.value}
                 className={statusFilter === tab.value ? styles.tabOn : ''} onClick={() => setStatusFilter(tab.value)}>
                 {tab.label}<span className={tab.value === 'PENDING' && n > 0 ? styles.countHot : styles.count}>{n}</span>
-              </button>
+              </UiButton>
             );
           })}
         </div>
@@ -470,11 +471,11 @@ export default function MaintenanceRequestsPage() {
             </FormField>
             <div className={styles.formRow}>
               <FormField label="Bắt đầu" htmlFor="maintenance-start" required>
-                <Input id="maintenance-start" type="datetime-local" step={1800} value={form.startAt} disabled={saving}
+                <UiDateTimePicker id="maintenance-start" step={1800} value={form.startAt} disabled={saving}
                   onChange={(event) => setForm({ ...form, startAt: event.target.value })} />
               </FormField>
               <FormField label="Kết thúc" htmlFor="maintenance-end" required>
-                <Input id="maintenance-end" type="datetime-local" step={1800} value={form.endAt} disabled={saving}
+                <UiDateTimePicker id="maintenance-end" step={1800} value={form.endAt} disabled={saving}
                   onChange={(event) => setForm({ ...form, endAt: event.target.value })} />
               </FormField>
             </div>

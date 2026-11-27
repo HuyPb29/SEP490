@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../../components/ui';
 import { useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import VenueSchedule from './VenueSchedule';
@@ -25,7 +26,7 @@ export default function FacilityDetailPage() {
 
   if (!facility) return <div className={styles.loadingScreen}>
     <p role={venue?.error ? 'alert' : 'status'}>{venue?.error || 'Đang tải địa điểm…'}</p>
-    {venue?.error && <button type="button" onClick={() => setReload((value) => value + 1)}>Thử lại</button>}
+    {venue?.error && <UiButton variant="secondary" type="button" onClick={() => setReload((value) => value + 1)}>Thử lại</UiButton>}
   </div>;
 
   return (
@@ -69,16 +70,16 @@ export default function FacilityDetailPage() {
             <p className={styles.infoLine}>Liên hệ: {facility.contact_phone}</p>
 
             <div className={styles.bookingActions}>
-              <button
+              <UiButton variant="custom"
                 type="button"
                 className={styles.scrollScheduleBtn}
                 onClick={() => scheduleRef.current?.scrollIntoView({ behavior: 'smooth' })}
               >
                 Chọn giờ chơi
-              </button>
-              {canBook && <button type="button" className={styles.packageBookingBtn} onClick={handleGoPackageBooking}>
+              </UiButton>
+              {canBook && <UiButton variant="custom" type="button" className={styles.packageBookingBtn} onClick={handleGoPackageBooking}>
                 Đặt sân nhiều buổi
-              </button>}
+              </UiButton>}
             </div>
           </div>
         </section>

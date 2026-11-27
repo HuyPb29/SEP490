@@ -1,3 +1,4 @@
+import { Button as UiButton, DatePicker as UiDatePicker } from '../../components/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -670,7 +671,7 @@ export default function OwnerCourtsPricingPage() {
                   const count = priceRules.filter((rule) => String(rule.courtId) === String(court.id)).length
                   return (
                     <li key={court.id}>
-                      <button
+                      <UiButton variant="custom"
                         type="button"
                         className={`${styles.courtItem} ${current ? styles.courtItemActive : ''}`}
                         aria-pressed={current}
@@ -683,7 +684,7 @@ export default function OwnerCourtsPricingPage() {
                         <span className={styles.courtMeta}>
                           {rulesLoading ? 'Đang tải giá…' : count ? `${count} mức giá` : 'Chưa có giá'}
                         </span>
-                      </button>
+                      </UiButton>
                     </li>
                   )
                 })}
@@ -753,7 +754,7 @@ export default function OwnerCourtsPricingPage() {
             <legend>Ngày áp dụng</legend>
             <div className={styles.dayPicker}>
               {WEEK_DAYS.map((day) => (
-                <button
+                <UiButton variant="custom"
                   className={`${styles.dayChip} ${ruleForm.days.includes(day.value) ? styles.dayChipActive : ''}`}
                   type="button"
                   key={day.value}
@@ -762,7 +763,7 @@ export default function OwnerCourtsPricingPage() {
                   onClick={() => toggleRuleDay(day.value)}
                 >
                   {day.short}
-                </button>
+                </UiButton>
               ))}
             </div>
             <div className={styles.dayPresets}>
@@ -794,12 +795,12 @@ export default function OwnerCourtsPricingPage() {
 
           <div className={styles.twoCols}>
             <FormField label="Hiệu lực từ" required>
-              <Input type="date" required value={ruleForm.validFrom}
+              <UiDatePicker required value={ruleForm.validFrom}
                 onChange={(event) => updateRuleForm('validFrom', event.target.value)} />
             </FormField>
             <FormField label="Hiệu lực đến" hint="Để trống nếu không có thời hạn."
               error={ruleDateInvalid ? 'Phải sau ngày bắt đầu hiệu lực.' : undefined}>
-              <Input type="date" value={ruleForm.validTo} min={ruleForm.validFrom || undefined}
+              <UiDatePicker value={ruleForm.validTo} min={ruleForm.validFrom || undefined}
                 onChange={(event) => updateRuleForm('validTo', event.target.value)} />
             </FormField>
           </div>

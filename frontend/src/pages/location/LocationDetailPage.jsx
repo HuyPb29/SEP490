@@ -1,3 +1,4 @@
+import { Button as UiButton, DatePicker as UiDatePicker } from '../../components/ui';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import Header from '../../components/layout/Header';
@@ -256,9 +257,9 @@ export default function LocationDetailPage() {
       return (
         <div className={styles.loadingScreen}>
           <p>Không tải được thông tin địa điểm: {loadError}</p>
-          <button type="button" className={styles.backButton} onClick={() => navigate('/')}>
+          <UiButton variant="custom" type="button" className={styles.backButton} onClick={() => navigate('/')}>
             Quay lại tìm kiếm
-          </button>
+          </UiButton>
         </div>
       );
     }
@@ -270,9 +271,9 @@ export default function LocationDetailPage() {
       <Header />
 
       <main className={styles.mainContainer}>
-        <button type="button" className={styles.backButton} onClick={() => navigate('/')}>
+        <UiButton variant="custom" type="button" className={styles.backButton} onClick={() => navigate('/')}>
           ← Quay lại
-        </button>
+        </UiButton>
         <div className={styles.breadcrumb}>
           <Link to="/" className={styles.breadcrumbLink}>Tìm sân</Link>
           <span className={styles.breadcrumbSep}>/</span>
@@ -309,7 +310,7 @@ export default function LocationDetailPage() {
             <p className={styles.infoLine}>Liên hệ: {facility.contact_phone}</p>
 
             <div className={styles.bookingActions}>
-              <button
+              <UiButton variant="custom"
                 type="button"
                 className={styles.scrollScheduleBtn}
                 onClick={() => {
@@ -318,8 +319,8 @@ export default function LocationDetailPage() {
                 }}
               >
                 Xem lịch và đặt sân
-              </button>
-              <button
+              </UiButton>
+              <UiButton variant="custom"
                 type="button"
                 className={styles.packageBookingBtn}
                 onClick={() => {
@@ -328,7 +329,7 @@ export default function LocationDetailPage() {
                 }}
               >
                 Đặt nhiều buổi tùy chọn
-              </button>
+              </UiButton>
             </div>
           </div>
         </section>
@@ -340,16 +341,16 @@ export default function LocationDetailPage() {
           <div className={styles.scheduleHeader}>
             <h2 className={styles.sectionTitle}>Lịch sân</h2>
             <div className={styles.dateControls}>
-              <button type="button" className={styles.navArrowBtn} onClick={() => changeDay(-1)}>‹</button>
+              <UiButton variant="custom" type="button" className={styles.navArrowBtn} onClick={() => changeDay(-1)}>‹</UiButton>
               <span className={styles.dateDisplay}>{formatDateLabel(playDate)}</span>
-              <button type="button" className={styles.navArrowBtn} onClick={() => changeDay(1)}>›</button>
+              <UiButton variant="custom" type="button" className={styles.navArrowBtn} onClick={() => changeDay(1)}>›</UiButton>
               {mode === 'recurring' ? (
                 <>
-                  <input type="date" aria-label="Ngày bắt đầu lịch định kỳ" className={styles.dateInput} value={packageStartDate} max={getPackageDateLimit()} onChange={(e) => setPackageStartDate(e.target.value)} />
-                  <input type="date" aria-label="Ngày kết thúc lịch định kỳ" className={styles.dateInput} value={packageEndDate} min={packageStartDate} max={getPackageDateLimit()} onChange={(e) => setPackageEndDate(e.target.value)} />
+                  <UiDatePicker aria-label="Ngày bắt đầu lịch định kỳ" className={styles.dateInput} value={packageStartDate} max={getPackageDateLimit()} onChange={(e) => setPackageStartDate(e.target.value)} />
+                  <UiDatePicker aria-label="Ngày kết thúc lịch định kỳ" className={styles.dateInput} value={packageEndDate} min={packageStartDate} max={getPackageDateLimit()} onChange={(e) => setPackageEndDate(e.target.value)} />
                 </>
               ) : (
-                <input type="date" className={styles.dateInput} value={playDate} max={getPackageDateLimit()} onChange={(e) => setPlayDate(e.target.value)} />
+                <UiDatePicker className={styles.dateInput} value={playDate} max={getPackageDateLimit()} onChange={(e) => setPlayDate(e.target.value)} />
               )}
             </div>
           </div>
@@ -362,7 +363,7 @@ export default function LocationDetailPage() {
                 <div className={styles.weekdayPicker} aria-label="Các thứ đặt sân định kỳ">
                   <span>Lặp lại vào</span>
                   {WEEKDAYS.map((day) => (
-                    <button
+                    <UiButton variant="custom"
                       key={day.value}
                       type="button"
                       aria-pressed={selectedWeekdays.includes(day.value)}
@@ -372,7 +373,7 @@ export default function LocationDetailPage() {
                         : [...days, day.value])}
                     >
                       {day.label}
-                    </button>
+                    </UiButton>
                   ))}
                 </div>
               )}

@@ -1,9 +1,10 @@
+import { DatePicker as UiDatePicker } from '../../components/ui';
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import BookingSummaryBar from '../../components/booking/BookingSummaryBar'
 import ScheduleGrid from '../../components/schedule/ScheduleGrid'
 import SelectedRanges from '../../components/schedule/SelectedRanges'
-import { Button, ConfirmDialog, EmptyState, ErrorState, Input, LoadingState, Modal } from '../../components/common'
+import { Button, ConfirmDialog, EmptyState, ErrorState, LoadingState, Modal } from '../../components/common'
 import { groupRanges } from '../../utils/slotRanges'
 import { isBookable } from '../../utils/venueSchedule'
 import { useVenueSchedule, useVenueSession } from '../../hooks/useVenueSchedule'
@@ -142,7 +143,7 @@ export default function VenueSchedule({ id, facility, scheduleRef, openPackage, 
         <div className={styles.dateLabel}><strong>{dateTitle}</strong><span>Mỗi ô lịch tương ứng 30 phút</span></div>
         <span title={date >= maxDate ? 'Đã đến giới hạn xem lịch của địa điểm' : 'Xem ngày sau'}><Button variant="secondary" aria-label="Ngày sau" disabled={!maxDate || date >= maxDate} onClick={() => shiftDate(1)}>›</Button></span>
       </div>
-      <div className={styles.dateActions}><label htmlFor="venue-play-date">Chọn ngày<Input id="venue-play-date" type="date" min={today} max={maxDate || today} value={date} disabled={!maxDate} onChange={(event) => chooseDate(event.target.value)} aria-describedby="venue-date-limit" /></label><Button variant="ghost" disabled={!maxDate || date === today} onClick={() => chooseDate(today)}>Hôm nay</Button></div>
+      <div className={styles.dateActions}><label htmlFor="venue-play-date"><span id="venue-play-date-label">Chọn ngày</span><UiDatePicker id="venue-play-date" aria-labelledby="venue-play-date-label" min={today} max={maxDate || today} value={date} disabled={!maxDate} onChange={(event) => chooseDate(event.target.value)} aria-describedby="venue-date-limit" /></label><Button variant="ghost" disabled={!maxDate || date === today} onClick={() => chooseDate(today)}>Hôm nay</Button></div>
     </div>
     <p id="venue-date-limit" className={styles.limit}>{maxDate ? `Xem lịch đến ${shortDate(maxDate)}. Giới hạn theo cấu hình địa điểm và vai trò của bạn.` : 'Đang lấy giới hạn xem lịch từ địa điểm…'}</p>
     {maxDate && requestedDate > maxDate && <p role="status" className={styles.notice}>Ngày đã chọn ngoài giới hạn xem lịch. Đang hiển thị lịch hôm nay.</p>}

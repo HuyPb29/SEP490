@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 export default function CourtScheduleGrid({
   courts,
   timeHeaders,
@@ -45,7 +46,7 @@ export default function CourtScheduleGrid({
 
                 return (
                   <td key={slot.time}>
-                    <button
+                    <UiButton variant="custom"
                       type="button"
                       className={`${styles.slotBtn} ${buttonClass}`}
                       disabled={slot.status !== 'available'}
@@ -53,7 +54,7 @@ export default function CourtScheduleGrid({
                       onClick={() => onToggleSlot(court, slot, timeIdx)}
                     >
                       {label}
-                    </button>
+                    </UiButton>
                   </td>
                 )
               })}

@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { useEffect, useRef, useState } from 'react';
 import { FileInput } from '../common/FileInput';
 import { Button } from '../common/Button';
@@ -21,9 +22,9 @@ export default function ImageProofUpload({ file, onChange, onDropFile, onClear, 
   const size = file && (file.size < 1024 ? `${file.size} B` : file.size < 1024 * 1024 ? `${Math.round(file.size / 1024)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`);
   return <div className={styles.uploader}>
     <div className={`${styles.dropzone} ${dragging && !disabled ? styles.dragging : ''}`} onDragOver={event => { event.preventDefault(); if (!disabled) setDragging(true); }} onDragLeave={event => { event.preventDefault(); setDragging(false); }} onDrop={event => { event.preventDefault(); setDragging(false); if (!disabled) onDropFile?.(event.dataTransfer.files?.[0]); }}>
-      <button type="button" disabled={disabled} className={styles.target} onClick={() => nativeInput.current?.click()} aria-describedby={error ? `${id}-error` : `${id}-hint`}>
+      <UiButton variant="custom" type="button" disabled={disabled} className={styles.target} onClick={() => nativeInput.current?.click()} aria-describedby={error ? `${id}-error` : `${id}-hint`}>
         <span className={styles.icon} aria-hidden="true">↑</span><strong>{file ? 'Chọn ảnh khác hoặc kéo thả để thay' : chooseText}</strong><span>JPG, JPEG hoặc PNG · Tối đa 5 MB</span>
-      </button>
+      </UiButton>
       <label className={styles.label} htmlFor={id}>{label} {required && <span aria-hidden="true" />}</label>
       <FileInput id={id} inputRef={nativeInput} onChange={onChange} selectedFileName={file?.name || ''} accept=".jpg,.jpeg,.png,image/jpeg,image/png" disabled={disabled} aria-required={required || undefined} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : `${id}-hint`} />
     </div>

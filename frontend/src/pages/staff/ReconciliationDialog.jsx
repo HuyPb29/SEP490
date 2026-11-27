@@ -1,3 +1,4 @@
+import { Button as UiButton, DatePicker as UiDatePicker, Input as UiInput } from '../../components/ui';
 import { useEffect, useState } from 'react'
 import { Modal } from '../../components/common/Modal'
 import api, { apiErrorMessage } from '../../api'
@@ -90,7 +91,7 @@ export default function ReconciliationDialog({ onClose }) {
       <form className={styles.bookingForm} onSubmit={submit} noValidate>
         <label className={styles.formField}>
           Ngày đối soát
-          <input type="date" max={today} value={date} disabled={submitting} onChange={(event) => {
+          <UiDatePicker max={today} value={date} disabled={submitting} onChange={(event) => {
             setDate(event.target.value)
             setBank('')
             setCash('')
@@ -103,7 +104,7 @@ export default function ReconciliationDialog({ onClose }) {
           {fieldError('date')}
         </label>
         {validDate && !summary && !loadError && <p role="status">Đang tải số liệu đối soát…</p>}
-        {loadError && <p role="alert">{loadError} <button type="button" onClick={refresh}>Thử lại</button></p>}
+        {loadError && <p role="alert">{loadError} <UiButton variant="secondary" type="button" onClick={refresh}>Thử lại</UiButton></p>}
         {summary && (
           <dl>
             <div><dt>Giao dịch đã xác nhận</dt><dd>{summary.confirmedCount}</dd></div>
@@ -122,11 +123,11 @@ export default function ReconciliationDialog({ onClose }) {
           <>
             <div className={styles.formRow}>
               <label className={styles.formField}>Thực nhận qua ngân hàng
-                <input inputMode="numeric" placeholder="0" value={bank} onChange={(event) => setBank(event.target.value)} disabled={submitting} />
+                <UiInput inputMode="numeric" placeholder="0" value={bank} onChange={(event) => setBank(event.target.value)} disabled={submitting} />
                 {fieldError('bank')}
               </label>
               <label className={styles.formField}>Thực nhận tiền mặt
-                <input inputMode="numeric" placeholder="0" value={cash} onChange={(event) => setCash(event.target.value)} disabled={submitting} />
+                <UiInput inputMode="numeric" placeholder="0" value={cash} onChange={(event) => setCash(event.target.value)} disabled={submitting} />
                 {fieldError('cash')}
               </label>
             </div>
@@ -140,10 +141,10 @@ export default function ReconciliationDialog({ onClose }) {
         {fieldError('form')}
         {success && <p className={styles.successMessage} role="status">{success}</p>}
         <div className={styles.modalActions}>
-          <button className={styles.secondaryButton} type="button" onClick={onClose} disabled={submitting}>Đóng</button>
-          {summary && !saved && <button className={styles.primaryButton} type="submit" disabled={submitting}>
+          <UiButton variant="secondary" className={styles.secondaryButton} type="button" onClick={onClose} disabled={submitting}>Đóng</UiButton>
+          {summary && !saved && <UiButton variant="primary" className={styles.primaryButton} type="submit" disabled={submitting}>
             {submitting ? 'Đang lưu…' : 'Lưu kết quả đối soát'}
-          </button>}
+          </UiButton>}
         </div>
       </form>
     </Modal>

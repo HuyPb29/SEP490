@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { money } from '../../utils/formatters'
 import styles from './ScheduleGrid.module.css'
 
@@ -17,8 +18,8 @@ export default function SelectedRanges({ ranges, onRemove, showDate = false, sho
         `${range.startTime}–${range.endTime}`, `${range.items.length} slot`, showPrice && money(range.amount).replace(/\s*₫/, 'đ')].filter(Boolean).join(' · ')
       return <li key={`${range.date}|${range.courtId}|${range.startMinute}`} className={styles.chip}>
         <span className={styles.chipText}>{text}</span>
-        {onRemove && <button type="button" className={styles.chipRemove} aria-label={'Bỏ ' + text}
-          onClick={() => onRemove(range)}>×</button>}
+        {onRemove && <UiButton variant="custom" type="button" className={styles.chipRemove} aria-label={'Bỏ ' + text}
+          onClick={() => onRemove(range)}>×</UiButton>}
       </li>
     })}
   </ul>

@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { useEffect, useRef, useState } from 'react'
 import { hasGoogleMapsKey, loadMaps } from './GoogleLocationPicker'
 
@@ -73,7 +74,7 @@ export default function GoogleAddressInput({ address, onSelect, onClear, disable
   if (address) {
     return <div>
       <p>{address}</p>
-      <button type="button" disabled={disabled} onClick={onClear} className="underline">Đổi địa chỉ</button>
+      <UiButton variant="custom" type="button" disabled={disabled} onClick={onClear} className="underline">Đổi địa chỉ</UiButton>
     </div>
   }
   return <>

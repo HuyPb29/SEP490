@@ -1,3 +1,4 @@
+import { Button as UiButton, Input as UiInput, Select as UiSelect } from '../../components/ui';
 import { uiMessage } from '../../utils/formatters';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -382,13 +383,13 @@ function PaymentDesk({ role, surcharge }) {
       subtitle="Kiểm tra tiền đã về tài khoản của địa điểm (app ngân hàng tại quầy) rồi mới xác nhận. Ảnh chứng từ chỉ để tham khảo."
       actions={<>
         {role !== 'owner' && (
-          <button type="button" className={styles.secondaryButton} disabled={isProcessing} onClick={() => setShowReconciliation(true)}>
+          <UiButton variant="secondary" type="button" className={styles.secondaryButton} disabled={isProcessing} onClick={() => setShowReconciliation(true)}>
             Đối soát cuối ngày
-          </button>
+          </UiButton>
         )}
-        <button type="button" className={styles.secondaryButton} disabled={loadingQueue || isProcessing} onClick={reload}>
+        <UiButton variant="secondary" type="button" className={styles.secondaryButton} disabled={loadingQueue || isProcessing} onClick={reload}>
           Làm mới
-        </button>
+        </UiButton>
       </>}
     >
       {message && <p className={styles.successBanner} role="status">{message}</p>}
@@ -399,17 +400,17 @@ function PaymentDesk({ role, surcharge }) {
       <div className={styles.workspace}>
         <section ref={queueRef} tabIndex={-1} className={styles.queue} aria-label="Danh sách giao dịch chờ xác nhận">
           <div className={styles.queueTabs} role="tablist" aria-label="Loại giao dịch">
-            <button type="button" role="tab" aria-selected={!surcharge} disabled={isProcessing}
+            <UiButton variant="custom" type="button" role="tab" aria-selected={!surcharge} disabled={isProcessing}
               className={!surcharge ? styles.tabOn : ''} onClick={() => navigate('/staff/confirm-payments')}>
               Thanh toán đặt sân{bookingCount != null && <span className={styles.count}>{bookingCount}</span>}
-            </button>
-            <button type="button" role="tab" aria-selected={surcharge} disabled={isProcessing}
+            </UiButton>
+            <UiButton variant="custom" type="button" role="tab" aria-selected={surcharge} disabled={isProcessing}
               className={surcharge ? styles.tabOn : ''} onClick={() => navigate('/staff/confirm-payments?type=reschedule')}>
               Phụ thu đổi lịch{surchargeCount != null && <span className={styles.count}>{surchargeCount}</span>}
-            </button>
+            </UiButton>
           </div>
           <div className={styles.searchRow}>
-            <input type="search" placeholder="Tìm theo mã BK… hoặc mã giao dịch" aria-label="Tìm giao dịch"
+            <UiInput type="search" placeholder="Tìm theo mã BK… hoặc mã giao dịch" aria-label="Tìm giao dịch"
               value={filter} onChange={(e) => setFilter(e.target.value)} className={styles.searchInput} />
           </div>
 
@@ -420,7 +421,7 @@ function PaymentDesk({ role, surcharge }) {
             const itemWaited = minutesSince(item.submittedAt, now);
             const rowTone = item.transferredToOwner ? styles.itemMoved : item.overdue ? styles.itemUrgent : '';
             return (
-              <button
+              <UiButton variant="custom"
                 className={`${styles.queueItem} ${rowTone} ${selectedId === item.id ? styles.itemSelected : ''}`}
                 key={item.id}
                 type="button"
@@ -441,7 +442,7 @@ function PaymentDesk({ role, surcharge }) {
                     : item.overdue ? 'Từ 10 phút · Xử lý gấp'
                       : itemWaited != null ? `Chờ ${itemWaited} phút` : 'Chờ xác nhận'}
                 </span>
-              </button>
+              </UiButton>
             );
           })}
 
@@ -452,16 +453,16 @@ function PaymentDesk({ role, surcharge }) {
         </section>
 
         <section ref={detailRef} tabIndex={-1} className={styles.detail} aria-label="Chi tiết giao dịch đang chọn">
-          {selectedId && <button type="button" className={styles.mobileQueueBack} onClick={() => {
+          {selectedId && <UiButton variant="custom" type="button" className={styles.mobileQueueBack} onClick={() => {
             pendingMobileSelection.current = null;
             queueRef.current?.scrollIntoView({ behavior: 'instant', block: 'start' });
             queueRef.current?.focus({ preventScroll: true });
-          }}>← Danh sách giao dịch</button>}
+          }}>← Danh sách giao dịch</UiButton>}
           {!selectedId ? (
             <p className={styles.detailEmpty}>{loadingQueue ? 'Đang tải…' : 'Chọn một giao dịch trong hàng chờ để xem chi tiết.'}</p>
           ) : detailError?.id === selectedId ? (
             <p className={styles.detailEmpty} role="alert">{uiMessage(detailError.message)}{' '}
-              <button type="button" className={styles.linkButton} onClick={reload}>Thử lại</button></p>
+              <UiButton variant="ghost" type="button" className={styles.linkButton} onClick={reload}>Thử lại</UiButton></p>
           ) : !activePayment ? (
             <p className={styles.detailEmpty} role="status">Đang tải chi tiết giao dịch…</p>
           ) : (
@@ -554,7 +555,7 @@ function PaymentDesk({ role, surcharge }) {
                       <label className={styles.fieldLabel} htmlFor="actual-amount">
                         Số tiền thực nhận <span>(chỉ nhập khi khách chuyển thừa hoặc thiếu)</span>
                       </label>
-                      <input
+                      <UiInput
                         className={styles.input}
                         id="actual-amount"
                         type="text"
@@ -581,7 +582,7 @@ function PaymentDesk({ role, surcharge }) {
                       <label className={styles.fieldLabel} htmlFor="payment-reason">
                         Lý do <span>(khi yêu cầu bổ sung hoặc từ chối)</span>
                       </label>
-                      <select
+                      <UiSelect
                         id="payment-reason"
                         className={styles.input}
                         value={reasonCode}
@@ -591,7 +592,7 @@ function PaymentDesk({ role, surcharge }) {
                       >
                         <option value="">Chọn lý do</option>
                         {REASONS.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
-                      </select>
+                      </UiSelect>
                       {reasonError && <p id="reason-error" className={styles.fieldError} role="alert">{reasonError}</p>}
                       <p className={styles.muted}>
                         Người chơi còn <strong>{resubmitsLeft}</strong> lượt gửi lại chứng từ (tối đa 3 lần). Căn cứ xác nhận là tiền thực về tài khoản ngân hàng của địa điểm.
@@ -604,11 +605,11 @@ function PaymentDesk({ role, surcharge }) {
                   <div className={styles.proofTools}>
                     <span>Ảnh chứng từ{proofs.length > 0 ? ` (${proofs.length})` : ''}</span>
                     <span>
-                      <button type="button" disabled={!activeProofUrl} onClick={() => setRotation((deg) => (deg + 90) % 360)}>⟲ Xoay</button>
-                      <button type="button" disabled={!activeProofUrl} onClick={() => setIsProofOpen(true)}>＋ Phóng to</button>
+                      <UiButton variant="secondary" type="button" disabled={!activeProofUrl} onClick={() => setRotation((deg) => (deg + 90) % 360)}>⟲ Xoay</UiButton>
+                      <UiButton variant="secondary" type="button" disabled={!activeProofUrl} onClick={() => setIsProofOpen(true)}>＋ Phóng to</UiButton>
                     </span>
                   </div>
-                  <button className={styles.proofPreview} type="button" onClick={() => setIsProofOpen(true)}
+                  <UiButton variant="custom" className={styles.proofPreview} type="button" onClick={() => setIsProofOpen(true)}
                     aria-label="Phóng to ảnh chứng từ" disabled={!activeProofUrl}>
                     {activeProofUrl ? (
                       <img src={activeProofUrl} alt="Chứng từ chuyển khoản" style={{ transform: `rotate(${rotation}deg)` }} />
@@ -617,15 +618,15 @@ function PaymentDesk({ role, surcharge }) {
                         {proofError || (activeProofId ? 'Đang tải ảnh chứng từ…' : 'Giao dịch chưa có chứng từ.')}
                       </span>
                     )}
-                  </button>
+                  </UiButton>
                   {proofs.length > 1 && (
                     <div className={styles.proofThumbs} role="group" aria-label="Chọn ảnh chứng từ">
                       {proofs.map((p, idx) => (
-                        <button key={p.id} type="button" aria-pressed={selectedProofId === p.id}
+                        <UiButton variant="custom" key={p.id} type="button" aria-pressed={selectedProofId === p.id}
                           className={selectedProofId === p.id ? styles.thumbOn : ''}
                           onClick={() => { if (p.id !== selectedProofId) { setProof(null); setRotation(0); setSelectedProofId(p.id); } }}>
                           Lần {proofs.length - idx}
-                        </button>
+                        </UiButton>
                       ))}
                     </div>
                   )}
@@ -636,15 +637,15 @@ function PaymentDesk({ role, surcharge }) {
                 <footer className={styles.actions}>
                   <span className={styles.shortcutHint}>Phím tắt: <kbd>A</kbd> xác nhận · <kbd>R</kbd> yêu cầu bổ sung</span>
                   <div>
-                    <button className={styles.dangerButton} type="button" disabled={isProcessing} onClick={() => prepare('reject')}>
+                    <UiButton variant="danger" className={styles.dangerButton} type="button" disabled={isProcessing} onClick={() => prepare('reject')}>
                       Từ chối
-                    </button>
-                    <button className={styles.secondaryButton} type="button" disabled={isProcessing} onClick={() => prepare('request-resubmission')}>
+                    </UiButton>
+                    <UiButton variant="secondary" className={styles.secondaryButton} type="button" disabled={isProcessing} onClick={() => prepare('request-resubmission')}>
                       Yêu cầu bổ sung
-                    </button>
-                    <button className={styles.primaryButton} type="button" disabled={isProcessing || isShortfall} onClick={() => prepare('confirm')}>
+                    </UiButton>
+                    <UiButton variant="primary" className={styles.primaryButton} type="button" disabled={isProcessing || isShortfall} onClick={() => prepare('confirm')}>
                       ✓ Xác nhận đã nhận tiền
-                    </button>
+                    </UiButton>
                   </div>
                 </footer>
               )}
@@ -665,8 +666,8 @@ function PaymentDesk({ role, surcharge }) {
             <header>
               <strong>Chứng từ thanh toán · {formatPaymentLabel(activePayment)}</strong>
               <span>
-                <button type="button" onClick={() => setRotation((deg) => (deg + 90) % 360)}>⟲ Xoay</button>
-                <button type="button" onClick={() => setIsProofOpen(false)}>Đóng</button>
+                <UiButton variant="secondary" type="button" onClick={() => setRotation((deg) => (deg + 90) % 360)}>⟲ Xoay</UiButton>
+                <UiButton variant="secondary" type="button" onClick={() => setIsProofOpen(false)}>Đóng</UiButton>
               </span>
             </header>
             <div className={styles.proofLarge}>

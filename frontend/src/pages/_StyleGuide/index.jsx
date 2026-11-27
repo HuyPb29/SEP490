@@ -10,6 +10,7 @@ import { FileInput } from '../../components/common/FileInput';
 import shell from '../../components/layout/AppLayouts.module.css';
 import { money } from '../../utils/formatters';
 import styles from './StyleGuide.module.css';
+import ControlExamples from './ControlExamples';
 
 const demoLocations = [{ id: '1', name: 'Cầu lông Thành Công' }, { id: '2', name: 'Cầu lông Bình Minh' }];
 const rows = [
@@ -62,6 +63,7 @@ export default function StyleGuide() {
       {[['palette', 'Màu sắc'], ['buttons', 'Nút bấm'], ['forms', 'Biểu mẫu'], ['statuses', 'Trạng thái'], ['tables', 'Bảng dữ liệu'], ['states', 'Phản hồi'], ['layouts', 'Bố cục']].map(([id, label]) => <a key={id} href={'#' + id}>{label}</a>)}
     </nav>
     <div className={styles.stack}>
+      <ControlExamples />
       <Sample id="palette" title="01 / Nền tảng màu sắc" description="Xanh ngọc cho tương tác, xanh lá làm điểm nhấn, bề mặt trung tính để tập trung vào công việc.">
         <div className={styles.swatches}>{[['primary', 'Xanh ngọc'], ['primary-accent', 'Xanh lá'], ['primary-soft', 'Nền nhấn'], ['bg', 'Nền trang'], ['surface', 'Bề mặt'], ['sidebar-bg', 'Thanh bên']].map(([token, label]) =>
           <div key={token}><span className={styles.swatch} style={{ background: `var(--color-${token})` }} /><strong>{label}</strong><small>--color-{token}</small></div>)}</div>

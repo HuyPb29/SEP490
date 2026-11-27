@@ -1,3 +1,4 @@
+import { Button as UiButton, Checkbox as UiCheckbox, Select as UiSelect } from '../ui';
 import { useLayoutEffect, useRef, useState } from 'react'
 import { isBookable } from '../../utils/venueSchedule'
 import { formatSlotTime, formatVnd, today } from '../../utils/formatters'
@@ -117,7 +118,7 @@ function HorizontalScheduleGrid({ schedule, selected = [], allowBooking, showBoo
     const price = slot.price == null || ['closed', 'past', 'maintenance'].includes(slot.status) ? '' : formatVnd(slot.price)
     const description = [court.court_name, `${slot.time} đến ${slotEnd(slot.time)}`, price, status, info && [info.name, info.phone, info.note].filter(Boolean).join(' · ')].filter(Boolean).join(', ')
     const tone = chosen ? styles.selected : kind ? markClass[kind] : colors[slot.status] || styles.closed
-    return <button type="button" title={description} aria-label={description} data-slot data-row={row} data-col={col}
+    return <UiButton variant="custom" type="button" title={description} aria-label={description} data-slot data-row={row} data-col={col}
       data-focus={chosen || kind ? 'pin' : isBookable(slot) ? 'free' : undefined}
       tabIndex={key === (mobile ? mobileFocusKey : focusKey) ? 0 : -1}
       className={`${styles.cell} ${tone} ${info ? styles.inspectable : ''} ${conflictKeys.has(key) ? styles.recentConflict : ''}`}
@@ -128,14 +129,14 @@ function HorizontalScheduleGrid({ schedule, selected = [], allowBooking, showBoo
       <span className={styles.slotValue}><span aria-hidden="true">{chosen ? '✓' : kind ? '!' : icons[slot.status] || '—'}</span>{(isBookable(slot) || chosen) && shortPrice(slot.price)}</span>
       <small>{status}</small>
       {info && <><small>{info.name || '—'}</small><small>{info.phone}</small></>}
-    </button>
+    </UiButton>
   }
 
   return <div className={styles.gridShell}>
     {filters && <div className={styles.filters}>
       <div role="group" aria-label="Lọc theo khung giờ" className={styles.filterGroup}>{[['all', 'Cả ngày'], ['morning', 'Sáng'], ['afternoon', 'Chiều'], ['evening', 'Tối']].map(([value, text]) => <Button key={value} size="sm" variant={period === value ? 'primary' : 'ghost'} aria-pressed={period === value} onClick={() => setPeriod(value)}>{text}</Button>)}</div>
-      <label className={styles.checkbox}><input type="checkbox" checked={onlyFree} onChange={(event) => setOnlyFree(event.target.checked)} />Chỉ hiện sân còn trống</label>
-      <label className={styles.courtFilter}>Lọc sân<select value={courtFilter} onChange={(event) => setCourtFilter(event.target.value)}><option value="all">Tất cả sân</option>{schedule.courts.map((court) => <option key={court.court_id} value={court.court_id}>{court.court_name}</option>)}</select></label>
+      <label className={styles.checkbox}><UiCheckbox checked={onlyFree} onChange={(event) => setOnlyFree(event.target.checked)} />Chỉ hiện sân còn trống</label>
+      <label className={styles.courtFilter}>Lọc sân<UiSelect value={courtFilter} onChange={(event) => setCourtFilter(event.target.value)}><option value="all">Tất cả sân</option>{schedule.courts.map((court) => <option key={court.court_id} value={court.court_id}>{court.court_name}</option>)}</UiSelect></label>
     </div>}
     {legend && <ScheduleLegend marks={markLegend} />}
     {!courts.length || !headers.length ? <EmptyState title="Không có sân phù hợp bộ lọc" description="Chọn cả ngày hoặc bỏ bộ lọc sân để xem lại lịch." action={<Button variant="secondary" onClick={() => { setPeriod('all'); setOnlyFree(false); setCourtFilter('all') }}>Bỏ bộ lọc</Button>} /> : <>
@@ -211,14 +212,14 @@ function VerticalScheduleGrid({ schedule, selected = [], allowBooking, showBooke
           const description = [court.court_name, slot.time, original && 'Lịch cũ của bạn', status].filter(Boolean)
           const price = slot.price == null ? '—' : money.format(slot.price) + ' đ'
           return <td key={court.court_id}>
-            <button type="button"
+            <UiButton variant="custom" type="button"
               className={`${verticalStyles.slotBtn} ${slotClass || ''} ${original ? (chosen ? styles.selectedOriginalSlot : styles.originalSlot) : ''}`}
               aria-label={[...description, price].join(', ')}
               aria-pressed={bookable ? chosen : undefined} disabled={!bookable && !info}
               onClick={() => info ? onInspect?.({ ...info, time: slot.time, status: slot.status, courtName: court.court_name }) : onSlot(court, slot, index)}>
               <span>{original && !chosen ? 'Lịch cũ' : status}</span><small className="block">{price}</small>
               {info && <small className="block">{info.name} · {info.phone}</small>}
-            </button>
+            </UiButton>
           </td>
         })}
       </tr>)}</tbody>

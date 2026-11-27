@@ -1,3 +1,4 @@
+import { Button as UiButton, DatePicker as UiDatePicker } from '../../components/ui';
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../api'
@@ -10,7 +11,6 @@ import {
   EmptyState,
   ErrorState,
   FormField,
-  Input,
   LoadingState,
   Table,
   Tabs,
@@ -319,18 +319,18 @@ export default function OwnerReportPage() {
         <section className={styles.filterBar} aria-label="Khoảng thời gian">
           <div className={styles.segmented} role="group" aria-label="Chọn nhanh khoảng thời gian">
             {PRESETS.map(([value, label]) => (
-              <button key={value} type="button" aria-pressed={preset === value} onClick={() => choosePreset(value)}>
+              <UiButton variant="secondary" key={value} type="button" aria-pressed={preset === value} onClick={() => choosePreset(value)}>
                 {label}
-              </button>
+              </UiButton>
             ))}
           </div>
           {preset === 'custom' ? (
             <div className={styles.dateFields}>
               <FormField label="Từ ngày">
-                <Input type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} />
+                <UiDatePicker value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} />
               </FormField>
               <FormField label="Đến ngày" error={!validDates ? 'Ngày kết thúc phải sau ngày bắt đầu.' : undefined}>
-                <Input type="date" value={endDate} min={startDate || undefined} onChange={(event) => setEndDate(event.target.value)} />
+                <UiDatePicker value={endDate} min={startDate || undefined} onChange={(event) => setEndDate(event.target.value)} />
               </FormField>
             </div>
           ) : (

@@ -1,3 +1,4 @@
+import { DatePicker as UiDatePicker } from '../../components/ui';
 import HistoryDetailDialog from './HistoryDetailDialog';
 import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { bookingStartsAfter, canPayHistoryEntry, canRescheduleBooking } from '../../api/bookingHistory';
@@ -832,7 +833,7 @@ export default function MyBookingsPage() {
                 <span className={styles.rsDateLabel}>{newPlayDate && dayLabelFormat.format(new Date(newPlayDate + 'T12:00:00Z'))}</span>
                 <Button type="button" variant="secondary" className={styles.rsNavBtn} aria-label="Ngày sau"
                   disabled={rescheduleSubmitting || !rsMaxDate || newPlayDate >= rsMaxDate} onClick={() => shiftRescheduleDate(1)}>›</Button>
-                <input type="date" className={styles.formInput} aria-label="Chọn ngày chơi mới"
+                <UiDatePicker className={styles.formInput} aria-label="Chọn ngày chơi mới"
                   style={{ width: 'auto', marginInlineStart: 'auto' }}
                   min={today()} max={rsMaxDate || undefined} value={newPlayDate} disabled={rescheduleSubmitting}
                   onChange={(e) => chooseRescheduleDate(e.target.value)} />

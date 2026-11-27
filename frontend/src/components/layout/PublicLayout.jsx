@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { useNavigationDrawer } from '../../hooks/useNavigationDrawer';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -68,7 +69,7 @@ export function PublicHeader({ user: userProp }) {
 
         <div className={styles.rightControls}>
           {!isAuthRoute && <UserMenu user={user} />}
-          <button
+          <UiButton variant="custom"
             type="button"
             className={styles.hamburgerBtn}
             aria-label="Mở menu điều hướng"
@@ -76,7 +77,7 @@ export function PublicHeader({ user: userProp }) {
             onClick={() => setDrawerOpen(true)}
           >
             ☰
-          </button>
+          </UiButton>
         </div>
       </div>
 
@@ -89,14 +90,14 @@ export function PublicHeader({ user: userProp }) {
                 </span>
                 <span>Courtly</span>
               </Link>
-              <button
+              <UiButton variant="custom"
                 type="button"
                 className={styles.drawerCloseBtn}
                 aria-label="Đóng menu"
                 onClick={() => setDrawerOpen(false)}
               >
                 ✕
-              </button>
+              </UiButton>
             </div>
 
             <nav className={styles.drawerNav} aria-label="Điều hướng di động">

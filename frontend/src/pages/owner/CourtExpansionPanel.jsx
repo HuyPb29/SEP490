@@ -1,8 +1,9 @@
+import { NumberInput as UiNumberInput } from '../../components/ui';
 import { useEffect, useRef, useState } from 'react'
 import { expansionQuote, ownerExpansions, submitExpansion } from '../../api/courtExpansionApi'
 import { apiErrorMessage, getServiceRegistrationPaymentInfo, operatorQrUrl } from '../../api/locationApi'
 import { formatVnd } from '../location/serviceRegistrationTerms'
-import { Button, EmptyState, FormField, Input, LoadingState, Modal, StatusBadge, Toast } from '../../components/common'
+import { Button, EmptyState, FormField, LoadingState, Modal, StatusBadge, Toast } from '../../components/common'
 import ImageProofUpload from '../../components/upload/ImageProofUpload'
 import { shortDate } from '../../utils/formatters'
 import styles from './CourtExpansionPanel.module.css'
@@ -127,7 +128,7 @@ export default function CourtExpansionPanel({ locationId, locked, onClose }) {
               <h3 id="expansion-step-1"><span className={styles.stepNumber}>1</span>Số sân và số tiền</h3>
               <FormField label="Số sân muốn thêm" required
                 error={!countValid ? 'Nhập số nguyên từ 1 đến 100.' : undefined}>
-                <Input type="number" min="1" max="100" required inputMode="numeric" className={styles.countInput}
+                <UiNumberInput min="1" max="100" required inputMode="numeric" className={styles.countInput}
                   value={count} disabled={saving}
                   onChange={(event) => { setCount(event.target.value); setQuote(null); setMessage('') }} />
               </FormField>

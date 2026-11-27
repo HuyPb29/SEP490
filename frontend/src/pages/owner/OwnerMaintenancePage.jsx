@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../../components/ui';
 /**
  * OwnerMaintenancePage.jsx — UC10, FR23, FR24, FR25, BR16, BR17, BF-08
  *
@@ -160,14 +161,14 @@ export default function OwnerMaintenancePage() {
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
               <h2 id="approve-modal-title">Xác nhận duyệt bảo trì</h2>
-              <button
+              <UiButton variant="custom"
                 className={styles.closeBtn}
                 type="button"
                 onClick={() => setApproveConfirmTarget(null)}
                 aria-label="Đóng"
               >
                 ×
-              </button>
+              </UiButton>
             </div>
             <div className={styles.modalBody}>
               <div className={styles.warningAlert} role="alert">
@@ -184,22 +185,22 @@ export default function OwnerMaintenancePage() {
               </div>
 
               <div className={styles.modalActions}>
-                <button
+                <UiButton variant="secondary"
                   className={styles.cancelBtn}
                   type="button"
                   onClick={() => setApproveConfirmTarget(null)}
                   disabled={processingId === approveConfirmTarget.id}
                 >
                   Hủy
-                </button>
-                <button
+                </UiButton>
+                <UiButton variant="custom"
                   className={styles.confirmApproveBtn}
                   type="button"
                   onClick={() => executeApproval(approveConfirmTarget.id, true)}
                   disabled={processingId === approveConfirmTarget.id}
                 >
                   {processingId === approveConfirmTarget.id ? "Đang duyệt…" : "Xác nhận duyệt"}
-                </button>
+                </UiButton>
               </div>
             </div>
           </div>
@@ -218,14 +219,14 @@ export default function OwnerMaintenancePage() {
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
               <h2 id="reject-modal-title">Từ chối yêu cầu bảo trì</h2>
-              <button
+              <UiButton variant="custom"
                 className={styles.closeBtn}
                 type="button"
                 onClick={() => setRejectTarget(null)}
                 aria-label="Đóng"
               >
                 ×
-              </button>
+              </UiButton>
             </div>
             <div className={styles.modalBody}>
               <p className={styles.modalSub}>
@@ -247,22 +248,22 @@ export default function OwnerMaintenancePage() {
               </div>
 
               <div className={styles.modalActions}>
-                <button
+                <UiButton variant="secondary"
                   className={styles.cancelBtn}
                   type="button"
                   onClick={() => setRejectTarget(null)}
                   disabled={processingId === rejectTarget.id}
                 >
                   Hủy
-                </button>
-                <button
+                </UiButton>
+                <UiButton variant="custom"
                   className={styles.confirmRejectBtn}
                   type="button"
                   onClick={handleConfirmReject}
                   disabled={processingId === rejectTarget.id}
                 >
                   {processingId === rejectTarget.id ? "Đang từ chối…" : "Xác nhận từ chối"}
-                </button>
+                </UiButton>
               </div>
             </div>
           </div>
@@ -284,7 +285,7 @@ export default function OwnerMaintenancePage() {
       {/* Filter Tabs */}
       <nav className={styles.filterTabs} aria-label="Lọc trạng thái bảo trì">
         {FILTER_TABS.map((tab) => (
-          <button
+          <UiButton variant="custom"
             key={tab}
             type="button"
             className={`${styles.filterTab} ${activeFilter === tab ? styles.filterTabActive : ''}`}
@@ -292,7 +293,7 @@ export default function OwnerMaintenancePage() {
           >
             <span>{tab}</span>
             <span className={styles.filterBadge}>{countByStatus[tab]}</span>
-          </button>
+          </UiButton>
         ))}
       </nav>
 
@@ -361,22 +362,22 @@ export default function OwnerMaintenancePage() {
                   <td>
                     {req.status === "Chờ duyệt" ? (
                       <div className={styles.actionButtonGroup}>
-                        <button
+                        <UiButton variant="custom"
                           className={styles.approveBtn}
                           type="button"
                           onClick={() => handleApproveClick(req)}
                           disabled={processingId === req.id}
                         >
                           Duyệt
-                        </button>
-                        <button
+                        </UiButton>
+                        <UiButton variant="custom"
                           className={styles.rejectBtn}
                           type="button"
                           onClick={() => handleRejectClick(req)}
                           disabled={processingId === req.id}
                         >
                           Từ chối
-                        </button>
+                        </UiButton>
                       </div>
                     ) : req.status === "Đã duyệt" ? (
                       <span className={styles.approvedNotice}>Đã khóa khung giờ</span>

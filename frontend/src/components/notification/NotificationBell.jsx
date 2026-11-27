@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -165,7 +166,7 @@ export default function NotificationBell() {
 
   return (
     <div className={styles.wrapper} ref={wrapperRef}>
-      <button
+      <UiButton variant="custom"
         ref={triggerRef}
         className={styles.bellButton}
         type="button"
@@ -182,7 +183,7 @@ export default function NotificationBell() {
           />
         </svg>
         {unread > 0 && <span className={styles.badge}>{unread > 99 ? '99+' : unread}</span>}
-      </button>
+      </UiButton>
 
       {open && (
         <div id={panelId} className={styles.panel} role="dialog" aria-label="Thông báo">
@@ -205,7 +206,7 @@ export default function NotificationBell() {
               const meta = TYPE_META[item.type] ?? { label: 'Thông báo', tone: 'info' };
               return (
                 <li key={item.id}>
-                  <button
+                  <UiButton variant="custom"
                     className={`${styles.item} ${item.read ? '' : styles.itemUnread}`}
                     type="button"
                     onClick={() => handleItemClick(item)}
@@ -219,7 +220,7 @@ export default function NotificationBell() {
                         {item.read ? 'Đã đọc' : 'Chưa đọc'} · {meta.label} · {relativeTime(item.createdAt)}
                       </span>
                     </span>
-                  </button>
+                  </UiButton>
                 </li>
               );
             })}

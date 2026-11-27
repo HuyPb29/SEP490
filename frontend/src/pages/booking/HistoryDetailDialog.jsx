@@ -1,3 +1,4 @@
+import { Checkbox as UiCheckbox, NumberInput as UiNumberInput } from '../../components/ui';
 import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -8,7 +9,7 @@ import { getMyTeams } from '../../api/teamApi'
 import { isSkillLevel, NO_SKILL_LABEL, SKILL_LEVELS } from '../../utils/skillLevels'
 import { money, shortDate, uiMessage } from '../../utils/formatters'
 import styles from './MyBookingsPage.module.css'
-import { Button, Modal, LoadingState, ErrorState, StatusBadge, Table, FormField, Input, Select } from '../../components/common'
+import { Button, Modal, LoadingState, ErrorState, StatusBadge, Table, FormField, Select } from '../../components/common'
 
 /** D60: tối đa 8 người tính cả chủ kèo — chủ kèo khai số đang có và số cần thêm. */
 const MATCH_MAX_PLAYERS = 8
@@ -61,7 +62,7 @@ function CreateMatchForm({ bookingId, teamId, onCreated, onSaving }) {
 
   const numberField = (label, value, setValue) => (
     <FormField label={label}>
-      <Input type="number" min={1} max={MATCH_MAX_PLAYERS - 1} value={value} disabled={saving} aria-describedby={error ? "create-match-error" : undefined}
+      <UiNumberInput min={1} max={MATCH_MAX_PLAYERS - 1} value={value} disabled={saving} aria-describedby={error ? "create-match-error" : undefined}
         onChange={(event) => { setValue(Math.max(1, Math.min(MATCH_MAX_PLAYERS - 1, Number(event.target.value) || 1))); setError('') }} />
     </FormField>
   )
@@ -82,7 +83,7 @@ function CreateMatchForm({ bookingId, teamId, onCreated, onSaving }) {
       </div>
       <p className={styles.subNoteLine}>Trình độ chỉ để người chơi lọc kèo; ai cũng gửi được yêu cầu, bạn là người duyệt.</p>
       <label className={styles.consent}>
-        <input type="checkbox" disabled={saving} aria-describedby={error ? "create-match-error" : undefined} checked={phoneConsent}
+        <UiCheckbox disabled={saving} aria-describedby={error ? "create-match-error" : undefined} checked={phoneConsent}
           onChange={(event) => { setPhoneConsent(event.target.checked); setError('') }} />
         <span>Tôi đồng ý cho người chơi được duyệt vào kèo xem số điện thoại của tôi.</span>
       </label>

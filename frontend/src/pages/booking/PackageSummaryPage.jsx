@@ -1,9 +1,10 @@
+import { NumberInput as UiNumberInput } from '../../components/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { apiErrorMessage } from '../../api';
 import { toTimeLabel } from '../../api/bookingApi';
 import CheckoutVoucherPicker from '../../components/booking/CheckoutVoucherPicker';
-import { Button, ConfirmDialog, EmptyState, ErrorState, FormField, FormStepper, Input, LoadingState, PageHeader, StatusBadge, Table, Textarea, STATUS_CATALOG } from '../../components/common';
+import { Button, ConfirmDialog, EmptyState, ErrorState, FormField, FormStepper, LoadingState, PageHeader, StatusBadge, Table, Textarea, STATUS_CATALOG } from '../../components/common';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useBookingActions } from '../../hooks/useBooking';
@@ -228,7 +229,7 @@ export default function PackageSummaryPage() {
               <h3>Dùng điểm tại địa điểm</h3><p className={styles.helper}>Số dư: <strong>{availablePoints} điểm</strong> · 1 điểm = {formatVnd(pointValue)}. Tối đa {checkoutPointPercent}% {appliedVoucher ? 'số tiền sau voucher' : 'giá niêm yết'}.</p>
               {pointsLoadError && <ErrorState message={pointsLoadError} onRetry={retryContact} />}
               <FormField label="Số điểm muốn dùng" htmlFor="package-points" error={uiMessage(pointError)} hint={'Được dùng tối đa ' + pointsAllowed + ' điểm cho gói này.'}>
-                <Input type="number" min="0" max={pointsAllowed} placeholder="0" value={pointsInput} disabled={submitting}
+                <UiNumberInput min="0" max={pointsAllowed} placeholder="0" value={pointsInput} disabled={submitting}
                   onChange={event => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
               </FormField>
             </div>

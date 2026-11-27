@@ -1,3 +1,4 @@
+import { Checkbox as UiCheckbox } from '../../components/ui';
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { apiErrorMessage } from '../../api'
 import {
@@ -258,7 +259,7 @@ function JoinTeamModal({ team, onClose, onSent }) {
       {profile.loading ? <LoadingState message="Đang tải trình độ hồ sơ…" /> : profile.error ? <ErrorState message={profile.error} onRetry={profile.reload} /> : needsSkill &&
         <FormField label="Trình độ chơi của bạn" required hint="Trình độ bạn chọn sẽ được lưu vào hồ sơ."><Select options={skillOptions('Chọn trình độ')} value={skill} required disabled={busy}
           onChange={(event) => { setSkill(event.target.value); setError('') }} /></FormField>}
-      <div className={styles.consentBox}><label htmlFor={consentId}><input id={consentId} type="checkbox" checked={consent} disabled={busy} aria-describedby={error ? consentId + '-error' : consentId + '-hint'}
+      <div className={styles.consentBox}><label htmlFor={consentId}><UiCheckbox id={consentId} checked={consent} disabled={busy} aria-describedby={error ? consentId + '-error' : consentId + '-hint'}
         onChange={(event) => { setConsent(event.target.checked); setError('') }} /><span>Tôi đồng ý chia sẻ số điện thoại với đội trưởng</span></label>
         <p id={consentId + '-hint'}>Thông tin liên hệ giúp đội trưởng kết nối với bạn khi bạn được duyệt vào đội.</p></div>
       {error && <div id={consentId + '-error'}><Toast tone="danger">{error}</Toast></div>}

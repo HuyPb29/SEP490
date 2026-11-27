@@ -1,3 +1,4 @@
+import { Button as UiButton, Radio as UiRadio } from '../../components/ui';
 import { useCallback, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api, { getAllPages } from '../../api'
@@ -262,7 +263,7 @@ function VoucherForm({ voucher, save, after }) {
           <legend>Đối tượng áp dụng</legend>
           <div className={styles.targetChoices}>
             {Object.entries(voucherTargets).map(([value, label]) => <label key={value} className={styles.targetOption}>
-              <input type="radio" name="targetGroup" value={value} checked={target === value}
+              <UiRadio name="targetGroup" value={value} checked={target === value}
                 aria-label={label} aria-describedby={`${targetId}-${value}`} aria-invalid={Boolean(errors.targetGroup)}
                 onChange={() => setTarget(value)} />
               <span className={styles.targetName}>{label}</span>
@@ -355,12 +356,12 @@ function Campaigns({ campaigns }) {
   }
 
   return <Section title="Chiến dịch voucher" resource={campaigns} actions={
-    <button type="button" className="action" disabled={busy} onClick={() => {
+    <UiButton variant="primary" type="button" className="action" disabled={busy} onClick={() => {
         setResult(null)
         setCreating(true)
       }}>
       Tạo chiến dịch voucher
-    </button>
+    </UiButton>
   }>
     {result && (published
       ? <Feedback tone="success">Đã tạo và phát hành voucher.</Feedback>
@@ -374,7 +375,7 @@ function Campaigns({ campaigns }) {
         campaigns.reload()
       }} />
       <div className={styles.createFooter}>
-        <button type="button" className="cw-secondary" disabled={busy} onClick={() => setCreating(false)}>Hủy</button>
+        <UiButton variant="secondary" type="button" className="cw-secondary" disabled={busy} onClick={() => setCreating(false)}>Hủy</UiButton>
       </div>
     </DialogModal>
     {campaigns.data?.length === 0 && <EmptyState>Chưa có chiến dịch voucher.</EmptyState>}

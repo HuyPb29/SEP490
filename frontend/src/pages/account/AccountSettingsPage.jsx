@@ -1,3 +1,4 @@
+import { Button as UiButton, Input as UiInput } from '../../components/ui';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../../components/layout/Header';
@@ -98,7 +99,7 @@ export default function AccountSettingsPage() {
               {notice && <div className={styles.infoBanner} role="status">{notice}</div>}
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="current-password">Mật khẩu hiện tại</label>
-                <input
+                <UiInput
                   id="current-password"
                   className={`${styles.input} ${error ? styles.inputError : ''}`}
                   type="password"
@@ -110,7 +111,7 @@ export default function AccountSettingsPage() {
               </div>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="new-password">Mật khẩu mới</label>
-                <input
+                <UiInput
                   id="new-password"
                   className={`${styles.input} ${error ? styles.inputError : ''}`}
                   type="password"
@@ -122,7 +123,7 @@ export default function AccountSettingsPage() {
               </div>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="confirm-password">Xác nhận mật khẩu mới</label>
-                <input
+                <UiInput
                   id="confirm-password"
                   className={`${styles.input} ${error ? styles.inputError : ''}`}
                   type="password"
@@ -133,9 +134,9 @@ export default function AccountSettingsPage() {
                 />
               </div>
               {error && <p className={styles.errorText} role="alert">{error}</p>}
-              <button className={styles.primaryBtn} type="submit" disabled={saving}>
+              <UiButton variant="custom" className={styles.primaryBtn} type="submit" disabled={saving}>
                 {saving ? "Đang đổi mật khẩu…" : "Đổi mật khẩu"}
-              </button>
+              </UiButton>
             </form>
           )}
           <p className={styles.cardFooterText}><Link className={styles.greenLinkBold} to="/">Quay lại tìm địa điểm</Link></p>

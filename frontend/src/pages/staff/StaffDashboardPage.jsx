@@ -1,3 +1,4 @@
+import { Button as UiButton, DatePicker as UiDatePicker } from '../../components/ui';
 import { ConfirmDialog } from '../../components/common/Modal';
 import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -298,19 +299,19 @@ export default function StaffDashboardPage() {
           {' · '}
           {updatedAt ? `Cập nhật lúc ${hhmm(updatedAt)} · tự làm mới 30 giây` : 'Đang tải…'}
           {' · '}
-          <button className={styles.inlineLink} type="button" onClick={loadAll} disabled={loading}>
+          <UiButton variant="ghost" className={styles.inlineLink} type="button" onClick={loadAll} disabled={loading}>
             Làm mới
-          </button>
+          </UiButton>
         </>
       }
       actions={
         <>
-          <button className={styles.secondaryButton} type="button" onClick={() => setShowReconciliation(true)}>
+          <UiButton variant="secondary" className={styles.secondaryButton} type="button" onClick={() => setShowReconciliation(true)}>
             Đối soát cuối ngày{dashboard?.reconciledToday ? ' ✓' : ''}
-          </button>
-          <button className={styles.primaryButton} type="button" onClick={() => openCounterBooking()}>
+          </UiButton>
+          <UiButton variant="primary" className={styles.primaryButton} type="button" onClick={() => openCounterBooking()}>
             + Đặt tại quầy
-          </button>
+          </UiButton>
         </>
       }
       locationName={dashboard?.locationName}
@@ -327,7 +328,7 @@ export default function StaffDashboardPage() {
             {error && (
               <div className={`${styles.alert} ${styles.alertDanger}`} role="alert">
                 <span>{error}</span>
-                <button className={styles.alertButton} type="button" onClick={loadAll}>Thử lại</button>
+                <UiButton variant="custom" className={styles.alertButton} type="button" onClick={loadAll}>Thử lại</UiButton>
               </div>
             )}
             {urgentPayments.length > 0 && (
@@ -342,10 +343,10 @@ export default function StaffDashboardPage() {
                   đã chờ xác nhận quá {overdueMinutes} phút. Hãy kiểm tra tiền về và xử lý ngay; quá {transferMinutes} phút
                   giao dịch sẽ được chuyển cho chủ sân.
                 </span>
-                <button className={`${styles.alertButton} ${styles.alertButtonDanger}`} type="button"
+                <UiButton variant="custom" className={`${styles.alertButton} ${styles.alertButtonDanger}`} type="button"
                   onClick={() => openPaymentConfirmation(urgentPayments[0])}>
                   Xử lý ngay
-                </button>
+                </UiButton>
               </div>
             )}
             {transferredPayments.length > 0 && (
@@ -357,9 +358,9 @@ export default function StaffDashboardPage() {
                   </strong>{' '}
                   đã chờ quá {transferMinutes} phút trong giờ mở cửa và đã được chuyển cho chủ sân xử lý. Bạn chỉ xem được.
                 </span>
-                <button className={styles.alertButton} type="button" onClick={() => openPaymentConfirmation(transferredPayments[0])}>
+                <UiButton variant="custom" className={styles.alertButton} type="button" onClick={() => openPaymentConfirmation(transferredPayments[0])}>
                   Xem giao dịch
-                </button>
+                </UiButton>
               </div>
             )}
             {surchargePayments.length > 0 && (
@@ -370,9 +371,9 @@ export default function StaffDashboardPage() {
                     ? `${surchargePayments[0].label} · ${formatMoney(surchargePayments[0].amountDue)} đang chờ xác nhận.`
                     : `${surchargePayments.length} phụ thu đổi lịch đang chờ xác nhận.`}
                 </span>
-                <button className={styles.alertButton} type="button" onClick={() => openPaymentConfirmation(surchargePayments[0])}>
+                <UiButton variant="custom" className={styles.alertButton} type="button" onClick={() => openPaymentConfirmation(surchargePayments[0])}>
                   Xác nhận phụ thu
-                </button>
+                </UiButton>
               </div>
             )}
             {endingTiles.length > 0 && (
@@ -386,9 +387,9 @@ export default function StaffDashboardPage() {
                     </span>
                   ))}
                 </span>
-                <button className={styles.alertButton} type="button" onClick={() => navigate('/staff/schedule')}>
+                <UiButton variant="custom" className={styles.alertButton} type="button" onClick={() => navigate('/staff/schedule')}>
                   Xem lịch sân
-                </button>
+                </UiButton>
               </div>
             )}
           </section>
@@ -425,9 +426,9 @@ export default function StaffDashboardPage() {
             <section className={styles.panel}>
               <header className={styles.panelHeader}>
                 <h2 className={styles.panelTitle}>Trạng thái sân lúc này</h2>
-                <button className={styles.linkButton} type="button" onClick={() => navigate('/staff/schedule')}>
+                <UiButton variant="ghost" className={styles.linkButton} type="button" onClick={() => navigate('/staff/schedule')}>
                   Xem lịch sân ›
-                </button>
+                </UiButton>
               </header>
               {tiles.length === 0 ? (
                 <p className={styles.empty}>{loading ? 'Đang tải trạng thái sân…' : 'Chưa có dữ liệu sân hoạt động.'}</p>
@@ -449,9 +450,9 @@ export default function StaffDashboardPage() {
                         {court.remaining > 0 && <span className={styles.countdown}>{formatRemaining(court.remaining)}</span>}
                         {court.detail && <span className={styles.courtTime}>{court.detail}</span>}
                         {court.type === 'available' && (
-                          <button className={styles.courtAction} type="button" onClick={() => openCounterBooking(court.id)}>
+                          <UiButton variant="custom" className={styles.courtAction} type="button" onClick={() => openCounterBooking(court.id)}>
                             Đặt tại quầy
-                          </button>
+                          </UiButton>
                         )}
                       </article>
                     );
@@ -504,10 +505,10 @@ export default function StaffDashboardPage() {
             <section className={styles.panel}>
               <header className={styles.panelHeader}>
                 <h2 className={styles.panelTitle}>Thanh toán chờ xác nhận</h2>
-                <button className={styles.linkButton} type="button"
+                <UiButton variant="ghost" className={styles.linkButton} type="button"
                   onClick={() => openPaymentConfirmation(pendingPayments.find((p) => !p.transferredToOwner) ?? pendingPayments[0])}>
                   Mở bàn xác nhận ›
-                </button>
+                </UiButton>
               </header>
               {pendingPayments.length === 0 ? (
                 <p className={styles.empty}>Hiện không có giao dịch nào đang chờ xác nhận.</p>
@@ -518,7 +519,7 @@ export default function StaffDashboardPage() {
                     const rowClass = payment.transferredToOwner ? styles.rowMoved : payment.overdue ? styles.rowUrgent : '';
                     return (
                       <li key={`${payment.reschedule ? 'rs' : 'bk'}-${payment.id}`}>
-                        <button className={`${styles.row} ${rowClass}`} type="button" onClick={() => openPaymentConfirmation(payment)}>
+                        <UiButton variant="custom" className={`${styles.row} ${rowClass}`} type="button" onClick={() => openPaymentConfirmation(payment)}>
                           <span className={styles.rowMain}>
                             <strong>
                               {payment.reschedule && <span className={styles.surchargeTag}>Phụ thu đổi lịch</span>}
@@ -534,7 +535,7 @@ export default function StaffDashboardPage() {
                                   : waited != null ? `Chờ ${waited} phút` : 'Chờ xác nhận'}
                             </small>
                           </span>
-                        </button>
+                        </UiButton>
                       </li>
                     );
                   })}
@@ -549,7 +550,7 @@ export default function StaffDashboardPage() {
             <section className={styles.panel}>
               <header className={styles.panelHeader}>
                 <h2 className={styles.panelTitle}>Đơn đặt tại quầy</h2>
-                <input className={styles.dateInput} type="date" aria-label="Ngày chơi của đơn tại quầy"
+                <UiDatePicker className={styles.dateInput} aria-label="Ngày chơi của đơn tại quầy"
                   value={counterDate} onChange={(e) => setCounterDate(e.target.value)} />
               </header>
               {counterBookings.length === 0 ? (
@@ -579,10 +580,10 @@ export default function StaffDashboardPage() {
                         <span className={styles.rowSide}>
                           <strong>{formatMoney(item.finalAmount)}</strong>
                           {holding && !expiredHold ? (
-                            <button type="button" className={styles.smallPrimary}
+                            <UiButton variant="primary" type="button" className={styles.smallPrimary}
                               onClick={() => { setCounterPayment(item); setCounterPaymentError(''); }}>
                               Xác nhận đã nhận tiền
-                            </button>
+                            </UiButton>
                           ) : (
                             <small className={item.status === 'CONFIRMED' ? styles.textSuccess : ''}>
                               {expiredHold ? STATES.EXPIRED : (STATES[item.status] || item.status)}

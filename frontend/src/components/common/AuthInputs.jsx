@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { useRef, useState } from 'react';
 import { FormField, Input } from './FormField';
 import styles from './AuthInputs.module.css';
@@ -10,10 +11,10 @@ export function PasswordField({ id, label = 'Mật khẩu', value, error, hint, 
     <div className={styles.passwordWrap}>
       <Input {...props} id={id} value={value} type={visible ? 'text' : 'password'} invalid={Boolean(error)}
         aria-required="true" aria-describedby={description} className={styles.passwordInput} />
-      <button type="button" className={styles.toggle} aria-controls={id} aria-pressed={visible}
+      <UiButton variant="custom" type="button" className={styles.toggle} aria-controls={id} aria-pressed={visible}
         aria-label={`${visible ? 'Ẩn' : 'Hiện'} ${label.toLowerCase()}`} onClick={() => setVisible(!visible)}>
         {visible ? 'Ẩn' : 'Hiện'}
-      </button>
+      </UiButton>
     </div>
     {strength && <div className={styles.strength}>
       <div className={styles.strengthTrack} aria-hidden="true">{[1, 2, 3, 4].map(level => <span key={level} data-filled={score >= level} />)}</div>
