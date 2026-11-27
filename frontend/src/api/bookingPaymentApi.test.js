@@ -125,10 +125,12 @@ describe('loadPayment: lấy hướng dẫn bị lỗi', () => {
         ? { bookingCode: 'BK1', status: 'HOLDING', finalAmount: 120000 }
         : { bookingCode: 'BK1', status: 'AWAITING_CONFIRMATION', paymentId: 51, receiptNo: null }),
       '/bookings/11/payment-instructions': httpError(409, 'Booking không còn chờ thanh toán'),
+      '/payments/51': { id: 51, status: 'AWAITING_CONFIRMATION' },
     })
 
     expect(await loadPayment({ kind: 'booking', id: 11 }))
       .toMatchObject({ status: 'AWAITING_CONFIRMATION', canPay: false, awaiting: true, paymentId: 51 })
+    expect(api.get).toHaveBeenCalledWith('/payments/51', { signal: undefined })
   })
 
   it('lỗi khác thì báo lên cho màn hình', async () => {
@@ -185,7 +187,7 @@ describe('API Staff/Owner (UC19)', () => {
     vi.mocked(getAllPages).mockResolvedValue([{ id: 51 }])
 
     expect(await listPendingStaffBookingPayments()).toEqual([{ id: 51 }])
-    expect(getAllPages).toHaveBeenCalledWith('/staff/payments', { signal: undefined, params: { status: 'AWAITING_CONFIRMATION' } })
+    expect(getAllPages).toHaveBeenCalledWith('/staff/payments', { signal: undefined })
   })
 
   it('chi tiết và quyết định đi đúng đường', async () => {

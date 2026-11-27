@@ -170,6 +170,8 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
     && bookingStartsAfter(target?.booking_date, target?.start_time, now)
   const viewPayment = !error && item.booking_type !== 'session' && detail?.paymentId
     && ['awaiting_confirmation', 'confirmed', 'in_use', 'completed', 'payment_rejected', 'cancelled_by_facility'].includes(currentStatus)
+  const packageComplaintBookingId = !error && item.booking_type === 'package' && currentStatus === 'cancelled_by_facility'
+    ? detail.sessions?.[0]?.id : null
   // BR55, D112: chỉ booking đã xác nhận, đặt dưới tên đội và chưa tới giờ chơi mới mở được kèo.
   const canCreateMatch = !error && !matchCreated && currentStatus === 'confirmed' && detail?.teamId
     && affectedReady && !blocksNormalBookingActions(affected)
@@ -275,6 +277,11 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
         {viewPayment && <Button type="button" variant="secondary" onClick={() => onPayment(target)}>
           {detail.receiptNo ? 'Xem biên nhận' : 'Xem thanh toán'}
         </Button>}
+        {packageComplaintBookingId && (
+          <Link to={`/my-complaints?bookingId=${packageComplaintBookingId}`} className={styles.textLink}>
+            Gửi khiếu nại
+          </Link>
+        )}
       </fieldset>
     </Container>
   )
