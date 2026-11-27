@@ -1,3 +1,4 @@
+import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import PublicLayout from '../../components/layout/PublicLayout';
@@ -86,8 +87,8 @@ export default function OpenMatchesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState('');
 
-  const loadMatches = useCallback(async () => {
-    setLoadingMatches(true);
+  const loadMatches = useCallback(async (quiet = false) => {
+    if (quiet !== true) setLoadingMatches(true);
     try {
       const slot = TIME_SLOTS[appliedFilters.timeSlot] ?? TIME_SLOTS.all;
       const page = await getOpenMatches({
@@ -106,9 +107,9 @@ export default function OpenMatchesPage() {
     }
   }, [appliedFilters]);
 
-  const loadHosted = useCallback(async () => {
+  const loadHosted = useCallback(async (quiet = false) => {
     if (!isPlayer) return;
-    setLoadingHosted(true);
+    if (quiet !== true) setLoadingHosted(true);
     try {
       const [page, joined] = await Promise.all([
         getMyMatches({ role: 'HOSTED', status: 'OPEN' }),
@@ -139,13 +140,15 @@ export default function OpenMatchesPage() {
 
   useEffect(() => {
     const timer = setTimeout(loadMatches, 0);
-    return () => clearTimeout(timer);
+    const stop = subscribeLiveRefresh(() => loadMatches(true));
+    return () => { clearTimeout(timer); stop(); };
   }, [loadMatches]);
 
   useEffect(() => {
     if (!isPlayer) return undefined;
     const timer = setTimeout(loadHosted, 0);
-    return () => clearTimeout(timer);
+    const stop = subscribeLiveRefresh(() => loadHosted(true));
+    return () => { clearTimeout(timer); stop(); };
   }, [isPlayer, loadHosted]);
 
   useEffect(() => {

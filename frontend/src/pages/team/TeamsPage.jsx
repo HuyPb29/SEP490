@@ -202,6 +202,11 @@ function MyTeams({ revision, refreshAll, onCreate, onExplore, onNotice }) {
   const [selectedId, setSelectedId] = useState(null)
   const detailsId = useId()
   const selected = teams.data?.find(team => team.id === selectedId)
+  useEffect(() => {
+    if (selectedId == null || selected || teams.loading) return undefined
+    const frame = requestAnimationFrame(() => section.current?.focus({ preventScroll: true }))
+    return () => cancelAnimationFrame(frame)
+  }, [selectedId, selected, teams.loading])
   return <section ref={section} tabIndex={-1} className={styles.section} aria-label="Đội của tôi">
     <div className={styles.sectionHeading}><div><h2>Đội của tôi</h2><p>Những nhóm bạn đang chơi cùng. Mở đội để xem và quản lý thành viên.</p></div></div>
     {teams.loading ? <LoadingState message="Đang tải đội của bạn…" /> : teams.error ? <ErrorState message={teams.error} onRetry={teams.reload} /> :
@@ -213,7 +218,6 @@ function MyTeams({ revision, refreshAll, onCreate, onExplore, onNotice }) {
     <div id={detailsId}>{selected && !teams.error && <TeamDetails key={selected.id} team={selected} refreshAll={(message) => {
       onNotice(message)
       refreshAll()
-      requestAnimationFrame(() => section.current?.focus({ preventScroll: true }))
     }} />}</div>
   </section>
 }

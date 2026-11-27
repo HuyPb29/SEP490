@@ -15,6 +15,7 @@ export function Modal({
   children,
 }) {
   const ref = useRef(null);
+  const backdropPress = useRef(false);
   const autoTitleId = useId();
   const handleClose = onClose || onDismiss;
 
@@ -46,6 +47,17 @@ export function Modal({
       aria-label={title || undefined}
       aria-labelledby={!title && labelledBy ? labelledBy : title ? autoTitleId : undefined}
       className={[styles.dialogNative, className].filter(Boolean).join(' ')}
+      onPointerDown={(event) => {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        backdropPress.current = event.target === event.currentTarget &&
+          (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom);
+      }}
+      onClick={(event) => {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const outside = event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom;
+        if (backdropPress.current && outside && !busy) handleClose?.();
+        backdropPress.current = false;
+      }}
       onCancel={(event) => {
         event.preventDefault();
         event.stopPropagation();

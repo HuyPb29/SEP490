@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { getSavedUser, getToken } from '../api/session'
 import { getVenueSchedule } from '../api/facilityApi'
+import { subscribeLiveRefresh } from '../utils/liveRefresh'
 
 function subscribe(listener) {
   window.addEventListener('bms-auth-change', listener)
@@ -23,7 +24,7 @@ export function useVenueSchedule(id, requestedDate, today, token, revision) {
   const date = maxDate && requestedDate >= today && requestedDate <= maxDate ? requestedDate : today
   useEffect(() => {
     const controller = new AbortController()
-    getVenueSchedule(id, date, controller.signal).then((data) => {
+    const refresh = () => getVenueSchedule(id, date, controller.signal).then((data) => {
       if (!controller.signal.aborted) setResult({ id, token, date, revision, maxDate: data.max_date, data })
     }).catch((error) => {
       if (!controller.signal.aborted) setResult((previous) => ({
@@ -32,7 +33,8 @@ export function useVenueSchedule(id, requestedDate, today, token, revision) {
         error: error.response?.data?.message || 'Không tải được lịch sân.',
       }))
     })
-    return () => controller.abort()
+    const stop = subscribeLiveRefresh(refresh, 5000, true)
+    return () => { controller.abort(); stop() }
   }, [id, date, token, revision])
   const current = sameViewer && result.date === date && result.revision === revision ? result : null
   return { date, maxDate, current }

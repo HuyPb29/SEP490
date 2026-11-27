@@ -82,6 +82,31 @@ public class VoucherService {
     public PageResponse<VoucherResponse> ownerList(UserPrincipal user, VoucherStatus status,int page,int size) {
         return list(ownerLocation(user),status,page,size);
     }
+    public PageResponse<VoucherRecipientResponse> recipients(UserPrincipal user, String query, int page, int size) {
+        ownerLocation(user);
+        Pageable pageable = page(page, size);
+        String term = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        if (term.length() < 2 || term.length() > 100) throw new AppException("Nhập từ 2 đến 100 ký tự để tìm người chơi");
+        return PageResponse.from(accounts.findAll((root, q, cb) -> cb.and(
+                cb.equal(root.get("role"), Role.PLAYER), cb.equal(root.get("status"), AccountStatus.ACTIVE),
+                cb.or(cb.greaterThan(cb.locate(cb.lower(root.get("username")), term), 0),
+                        cb.equal(cb.lower(root.get("email")), term), cb.equal(root.get("phone"), term))), pageable)
+                .map(a -> new VoucherRecipientResponse(a.getId(), a.getUsername(), a.getFullName())));
+    }
+
+    public PageResponse<VoucherGrantRecipientResponse> grantRecipients(UserPrincipal user, Long id, int page, int size) {
+        Long location = ownerLocation(user);
+        Voucher voucher = vouchers.findById(id).orElseThrow(() -> new AppException("Không tìm thấy voucher", HttpStatus.NOT_FOUND));
+        if (!location.equals(voucher.getLocationId())) throw new AppException("Voucher không thuộc địa điểm đã chọn", HttpStatus.FORBIDDEN);
+        var result = grants.findByVoucherId(id, page(page, size));
+        var players = accounts.findAllById(result.map(VoucherGrant::getPlayerId).toSet()).stream()
+                .collect(java.util.stream.Collectors.toMap(com.sep490.bms.entity.account.Account::getId, a -> a));
+        return PageResponse.from(result.map(g -> {
+            var player = players.get(g.getPlayerId());
+            return new VoucherGrantRecipientResponse(g.getId(), g.getPlayerId(), player == null ? null : player.getUsername(),
+                    player == null ? null : player.getFullName(), g.getStatus(), g.getGrantedAt(), g.getExpiresAt());
+        }));
+    }
     private PageResponse<VoucherResponse> list(Long location,VoucherStatus status,int page,int size) {
         Specification<Voucher> spec=(r,q,c) -> c.and(c.equal(r.get("locationId"),location),
                 status==null ? c.conjunction():c.equal(r.get("status"),status));
@@ -112,6 +137,7 @@ public class VoucherService {
         return VoucherResponse.from(vouchers.saveAndFlush(v));
     }
     private void configure(Voucher v,VoucherWriteRequest r) {
+        requireBudget(r.discountType(), r.discountValue(), r.budget());
         if(r.validTo().isBefore(LocalDate.now())) throw new AppException("Voucher đã hết hạn");
         String code=r.code()==null ? null:r.code().toUpperCase(Locale.ROOT);
         if(code!=null && !code.equals(v.getCode()) && vouchers.existsByLocationIdAndCode(v.getLocationId(),code))
@@ -125,12 +151,18 @@ public class VoucherService {
     @Transactional
     public VoucherResponse publish(UserPrincipal user,Long id) {
         Voucher v=owned(user,id);
+        requireBudget(v.getDiscountType(), v.getDiscountValue(), v.getBudget());
         if (v.getStatus() == VoucherStatus.DISABLED || v.getStatus() == VoucherStatus.STOPPED
                 || v.getSource() != VoucherSource.CAMPAIGN)
             throw new AppException("Voucher không thể phát hành", HttpStatus.CONFLICT);
         if(v.getValidFrom()==null || v.getValidTo()==null || v.getValidTo().isBefore(LocalDate.now()))
             throw new AppException("Ngày hiệu lực voucher không hợp lệ");
         v.setStatus(VoucherStatus.PUBLISHED); return VoucherResponse.from(vouchers.saveAndFlush(v));
+    }
+    private void requireBudget(DiscountType type, BigDecimal discount, BigDecimal budget) {
+        if (type == DiscountType.AMOUNT && budget != null && discount != null && budget.compareTo(discount) < 0)
+            throw new AppException("Ngân sách phải lớn hơn hoặc bằng số tiền giảm của một voucher", HttpStatus.BAD_REQUEST,
+                    java.util.Map.of("budget", "Ngân sách phải lớn hơn hoặc bằng số tiền giảm của một voucher"));
     }
     @Transactional
     public VoucherResponse stop(UserPrincipal user, Long id) {

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Modal } from '../../components/common/Modal'
 import api, { apiErrorMessage } from '../../api'
 import styles from './StaffDashboardPage.module.css'
 
@@ -8,7 +9,6 @@ const moneyError = (value) => !value.trim() ? 'Vui lòng nhập số tiền. (MS
   : !/^\d{1,12}$/.test(value.trim()) ? 'Nhập số nguyên không âm, tối đa 12 chữ số. (MSG02)' : ''
 
 export default function ReconciliationDialog({ onClose }) {
-  const dialogRef = useRef(null)
   const [today] = useState(() => vietnamDate.format(new Date()))
   const [date, setDate] = useState(today)
   const [result, setResult] = useState(null)
@@ -21,12 +21,6 @@ export default function ReconciliationDialog({ onClose }) {
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState('')
   const validDate = Boolean(date && date <= today)
-
-  useEffect(() => {
-    const dialog = dialogRef.current
-    dialog.showModal()
-    return () => { if (dialog.open) dialog.close() }
-  }, [])
 
   useEffect(() => {
     if (!validDate) return undefined
@@ -89,9 +83,9 @@ export default function ReconciliationDialog({ onClose }) {
   const fieldError = (key) => errors[key] && <span role="alert" className={styles.errorMessage}>{errors[key]}</span>
 
   return (
-    <dialog ref={dialogRef} aria-labelledby="recon-title"
+    <Modal labelledBy="recon-title" onClose={onClose} busy={submitting}
       className="m-auto max-h-[85dvh] w-full max-w-xl overflow-auto rounded-xl bg-white p-6 shadow-xl backdrop:bg-black/40"
-      onCancel={(event) => { event.preventDefault(); if (!submitting) onClose() }}>
+      >
       <h2 id="recon-title" className={styles.modalTitle}>Đối soát doanh thu cuối ngày</h2>
       <form className={styles.bookingForm} onSubmit={submit} noValidate>
         <label className={styles.formField}>
@@ -152,6 +146,6 @@ export default function ReconciliationDialog({ onClose }) {
           </button>}
         </div>
       </form>
-    </dialog>
+    </Modal>
   )
 }

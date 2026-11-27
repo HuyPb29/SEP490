@@ -6,6 +6,8 @@ import com.sep490.bms.dto.request.*;
 import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.booking.Booking;
+import com.sep490.bms.entity.booking.BookingPackage;
+import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.location.Maintenance;
 import com.sep490.bms.entity.reschedule.*;
@@ -160,9 +162,45 @@ public class CancellationService {
         for (Booking b : confirmedImpact) mark(b,AffectedCause.MAINTENANCE,m.getId(),actor,"Sân bảo trì");
     }
     public void courtDisabled(Long courtId,Long actor) {
-        for(Long id:em.createQuery("select b.id from Booking b where b.courtId=:c and b.status=:s order by b.id",Long.class)
-                .setParameter("c",courtId).setParameter("s",BookingStatus.CONFIRMED).getResultList())
-            mark(support.booking(id),AffectedCause.COURT_DISABLED,null,actor,"Sân tạm ngưng hoạt động");
+        var states = List.of(BookingStatus.CONFIRMED, BookingStatus.HOLDING,
+                BookingStatus.AWAITING_CONFIRMATION, BookingStatus.RESUBMIT_REQUESTED);
+        var candidates = em.createQuery("select b from Booking b where b.courtId=:c and b.status in :states order by b.id", Booking.class)
+                .setParameter("c", courtId).setParameter("states", states).getResultList();
+        for (Booking candidate : candidates) {
+            // Caller holds Location first; then Payment and target, matching staff payment decisions.
+            for (Payment payment : support.basePayments(candidate)) support.lock(Payment.class, payment.getId());
+            BookingPackage pkg = candidate.getPackageId() == null ? null : support.lock(BookingPackage.class, candidate.getPackageId());
+            Booking booking = support.booking(candidate.getId());
+            if (booking.getStatus() == BookingStatus.CONFIRMED) {
+                mark(booking, AffectedCause.COURT_DISABLED, null, actor, "Sân tạm ngưng hoạt động");
+            } else if (unconfirmed(booking.getStatus())) {
+                if (pkg == null) {
+                    cancelUnconfirmed(booking, actor);
+                    vouchers.restoreForFailedBooking(booking.getId());
+                    points.restoreForFailedBooking(booking.getId());
+                } else if (unconfirmed(pkg.getStatus())) {
+                    // Một giao dịch trả cả đơn/gói: hủy toàn bộ đơn chưa xác nhận, trả ưu đãi đúng một lần.
+                    pkg.setStatus(BookingStatus.CANCELLED_BY_FACILITY);
+                    for (Long id : em.createQuery("select b.id from Booking b where b.packageId=:p order by b.id", Long.class)
+                            .setParameter("p", pkg.getId()).getResultList()) cancelUnconfirmed(support.booking(id), actor);
+                    em.flush();
+                    vouchers.restoreForFailedPackage(pkg.getId());
+                    points.restoreForFailedPackage(pkg.getId());
+                }
+            }
+        }
+    }
+    private boolean unconfirmed(BookingStatus status) {
+        return List.of(BookingStatus.HOLDING, BookingStatus.AWAITING_CONFIRMATION, BookingStatus.RESUBMIT_REQUESTED).contains(status);
+    }
+    private void cancelUnconfirmed(Booking booking, Long actor) {
+        if (!unconfirmed(booking.getStatus())) return;
+        for (Payment payment : support.basePayments(booking)) {
+            if (payment.getStatus() == PaymentStatus.AWAITING_CONFIRMATION || payment.getStatus() == PaymentStatus.RESUBMIT_REQUESTED)
+                payment.reject("Sân tạm ngưng hoạt động. Nếu đã chuyển tiền, vui lòng gửi khiếu nại để được hoàn tiền.");
+        }
+        cancelBooking(booking, actor, BookingStatus.CANCELLED_BY_FACILITY);
+        em.flush();
     }
     public void hoursChanged(Long locationId,Long actor) {
         em.flush();

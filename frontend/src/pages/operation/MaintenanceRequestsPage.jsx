@@ -1,3 +1,4 @@
+import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { useCallback, useEffect, useState } from 'react';
 import {
   apiErrorMessage,
@@ -180,7 +181,7 @@ export default function MaintenanceRequestsPage() {
     let active = true;
     if ((!isOwner && !isStaff) || (isOwner && !ownerLocationId)) return undefined;
     setLoading(true);
-    getMaintenanceRequests(isOwner ? 'OWNER' : 'STAFF', null, ownerLocationId)
+    const refresh = () => getMaintenanceRequests(isOwner ? 'OWNER' : 'STAFF', null, ownerLocationId)
       .then((list) => {
         if (!active) return;
         setRequests(list);
@@ -192,8 +193,9 @@ export default function MaintenanceRequestsPage() {
       .finally(() => {
         if (active) setLoading(false);
       });
+    const stop = subscribeLiveRefresh(refresh, 5000, true);
     return () => {
-      active = false;
+      active = false; stop();
     };
   }, [isOwner, isStaff, ownerLocationId]);
 

@@ -164,6 +164,15 @@ export default function BookingSummaryPage() {
   const validPoints = !pointValidation;
   const pointsUsed = validPoints ? requestedPoints : 0;
   const pointsDiscount = pointsUsed * pointValue;
+  const minimumPoints = Math.max(1, Math.ceil(1000 / pointValue));
+  // One stop for zero, then every valid positive amount. Skip discounts below 1,000đ.
+  const sliderMax = Math.max(0, pointsAllowed - minimumPoints + 1);
+  const sliderValue = validPoints && pointsUsed >= minimumPoints ? pointsUsed - minimumPoints + 1 : 0;
+  const pointsDisabled = submitting || voucherLoading || pointsLoading || Boolean(pointsError) || sliderMax === 0;
+  const selectPointStop = (stop) => {
+    setPointsInput(String(stop > 0 ? Math.min(stop, sliderMax) + minimumPoints - 1 : 0));
+    setPointSubmitError('');
+  };
   const pricingSummary = { listPrice, voucherDiscount, remainingAfterVoucher, pointsUsed, pointsDiscount,
     finalAmount: remainingAfterVoucher - pointsDiscount };
   const slotSummary = {
@@ -308,7 +317,16 @@ export default function BookingSummaryPage() {
             <FormField htmlFor="checkout-points" label="Số điểm muốn dùng" error={pointValidation || pointSubmitError ? uiMessage(pointValidation || pointSubmitError) : undefined} hint={`Tối đa ${pointsAllowed} điểm · ${checkoutPointPercent}% ${appliedVoucher ? 'số tiền còn lại sau voucher' : 'giá niêm yết'}.`}>
               <Input id="checkout-points" type="number" min={0} max={pointsAllowed} placeholder="0" value={pointsInput} disabled={submitting || voucherLoading || pointsLoading || Boolean(pointsError)} onChange={event => { setPointsInput(event.target.value); setPointSubmitError(''); }} />
             </FormField>
-            <label htmlFor="checkout-points-range" className={styles.rangeLabel}>Điều chỉnh số điểm</label><input id="checkout-points-range" className={styles.range} type="range" min={0} max={pointsAllowed} step={1} value={validPoints ? pointsUsed : 0} disabled={submitting || voucherLoading || pointsLoading || Boolean(pointsError) || pointsAllowed === 0} onChange={event => { setPointsInput(event.target.value); setPointSubmitError(''); }} aria-describedby="point-minimum" /><p id="point-minimum" className={styles.helper}>Mỗi lần dùng điểm phải giảm ít nhất 1.000đ. Nhập 0 nếu không dùng điểm.</p>
+            <div className={styles.rangeHeading}><label htmlFor="checkout-points-range" className={styles.rangeLabel}>Điều chỉnh số điểm</label><output htmlFor="checkout-points checkout-points-range" className={styles.pointSaving}>Giảm {formatVnd(pointsDiscount)}</output></div>
+            <div className={styles.pointsSlider}>
+              <Button variant="secondary" className={styles.pointAdjust} aria-label="Giảm số điểm" disabled={pointsDisabled || sliderValue === 0} onClick={() => selectPointStop(sliderValue - 1)}>−</Button>
+              <input id="checkout-points-range" className={styles.range} type="range" min={0} max={sliderMax} step={1} value={sliderValue}
+                style={{ '--points-fill': `${sliderMax ? sliderValue / sliderMax * 100 : 0}%` }} disabled={pointsDisabled}
+                onChange={event => selectPointStop(Number(event.target.value))} aria-describedby="point-minimum" aria-valuetext={`${pointsUsed} điểm, giảm ${formatVnd(pointsDiscount)}`} />
+              <Button variant="secondary" className={styles.pointAdjust} aria-label="Tăng số điểm" disabled={pointsDisabled || sliderValue >= sliderMax} onClick={() => selectPointStop(sliderValue + 1)}>+</Button>
+            </div>
+            <div className={styles.rangeLimits}><span>0 điểm</span><Button variant="ghost" size="sm" disabled={pointsDisabled || pointsUsed === pointsAllowed} onClick={() => selectPointStop(sliderMax)}>Dùng tối đa {pointsAllowed} điểm</Button></div>
+            <p id="point-minimum" className={styles.helper}>{sliderMax === 0 && !pointsLoading && !pointsError ? 'Chưa đủ điểm hoặc hạn mức để giảm tối thiểu 1.000đ. Bạn có thể tiếp tục không dùng điểm.' : `Thanh kéo chọn 0 hoặc từ ${minimumPoints} điểm (giảm tối thiểu 1.000đ).`}</p>
           </section>
           <dl className={styles.pricing}><div><dt>Tạm tính</dt><dd>{formatVnd(pricingSummary.listPrice)}</dd></div><div><dt>Giảm voucher</dt><dd>{pricingSummary.voucherDiscount > 0 ? '−' : ''}{formatVnd(pricingSummary.voucherDiscount)}</dd></div><div><dt>Giảm điểm ({pointsUsed} điểm)</dt><dd>{pricingSummary.pointsDiscount > 0 ? '−' : ''}{formatVnd(pricingSummary.pointsDiscount)}</dd></div><div className={styles.total}><dt>Phải trả</dt><dd>{formatVnd(pricingSummary.finalAmount)}</dd></div></dl>
           {submitError && !hasConflict && <div ref={feedbackRef} tabIndex={-1} className={styles.submitError} role="alert"><p>{uiMessage(submitError)}</p>{pendingLimit && <Link to="/my-bookings">Lịch đặt sân của tôi →</Link>}</div>}

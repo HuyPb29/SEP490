@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { useActiveItemScroll } from '../../hooks/useActiveItemScroll'
 import { Link, useSearchParams } from 'react-router-dom'
 import api from '../../api'
 import { downloadVenueData, loadOwnerLocations } from '../../api/ownerApi'
@@ -27,6 +28,7 @@ import { OwnerPromotions } from '../promotion/PromotionPages'
 import { OwnerReviews } from '../feedback/OwnerReviews'
 import OwnerStaffAccounts from './OwnerStaffAccounts'
 import styles from './OwnerWorkspace.module.css'
+import { useManagementInbox } from '../../contexts/managementInbox'
 
 const ownerTabs = [['staff', 'Nhân viên'], ['cancel', 'Hủy đặt sân'], ['refund', 'Hoàn tiền'], ['complaints', 'Khiếu nại'], ['reviews', 'Đánh giá'], ['rewards', 'Ưu đãi và điểm']]
 const clock = (minute) => String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0')
@@ -423,11 +425,14 @@ function LockedVenue({ location }) {
 }
 
 function OwnerLocation() {
+  const inbox = useManagementInbox()
   const locations = useResource(loadOwnerLocations)
   const [params, setParams] = useSearchParams()
   const { locationId: selected } = useLocationContext()
   const requestedTab = params.get('tab')
   const tab = ownerTabs.some(([value]) => value === requestedTab) ? requestedTab : 'staff'
+  const tabBarRef = useRef(null)
+  useActiveItemScroll(tabBarRef, [tab, selected, locations.loading].join(':'), '[aria-current="page"]', ownerTabs.length)
 
   const location = locations.data?.find((item) => String(item.id) === String(selected))
 
@@ -446,10 +451,10 @@ function OwnerLocation() {
 
   return (
     <div className={styles.workspace}>
-      <nav className={styles.tabBar} aria-label="Quản lý địa điểm">
+      <nav ref={tabBarRef} className={styles.tabBar} aria-label="Quản lý địa điểm">
         {ownerTabs.map(([value, title]) => (
           <button key={value} type="button" aria-current={tab === value ? 'page' : undefined}
-            onClick={() => setParams({ tab: value })}>{title}</button>
+            onClick={() => setParams({ tab: value })}>{title}{Number(inbox[value]) > 0 && <span className={styles.tabBadge}>{inbox[value]}</span>}</button>
         ))}
       </nav>
       <div key={selected + ':' + tab} className={styles.tabContent}>

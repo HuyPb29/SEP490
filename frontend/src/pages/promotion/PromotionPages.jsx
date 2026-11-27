@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api, { getAllPages } from '../../api'
 import { voucherGrantState } from '../../api/bookingApi'
@@ -6,6 +6,7 @@ import { searchFacilities } from '../../api/facilityApi'
 import WorkspaceLayout, { ActionForm, EmptyState, Feedback, Field, Section, StatusPill } from '../WorkspaceLayout'
 import { money, today, useResource } from '../workspaceSupport'
 import PointGrantForm from './PointGrantForm'
+import VoucherRecipients from './VoucherRecipients'
 import { useLoyaltyMilestones, usePersonalLoyaltyProgress } from '../../hooks/useLoyaltyMilestones'
 import { useVoucherCampaigns } from '../../hooks/useVoucherCampaigns'
 import { dateTime, shortDate } from '../../utils/formatters'
@@ -29,6 +30,11 @@ const locationName = (locations, id) =>
 const voucherStatus = { PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', EXPIRED: 'Hết hạn', DISABLED: 'Đã vô hiệu hóa', STOPPED: 'Đã dừng' }
 const voucherTones = { PUBLISHED: 'positive', DRAFT: 'pending', STOPPED: 'negative', DISABLED: 'negative' }
 const voucherTargets = { ALL_PLAYERS: 'Tất cả người chơi', NEW_PLAYERS: 'Người chơi mới', SPECIFIED: 'Người chơi chỉ định' }
+const voucherTargetHints = {
+  ALL_PLAYERS: 'Mọi người chơi tại địa điểm của bạn.',
+  NEW_PLAYERS: 'Chưa từng thanh toán thành công tại địa điểm này.',
+  SPECIFIED: 'Chỉ những người được bạn cấp voucher.',
+}
 // The API requires a positive Java Integer even when the form has no campaign-wide limit.
 const defaultCampaignUseLimit = 2_147_483_647
 const grantLabels = Object.fromEntries(['AVAILABLE', 'USED', 'UNAVAILABLE', 'EXPIRED'].map((key) => [key, STATUS_CATALOG.voucher[key].label]))
@@ -92,14 +98,14 @@ function LoyaltyProgress({ locationId }) {
     <div className={styles.progressHeading}><span>Mốc thưởng tiếp theo</span><strong>{compactMoney(item.nextMilestoneAmount)}</strong></div>
     <progress className={styles.progress} max={Number(item.nextMilestoneAmount)} value={Math.min(Number(item.totalPaid), Number(item.nextMilestoneAmount))}
       aria-label={'Tiến độ chi tiêu: ' + compactMoney(item.totalPaid) + ' trên ' + compactMoney(item.nextMilestoneAmount)} />
-    <p>{reached ? 'Đã đạt mốc. Thưởng được xét ở lần xác nhận thanh toán tiếp theo.' : <>Còn <strong>{compactMoney(item.remainingAmount)}</strong> để đạt mốc.</>}</p>
+    <p>{reached ? 'Đã đạt mốc. Ưu đãi được cấp khi thanh toán được xác nhận hoặc chủ sân áp dụng mốc.' : <>Còn <strong>{compactMoney(item.remainingAmount)}</strong> để đạt mốc.</>}</p>
     <p className={styles.progressHint}>{item.rewardName} · Giảm {compactMoney(item.rewardValue)}</p>
   </div>
 }
 
 function PersonalRewards() {
-  const vouchers = useResource(loadPersonalVouchers)
-  const balances = useResource(loadBalances)
+  const vouchers = useResource(loadPersonalVouchers, undefined, 5000)
+  const balances = useResource(loadBalances, undefined, 5000)
   const [location, setLocation] = useState('')
   const [tab, setTab] = useState('vouchers')
   const [voucherFilter, setVoucherFilter] = useState('all')
@@ -205,7 +211,10 @@ function VoucherPreview({ values }) {
 }
 
 function VoucherForm({ voucher, save, after }) {
+  const targetId = useId()
   const [target, setTarget] = useState(voucher?.targetGroup || 'ALL_PLAYERS')
+  const [code, setCode] = useState(voucher?.code || '')
+  const [grantValidDays, setGrantValidDays] = useState(voucher?.grantValidDays ?? '')
   const [discountType, setDiscountType] = useState(voucher?.discountType || 'AMOUNT')
   const [startDate, setStartDate] = useState(voucher?.validFrom ?? today())
   const [preview, setPreview] = useState(() => ({
@@ -219,10 +228,11 @@ function VoucherForm({ voucher, save, after }) {
   }
   return <div className={styles.voucherLayout} onChange={readPreview} onInput={readPreview}>
   <div className={styles.voucherForm}><ActionForm label={voucher ? 'Lưu voucher' : 'Tạo và phát hành'} after={after}
+    errorSummaryLabels={{ name: 'Tên phiếu ưu đãi', discountType: 'Kiểu giảm', discountValue: 'Mức giảm', percentageValid: 'Mức giảm', minOrderAmount: 'Đơn tối thiểu', targetGroup: 'Đối tượng', code: 'Mã phiếu ưu đãi', codeValid: 'Mã phiếu ưu đãi', grantValidDays: 'Hạn dùng sau khi cấp', validFrom: 'Từ ngày', validTo: 'Đến ngày', dateRangeValid: 'Thời gian áp dụng', maxUsesPerPlayer: 'Lượt dùng mỗi người', budget: 'Ngân sách', budgetValid: 'Ngân sách' }}
     successMessage={voucher ? 'Đã lưu thay đổi.' : false} action={(form) => {
     const payload = {
-      ...form, code: form.code?.trim().toUpperCase() || null, discountValue: Number(form.discountValue),
-      minOrderAmount: Number(form.minOrderAmount), grantValidDays: optionalNumber(form.grantValidDays),
+      ...form, targetGroup: target, code: target === 'SPECIFIED' ? null : form.code?.trim().toUpperCase() || null, discountValue: Number(form.discountValue),
+      minOrderAmount: Number(form.minOrderAmount), grantValidDays: target === 'SPECIFIED' ? optionalNumber(form.grantValidDays) : null,
       maxUsesPerPlayer: optionalNumber(form.maxUsesPerPlayer), maxTotalUses: voucher?.maxTotalUses ?? defaultCampaignUseLimit,
       budget: optionalNumber(form.budget),
     }
@@ -248,33 +258,49 @@ function VoucherForm({ voucher, save, after }) {
           defaultValue={voucher?.minOrderAmount ?? 0} required error={errors.minOrderAmount} hint="Nhập 0 nếu không yêu cầu." />
       </div>
       <div className={styles.formGroup} role="group" aria-label="Đối tượng">
-        <h4>Đối tượng</h4>
-        <Field label="Đối tượng" name="targetGroup" value={target} onChange={(event) => setTarget(event.target.value)}
-          options={Object.entries(voucherTargets)} error={errors.targetGroup}
-          hint={target === 'SPECIFIED' ? 'Chỉ người được cấp mới dùng được. Sau khi phát hành, mở chiến dịch và nhập ID người chơi ở mục Cấp voucher.' : undefined} />
-        {target !== 'SPECIFIED' && <Field label="Mã phiếu ưu đãi" name="code" defaultValue={voucher?.code || ''} maxLength={20}
+        <fieldset className={styles.targetGroup} aria-describedby={errors.targetGroup ? `${targetId}-error` : undefined}>
+          <legend>Đối tượng áp dụng</legend>
+          <div className={styles.targetChoices}>
+            {Object.entries(voucherTargets).map(([value, label]) => <label key={value} className={styles.targetOption}>
+              <input type="radio" name="targetGroup" value={value} checked={target === value}
+                aria-label={label} aria-describedby={`${targetId}-${value}`} aria-invalid={Boolean(errors.targetGroup)}
+                onChange={() => setTarget(value)} />
+              <span className={styles.targetName}>{label}</span>
+              <span id={`${targetId}-${value}`} className={styles.targetDescription}>{voucherTargetHints[value]}</span>
+            </label>)}
+          </div>
+          {errors.targetGroup && <p id={`${targetId}-error`} className={styles.targetError} role="alert">{errors.targetGroup}</p>}
+        </fieldset>
+        {target === 'SPECIFIED' && <p className={styles.targetNote}>Sau khi phát hành, mở chiến dịch để tìm người nhận và cấp voucher theo tên đăng nhập, email hoặc số điện thoại.</p>}
+        <div className={styles.targetDetails}>
+        {target !== 'SPECIFIED' && <Field label="Mã phiếu ưu đãi" name="code" value={code} onChange={event => setCode(event.target.value.toUpperCase())} maxLength={20}
           pattern="[A-Za-z0-9_\u002D]+" required error={errors.code || errors.codeValid} hint="Chữ, số, gạch dưới hoặc gạch ngang." />}
         {target === 'SPECIFIED' && <Field label="Hạn dùng sau khi cấp (ngày)" name="grantValidDays" type="number" min={1} max={3650}
-          defaultValue={voucher?.grantValidDays} error={errors.grantValidDays} />}
+          value={grantValidDays} onChange={event => setGrantValidDays(event.target.value)} error={errors.grantValidDays}
+          hint="Để trống để dùng đến ngày hết hạn chiến dịch." />}
+        </div>
       </div>
       <div className={styles.formGroup} role="group" aria-label="Lượt và ngân sách">
         <h4>Lượt và ngân sách</h4>
         <Field label="Lượt dùng mỗi người" name="maxUsesPerPlayer" type="number" min={1} required
           defaultValue={voucher?.maxUsesPerPlayer} error={errors.maxUsesPerPlayer} />
-        <Field label="Ngân sách (đồng)" name="budget" type="number" min={1} max={999999999999} required
-          defaultValue={voucher?.budget} error={errors.budget} hint="Tổng tiền giảm tối đa của cả chiến dịch." />
+        <Field label="Ngân sách (đồng)" name="budget" type="number" max={999999999999} required
+          defaultValue={voucher?.budget} error={errors.budget || errors.budgetValid}
+          min={discountType === 'AMOUNT' ? Math.max(1, Number(preview.discountValue) || 1) : 1}
+          hint="Tổng tiền giảm tối đa của cả chiến dịch, ít nhất bằng mức giảm nếu giảm theo số tiền." />
       </div>
     </>}
   </ActionForm></div>
-  <VoucherPreview values={preview} />
+  <VoucherPreview values={{ ...preview, targetGroup: target, code }} />
   </div>
 }
 
 function CampaignCard({ item, campaigns }) {
   const { reload: refresh, save, publish } = campaigns
   const [stopped, setStopped] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const editable = item.source === 'CAMPAIGN' && ['DRAFT', 'EXPIRED'].includes(item.status)
-  return <details className={styles.campaign}>
+  return <details className={styles.campaign} onToggle={event => { if (event.target === event.currentTarget) setExpanded(event.currentTarget.open) }}>
     <summary className={styles.overview}>
       <span className={styles.campaignName}>{item.name}{item.code && <code>{item.code}</code>}</span>
       <span className={styles.campaignStatus}>
@@ -307,13 +333,7 @@ function CampaignCard({ item, campaigns }) {
           setStopped(true)
           refresh()
         }} />}
-      {item.source === 'CAMPAIGN' && item.targetGroup === 'SPECIFIED' && item.status === 'PUBLISHED' &&
-        <ActionForm label="Cấp voucher" action={(form) => api.post('/owner/vouchers/' + item.id + '/grants', {
-          playerIds: [...new Set(form.playerIds.trim().split(/[\s,]+/).map(Number))],
-        })} after={refresh}>
-          <Field label="ID người chơi" hint="Nếu cấp cho nhiều người, phân cách các ID bằng dấu phẩy."
-            name="playerIds" required pattern="[0-9]+([ ,]+[0-9]+)*" />
-        </ActionForm>}
+      {expanded && item.source === 'CAMPAIGN' && item.targetGroup === 'SPECIFIED' && <VoucherRecipients voucher={item} />}
     </div>
   </details>
 }

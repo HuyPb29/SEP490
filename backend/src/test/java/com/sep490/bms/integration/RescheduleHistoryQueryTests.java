@@ -28,6 +28,7 @@ class RescheduleHistoryQueryTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired LocationRepository locations;
     @Autowired RescheduleHistoryQuery history;
+    @Autowired com.sep490.bms.service.reschedule.RescheduleService reschedules;
 
     // Ngày xa để không đụng slot đang giữ của dữ liệu mẫu (ux_slot_active).
     final LocalDate day1 = LocalDate.of(2099, 1, 5);
@@ -95,6 +96,37 @@ class RescheduleHistoryQueryTests {
             assertThat(change.toStartTime()).isEqualTo("10:00");
         });
         assertThat(history.byPackageIds(List.of())).isEmpty();
+    }
+
+    @Test
+    void surchargeTotalsCountOnlyConfirmedPaymentsForApprovedChangesAndExposeCourtNames() {
+        long booking = booking(null, courtA, day1, 480, 510);
+        reschedule(booking, courtB, day2, 1020, 1080, "2099-01-01T10:00:00");
+        long request = jdbc.queryForObject("SELECT id FROM reschedule_request WHERE booking_id=?", Long.class, booking);
+        long payment = jdbc.queryForObject("""
+                INSERT INTO payment (location_id, reschedule_request_id, amount_due, received_amount, status)
+                OUTPUT inserted.id VALUES (?, ?, 95000, 100000, 'CONFIRMED')
+                """, Long.class, locationId, request);
+        assertThat(history.surchargesByBookingIds(List.of(booking)).get(booking)).isEqualByComparingTo("95000");
+        assertThat(history.surchargesByBookingIds(List.of())).isEmpty();
+        var player = com.sep490.bms.security.UserPrincipal.builder().id(playerId)
+                .role(com.sep490.bms.entity.account.Role.PLAYER).build();
+        assertThat(reschedules.requests(player, booking)).singleElement().satisfies(r -> assertThat(r.getNewCourtName()).isEqualTo("Sân B"));
+        var detail = reschedules.payment(player, payment);
+        String code = jdbc.queryForObject("SELECT booking_code FROM booking WHERE id=?", String.class, booking);
+        assertThat(detail.bookingCode()).isEqualTo(code);
+        assertThat(detail.customerName()).isEqualTo("History Test");
+        assertThat(detail.customerPhone()).isNotBlank();
+        assertThat(detail.courtName()).isEqualTo("Sân B");
+        assertThat(detail.playDate()).isEqualTo(day2);
+        assertThat(detail.startTime()).isEqualTo("17:00");
+        assertThat(detail.endTime()).isEqualTo("18:00");
+        assertThat(detail.transferContent()).isEqualTo(code + " DL" + request);
+        jdbc.update("UPDATE payment SET status='AWAITING_CONFIRMATION' WHERE id=?", payment);
+        assertThat(history.surchargesByBookingIds(List.of(booking))).isEmpty();
+        jdbc.update("UPDATE payment SET status='CONFIRMED' WHERE id=?", payment);
+        jdbc.update("UPDATE reschedule_request SET status='REJECTED' WHERE id=?", request);
+        assertThat(history.surchargesByBookingIds(List.of(booking))).isEmpty();
     }
 
     // ---------------------------------------------------------------- fixtures

@@ -75,7 +75,15 @@ class ScheduleServiceTests {
         when(availability.scheduleRange(any(), any())).thenReturn(Optional.of(new OpeningWindow(600, 840)));
         when(availability.openingWindow(any(), any())).thenReturn(Optional.of(new OpeningWindow(600, 840)));
         when(availability.maintenanceStarts(any(), any())).thenReturn(Map.of());
-        when(prices.slotPrices(any(), any())).thenReturn(Map.of(COURT, Map.of(780, new BigDecimal("60000"))));
+        when(prices.slotPrices(any(), any())).thenReturn(Map.of(COURT, java.util.stream.IntStream.range(20, 28).boxed()
+                .collect(java.util.stream.Collectors.toMap(i -> i * 30, i -> new BigDecimal("60000")))));
+    }
+
+    @Test void deletingPriceClosesOnlyUnbookedUnpricedSlots() {
+        when(prices.slotPrices(any(), any())).thenReturn(Map.of());
+        assertThat(cell(service.schedule(LOCATION, TOMORROW, null, NOW), 780).getStatus()).isEqualTo(SlotStatus.CLOSED);
+        bookingAt(TOMORROW, 780, BookingStatus.CONFIRMED, 7L);
+        assertThat(cell(service.schedule(LOCATION, TOMORROW, null, NOW), 780).getStatus()).isEqualTo(SlotStatus.BOOKED);
     }
 
     @Test

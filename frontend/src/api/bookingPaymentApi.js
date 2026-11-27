@@ -7,7 +7,7 @@ const targets = {
   reschedule: '/reschedule-requests',
 }
 
-export async function loadPayment({ kind, id }, signal) {
+export async function loadPayment({ kind, id }, signal, refreshed = false) {
   const path = `${targets[kind]}/${id}`
   const { data } = await api.get(path, { signal })
   const detail = withBookingDeadlines(data.data, data.timestamp)
@@ -18,15 +18,22 @@ export async function loadPayment({ kind, id }, signal) {
       : null
   const paymentResponse = paymentPath ? (await api.get(paymentPath, { signal })).data : null
   const payment = paymentResponse && withBookingDeadlines(paymentResponse.data, paymentResponse.timestamp)
-  const resubmitting = (payment?.status ?? detail.status) === 'RESUBMIT_REQUESTED'
-  const awaiting = detail.status === 'AWAITING_CONFIRMATION' && !resubmitting
-  const canPay = detail.status === (kind === 'reschedule' ? 'PENDING_PAYMENT' : 'HOLDING')
+  const waiting = ['HOLDING', 'PENDING_PAYMENT', 'AWAITING_CONFIRMATION', 'RESUBMIT_REQUESTED'].includes(detail.status)
+  const status = waiting && payment?.status === 'REJECTED'
+    ? (kind === 'reschedule' ? 'REJECTED' : 'PAYMENT_REJECTED')
+    : waiting && payment?.status === 'CONFIRMED'
+      ? (kind === 'reschedule' ? 'APPROVED' : 'CONFIRMED') : detail.status
+  const resubmitting = waiting && status === detail.status
+    && (payment?.status ?? detail.status) === 'RESUBMIT_REQUESTED'
+  const awaiting = status === 'AWAITING_CONFIRMATION' && !resubmitting
+  const canPay = status === (kind === 'reschedule' ? 'PENDING_PAYMENT' : 'HOLDING')
     || (resubmitting && Boolean(payment?.id ?? detail.paymentId))
   const result = {
     code: detail.bookingCode || (kind === 'reschedule' ? `Đổi lịch #${id}`
       : detail.packageType === 'DAY' ? `Đơn #${id}` : `Gói #${id}`),
     bookingId: kind === 'reschedule' ? detail.bookingId : kind === 'package' ? detail.sessions?.[0]?.id : id,
-    status: detail.status,
+    status,
+    paymentStatus: payment?.status ?? detail.paymentStatus,
     amount: detail.extraAmount ?? detail.finalAmount,
     awaiting,
     canPay,
@@ -60,9 +67,7 @@ export async function loadPayment({ kind, id }, signal) {
     }
     if (cause.response?.status === 409) {
       const { data: { data: current } } = await api.get(path, { signal })
-      if (current.status !== detail.status) return { ...result, status: current.status, canPay: false,
-        awaiting: current.status === 'AWAITING_CONFIRMATION', receiptNo: current.receiptNo,
-        paymentId: current.paymentId }
+      if (current.status !== detail.status && !refreshed) return loadPayment({ kind, id }, signal, true)
     }
     throw cause
   }
@@ -113,7 +118,7 @@ export async function decideReschedulePayment(paymentId, decision, payload) {
 }
 
 export async function listPendingStaffBookingPayments(signal) {
-  return getAllPages('/staff/payments', { signal, params: { status: 'AWAITING_CONFIRMATION' } });
+  return getAllPages('/staff/payments', { signal });
 }
 
 export async function getStaffBookingPaymentDetails(paymentId, signal) {

@@ -10,5 +10,6 @@ import com.sep490.bms.entity.promotion.VoucherGrant;
  */
 @Repository
 public interface VoucherGrantRepository extends JpaRepository<VoucherGrant, Long> {
+    org.springframework.data.domain.Page<VoucherGrant> findByVoucherId(Long voucherId, org.springframework.data.domain.Pageable page);
     org.springframework.data.domain.Page<VoucherGrant> findByPlayerId(Long playerId, org.springframework.data.domain.Pageable page);
 }

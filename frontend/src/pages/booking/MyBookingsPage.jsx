@@ -1,4 +1,5 @@
 import HistoryDetailDialog from './HistoryDetailDialog';
+import { subscribeLiveRefresh } from '../../utils/liveRefresh';
 import { bookingStartsAfter, canPayHistoryEntry, canRescheduleBooking } from '../../api/bookingHistory';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
@@ -191,7 +192,6 @@ export default function MyBookingsPage() {
   useEffect(() => {
     if (!isPlayer) return undefined;
     const controller = new AbortController();
-    let timer;
     async function refreshAffected() {
       try {
         if (document.visibilityState === 'hidden') return;
@@ -205,19 +205,17 @@ export default function MyBookingsPage() {
           setAffectedReady(false);
           setAffectedError(error.response?.data?.message || "Không tải được đặt sân bị ảnh hưởng.");
         }
-      } finally {
-        if (!controller.signal.aborted) timer = setTimeout(refreshAffected, 12_000);
       }
     }
-    refreshAffected();
-    return () => { controller.abort(); clearTimeout(timer); };
+    const stop = subscribeLiveRefresh(refreshAffected, 5000, true);
+    return () => { controller.abort(); stop(); };
   }, [isPlayer, affectedRevision, getMyAffectedBookingsApi]);
 
   useEffect(() => {
-    if (!isPlayer || loading || fetchError) return undefined;
+    if (!isPlayer || loading) return undefined;
     let active = true;
     let updating = false;
-    const timer = setInterval(async () => {
+    const stop = subscribeLiveRefresh(async () => {
       if (updating || document.visibilityState === 'hidden') return;
       updating = true;
       try {
@@ -225,18 +223,18 @@ export default function MyBookingsPage() {
           getMyBookingsApi(),
           Promise.allSettled(expandedPackages.map(getPackageSessionsApi)),
         ]);
-        if (active) setBookings((current) => [
+        if (active) { setFetchError(''); setBookings((current) => [
           ...items,
           ...packages.flatMap((result, index) => result.status === 'fulfilled' ? result.value
             : current.filter((item) => item.package_id === expandedPackages[index])),
-        ]);
+        ]); }
       } catch {
         // Keep the last successful list while polling.
       } finally {
         updating = false;
       }
-    }, 12_000);
-    return () => { active = false; clearInterval(timer); };
+    });
+    return () => { active = false; stop(); };
   }, [isPlayer, loading, fetchError, reload, expandedPackages, getMyBookingsApi, getPackageSessionsApi]);
 
   useEffect(() => {
@@ -723,8 +721,9 @@ export default function MyBookingsPage() {
                   {/* Khối phải: Giá tiền thực trả (final_amount) + Các nút thao tác theo trạng thái */}
                   <div className={styles.cardRight}>
                     <strong className={styles.priceText}>
-                      {formatVnd(item.final_amount)}
+                      {formatVnd(item.total_amount ?? item.final_amount)}
                     </strong>
+                    {item.reschedule_surcharge > 0 && <span className={styles.subNoteLine}>Gồm phụ thu đổi lịch {formatVnd(item.reschedule_surcharge)}</span>}
 
                     <div className={styles.actionGroup}>
                       {/* Nút Xem chi tiết (UC17 #3-5, FR35, FR51, FR52, FR57) */}

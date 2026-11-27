@@ -87,7 +87,7 @@ function RequestList({ bookingId }) {
     {!requests.loading && !requests.error && requests.data?.map((item) => <article key={item.id} className={styles.requestCard}>
       <div className={styles.requestHeader}><h2>Yêu cầu #{item.id}</h2><StatusBadge category="reschedule" status={item.status} /></div>
       <p className={styles.scheduleLine}>{shortDate(item.newDate)} · {clock(item.newStartMinute)}–{clock(item.newEndMinute)}</p>
-      <p>Sân #{item.newCourtId}</p>
+      <p>{item.newCourtName || 'Sân không khả dụng'}</p>
       <div className={styles.amountRow}><span>{item.free ? 'Đổi miễn phí do sân hủy' : 'Phụ thu chênh lệch'}</span><strong>{price(item.extraAmount || 0)}</strong></div>
       {['REJECTED', 'EXPIRED'].includes(item.status) && <p className={styles.notice}>Yêu cầu chưa có hiệu lực. Lịch cũ được giữ nguyên.</p>}
       {item.extraAmount > 0 && <Link className={styles.actionLink} to={'/booking/payment?rescheduleId=' + item.id}>

@@ -68,7 +68,9 @@ public class RescheduleService {
     public record Instructions(Long requestId, BigDecimal amountDue, LocalDateTime holdExpiresAt,
             LocalDateTime approveDeadline, String bankName, String bankAccountNo, String bankAccountHolder,
             String qrImageUrl, String transferContent) {}
-    public record PaymentView(Payment payment, List<PaymentProof> proofs) {}
+    public record PaymentView(Payment payment, List<PaymentProof> proofs, String bookingCode,
+            String customerName, String customerPhone, String courtName, LocalDate playDate,
+            String startTime, String endTime, String transferContent) {}
     public record PaymentProgress(Long id, PaymentStatus status, LocalDateTime resubmitDeadline,
             String resubmitReason, int resubmitsLeft, BigDecimal receivedAmount, BigDecimal remainingAmount,
             String receiptNo, LocalDateTime confirmedAt, String rejectReason, LocalDateTime submittedAt) {}
@@ -83,6 +85,13 @@ public class RescheduleService {
             p.setOverdue(transferPolicy.overdue(p, now));
             p.setTransferredToOwner(transferPolicy.transferredToOwner(p, now));
         });
+        if (!list.isEmpty()) {
+            Map<Long, String> codes = new HashMap<>();
+            em.createQuery("select r.id, b.bookingCode from RescheduleRequest r, Booking b where r.bookingId=b.id and r.id in :ids", Object[].class)
+                    .setParameter("ids", list.stream().map(Payment::getRescheduleRequestId).toList())
+                    .getResultList().forEach(row -> codes.put((Long) row[0], (String) row[1]));
+            list.forEach(p -> p.setBookingCode(codes.get(p.getRescheduleRequestId())));
+        }
         return list;
     }
     public PaymentView payment(UserPrincipal u,Long id) {
@@ -100,7 +109,14 @@ public class RescheduleService {
             p.setOverdue(transferPolicy.overdue(p, now));
             p.setTransferredToOwner(transferPolicy.transferredToOwner(p, now));
         }
-        return new PaymentView(p,em.createQuery("select p from PaymentProof p where p.paymentId=:id order by p.id",PaymentProof.class).setParameter("id",id).getResultList());
+        p.setBookingCode(b.getBookingCode());
+        var customer = accounts.findById(b.getPlayerId()).orElse(null);
+        Court court = em.find(Court.class, r.getNewCourtId());
+        return new PaymentView(p, em.createQuery("select p from PaymentProof p where p.paymentId=:id order by p.id",PaymentProof.class).setParameter("id",id).getResultList(),
+                b.getBookingCode(), customer == null ? null : customer.getFullName(), customer == null ? null : customer.getPhone(),
+                court == null ? null : court.getName(), r.getNewDate(),
+                com.sep490.bms.common.MinuteTime.format(r.getNewStartMinute()), com.sep490.bms.common.MinuteTime.format(r.getNewEndMinute()),
+                b.getBookingCode() + " DL" + r.getId());
     }
 
     public LocalDateTime deadline(Booking b) {
@@ -153,7 +169,15 @@ public class RescheduleService {
     }
     public List<RescheduleRequest> requests(UserPrincipal u, Long bookingId) {
         Booking b = support.booking(bookingId); support.player(u, b);
-        return all(b);
+        List<RescheduleRequest> result = all(b);
+        if (!result.isEmpty()) {
+            Map<Long, String> names = new HashMap<>();
+            em.createQuery("select c from Court c where c.id in :ids", Court.class)
+                    .setParameter("ids", result.stream().map(RescheduleRequest::getNewCourtId).toList())
+                    .getResultList().forEach(c -> names.put(c.getId(), c.getName()));
+            result.forEach(r -> r.setNewCourtName(names.get(r.getNewCourtId())));
+        }
+        return result;
     }
     public RescheduleRequest detail(UserPrincipal u, Long id) {
         RescheduleRequest r = find(id); Booking b = support.booking(r.getBookingId()); support.player(u,b);

@@ -480,6 +480,7 @@ class PaymentServiceTests {
                 .resubmitDeadline(deadline)
                 .submittedAt(NOW.minusHours(1))
                 .build();
+        when(payments.findLocationIdById(PAYMENT)).thenReturn(Optional.of(LOCATION));
         when(payments.findByIdForUpdate(PAYMENT)).thenReturn(Optional.of(payment));
         return payment;
     }
@@ -597,6 +598,7 @@ class PaymentServiceTests {
         pkg.setStatus(BookingStatus.RESUBMIT_REQUESTED);
         Payment payment = Payment.builder().id(PAYMENT).locationId(LOCATION).packageId(PACKAGE)
                 .amountDue(new BigDecimal("905000")).status(PaymentStatus.RESUBMIT_REQUESTED).build();
+        when(payments.findLocationIdById(PAYMENT)).thenReturn(Optional.of(LOCATION));
         when(payments.findByIdForUpdate(PAYMENT)).thenReturn(Optional.of(payment));
         when(packages.firstSessionEnd(PACKAGE)).thenReturn(NOW.plusHours(1));
 

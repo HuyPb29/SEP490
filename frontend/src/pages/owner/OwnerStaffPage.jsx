@@ -112,7 +112,7 @@ function StaffFormModal({ mode, initial, locationId, onClose, onSaved }) {
   }
 
   return (
-    <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-labelledby="staff-modal-title">
+    <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-labelledby="staff-modal-title" onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose(); }}>
       <div className={styles.modal}>
         <div className={styles.modalHeader}>
           <h2 id="staff-modal-title">{isAdd ? "Thêm nhân viên" : "Sửa nhân viên"}</h2>
@@ -232,7 +232,7 @@ function ResetPasswordModal({ staff, locationId, onClose, onDone }) {
   }
 
   return (
-    <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-labelledby="rp-title">
+    <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-labelledby="rp-title" onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose(); }}>
       <div className={styles.modal}>
         <div className={styles.modalHeader}>
           <h2 id="rp-title">Cấp lại mật khẩu</h2>

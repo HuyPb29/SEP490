@@ -27,7 +27,7 @@
 .content { color: var(--color-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-base); }
 .timeline { padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
 .timeline > h3 { margin-bottom: var(--space-4); }
-.composeModal { position: relative; width: min(680px, calc(100% - var(--space-6))); }
+.composeModal { position: fixed; inset: 0; margin: auto; width: min(680px, calc(100% - var(--space-6))); max-height: calc(100dvh - var(--space-6)); }
 .composeModal > h2 { padding-right: 44px; }
 .composeClose { position: absolute; top: var(--space-2); right: var(--space-2); }
 .bookingContext { display: grid; gap: var(--space-1); padding: var(--space-3) var(--space-4); margin: var(--space-4) 0; background: var(--color-primary-soft); color: var(--color-primary-hover); border-radius: var(--radius-md); font-size: var(--text-sm); }

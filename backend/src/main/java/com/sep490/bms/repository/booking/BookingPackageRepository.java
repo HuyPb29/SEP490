@@ -23,6 +23,9 @@ import jakarta.persistence.LockModeType;
 @Repository
 public interface BookingPackageRepository extends JpaRepository<BookingPackage, Long> {
 
+    @Query("select p.locationId from BookingPackage p where p.id = :id")
+    Optional<Long> findLocationIdById(@Param("id") Long id);
+
     /**
      * Đọc và khóa dòng gói đến hết giao dịch (SQL Server: UPDLOCK): gửi chứng từ, Staff xử lý và job hết hạn
      * giữ chỗ cùng chạm một gói thì chạy lần lượt (FR56).

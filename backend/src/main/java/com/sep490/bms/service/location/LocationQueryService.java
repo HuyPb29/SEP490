@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.util.StringUtils;
 
 import com.sep490.bms.common.MinuteTime;
@@ -99,6 +100,19 @@ public class LocationQueryService {
     public Location findActive(Long locationId) {
         return locationRepository.findByIdAndStatus(locationId, ACTIVE)
                 .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
+    }
+
+    /** Internal lifecycle operations also run for locked venues. Take this lock before target rows. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Location findForUpdate(Long locationId) {
+        return locationRepository.findByIdForUpdate(locationId)
+                .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Location findForCourtUpdate(Long courtId) {
+        return locationRepository.findByCourtIdForUpdate(courtId)
+                .orElseThrow(() -> new AppException("Không tìm thấy sân", HttpStatus.NOT_FOUND));
     }
 
     /**

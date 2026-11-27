@@ -107,8 +107,8 @@ public class OperationService {
                         : payment.getPackageId() != null ? "Đơn/Gói #" + payment.getPackageId()
                                 : codes.get(payment.getBookingId()),
                 payment.getAmountDue(), payment.getSubmittedAt(), payment.getRescheduleRequestId() != null,
-                // D182: quá 15 phút (P24) báo đỏ; quá 25 phút (P24 + P36) đã chuyển cho chủ sân.
-                availability.exceededOpeningTime(locationId, payment.getSubmittedAt(), now, Payment.LATE_CONFIRMATION_WAIT),
+                // Cảnh báo từ 10 phút; quá 25 phút (P24 + P36) chuyển cho chủ sân.
+                availability.exceededOpeningTime(locationId, payment.getSubmittedAt(), now, Payment.CONFIRMATION_ALERT_WAIT.minusNanos(1)),
                 availability.exceededOpeningTime(locationId, payment.getSubmittedAt(), now, Payment.OWNER_TRANSFER_WAIT)))
                 .toList();
 
@@ -134,7 +134,7 @@ public class OperationService {
                 .paymentsAwaitingConfirmation(pendingItems.size())
                 .pendingPayments(pendingItems)
                 .overduePayments(pendingItems.stream().filter(StaffDashboardResponse.PendingPayment::overdue).count())
-                .paymentOverdueMinutes((int) Payment.LATE_CONFIRMATION_WAIT.toMinutes())
+                .paymentOverdueMinutes((int) Payment.CONFIRMATION_ALERT_WAIT.toMinutes())
                 .paymentTransferMinutes((int) Payment.OWNER_TRANSFER_WAIT.toMinutes())
                 .complaintsToForward(queryRepository.countComplaintsByStatus(locationId, "SUBMITTED"))
                 .todayRevenue(todayRevenue)

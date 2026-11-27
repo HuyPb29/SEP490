@@ -27,6 +27,7 @@ import lombok.Setter;
  * Lưu lượt đặt sân, người đặt, thời gian, giá đã chốt và trạng thái.
  */
 @Entity
+@jakarta.persistence.EntityListeners(com.sep490.bms.service.notification.RealtimeEntityListener.class)
 @Table(name = "booking")
 @Getter
 @Setter

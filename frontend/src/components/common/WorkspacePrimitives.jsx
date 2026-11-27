@@ -105,12 +105,22 @@ export function ActionForm({
   preserve = false,
   successMessage,
   mapFieldErrors,
+  errorSummaryLabels = {},
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [fieldLabels, setFieldLabels] = useState({});
   const [pendingForm, setPendingForm] = useState(null);
   const usesFieldErrors = typeof children === 'function';
+
+  function fieldLabel(form, name) {
+    const named = form.elements.namedItem(name);
+    const control = named?.nodeType ? named : named?.[0];
+    const label = control?.labels?.[0];
+    return errorSummaryLabels[name] || control?.getAttribute('aria-label')
+      || label?.querySelector('span')?.textContent?.trim() || label?.textContent?.trim();
+  }
 
   async function execute(form) {
     setBusy(true);
@@ -123,8 +133,10 @@ export function ActionForm({
       after?.(result);
     } catch (error) {
       const errors = mapFieldErrors?.(error) ?? error.response?.data?.errors;
-      if (usesFieldErrors && errors && Object.keys(errors).length) {
-        setFieldErrors(Object.fromEntries(Object.entries(errors).map(([name, text]) => [name.split('.').at(-1), text])));
+      if (errors && Object.keys(errors).length) {
+        const entries = Object.entries(errors).map(([name, text]) => [name.split('.').at(-1), text]);
+        setFieldErrors(Object.fromEntries(entries));
+        setFieldLabels(Object.fromEntries(entries.map(([name]) => [name, fieldLabel(form, name)])));
       }
       else setMessage({ error: true, text: errorMessage(error) });
     } finally {
@@ -140,27 +152,41 @@ export function ActionForm({
   }
 
   function invalid(event) {
-    if (!usesFieldErrors) return;
     event.preventDefault();
     const { name, validity } = event.target;
-    const text = validity.valueMissing ? 'Vui lòng nhập thông tin. (MSG01)' : 'Giá trị không đúng định dạng. (MSG02)';
+    const text = validity.valueMissing ? 'Vui lòng nhập thông tin. (MSG01)'
+      : errorSummaryLabels && validity.rangeUnderflow ? `Giá trị phải từ ${event.target.min} trở lên.`
+      : errorSummaryLabels && validity.rangeOverflow ? `Giá trị không được vượt quá ${event.target.max}.`
+      : 'Giá trị không đúng định dạng. (MSG02)';
     setFieldErrors((current) => ({ ...current, [name]: text }));
+    setFieldLabels((current) => ({ ...current, [name]: fieldLabel(event.target.form, name) }));
   }
 
   return (
     <>
       <form onSubmit={submit} onInvalid={invalid}
-        onChange={usesFieldErrors ? () => setFieldErrors({}) : undefined} className="cw-form">
+        onChange={() => { setFieldErrors({}); if (message?.error) setMessage(null); }} className="cw-form">
         <fieldset
           disabled={busy}
           className={children ? 'cw-form-fields' : 'cw-form-fields cw-form-fields--action'}
         >
           {usesFieldErrors ? children(fieldErrors) : children}
-          <button className={tone === 'danger' ? 'cw-danger' : 'action'} type="submit">
+          {errorSummaryLabels ? <div className="cw-form-submit">
+            <button className={tone === 'danger' ? 'cw-danger' : 'action'} type="submit">
+              {busy ? 'Đang xử lý…' : label}
+            </button>
+            {Object.keys(fieldErrors).length > 0 && <div className="cw-feedback cw-feedback--error" role="alert">
+              <strong>Vui lòng sửa các lỗi sau:</strong>
+              <ul>{Object.entries(fieldErrors).map(([name, text]) => <li key={name}>
+                {fieldLabels[name] ? `${fieldLabels[name]}: ` : ''}{uiMessage(text)}
+              </li>)}</ul>
+            </div>}
+            {message?.error && <Feedback tone="error">{message.text}</Feedback>}
+          </div> : <button className={tone === 'danger' ? 'cw-danger' : 'action'} type="submit">
             {busy ? 'Đang xử lý…' : label}
-          </button>
+          </button>}
         </fieldset>
-        {message && (
+        {message && !(errorSummaryLabels && message.error) && (
           <Feedback tone={message.error ? 'error' : 'success'}>{message.text}</Feedback>
         )}
       </form>

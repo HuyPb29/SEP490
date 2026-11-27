@@ -1,4 +1,4 @@
-.frame { position: relative; min-width: 0; isolation: isolate; }
+.frame { position: relative; z-index: 0; min-width: 0; isolation: isolate; }
 .canvas { width: 100%; height: var(--venue-map-height, auto); aspect-ratio: var(--venue-map-aspect, 1 / 1); min-height: 240px; border-radius: var(--radius-md); background: var(--color-surface-muted); }
 .details { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-sm); }
 .details > div { flex: 1 1 160px; min-width: 0; }

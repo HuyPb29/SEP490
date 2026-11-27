@@ -224,6 +224,7 @@ public class PackageService {
 
     private PackageDetailResponse create(UserPrincipal player, PackageRequest request, String note,
             LocalDateTime now) {
+        locationQueryService.findForCourtUpdate(request.courtId());
         // BR35: một gói hoặc một đơn đặt lẻ tính là một booking chờ thanh toán.
         bookingService.requirePendingPaymentLimit(player.getId(), now);
         Court court = courtRepository.findByIdAndActiveTrue(request.courtId())
@@ -334,6 +335,9 @@ public class PackageService {
      */
     @Transactional
     public boolean expireHold(Long packageId, LocalDateTime now) {
+        Long locationId = bookingPackageRepository.findLocationIdById(packageId).orElse(null);
+        if (locationId == null) return false;
+        locationQueryService.findForUpdate(locationId);
         BookingPackage pkg = bookingPackageRepository.findByIdForUpdate(packageId).orElse(null);
         if (pkg == null || pkg.getStatus() != BookingStatus.HOLDING || pkg.getHoldExpiresAt() == null
                 || pkg.getHoldExpiresAt().isAfter(now)) {
@@ -371,6 +375,8 @@ public class PackageService {
      * hay Staff và job cùng xử lý thì chạy lần lượt (FR56). Không kiểm tra người đặt.
      */
     public BookingPackage lockForPayment(Long packageId) {
+        Long locationId = bookingPackageRepository.findLocationIdById(packageId).orElseThrow(PackageService::packageNotFound);
+        locationQueryService.findForUpdate(locationId);
         return bookingPackageRepository.findByIdForUpdate(packageId).orElseThrow(PackageService::packageNotFound);
     }
 

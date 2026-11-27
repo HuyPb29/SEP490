@@ -146,12 +146,51 @@ class VoucherApiTests {
         assertThat(tx.execute(s -> em.find(Booking.class, existing.getId())).getVoucherDiscount()).isEqualByComparingTo("100");
         assertThat(tx.execute(s -> service.consumeForBooking(existing.getId(), selection)).getDiscountAmount()).isEqualByComparingTo("100");
     }
+    @Test void recipientSearchUsesIdentifiersAndOnlyReturnsActivePlayers() throws Exception {
+        for (String query : List.of(player.getUsername().substring(1), player.getEmail().toUpperCase(), player.getPhone())) {
+            mvc.perform(get("/api/owner/vouchers/recipients").header("Authorization",token(owner))
+                    .header("X-Location-Id",location.getId()).param("q",query))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.content[0].id").value(player.getId()))
+                    .andExpect(jsonPath("$.data.content[0].passwordHash").doesNotExist());
+        }
+        mvc.perform(get("/api/owner/vouchers/recipients").header("Authorization",token(owner))
+                .header("X-Location-Id",location.getId()).param("q",owner.getEmail()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
+        player.setStatus(AccountStatus.LOCKED); accounts.saveAndFlush(player);
+        mvc.perform(get("/api/owner/vouchers/recipients").header("Authorization",token(owner))
+                .header("X-Location-Id",location.getId()).param("q",player.getEmail()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
+    }
+
+    @Test void recipientApisRequireOwnerScopeAndValidatePaging() throws Exception {
+        Voucher v=voucher(VoucherTargetGroup.SPECIFIED);
+        for (String path : List.of("/api/owner/vouchers/recipients?q=test", "/api/owner/vouchers/"+v.getId()+"/grants")) {
+            mvc.perform(get(path)).andExpect(status().isUnauthorized());
+            mvc.perform(get(path).header("Authorization",token(player))).andExpect(status().isForbidden());
+            mvc.perform(get(path).header("Authorization",token(other))).andExpect(status().isForbidden());
+        }
+        mvc.perform(get("/api/owner/vouchers/recipients").header("Authorization",token(owner))
+                .header("X-Location-Id",location.getId()).param("q","a")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/owner/vouchers/"+v.getId()+"/grants").header("Authorization",token(owner))
+                .header("X-Location-Id",location.getId()).param("size","101")).andExpect(status().isBadRequest());
+        Location second=locations.saveAndFlush(Location.builder().ownerId(owner.getId()).name("Other grants").address("Other")
+                .contactPhone("0987654321").latitude(BigDecimal.ONE).longitude(BigDecimal.ONE).build());
+        try {
+            mvc.perform(get("/api/owner/vouchers/"+v.getId()+"/grants").header("Authorization",token(owner))
+                    .header("X-Location-Id",second.getId())).andExpect(status().isForbidden());
+        } finally { locations.deleteById(second.getId()); }
+    }
+
     @Test void personalGrantIsPrivateAndCannotBeStolen() throws Exception {
         Voucher v=voucher(VoucherTargetGroup.SPECIFIED);
         var r=mvc.perform(post("/api/owner/vouchers/"+v.getId()+"/grants").header("Authorization",token(owner)).header("X-Location-Id",location.getId())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"playerIds\":["+player.getId()+"]}"))
                 .andExpect(status().isCreated()).andReturn();
         long grant=json.readTree(r.getResponse().getContentAsString()).at("/data/0/grantId").asLong();
+        mvc.perform(get("/api/owner/vouchers/"+v.getId()+"/grants").header("Authorization",token(owner)).header("X-Location-Id",location.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].username").value(player.getUsername()))
+                .andExpect(jsonPath("$.data.content[0].grantId").value(grant));
         mvc.perform(get("/api/me/vouchers").header("Authorization",token(player))).andExpect(jsonPath("$.data.totalElements").value(1));
         mvc.perform(get("/api/me/vouchers").header("Authorization",token(other))).andExpect(jsonPath("$.data.totalElements").value(0));
         VoucherCheckRequest request=new VoucherCheckRequest(location.getId(),BigDecimal.valueOf(1000),new VoucherSelection(null,grant));

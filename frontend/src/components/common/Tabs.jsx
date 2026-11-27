@@ -1,4 +1,5 @@
 import { useId, useRef } from 'react';
+import { useActiveItemScroll } from '../../hooks/useActiveItemScroll';
 import styles from './CommonUI.module.css';
 
 /** Controlled tabs. Panels stay mounted so their form state is preserved. */
@@ -7,6 +8,7 @@ export function Tabs({ items = [], value, onChange, label = 'Các mục', classN
   const listRef = useRef(null);
   const selected = value ?? items.find((item) => !item.disabled)?.value;
   const enabled = items.filter((item) => !item.disabled);
+  useActiveItemScroll(listRef, selected, '[aria-selected="true"]', items.length);
   function handleKey(event) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();

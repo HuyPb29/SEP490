@@ -27,6 +27,7 @@ import lombok.Setter;
  * Lưu gói nhiều buổi và tổng giá trị thanh toán, voucher và điểm đã áp dụng cho gói.
  */
 @Entity
+@jakarta.persistence.EntityListeners(com.sep490.bms.service.notification.RealtimeEntityListener.class)
 @Table(name = "booking_package")
 @Getter
 @Setter

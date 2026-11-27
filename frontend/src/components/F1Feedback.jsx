@@ -1,28 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { Modal } from './common/Modal';
 import { uiMessage } from '../utils/formatters';
 import styles from './common/CommonUI.module.css';
 
 export function F1Dialog({ message, onClose, onConfirm, title, confirmLabel = 'Xác nhận' }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    dialog.showModal();
-    return () => {
-      if (dialog.open) dialog.close();
-    };
-  }, []);
 
   return (
-    <dialog
-      ref={ref}
-      aria-label={title || 'Thông báo'}
-      className={styles.dialogNative}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-    >
-      {title && <h2 className={styles.modalTitle}>{title}</h2>}
+    <Modal title={title || 'Thông báo'} onClose={onClose}>
       <p className={styles.modalBody}>{uiMessage(message)}</p>
       <div className={styles.modalActions}>
         <button
@@ -42,7 +25,7 @@ export function F1Dialog({ message, onClose, onConfirm, title, confirmLabel = 'X
           </button>
         )}
       </div>
-    </dialog>
+    </Modal>
   );
 }
 

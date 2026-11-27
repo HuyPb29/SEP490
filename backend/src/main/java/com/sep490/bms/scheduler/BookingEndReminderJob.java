@@ -32,7 +32,7 @@ public class BookingEndReminderJob {
     private final LocationRepository locations;
     private final NotificationService notifications;
 
-    @Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "${bms.job.booking-end.cron:*/5 * * * * *}")
     @Transactional
     public void remindStaff() {
         LocalDateTime now = LocalDateTime.now();

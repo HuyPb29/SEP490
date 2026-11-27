@@ -91,6 +91,7 @@ class BookingPaymentExpiryTests {
                 .build();
         // Địa điểm đã bị khóa vẫn phải báo Owner.
         Location location = Location.builder().id(LOCATION).ownerId(OWNER).status("LOCKED").build();
+        when(payments.findLocationIdById(PAYMENT)).thenReturn(Optional.of(LOCATION));
         when(payments.findByIdForUpdate(PAYMENT)).thenReturn(Optional.of(payment));
         when(payments.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
         when(bookings.lockForPayment(BOOKING)).thenReturn(booking);
@@ -137,13 +138,63 @@ class BookingPaymentExpiryTests {
     void rejectionReleasesSlotsThenReturnsVoucherAndPoints() {
         service.expireBookingPayment(PAYMENT, PLAY_END.plusMinutes(1));
 
-        InOrder order = inOrder(payments, bookings, vouchers, points);
+        InOrder order = inOrder(locations, payments, bookings, vouchers, points);
+        order.verify(payments).findLocationIdById(PAYMENT);
+        order.verify(locations).findForUpdate(LOCATION);
         order.verify(payments).findByIdForUpdate(PAYMENT);
         order.verify(bookings).lockForPayment(BOOKING);
         order.verify(bookings).changeStatus(booking, BookingStatus.PAYMENT_REJECTED);
         order.verify(bookings).releaseSlots(BOOKING);
         order.verify(vouchers).restoreForFailedBooking(BOOKING);
         order.verify(points).restoreForFailedBooking(BOOKING);
+    }
+
+    @Test
+    void packageExpiryLocksVenueBeforePaymentAndPackage() {
+        payment.setBookingId(null);
+        payment.setPackageId(60L);
+        BookingPackage pkg = BookingPackage.builder().id(60L).locationId(LOCATION).playerId(PLAYER)
+                .startDate(PLAY_END.toLocalDate()).endDate(PLAY_END.toLocalDate().plusWeeks(1))
+                .status(BookingStatus.RESUBMIT_REQUESTED).build();
+        when(packages.lockForPayment(60L)).thenReturn(pkg);
+        when(packages.firstSessionEnd(60L)).thenReturn(PLAY_END);
+        assertThat(service.expirePackagePayment(PAYMENT, PLAY_END)).isTrue();
+        InOrder order = inOrder(payments, locations, packages);
+        order.verify(payments).findLocationIdById(PAYMENT);
+        order.verify(locations).findForUpdate(LOCATION);
+        order.verify(payments).findByIdForUpdate(PAYMENT);
+        order.verify(packages).lockForPayment(60L);
+        order.verify(packages).settleFailed(pkg, BookingStatus.PAYMENT_REJECTED);
+    }
+
+    @Test
+    void cancellationWhileWaitingForVenueIsNotOverwrittenByExpiry() {
+        when(locations.findForUpdate(LOCATION)).thenAnswer(call -> {
+            payment.setStatus(PaymentStatus.REJECTED);
+            booking.setStatus(BookingStatus.CANCELLED_BY_FACILITY);
+            return Location.builder().id(LOCATION).build();
+        });
+        assertThat(service.expireBookingPayment(PAYMENT, PLAY_END)).isFalse();
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLED_BY_FACILITY);
+        assertNothingDecided();
+    }
+
+    @Test
+    void missingPaymentDoesNotLockVenueOrTargets() {
+        when(payments.findLocationIdById(PAYMENT)).thenReturn(Optional.empty());
+        assertThat(service.expireBookingPayment(PAYMENT, PLAY_END)).isFalse();
+        assertThat(service.expirePackagePayment(PAYMENT, PLAY_END)).isFalse();
+        verify(payments, never()).findByIdForUpdate(any());
+        verifyNoInteractions(locations, bookings, packages);
+    }
+
+    @Test
+    void paymentRemovedAfterLookupIsSkipped() {
+        when(payments.findByIdForUpdate(PAYMENT)).thenReturn(Optional.empty());
+        assertThat(service.expireBookingPayment(PAYMENT, PLAY_END)).isFalse();
+        assertThat(service.expirePackagePayment(PAYMENT, PLAY_END)).isFalse();
+        verifyNoInteractions(bookings, packages);
+        assertNothingDecided();
     }
 
     @Test

@@ -20,9 +20,15 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.core.io.ByteArrayResource;
@@ -30,6 +36,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import com.sep490.bms.common.PageResponse;
 import com.sep490.bms.dto.payment.ConfirmPaymentRequest;
@@ -37,6 +44,8 @@ import com.sep490.bms.dto.payment.PaymentDetailResponse;
 import com.sep490.bms.dto.payment.PaymentResponse;
 import com.sep490.bms.dto.payment.RejectPaymentRequest;
 import com.sep490.bms.dto.payment.ResubmitRequest;
+import com.sep490.bms.dto.location.UpdateCourtRequest;
+import com.sep490.bms.entity.location.Court;
 import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.entity.account.Role;
 import com.sep490.bms.entity.booking.Booking;
@@ -48,6 +57,8 @@ import com.sep490.bms.entity.payment.Payment;
 import com.sep490.bms.entity.payment.PaymentProof;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.repository.notification.NotificationRepository;
+import com.sep490.bms.repository.location.LocationRepository;
+import com.sep490.bms.repository.location.CourtRepository;
 import com.sep490.bms.repository.payment.PaymentProofRepository;
 import com.sep490.bms.repository.payment.PaymentRepository;
 import com.sep490.bms.repository.reschedule.RescheduleRequestRepository;
@@ -58,6 +69,10 @@ import com.sep490.bms.service.booking.PackageService;
 import com.sep490.bms.service.booking.SlotAvailabilityService;
 import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.location.LocationQueryService;
+import com.sep490.bms.service.location.CourtManagementService;
+import com.sep490.bms.service.location.LocationManagementService;
+import com.sep490.bms.service.location.PriceCoverageService;
+import com.sep490.bms.service.reschedule.CancellationService;
 import com.sep490.bms.service.promotion.LoyaltyPointService;
 import com.sep490.bms.service.promotion.VoucherService;
 
@@ -79,14 +94,17 @@ class PaymentConfirmationTests {
     private final PaymentProofRepository proofs = mock(PaymentProofRepository.class);
     private final BookingService bookings = mock(BookingService.class);
     private final FileStorageService files = mock(FileStorageService.class);
-    private final LocationAccessService access = mock(LocationAccessService.class);
+    private final LocationRepository locations = mock(LocationRepository.class);
+    private final MockHttpServletRequest httpRequest = new MockHttpServletRequest();
+    private final LocationAccessService access = new LocationAccessService(locations, httpRequest);
     private final VoucherService vouchers = mock(VoucherService.class);
     private final LoyaltyPointService points = mock(LoyaltyPointService.class);
     private final NotificationRepository notifications = mock(NotificationRepository.class);
     private final PackageService packages = mock(PackageService.class);
     private final SlotAvailabilityService availability = mock(SlotAvailabilityService.class);
+    private final LocationQueryService locationQueries = mock(LocationQueryService.class);
     private final PaymentService service = new PaymentService(payments, proofs, bookings,
-            mock(LocationQueryService.class), files, access, vouchers, points, notifications, packages, mock(RescheduleRequestRepository.class),
+            locationQueries, files, access, vouchers, points, notifications, packages, mock(RescheduleRequestRepository.class),
             new PaymentTransferPolicy(availability));
 
     private final UserPrincipal staff = UserPrincipal.builder().id(STAFF).role(Role.STAFF).locationId(LOCATION).build();
@@ -120,7 +138,9 @@ class PaymentConfirmationTests {
                 .status(PaymentStatus.AWAITING_CONFIRMATION)
                 .submittedAt(NOW.minusMinutes(10))
                 .build();
-        when(access.selectedLocation(any())).thenReturn(location);
+        httpRequest.addHeader("X-Location-Id", LOCATION.toString());
+        when(locations.findById(LOCATION)).thenReturn(Optional.of(location));
+        when(locations.findByIdForUpdate(LOCATION)).thenReturn(Optional.of(location));
         when(payments.findById(PAYMENT)).thenReturn(Optional.of(payment));
         when(payments.findByIdForUpdate(PAYMENT)).thenReturn(Optional.of(payment));
         when(payments.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
@@ -184,7 +204,7 @@ class PaymentConfirmationTests {
 
     @Test
     void overdueButNotYetTransferredStaffStillDecides() {
-        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.CONFIRMATION_ALERT_WAIT.minusNanos(1)))).thenReturn(true);
         when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.OWNER_TRANSFER_WAIT))).thenReturn(false);
 
         PaymentResponse result = service.confirm(staff, PAYMENT, null, NOW);
@@ -217,7 +237,7 @@ class PaymentConfirmationTests {
 
     @Test
     void pendingListFlagsOverduePaymentsBeforeTransfer() {
-        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.LATE_CONFIRMATION_WAIT))).thenReturn(true);
+        when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.CONFIRMATION_ALERT_WAIT.minusNanos(1)))).thenReturn(true);
         when(availability.exceededOpeningTime(eq(LOCATION), any(), any(), eq(Payment.OWNER_TRANSFER_WAIT))).thenReturn(false);
         when(payments.findByLocationIdAndStatusAndRescheduleRequestIdIsNullOrderBySubmittedAtAscIdAsc(
                 LOCATION, PaymentStatus.AWAITING_CONFIRMATION, PageRequest.of(0, 20)))
@@ -305,15 +325,128 @@ class PaymentConfirmationTests {
     }
 
     @Test
-    void confirmLocksPaymentThenBookingSavesThenEarnsPoints() {
+    void confirmLocksLocationThenPaymentThenBookingSavesThenEarnsPoints() {
         service.confirm(staff, PAYMENT, null, NOW);
 
-        InOrder order = inOrder(payments, bookings, points);
+        InOrder order = inOrder(locations, payments, bookings, points);
+        order.verify(locations).findByIdForUpdate(LOCATION);
         order.verify(payments).findByIdForUpdate(PAYMENT);
         order.verify(bookings).lockForPayment(BOOKING);
         order.verify(payments).saveAndFlush(payment);
         order.verify(bookings).changeStatus(booking, BookingStatus.CONFIRMED);
         order.verify(points).accrueForConfirmedPayment(PAYMENT);
+    }
+
+    /** Simulated transaction row locks, not a SQL Server deadlock reproduction. */
+    @ParameterizedTest
+    @CsvSource({"true,false,false", "false,false,false", "true,true,false", "false,true,false",
+            "true,false,true", "false,false,true", "true,true,true", "false,true,true"})
+    void courtSuspensionAndPaymentDecisionsSerializeInEitherOrder(boolean ownerFirst, boolean isPackage, boolean expiry) throws Exception {
+        BookingPackage pkg = isPackage ? packagePayment() : null;
+        ReentrantLock venueLock = new ReentrantLock();
+        ReentrantLock paymentLock = new ReentrantLock();
+        CountDownLatch firstHasVenue = new CountDownLatch(1);
+        CountDownLatch secondWantsVenue = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+        org.mockito.stubbing.Answer<Optional<Location>> lockVenue = call -> {
+            if (attempts.incrementAndGet() == 1) {
+                acquire(venueLock);
+                firstHasVenue.countDown();
+                assertThat(secondWantsVenue.await(5, TimeUnit.SECONDS)).isTrue();
+            } else {
+                secondWantsVenue.countDown();
+                acquire(venueLock);
+            }
+            return Optional.of(location);
+        };
+        when(locations.findByIdForUpdate(LOCATION)).thenAnswer(lockVenue);
+        when(locations.findByCourtIdForUpdate(11L)).thenAnswer(lockVenue);
+        when(payments.findLocationIdById(PAYMENT)).thenReturn(Optional.of(LOCATION));
+        when(locationQueries.findForUpdate(LOCATION)).thenAnswer(call -> lockVenue.answer(call).orElseThrow());
+        when(payments.findByIdForUpdate(PAYMENT)).thenAnswer(call -> {
+            acquire(paymentLock);
+            return Optional.of(payment);
+        });
+        // Accrual really takes the venue lock again after Payment; preserve that dependency.
+        org.mockito.Mockito.doAnswer(call -> {
+            if (!venueLock.isHeldByCurrentThread()) acquire(venueLock);
+            return null;
+        }).when(points).accrueForConfirmedPayment(PAYMENT);
+        org.mockito.Mockito.doAnswer(call -> {
+            if (!venueLock.isHeldByCurrentThread()) acquire(venueLock);
+            return null;
+        }).when(points).restoreForFailedBooking(BOOKING);
+        org.mockito.Mockito.doAnswer(call -> {
+            if (!venueLock.isHeldByCurrentThread()) acquire(venueLock);
+            return null;
+        }).when(points).restoreForFailedPackage(PACKAGE);
+        org.mockito.Mockito.doAnswer(call -> {
+            pkg.setStatus(BookingStatus.PAYMENT_REJECTED);
+            points.restoreForFailedPackage(PACKAGE);
+            return null;
+        }).when(packages).settleFailed(any(), eq(BookingStatus.PAYMENT_REJECTED));
+
+        CourtRepository courts = mock(CourtRepository.class);
+        Court court = Court.builder().id(11L).locationId(LOCATION).name("Sân 1").active(true).build();
+        when(courts.findById(11L)).thenReturn(Optional.of(court));
+        when(courts.save(any())).thenAnswer(call -> call.getArgument(0));
+        CancellationService cancellations = mock(CancellationService.class);
+        org.mockito.Mockito.doAnswer(call -> {
+            Payment current = payments.findByIdForUpdate(PAYMENT).orElseThrow();
+            if (current.getStatus() == PaymentStatus.AWAITING_CONFIRMATION) {
+                current.reject("Sân tạm ngưng hoạt động");
+                booking.setStatus(BookingStatus.CANCELLED_BY_FACILITY);
+                if (pkg != null) pkg.setStatus(BookingStatus.CANCELLED_BY_FACILITY);
+            }
+            return null;
+        }).when(cancellations).courtDisabled(11L, OWNER);
+        CourtManagementService courtService = new CourtManagementService(courts, locations,
+                mock(PriceCoverageService.class), mock(LocationManagementService.class, org.mockito.Mockito.CALLS_REAL_METHODS),
+                cancellations);
+        Runnable suspend = () -> courtService.update(owner, 11L, UpdateCourtRequest.builder().isActive(false).build());
+        Runnable confirm = () -> {
+            if (expiry) {
+                boolean expired = isPackage ? service.expirePackagePayment(PAYMENT, FIRST_SESSION_END)
+                        : service.expireBookingPayment(PAYMENT, PLAY_END);
+                assertThat(expired).isEqualTo(!ownerFirst);
+            } else if (ownerFirst) {
+                assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW))
+                        .isInstanceOf(AppException.class).hasMessageContaining("MSG54");
+            } else {
+                service.confirm(staff, PAYMENT, null, NOW);
+            }
+        };
+        java.util.concurrent.ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            var first = pool.submit(() -> withLocks(ownerFirst ? suspend : confirm, venueLock, paymentLock));
+            assertThat(firstHasVenue.await(5, TimeUnit.SECONDS)).isTrue();
+            var second = pool.submit(() -> withLocks(ownerFirst ? confirm : suspend, venueLock, paymentLock));
+            first.get(10, TimeUnit.SECONDS);
+            second.get(10, TimeUnit.SECONDS);
+            assertThat(court.isActive()).isFalse();
+            assertThat(payment.getStatus()).isEqualTo(ownerFirst || expiry ? PaymentStatus.REJECTED : PaymentStatus.CONFIRMED);
+            if (ownerFirst) verifyNoInteractions(points);
+            else if (expiry && isPackage) verify(points).restoreForFailedPackage(PACKAGE);
+            else if (expiry) verify(points).restoreForFailedBooking(BOOKING);
+            else verify(points).accrueForConfirmedPayment(PAYMENT);
+        } finally {
+            pool.shutdownNow();
+            assertThat(pool.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private static void acquire(ReentrantLock lock) throws InterruptedException {
+        assertThat(lock.tryLock(3, TimeUnit.SECONDS)).as("row lock must not form a cycle").isTrue();
+    }
+
+    private static void withLocks(Runnable action, ReentrantLock... locks) {
+        try {
+            action.run();
+        } finally {
+            for (ReentrantLock lock : locks) {
+                while (lock.isHeldByCurrentThread()) lock.unlock();
+            }
+        }
     }
 
     @Test
@@ -458,7 +591,8 @@ class PaymentConfirmationTests {
         service.reject(staff, PAYMENT, new RejectPaymentRequest("Không thấy tiền về"));
 
         // VoucherService, LoyaltyPointService chỉ trả lại cho booking đã ở trạng thái thất bại.
-        InOrder order = inOrder(payments, bookings, vouchers, points);
+        InOrder order = inOrder(locations, payments, bookings, vouchers, points);
+        order.verify(locations).findByIdForUpdate(LOCATION);
         order.verify(payments).findByIdForUpdate(PAYMENT);
         order.verify(bookings).lockForPayment(BOOKING);
         order.verify(payments).saveAndFlush(payment);
@@ -466,6 +600,25 @@ class PaymentConfirmationTests {
         order.verify(bookings).releaseSlots(BOOKING);
         order.verify(vouchers).restoreForFailedBooking(BOOKING);
         order.verify(points).restoreForFailedBooking(BOOKING);
+    }
+
+    @Test
+    void resubmissionLocksVenueBeforePaymentAndBooking() {
+        service.requestResubmission(staff, PAYMENT, new ResubmitRequest("Ảnh mờ", true), NOW);
+        InOrder order = inOrder(locations, payments, bookings);
+        order.verify(locations).findByIdForUpdate(LOCATION);
+        order.verify(payments).findByIdForUpdate(PAYMENT);
+        order.verify(bookings).lockForPayment(BOOKING);
+    }
+
+    @Test
+    void venueLockFailureDoesNotLockOrChangePayment() {
+        when(locations.findByIdForUpdate(LOCATION)).thenThrow(
+                new org.springframework.dao.CannotAcquireLockException("venue lock timeout"));
+        assertThatThrownBy(() -> service.confirm(staff, PAYMENT, null, NOW))
+                .isInstanceOf(org.springframework.dao.CannotAcquireLockException.class);
+        verifyNoInteractions(payments);
+        assertNothingDecided();
     }
 
     @Test
@@ -571,7 +724,10 @@ class PaymentConfirmationTests {
 
         PaymentResponse result = service.confirm(staff, PAYMENT, null, NOW);
 
-        InOrder order = inOrder(payments, packages, points);
+        InOrder order = inOrder(locations, payments, packages, points);
+        order.verify(locations).findByIdForUpdate(LOCATION);
+        order.verify(payments).findByIdForUpdate(PAYMENT);
+        order.verify(packages).lockForPayment(PACKAGE);
         order.verify(payments).saveAndFlush(payment);
         order.verify(packages).changeStatus(pkg, BookingStatus.CONFIRMED);
         order.verify(points).accrueForConfirmedPayment(PAYMENT);

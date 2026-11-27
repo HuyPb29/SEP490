@@ -594,7 +594,8 @@ class PackageServiceTests {
 
         PackageDetailResponse result = service.create(player, threeSessions(null, null), now);
 
-        InOrder order = inOrder(bookingService, packages, bookings);
+        InOrder order = inOrder(locations, bookingService, packages, bookings);
+        order.verify(locations).findForCourtUpdate(COURT);
         order.verify(bookingService).requirePendingPaymentLimit(PLAYER, now);
         order.verify(packages).save(any(BookingPackage.class));
         assertThat(savedPackage.getStatus()).isEqualTo(BookingStatus.HOLDING);
@@ -733,13 +734,17 @@ class PackageServiceTests {
                 .startDate(DEC_1).endDate(DEC_31).holdExpiresAt(NOW.minusSeconds(1)).build();
         Booking s1 = Booking.builder().id(101L).packageId(50L).status(BookingStatus.HOLDING).build();
         Booking s2 = Booking.builder().id(102L).packageId(50L).status(BookingStatus.HOLDING).build();
+        when(packages.findLocationIdById(50L)).thenReturn(Optional.of(LOCATION));
         when(packages.findByIdForUpdate(50L)).thenReturn(Optional.of(pkg));
         when(bookings.findByPackageIdOrderByPlayDateAscStartMinuteAscIdAsc(50L)).thenReturn(List.of(s1, s2));
 
         assertThat(service.expireHold(50L, NOW)).isTrue();
 
         assertThat(pkg.getStatus()).isEqualTo(BookingStatus.EXPIRED);
-        InOrder order = inOrder(packages, bookingService, voucherService, points);
+        InOrder order = inOrder(locations, packages, bookingService, voucherService, points);
+        order.verify(packages).findLocationIdById(50L);
+        order.verify(locations).findForUpdate(LOCATION);
+        order.verify(packages).findByIdForUpdate(50L);
         order.verify(packages).saveAndFlush(pkg);
         order.verify(bookingService).changeStatus(s1, BookingStatus.EXPIRED);
         order.verify(bookingService).releaseSlots(101L);
@@ -753,12 +758,26 @@ class PackageServiceTests {
     }
 
     @Test
+    void paymentSubmissionLocksVenueBeforePackage() {
+        BookingPackage pkg = BookingPackage.builder().id(50L).locationId(LOCATION).build();
+        when(packages.findLocationIdById(50L)).thenReturn(Optional.of(LOCATION));
+        when(packages.findByIdForUpdate(50L)).thenReturn(Optional.of(pkg));
+        assertThat(service.lockForPayment(50L)).isSameAs(pkg);
+        InOrder order = inOrder(packages, locations);
+        order.verify(packages).findLocationIdById(50L);
+        order.verify(locations).findForUpdate(LOCATION);
+        order.verify(packages).findByIdForUpdate(50L);
+    }
+
+    @Test
     void expireHoldSkipsPackageAlreadyReportedOrStillHeld() {
         BookingPackage reported = BookingPackage.builder().id(50L).status(BookingStatus.AWAITING_CONFIRMATION)
                 .holdExpiresAt(NOW.minusMinutes(1)).build();
         BookingPackage stillHeld = BookingPackage.builder().id(51L).status(BookingStatus.HOLDING)
                 .holdExpiresAt(NOW.plusSeconds(1)).build();
+        when(packages.findLocationIdById(50L)).thenReturn(Optional.of(LOCATION));
         when(packages.findByIdForUpdate(50L)).thenReturn(Optional.of(reported));
+        when(packages.findLocationIdById(51L)).thenReturn(Optional.of(LOCATION));
         when(packages.findByIdForUpdate(51L)).thenReturn(Optional.of(stillHeld));
 
         assertThat(service.expireHold(50L, NOW)).isFalse();

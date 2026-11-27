@@ -27,6 +27,7 @@ import lombok.Setter;
  * Lưu giao dịch của booking, gói hoặc yêu cầu đổi lịch cùng số tiền và kết quả xác nhận.
  */
 @Entity
+@jakarta.persistence.EntityListeners(com.sep490.bms.service.notification.RealtimeEntityListener.class)
 @Table(name = "payment")
 @Getter
 @Setter
@@ -39,6 +40,8 @@ public class Payment {
     public static final int MAX_RESUBMITS = 3;
     /** P24 (D182): chờ quá 15 phút trong giờ mở cửa thì báo đỏ trên màn Staff và Player được khiếu nại chậm xác nhận. */
     public static final Duration LATE_CONFIRMATION_WAIT = Duration.ofMinutes(15);
+    /** Cảnh báo vận hành sớm sau 10 phút; không thay hạn khiếu nại hoặc chuyển Owner. */
+    public static final Duration CONFIRMATION_ALERT_WAIT = Duration.ofMinutes(10);
     /** P36 (D182): sau mốc P24 thêm 10 phút trong giờ mở cửa mà Staff vẫn chưa xử lý thì chuyển cho chủ sân. */
     public static final Duration OWNER_TRANSFER_EXTRA_WAIT = Duration.ofMinutes(10);
     /** Tổng thời gian chờ trước khi chuyển cho chủ sân: P24 + P36 = 25 phút. */
@@ -112,6 +115,10 @@ public class Payment {
     /** D182: chờ quá P24 (15 phút) trong giờ mở cửa, màn Staff báo đỏ. Không lưu DB. */
     @Transient
     private boolean overdue;
+
+    /** Mã booking để đối chiếu và tìm phụ thu đổi lịch; không lưu lại vào payment. */
+    @Transient
+    private String bookingCode;
 
     /**
      * Player đã gửi lại chứng từ (UC18 #4): chờ Staff xem lại. Tính lại thời điểm gửi để

@@ -16,7 +16,11 @@ api.interceptors.request.use((request) => {
   return request
 })
 
-api.interceptors.response.use((response) => response, (error) => {
+api.interceptors.response.use((response) => {
+  const readOnlyPost = /\/(preview|summary|check)$/.test(response.config.url || '');
+  if (response.config.method && response.config.method.toLowerCase() !== 'get' && !readOnlyPost) window.dispatchEvent(new Event('bms-data-changed'));
+  return response;
+}, (error) => {
   const token = getToken()
   if (token && error.response?.status === 401 &&
       error.config?.headers?.get?.('Authorization') === `Bearer ${token}`) {

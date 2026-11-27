@@ -161,6 +161,11 @@ public class ComplaintService {
         if (latePayment && request.getPaymentId() == null) {
             throw new AppException("Khiếu nại xác nhận thanh toán trễ phải gắn với khoản thanh toán");
         }
+        if (latePayment) {
+            // This path holds Payment while reading the venue/owner to notify them.
+            locationRepository.findByIdForUpdate(booking.getLocationId())
+                    .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
+        }
         if (request.getPaymentId() != null) {
             Payment payment = latePayment ? paymentRepository.findByIdForUpdate(request.getPaymentId())
                     .orElseThrow(() -> new AppException("Không tìm thấy giao dịch", HttpStatus.NOT_FOUND))
@@ -440,8 +445,10 @@ public class ComplaintService {
     }
 
     private Complaint findPendingForOwner(UserPrincipal owner, Long id) {
-        Complaint complaint = findComplaintForUpdate(id);
         Location location = findOwnerLocation(owner);
+        locationRepository.findByIdForUpdate(location.getId())
+                .orElseThrow(() -> new AppException("Không tìm thấy địa điểm", HttpStatus.NOT_FOUND));
+        Complaint complaint = findComplaintForUpdate(id);
         if (!location.getId().equals(complaint.getLocationId())) {
             throw new AppException("Khiếu nại không thuộc địa điểm của bạn", HttpStatus.FORBIDDEN);
         }

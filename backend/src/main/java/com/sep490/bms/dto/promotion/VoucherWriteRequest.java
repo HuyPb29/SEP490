@@ -34,4 +34,6 @@ public record VoucherWriteRequest(
     public boolean isCodeValid() { return targetGroup == null || (targetGroup == VoucherTargetGroup.SPECIFIED ? code == null : code != null && !code.isBlank()); }
     @AssertTrue(message="Phần trăm giảm từ 1 đến 99")
     public boolean isPercentageValid() { return discountType != DiscountType.PERCENT || discountValue == null || discountValue.compareTo(BigDecimal.valueOf(99)) <= 0; }
+    @AssertTrue(message="Ngân sách phải lớn hơn hoặc bằng số tiền giảm của một voucher")
+    public boolean isBudgetValid() { return discountType != DiscountType.AMOUNT || budget == null || discountValue == null || budget.compareTo(discountValue) >= 0; }
 }

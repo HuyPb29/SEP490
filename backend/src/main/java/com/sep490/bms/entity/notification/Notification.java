@@ -19,6 +19,7 @@ import lombok.Setter;
  * Lưu thông báo trong ứng dụng, người nhận, nội dung, dữ liệu liên quan và trạng thái đã đọc.
  */
 @Entity
+@jakarta.persistence.EntityListeners(com.sep490.bms.service.notification.NotificationRealtimeListener.class)
 @Table(name = "notification")
 @Getter
 @Setter

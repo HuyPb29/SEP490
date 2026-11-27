@@ -347,7 +347,7 @@ CREATE TABLE booking_package (
     CONSTRAINT pk_booking_package PRIMARY KEY (id),
     CONSTRAINT uk_pkg_id_location UNIQUE (id, location_id),
     CONSTRAINT ck_pkg_type CHECK (package_type IN ('RECURRING','CUSTOM','DAY')),
-    CONSTRAINT ck_pkg_status CHECK (status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','PAYMENT_REJECTED','EXPIRED')
+    CONSTRAINT ck_pkg_status CHECK (status IN ('HOLDING','AWAITING_CONFIRMATION','RESUBMIT_REQUESTED','CONFIRMED','PAYMENT_REJECTED','EXPIRED','CANCELLED_BY_FACILITY')
         OR (package_type = 'DAY' AND status = 'CANCELLED_BY_PLAYER')),
     CONSTRAINT ck_pkg_dates CHECK (end_date >= start_date),
     CONSTRAINT ck_pkg_amount CHECK (final_amount > 0 AND voucher_discount >= 0 AND point_discount >= 0 AND points_used >= 0),

@@ -7,6 +7,8 @@ import styles from './AppLayouts.module.css';
 import { UserMenu } from './UserMenu';
 import NavigationDrawer from './NavigationDrawer';
 import LocationSwitcher from './LocationSwitcher';
+import { useManagementInboxCounts } from '../../hooks/useManagementInbox';
+import { ManagementInboxContext } from '../../contexts/managementInbox';
 
 export default function ManagementLayout({
   role: requiredRole,
@@ -31,6 +33,9 @@ export default function ManagementLayout({
     setLocationId,
   } = useLocationContext();
   const [drawerOpen, setDrawerOpen] = useNavigationDrawer();
+  const inbox = useManagementInboxCounts(String(user?.role_code || user?.role || '').toLowerCase(),
+    propLocationId || ctxLocationId || user?.facility_id || user?.locationId, user?.user_id ?? user?.id);
+  const liveBadges = { ...badges, ...inbox };
 
   if (!user) {
     return <Navigate to="/login" state={{ returnTo: location.pathname + location.search }} replace />;
@@ -64,23 +69,24 @@ export default function ManagementLayout({
     {
       to: '/staff/confirm-payments',
       label: 'Xác nhận thanh toán',
-      badge: badges.payments,
+      badge: liveBadges.payments,
+      urgent: liveBadges.urgentPayments,
     },
     { to: '/maintenance', label: 'Yêu cầu bảo trì' },
     {
       to: '/staff/complaints',
       label: 'Khiếu nại của khách',
-      badge: badges.complaints,
+      badge: liveBadges.complaints,
     },
   ];
 
   const ownerMenu = [
-    { to: '/owner/workspace', label: 'Tổng quan & Vận hành', end: true },
+    { to: '/owner/workspace', label: 'Tổng quan & Vận hành', end: true, badge: (liveBadges.complaints || 0) + (liveBadges.refund || 0) },
     { to: '/owner/courts-pricing', label: 'Sân & Bảng giá' },
     { to: '/owner/opening-hours', label: "Giờ mở cửa & khung giờ" },
     { to: '/owner/facility-settings', label: 'Hồ sơ địa điểm' },
     { to: '/owner/workspace?tab=reviews', label: 'Đánh giá' },
-    { to: '/staff/confirm-payments', label: 'Xác nhận thanh toán' },
+    { to: '/staff/confirm-payments', label: 'Xác nhận thanh toán', badge: liveBadges.payments, urgent: liveBadges.urgentPayments },
     { to: '/owner/reconciliations', label: 'Đối soát doanh thu' },
     { to: '/owner/reports', label: 'Báo cáo & Xuất dữ liệu' },
     { to: '/maintenance', label: 'Quản lý bảo trì' },
@@ -128,7 +134,8 @@ export default function ManagementLayout({
           <span>{item.label}</span>
           {Number(item.badge) > 0 && (
             <span
-              className={styles.menuBadge}
+              className={`${styles.menuBadge} ${item.urgent ? styles.menuBadgeUrgent : ''}`}
+              aria-label={`${item.badge} việc chờ xử lý${item.urgent ? `, ${item.urgent} thanh toán quá 10 phút` : ''}`}
             >
               {item.badge}
             </span>
@@ -190,7 +197,7 @@ export default function ManagementLayout({
               actions={actions}
             />
           )}
-          {children}
+          <ManagementInboxContext.Provider value={inbox}>{children}</ManagementInboxContext.Provider>
         </main>
       </div>
 

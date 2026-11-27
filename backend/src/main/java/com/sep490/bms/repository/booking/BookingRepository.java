@@ -26,6 +26,9 @@ import jakarta.persistence.LockModeType;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
+    @Query("select b.locationId from Booking b where b.id = :id")
+    Optional<Long> findLocationIdById(@Param("id") Long id);
+
     boolean existsByBookingCode(String bookingCode);
 
     @Query("""

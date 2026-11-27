@@ -37,7 +37,18 @@
 .pointBalance { margin: 0; font-size: var(--text-xs); color: var(--color-text-secondary); line-height: 1.7; }
 .points input[type="number"] { font-size: 16px; }
 .rangeLabel { font-size: var(--text-xs); color: var(--color-text-secondary); }
-.range { width: 100%; min-height: 44px; accent-color: var(--color-primary); cursor: pointer; margin: 0; }
+.rangeHeading, .rangeLimits { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.pointSaving { padding: 4px 10px; border-radius: var(--radius-full); background: var(--color-primary-soft); color: var(--color-primary-hover); font-size: var(--text-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pointsSlider { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: var(--space-3); align-items: center; }
+.pointAdjust { width: 44px; min-height: 44px; padding: 0; font-size: 22px; border-radius: var(--radius-full); }
+.rangeLimits { font-size: var(--text-xs); color: var(--color-text-secondary); }
+.range { appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; height: 44px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; box-shadow: none; cursor: pointer; margin: 0; }
+.range::-webkit-slider-runnable-track { height: 8px; border-radius: var(--radius-full); background: linear-gradient(to right, var(--color-primary) 0 var(--points-fill), var(--color-border) var(--points-fill) 100%); }
+.range::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 24px; height: 24px; margin-top: -8px; border: 3px solid var(--color-primary); border-radius: 50%; background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.range::-moz-range-track { height: 8px; border-radius: var(--radius-full); background: linear-gradient(to right, var(--color-primary) 0 var(--points-fill), var(--color-border) var(--points-fill) 100%); }
+.range::-moz-range-thumb { width: 18px; height: 18px; border: 3px solid var(--color-primary); border-radius: 50%; background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.range:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.range:disabled { opacity: .45; cursor: not-allowed; }
 .pricing { margin: 0; display: grid; gap: var(--space-3); font-size: var(--text-sm); }
 .pricing > div { display: flex; justify-content: space-between; gap: var(--space-3); }
 .pricing dt { color: var(--color-text-secondary); }

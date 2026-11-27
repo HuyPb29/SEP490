@@ -7,6 +7,8 @@ import { F1Dialog } from './components/F1Feedback';
 import { AuthProvider } from './contexts/AuthContext';
 import { LocationProvider } from './contexts/LocationContext';
 import AppRoutes from './routes/AppRoutes';
+import { useRealtimeEvents } from './hooks/useRealtimeEvents';
+import { subscribeLiveRefresh } from './utils/liveRefresh';
 
 export default function App() {
   return (
@@ -21,6 +23,7 @@ export default function App() {
 }
 
 function AppContent() {
+  useRealtimeEvents();
   const location = useLocation();
   const navigate = useNavigate();
   const [showExpiry, setShowExpiry] = useState(false);
@@ -48,10 +51,12 @@ function AppContent() {
   const [status, setStatus] = useState('checking...');
 
   useEffect(() => {
-    api
-      .get('/health')
-      .then((res) => setStatus(res.data.status))
-      .catch(() => setStatus('backend offline'));
+    const controller = new AbortController();
+    const stop = subscribeLiveRefresh(() => api
+      .get('/health', { signal: controller.signal })
+      .then((res) => { if (!controller.signal.aborted) setStatus(res.data.status); })
+      .catch(() => { if (!controller.signal.aborted) setStatus('backend offline'); }), 5000, true);
+    return () => { controller.abort(); stop(); };
   }, []);
 
   return (

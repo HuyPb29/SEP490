@@ -100,7 +100,7 @@ class PaymentTransferJobTests {
                     NotificationType.PAYMENT_TRANSFERRED_TO_OWNER, "PAYMENT", 50L)).thenReturn(false, true);
         }
         var jobWithDeduplication = new PaymentTransferJob(payments, policy, locations, bookings, accounts,
-                new NotificationService(notificationRepository));
+                new NotificationService(notificationRepository, org.mockito.Mockito.mock(com.sep490.bms.service.notification.RealtimeUpdates.class)));
 
         jobWithDeduplication.notifyTransferredPayments(NOW);
         jobWithDeduplication.notifyTransferredPayments(NOW);

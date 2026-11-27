@@ -89,11 +89,13 @@ public class BookingQueryService {
         Set<Long> reviewable = reviewService.reviewableBookingIds(result.getContent());
         Map<Long, RescheduleEligibility> eligibility = reschedules.eligibility(result.getContent(), now);
         Map<Long, List<RescheduleChange>> changes = rescheduleHistory.byBookingIds(result.map(Booking::getId).toList());
+        var surcharges = rescheduleHistory.surchargesByBookingIds(result.map(Booking::getId).toList());
         return PageResponse.from(result.map(booking -> {
             BookingListItem item = toListItem(booking, locations.get(booking.getLocationId()),
                     courts.get(booking.getCourtId()), booking.getHoldExpiresAt(), now,
                     reviewable.contains(booking.getId()), eligibility.get(booking.getId()));
             item.setRescheduleChanges(changes.getOrDefault(booking.getId(), List.of()));
+            item.setRescheduleSurcharge(surcharges.getOrDefault(booking.getId(), java.math.BigDecimal.ZERO));
             return item;
         }));
     }
@@ -129,6 +131,7 @@ public class BookingQueryService {
                 .startTime(MinuteTime.format(booking.getStartMinute()))
                 .endTime(MinuteTime.format(booking.getEndMinute()))
                 .note(booking.getNote())
+                .rescheduleSurcharge(rescheduleHistory.surchargesByBookingIds(List.of(bookingId)).getOrDefault(bookingId, java.math.BigDecimal.ZERO))
                 .listAmount(booking.getListAmount())
                 .voucherDiscount(booking.getVoucherDiscount())
                 .pointsUsed(booking.getPointsUsed())
@@ -180,6 +183,7 @@ public class BookingQueryService {
                 }, Collectors.toList())));
         Map<Long, List<RescheduleChange>> changes = rescheduleHistory.byPackageIds(result.map(BookingPackage::getId).toList());
 
+        var surcharges = rescheduleHistory.surchargesByPackageIds(result.map(BookingPackage::getId).toList());
         return PageResponse.from(result.map(pkg -> {
             BookingStatus shown = shownStatus(pkg.getStatus(), pkg.getHoldExpiresAt(), now);
             Location location = locations.get(pkg.getLocationId());
@@ -192,6 +196,7 @@ public class BookingQueryService {
                     .endDate(pkg.getEndDate())
                     .sessionCount(sessionCounts.getOrDefault(pkg.getId(), 0L))
                     .daySessions(sessionsByOrder.getOrDefault(pkg.getId(), List.of()))
+                    .rescheduleSurcharge(surcharges.getOrDefault(pkg.getId(), java.math.BigDecimal.ZERO))
                     .finalAmount(pkg.getFinalAmount())
                     .status(shown)
                     .holdExpiresAt(shown == BookingStatus.HOLDING ? pkg.getHoldExpiresAt() : null)
@@ -228,6 +233,7 @@ public class BookingQueryService {
         Optional<Payment> payment = paymentService.findForPackage(pkg.getId());
         BookingStatus status = shownStatus(pkg.getStatus(), pkg.getHoldExpiresAt(), now);
 
+        var surcharges = rescheduleHistory.surchargesByBookingIds(sessions.stream().map(Booking::getId).toList());
         return PackageDetailResponse.builder()
                 .id(pkg.getId())
                 .packageType(pkg.getPackageType())
@@ -240,6 +246,7 @@ public class BookingQueryService {
                 .voucherDiscount(pkg.getVoucherDiscount())
                 .pointsUsed(pkg.getPointsUsed())
                 .pointDiscount(pkg.getPointDiscount())
+                .rescheduleSurcharge(surcharges.values().stream().reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add))
                 .finalAmount(pkg.getFinalAmount())
                 .status(status)
                 .holdExpiresAt(status == BookingStatus.HOLDING ? pkg.getHoldExpiresAt() : null)
@@ -255,6 +262,7 @@ public class BookingQueryService {
                             BookingListItem item = toListItem(session, location, courts.get(session.getCourtId()),
                                     pkg.getHoldExpiresAt(), now, reviewable.contains(session.getId()), eligibility.get(session.getId()));
                             item.setBookedHalfHours(bookedHalfHours.get(session.getId()));
+                            item.setRescheduleSurcharge(surcharges.getOrDefault(session.getId(), java.math.BigDecimal.ZERO));
                             item.setRescheduleChanges(changes.getOrDefault(session.getId(), List.of()));
                             return item;
                         })

@@ -8,6 +8,7 @@ import com.sep490.bms.entity.booking.*;
 import com.sep490.bms.entity.enums.*;
 import com.sep490.bms.entity.notification.Notification;
 import com.sep490.bms.entity.payment.Payment;
+import com.sep490.bms.entity.location.Location;
 import com.sep490.bms.exception.AppException;
 import com.sep490.bms.security.UserPrincipal;
 import com.sep490.bms.service.team.MatchService;
@@ -16,7 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
-/** Shared helpers are called only inside the workflow transaction. Lock booking before its children. */
+/** Shared helpers are called only inside the workflow transaction. Lock venue, booking, then its children. */
 @Component
 @RequiredArgsConstructor
 public class BookingChangeSupport {
@@ -31,7 +32,15 @@ public class BookingChangeSupport {
         em.refresh(value, LockModeType.PESSIMISTIC_WRITE);
         return value;
     }
-    public Booking booking(Long id) { return lock(Booking.class, id); }
+    public Booking booking(Long id) {
+        if (id == null || id <= 0) throw new AppException("Mã không hợp lệ");
+        // Scalar lookup must not cache Booking while another transaction changes it under the venue lock.
+        Long locationId = em.createQuery("select b.locationId from Booking b where b.id=:id", Long.class)
+                .setParameter("id", id).getResultList().stream().findFirst()
+                .orElseThrow(() -> new AppException("Không tìm thấy dữ liệu", HttpStatus.NOT_FOUND));
+        lock(Location.class, locationId);
+        return lock(Booking.class, id);
+    }
     public void player(UserPrincipal user, Booking b) {
         if (user == null || user.getRole() != Role.PLAYER || !user.getId().equals(b.getPlayerId()))
             throw new AppException("Không có quyền với booking", HttpStatus.FORBIDDEN);

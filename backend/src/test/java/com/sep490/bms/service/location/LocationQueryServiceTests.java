@@ -43,6 +43,15 @@ class LocationQueryServiceTests {
     private final Location longBien = location(2L, "Sân Long Biên", "21.040000", "105.880000");
 
     @Test
+    void lifecycleTakesWriteLockEvenWhenVenueIsLocked() {
+        linhDam.setStatus("LOCKED");
+        when(locations.findByIdForUpdate(1L)).thenReturn(Optional.of(linhDam));
+        assertThat(service.findForUpdate(1L)).isSameAs(linhDam);
+        verify(locations).findByIdForUpdate(1L);
+        verify(locations, never()).findByIdAndStatus(anyLong(), anyString());
+    }
+
+    @Test
     void withoutPositionKeepsNameOrderAndHasNoDistance() {
         when(locations.searchActive(null)).thenReturn(List.of(linhDam, longBien));
 

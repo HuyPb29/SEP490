@@ -262,9 +262,8 @@ public class PaymentService {
 
     PaymentResponse resubmitProof(UserPrincipal player, Long paymentId, MultipartFile proof, LocalDateTime now) {
         requireProofAttached(proof);
-        // Khóa payment trước rồi đến booking (hoặc gói), cùng thứ tự với phía Staff, để hai bên không chờ nhau mãi.
-        Payment payment = paymentRepository.findByIdForUpdate(paymentId)
-                .orElseThrow(PaymentService::paymentNotFound);
+        Payment payment = lockPaymentAfterLocation(paymentId);
+        if (payment == null) throw paymentNotFound();
         if (payment.getPackageId() != null) {
             return resubmitPackageProof(player, payment, proof, now);
         }
@@ -483,7 +482,8 @@ public class PaymentService {
     }
 
     PaymentResponse confirm(UserPrincipal user, Long paymentId, ConfirmPaymentRequest request, LocalDateTime now) {
-        Location location = locationAccessService.selectedLocation(user);
+        // Court suspension also locks Location first. Accrual must not take it after Payment.
+        Location location = locationAccessService.selectedLocationForUpdate(user);
         Payment payment = lockInLocation(location, paymentId);
         transferPolicy.requireStaffMayDecide(user, payment, now);
         BigDecimal received = request == null || request.receivedAmount() == null
@@ -527,7 +527,7 @@ public class PaymentService {
     }
 
     PaymentResponse requestResubmission(UserPrincipal user, Long paymentId, ResubmitRequest request, LocalDateTime now) {
-        Location location = locationAccessService.selectedLocation(user);
+        Location location = locationAccessService.selectedLocationForUpdate(user);
         Payment payment = lockInLocation(location, paymentId);
         transferPolicy.requireStaffMayDecide(user, payment, now);
         if (payment.getPackageId() != null) {
@@ -561,7 +561,7 @@ public class PaymentService {
      */
     @Transactional
     public PaymentResponse reject(UserPrincipal user, Long paymentId, RejectPaymentRequest request) {
-        Location location = locationAccessService.selectedLocation(user);
+        Location location = locationAccessService.selectedLocationForUpdate(user);
         Payment payment = lockInLocation(location, paymentId);
         transferPolicy.requireStaffMayDecide(user, payment, LocalDateTime.now());
         if (payment.getPackageId() != null) {
@@ -577,14 +577,14 @@ public class PaymentService {
     /**
      * UC37, BR03, FR125 (D80): hết giờ chơi mà giao dịch của booking lẻ vẫn chờ Staff (Chờ xác nhận hoặc Chờ
      * bổ sung) thì hệ thống chuyển sang Bị từ chối thanh toán: nhả slot, trả voucher và điểm (BR40, BR45), báo
-     * Player (MSG51) và Owner (MSG56). Khóa payment rồi booking theo cùng thứ tự với Staff, rồi kiểm tra lại:
+     * Player (MSG51) và Owner (MSG56). Khóa Location rồi payment/booking như Staff và tạm ngưng sân, rồi kiểm tra lại:
      * Staff có thể vừa xử lý sau lần quét của job. Player đã chuyển tiền thì khiếu nại (UC33).
      *
      * @return true nếu giao dịch vừa bị từ chối
      */
     @Transactional
     public boolean expireBookingPayment(Long paymentId, LocalDateTime now) {
-        Payment payment = paymentRepository.findByIdForUpdate(paymentId).orElse(null);
+        Payment payment = lockPaymentAfterLocation(paymentId);
         if (payment == null || payment.getBookingId() == null
                 || (payment.getStatus() != PaymentStatus.AWAITING_CONFIRMATION
                         && payment.getStatus() != PaymentStatus.RESUBMIT_REQUESTED)) {
@@ -611,7 +611,7 @@ public class PaymentService {
 
     @Transactional
     public boolean expirePackagePayment(Long paymentId, LocalDateTime now) {
-        Payment payment = paymentRepository.findByIdForUpdate(paymentId).orElse(null);
+        Payment payment = lockPaymentAfterLocation(paymentId);
         if (payment == null || payment.getPackageId() == null
                 || (payment.getStatus() != PaymentStatus.AWAITING_CONFIRMATION
                         && payment.getStatus() != PaymentStatus.RESUBMIT_REQUESTED)) {
@@ -755,6 +755,14 @@ public class PaymentService {
             throw new AppException("Giao dịch này đã được xử lý. (MSG54)", HttpStatus.CONFLICT);
         }
         return payment;
+    }
+
+    private Payment lockPaymentAfterLocation(Long paymentId) {
+        Long locationId = paymentRepository.findLocationIdById(paymentId).orElse(null);
+        if (locationId == null) return null;
+        locationQueryService.findForUpdate(locationId);
+        // Read the entity only after the venue lock; court suspension may have rejected it while we waited.
+        return paymentRepository.findByIdForUpdate(paymentId).orElse(null);
     }
 
     /** Khóa booking của giao dịch, sau payment (cùng thứ tự với phía Player gửi lại chứng từ). */

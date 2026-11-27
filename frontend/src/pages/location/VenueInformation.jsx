@@ -21,8 +21,8 @@ export default function VenueInformation({ facility, retryVenue }) {
       {facility.price_table.length > 0 ? <div className="overflow-auto"><table className={styles.priceTable}>
         <thead><tr><th>Sân / Ngày</th><th>Khung giờ</th><th>Hiệu lực</th><th>Đơn giá</th></tr></thead>
         <tbody>{facility.price_table.map((row, index) => <tr key={row.id + ':' + index}>
-          <td>{row.court_name} · {row.days_label}</td><td>{row.time_range}</td>
-          <td>{row.valid_from || '—'} đến {row.valid_to || '—'}</td><td>{row.price_label}</td>
+          <td data-label="Sân / Ngày">{row.court_name} · {row.days_label}</td><td data-label="Khung giờ">{row.time_range}</td>
+          <td data-label="Hiệu lực">{row.valid_from || '—'} đến {row.valid_to || '—'}</td><td data-label="Đơn giá">{row.price_label}</td>
         </tr>)}</tbody>
       </table></div> : !facility.price_error && <p>Chưa có bảng giá.</p>}
     </div>
