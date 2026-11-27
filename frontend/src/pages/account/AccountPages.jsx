@@ -1,3 +1,4 @@
+import { Button as UiButton, Input as UiInput, Select as UiSelect, ScrollArea, ActionMenu } from '../../components/ui';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Navigate, NavLink, useNavigate } from 'react-router-dom';
 import api, { apiErrorMessage, getAllPages } from '../../api';
@@ -384,10 +385,10 @@ function AccountStatusDialog({ account, onClose, onDone }) {
         </label>
         {error && <p className={adminStyles.error} role="alert">{error}</p>}
         <div className={adminStyles.actions}>
-          <button type="button" className={adminStyles.secondary} disabled={busy} onClick={onClose}>Hủy</button>
-          <button type="submit" className={unlocking ? adminStyles.primary : adminStyles.danger} disabled={busy}>
+          <UiButton variant="custom" type="button" className={adminStyles.secondary} disabled={busy} onClick={onClose}>Hủy</UiButton>
+          <UiButton variant="custom" type="submit" className={unlocking ? adminStyles.primary : adminStyles.danger} disabled={busy}>
             {busy ? 'Đang lưu…' : unlocking ? 'Mở lại tài khoản' : 'Khóa tài khoản'}
-          </button>
+          </UiButton>
         </div>
       </form>
     </CommonModal>
@@ -406,10 +407,10 @@ function AdminAccount({ id, onClose, onChangeStatus }) {
     <Drawer title={account ? account.username : 'Chi tiết tài khoản'} onClose={onClose}
       footer={canChange && (
         <div className={adminStyles.actions}>
-          <button type="button" className={account.status === 'LOCKED' ? adminStyles.primary : adminStyles.danger}
+          <UiButton variant="custom" type="button" className={account.status === 'LOCKED' ? adminStyles.primary : adminStyles.danger}
             onClick={() => onChangeStatus(account, detail.reload)}>
             {account.status === 'LOCKED' ? 'Mở lại tài khoản' : 'Khóa tài khoản…'}
-          </button>
+          </UiButton>
         </div>
       )}>
       {detail.loading && <p className={adminStyles.muted} role="status">Đang tải chi tiết…</p>}
@@ -461,26 +462,26 @@ function Accounts() {
   return (
     <>
       {message && <p className={adminStyles.success} role="status">{message}</p>}
-      <section className={adminStyles.board} aria-label="Danh sách tài khoản">
-        <div className={adminStyles.toolbar}>
-          <input className={adminStyles.search} type="search" aria-label="Tìm tài khoản"
+      <section data-account-board className={`${adminStyles.board} ${adminStyles.accountsBoard}`} aria-label="Danh sách tài khoản">
+        <div className={`${adminStyles.toolbar} ${adminStyles.accountToolbar}`}>
+          <UiInput className={adminStyles.search} type="search" aria-label="Tìm tài khoản"
             placeholder="Tên đăng nhập, họ tên, email, SĐT…"
             onChange={(event) => setSearch(event.target.value.trim())} />
-          <select className={adminStyles.select} aria-label="Lọc theo vai trò" value={role} onChange={(event) => setRole(event.target.value)}>
+          <UiSelect className={adminStyles.select} aria-label="Lọc theo vai trò" value={role} onChange={(event) => setRole(event.target.value)}>
             <option value="">Vai trò: Tất cả</option>
             {Object.entries(roles).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          <select className={adminStyles.select} aria-label="Lọc theo trạng thái" value={status} onChange={(event) => setStatus(event.target.value)}>
+          </UiSelect>
+          <UiSelect className={adminStyles.select} aria-label="Lọc theo trạng thái" value={status} onChange={(event) => setStatus(event.target.value)}>
             <option value="">Trạng thái: Tất cả</option>
             {Object.entries(accountStatuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
+          </UiSelect>
         </div>
         {accounts.loading && !accounts.data && <p className={adminStyles.empty} role="status">Đang tải tài khoản…</p>}
         {accounts.error && <p className={adminStyles.empty} role="alert">{accounts.error}</p>}
         {accounts.data && list.length === 0 && <p className={adminStyles.empty}>Không có tài khoản phù hợp.</p>}
         {list.length > 0 && (
-          <div className={adminStyles.tableWrap}>
-            <table className={adminStyles.table}>
+          <ScrollArea label="Bảng danh sách tài khoản" className={adminStyles.accountsScroll}>
+            <table className={`${adminStyles.table} ${adminStyles.accountTable}`}>
               <thead>
                 <tr>
                   <th scope="col">Tên đăng nhập</th>
@@ -490,7 +491,7 @@ function Accounts() {
                   <th scope="col">Địa điểm (Staff)</th>
                   <th scope="col">Trạng thái</th>
                   <th scope="col">Đăng nhập gần nhất</th>
-                  <th scope="col" aria-label="Thao tác" />
+                  <th scope="col">Hành động</th>
                 </tr>
               </thead>
               <tbody>
@@ -498,32 +499,30 @@ function Accounts() {
                   const canChange = ['ACTIVE', 'LOCKED'].includes(account.status) && account.role !== 'ADMIN';
                   return (
                     <tr key={account.id} className={String(account.id) === String(selected) ? adminStyles.rowOn : ''}>
-                      <td><b>{account.username}</b></td>
-                      <td>{account.fullName}</td>
-                      <td><small>{account.email || 'không có email'}{account.phone ? <><br />{account.phone}</> : null}</small></td>
-                      <td><span className={`${adminStyles.role} ${adminStyles[ROLE_TONE[account.role]] ?? ''}`}>{roles[account.role] ?? account.role}</span></td>
-                      <td>{account.locationId ? '#' + account.locationId : '—'}</td>
-                      <td>
+                      <td data-label="Tên đăng nhập"><b>{account.username}</b></td>
+                      <td data-label="Họ và tên">{account.fullName}</td>
+                      <td data-label="Email · SĐT"><small>{account.email || 'không có email'}{account.phone ? <><br />{account.phone}</> : null}</small></td>
+                      <td data-label="Vai trò"><span className={`${adminStyles.role} ${adminStyles[ROLE_TONE[account.role]] ?? ''}`}>{roles[account.role] ?? account.role}</span></td>
+                      <td data-label="Địa điểm (Staff)">{account.locationId ? '#' + account.locationId : '—'}</td>
+                      <td data-label="Trạng thái">
                         <span className={`${adminStyles.badge} ${adminStyles[STATUS_TONE[account.status]] ?? ''}`}>
                           {accountStatuses[account.status] ?? account.status}
                         </span>
                       </td>
-                      <td><small>{formatAccountDate(account.lastLoginAt)}</small></td>
-                      <td className={adminStyles.actionsCell}>
-                        <button type="button" className={adminStyles.view} onClick={() => setSelected(account.id)}>Xem</button>
-                        {canChange && (
-                          <button type="button" className={account.status === 'LOCKED' ? adminStyles.view : adminStyles.dangerSmall}
-                            onClick={() => { setMessage(''); setStatusTarget({ account }); }}>
-                            {account.status === 'LOCKED' ? 'Mở lại' : 'Khóa'}
-                          </button>
-                        )}
+                      <td data-label="Đăng nhập gần nhất"><small>{formatAccountDate(account.lastLoginAt)}</small></td>
+                      <td data-label="Hành động" className={adminStyles.actionsCell}>
+                        <ActionMenu label={`Hành động cho ${account.username}`} items={[
+                          { id: 'view', label: 'Xem', onAction: () => setSelected(account.id) },
+                          ...(canChange ? [{ id: 'status', label: account.status === 'LOCKED' ? 'Mở lại' : 'Khóa', danger: account.status !== 'LOCKED',
+                            onAction: () => { setMessage(''); setStatusTarget({ account }); } }] : []),
+                        ]} />
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
+          </ScrollArea>
         )}
         {list.length > 0 && <p className={adminStyles.footNote}>{list.length} tài khoản</p>}
       </section>
@@ -537,7 +536,7 @@ function Accounts() {
 
 export function AdminWorkspace() {
   return (
-    <AdminLayout title="Quản lý tài khoản"
+    <AdminLayout fitViewport title="Quản lý tài khoản"
       subtitle="Khóa hoặc mở lại tài khoản. Admin không cấp lại mật khẩu; người dùng tự đặt lại qua email.">
       <Accounts />
     </AdminLayout>

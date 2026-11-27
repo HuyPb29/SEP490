@@ -1,3 +1,4 @@
+import { Button as UiButton } from '../ui';
 import { useNavigationDrawer } from '../../hooks/useNavigationDrawer';
 import { Link, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -18,6 +19,7 @@ export default function AdminLayout({
   eyebrow,
   backTo,
   actions,
+  fitViewport = false,
   children,
 }) {
   const location = useLocation();
@@ -53,7 +55,7 @@ export default function AdminLayout({
     ));
 
   return (
-    <div className={`${styles.managementShell} cw-workspace`}>
+    <div data-admin-layout className={`${styles.managementShell} cw-workspace custom-scrollbar ${fitViewport ? styles.adminFitShell : ''}`}>
       <a href="#admin-main" className={styles.skipLink}>
         Đến nội dung chính
       </a>
@@ -82,7 +84,7 @@ export default function AdminLayout({
       <div className={styles.managementBody}>
         <header className={styles.managementTopbar}>
           <div className={styles.topbarLeft}>
-            <button
+            <UiButton variant="custom"
               type="button"
               className={styles.hamburgerBtn}
               aria-label="Mở menu điều hướng"
@@ -90,14 +92,14 @@ export default function AdminLayout({
               onClick={() => setDrawerOpen(true)}
             >
               ☰
-            </button>
+            </UiButton>
             <span className={styles.locationStaticPill}>🛡️ Cổng Quản Trị Hệ Thống</span>
           </div>
 
           <UserMenu user={user} />
         </header>
 
-        <main id="admin-main" className={styles.managementMain}>
+        <main id="admin-main" className={`${styles.managementMain} ${fitViewport ? styles.adminFitMain : ''}`}>
           {(title || backTo || actions) && (
             <PageHeader
               eyebrow={eyebrow}
@@ -124,14 +126,14 @@ export default function AdminLayout({
                 </span>
                 <span>Courtly</span>
               </Link>
-              <button
+              <UiButton variant="custom"
                 type="button"
                 className={styles.drawerCloseBtn}
                 aria-label="Đóng menu"
                 onClick={() => setDrawerOpen(false)}
               >
                 ✕
-              </button>
+              </UiButton>
             </div>
 
             <div className={styles.roleBadgeCard}>

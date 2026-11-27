@@ -1,3 +1,4 @@
+import { Button as UiButton, Checkbox as UiCheckbox, Input as UiInput, Select as UiSelect } from '../../components/ui';
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../../api'
@@ -15,6 +16,7 @@ import {
   uploadOperatorQr,
 } from '../../api/locationApi'
 import { adminExpansions } from '../../api/courtExpansionApi'
+import { Tabs } from '../../components/common/Tabs';
 import AdminLayout from '../../components/layout/AdminLayout'
 import { Drawer } from '../../components/common/Drawer'
 import { Modal } from '../../components/common/Modal'
@@ -417,10 +419,10 @@ export default function AdminFacilitiesPage() {
       title="Địa điểm và đăng ký dịch vụ"
       subtitle="Duyệt khi đã thấy tiền thuê về tài khoản bên vận hành. Admin không xem doanh thu, giao dịch của địa điểm."
       actions={
-        <button className={styles.secondaryButton} type="button" disabled={loading || saving}
+        <UiButton variant="secondary" className={styles.secondaryButton} type="button" disabled={loading || saving}
           onClick={() => { loadAll(); loadRenewals(); loadExpansionCount() }}>
           Làm mới
-        </button>
+        </UiButton>
       }
     >
       <section className={styles.summary} aria-label="Tổng quan địa điểm">
@@ -433,26 +435,17 @@ export default function AdminFacilitiesPage() {
       {(statusMessage || (actionError && !modal && !openRequestRow)) && (
         <div className={actionError ? styles.errorNotice : styles.statusNotice} role={actionError ? 'alert' : 'status'}>
           <span>{actionError || statusMessage}</span>
-          <button type="button" aria-label="Đóng thông báo" onClick={() => { setStatusMessage(''); setActionError('') }}>×</button>
+          <UiButton variant="secondary" type="button" aria-label="Đóng thông báo" onClick={() => { setStatusMessage(''); setActionError('') }}>×</UiButton>
         </div>
       )}
 
       <section className={styles.board}>
-        <div className={styles.tabs} role="tablist" aria-label="Mục quản lý">
-          {TABS.map((item) => (
-            <button key={item.value} type="button" role="tab" aria-selected={tab === item.value}
-              className={tab === item.value ? styles.tabOn : ''} onClick={() => setTab(item.value)}>
-              {item.label}
-              {counts[item.value] != null && (
-                <span className={item.value !== 'locations' && counts[item.value] > 0 ? styles.countHot : styles.count}>{counts[item.value]}</span>
-              )}
-            </button>
-          ))}
-        </div>
-
+        <Tabs label="Mục quản lý" value={tab} onChange={setTab} items={TABS.map(item => ({
+          value: item.value, label: <>{item.label}{counts[item.value] != null && <span className={item.value !== 'locations' && counts[item.value] > 0 ? styles.countHot : styles.count}>{counts[item.value]}</span>}</>,
+        }))}>
         {tab === 'requests' && <>
           <div className={styles.toolbar}>
-            <input className={styles.search} type="search" aria-label="Tìm yêu cầu đăng ký"
+            <UiInput className={styles.search} type="search" aria-label="Tìm yêu cầu đăng ký"
               placeholder="Tên địa điểm, người đại diện, email, SĐT…" value={requestQuery}
               onChange={(event) => setRequestQuery(event.target.value)} />
           </div>
@@ -471,7 +464,7 @@ export default function AdminFacilitiesPage() {
                   <td>{request.courtCount} sân · {request.rentalYears} năm</td>
                   <td><b>{formatVnd(request.rentalAmount)}</b></td>
                   <td>{formatDateTime(request.createdAt)}</td>
-                  <td><button type="button" className={styles.viewButton} onClick={() => openRequest(request)}>Xem</button></td>
+                  <td><UiButton variant="custom" type="button" className={styles.viewButton} onClick={() => openRequest(request)}>Xem</UiButton></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -496,17 +489,17 @@ export default function AdminFacilitiesPage() {
 
         {tab === 'locations' && <>
           <div className={styles.toolbar}>
-            <input className={styles.search} type="search" aria-label="Tìm địa điểm"
+            <UiInput className={styles.search} type="search" aria-label="Tìm địa điểm"
               placeholder="Tìm theo tên địa điểm hoặc chủ sân" value={searchKeyword}
               onChange={(event) => setSearchKeyword(event.target.value)} />
-            <select className={styles.select} aria-label="Lọc theo trạng thái" value={statusFilter}
+            <UiSelect className={styles.select} aria-label="Lọc theo trạng thái" value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="ALL">Trạng thái: Tất cả</option>
               <option value="ACTIVE">Đang hoạt động</option>
               <option value="EXPIRING">Sắp hết hạn</option>
               <option value="EXPIRED">Quá hạn, chờ tự khóa</option>
               <option value="LOCKED">Đã khóa</option>
-            </select>
+            </UiSelect>
           </div>
           {loading && <p className={styles.emptyState}>Đang tải danh sách địa điểm…</p>}
           {!loading && filteredFacilities.length === 0 && <p className={styles.emptyState}>Không có địa điểm nào phù hợp bộ lọc.</p>}
@@ -538,11 +531,11 @@ export default function AdminFacilitiesPage() {
                     <td>{facility.courtCount ?? 0}</td>
                     <td>{facility.bookingCount ?? 0}</td>
                     <td className={styles.actionsCell}>
-                      {renewalPending && <button type="button" className={styles.viewButton} onClick={() => setTab('renewals')}>Xem gia hạn</button>}
+                      {renewalPending && <UiButton variant="custom" type="button" className={styles.viewButton} onClick={() => setTab('renewals')}>Xem gia hạn</UiButton>}
                       {facility.status === 'ACTIVE' ? (
-                        <button type="button" className={styles.dangerButton} disabled={saving} onClick={() => askLock(facility)}>Khóa</button>
+                        <UiButton variant="danger" type="button" className={styles.dangerButton} disabled={saving} onClick={() => askLock(facility)}>Khóa</UiButton>
                       ) : facility.serviceActive !== false && period.kind !== 'expired' ? (
-                        <button type="button" className={styles.viewButton} disabled={saving} onClick={() => handleReopen(facility)}>Mở lại</button>
+                        <UiButton variant="custom" type="button" className={styles.viewButton} disabled={saving} onClick={() => handleReopen(facility)}>Mở lại</UiButton>
                       ) : (
                         <span className={styles.muted}>Mở lại khi duyệt gia hạn</span>
                       )}
@@ -563,7 +556,7 @@ export default function AdminFacilitiesPage() {
           {(operatorMessage || operatorError) && (
             <div className={operatorError ? styles.errorNotice : styles.statusNotice} role={operatorError ? 'alert' : 'status'}>
               <span>{operatorError || operatorMessage}</span>
-              <button type="button" aria-label="Đóng thông báo" onClick={() => { setOperatorError(''); setOperatorMessage('') }}>×</button>
+              <UiButton variant="secondary" type="button" aria-label="Đóng thông báo" onClick={() => { setOperatorError(''); setOperatorMessage('') }}>×</UiButton>
             </div>
           )}
           <div className={styles.paymentGrid}>
@@ -580,32 +573,33 @@ export default function AdminFacilitiesPage() {
             <form onSubmit={handleSaveOperatorInfo} className={styles.paymentForm}>
               <label className={styles.field}>
                 <span>Ngân hàng</span>
-                <input maxLength={100} value={operatorForm.bankName}
+                <UiInput maxLength={100} value={operatorForm.bankName}
                   onChange={(event) => setOperatorForm((form) => ({ ...form, bankName: event.target.value }))} />
               </label>
               <label className={styles.field}>
                 <span>Số tài khoản</span>
-                <input maxLength={30} value={operatorForm.bankAccountNo}
+                <UiInput maxLength={30} value={operatorForm.bankAccountNo}
                   onChange={(event) => setOperatorForm((form) => ({ ...form, bankAccountNo: event.target.value }))} />
               </label>
               <label className={styles.field}>
                 <span>Tên chủ tài khoản</span>
-                <input maxLength={100} value={operatorForm.bankAccountHolder}
+                <UiInput maxLength={100} value={operatorForm.bankAccountHolder}
                   onChange={(event) => setOperatorForm((form) => ({ ...form, bankAccountHolder: event.target.value }))} />
               </label>
-              <button className={styles.primaryButton} type="submit" disabled={saving}>Lưu thông tin chuyển khoản</button>
+              <UiButton variant="primary" className={styles.primaryButton} type="submit" disabled={saving}>Lưu thông tin chuyển khoản</UiButton>
             </form>
           </div>
         </div>}
+        </Tabs>
       </section>
 
       {openRequestRow && (
         <Drawer title={openRequestRow.locationName} onClose={closeRequest} busy={saving}
           footer={<div className={styles.drawerActions}>
-            <button type="button" className={styles.dangerButton} disabled={saving} onClick={() => handleReject(openRequestRow)}>Từ chối…</button>
-            <button type="button" className={styles.primaryButton} disabled={saving || !moneyChecked} onClick={() => handleApprove(openRequestRow)}>
+            <UiButton variant="danger" type="button" className={styles.dangerButton} disabled={saving} onClick={() => handleReject(openRequestRow)}>Từ chối…</UiButton>
+            <UiButton variant="primary" type="button" className={styles.primaryButton} disabled={saving || !moneyChecked} onClick={() => handleApprove(openRequestRow)}>
               {openRequestRow.requesterId ? 'Duyệt và gắn vào chủ sân' : 'Duyệt và tạo tài khoản'}
-            </button>
+            </UiButton>
           </div>}>
           <div className={styles.drawerHead}>
             <span className={`${styles.tag} ${openRequestRow.requesterId ? styles.tagBlue : styles.tagTeal}`}>
@@ -627,10 +621,10 @@ export default function AdminFacilitiesPage() {
             <h3 className={styles.sectionLabel}>Ảnh chứng từ chuyển khoản</h3>
             {!openRequestRow.hasProof ? <p className={styles.muted}>Không có ảnh chứng từ.</p>
               : proof?.id === openRequestRow.id ? <img className={styles.proofImage} src={proof.url} alt="Ảnh chứng từ chuyển khoản tiền thuê" />
-                : <button type="button" className={styles.viewButton} disabled={saving} onClick={() => handleViewProof(openRequestRow)}>Xem chứng từ</button>}
+                : <UiButton variant="custom" type="button" className={styles.viewButton} disabled={saving} onClick={() => handleViewProof(openRequestRow)}>Xem chứng từ</UiButton>}
           </section>
           <label className={styles.checkBox}>
-            <input type="checkbox" checked={moneyChecked} disabled={saving} onChange={(event) => { setMoneyChecked(event.target.checked); setActionError('') }} />
+            <UiCheckbox checked={moneyChecked} disabled={saving} onChange={(event) => { setMoneyChecked(event.target.checked); setActionError('') }} />
             <span><b>Tôi đã kiểm tra tài khoản bên vận hành, tiền về đủ {formatVnd(openRequestRow.rentalAmount)}.</b>
               <small>Chuyển thiếu thì không duyệt; nhắn tin hoặc gọi cho chủ sân, yêu cầu vẫn chờ.</small></span>
           </label>
@@ -653,8 +647,8 @@ export default function AdminFacilitiesPage() {
                 onChange={(event) => updateModalField('reason', event.target.value)} />
             </label>
             <div className={styles.modalActions}>
-              <button className={styles.secondaryButton} type="button" onClick={closeModal} disabled={saving}>Hủy</button>
-              <button className={styles.dangerSolid} type="submit" disabled={saving}>Gửi từ chối</button>
+              <UiButton variant="secondary" className={styles.secondaryButton} type="button" onClick={closeModal} disabled={saving}>Hủy</UiButton>
+              <UiButton variant="custom" className={styles.dangerSolid} type="submit" disabled={saving}>Gửi từ chối</UiButton>
             </div>
           </form>
         </Modal>
@@ -666,8 +660,8 @@ export default function AdminFacilitiesPage() {
             <p className={styles.warning}>Địa điểm sẽ bị gỡ khỏi tìm kiếm, không nhận booking mới; tài khoản Staff của địa điểm bị khóa; Player có buổi chưa chơi trong gói đặt nhiều buổi được thông báo. Dữ liệu được giữ nguyên.</p>
             {actionError && <p className={styles.modalError} role="alert">{actionError}</p>}
             <div className={styles.modalActions}>
-              <button className={styles.secondaryButton} type="button" onClick={closeModal} disabled={saving}>Hủy</button>
-              <button className={styles.dangerSolid} type="button" onClick={handleLock} disabled={saving}>Khóa địa điểm</button>
+              <UiButton variant="secondary" className={styles.secondaryButton} type="button" onClick={closeModal} disabled={saving}>Hủy</UiButton>
+              <UiButton variant="custom" className={styles.dangerSolid} type="button" onClick={handleLock} disabled={saving}>Khóa địa điểm</UiButton>
             </div>
           </div>
         </Modal>

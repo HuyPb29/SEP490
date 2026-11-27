@@ -1,3 +1,4 @@
+import { Button as UiButton, Input as UiInput } from '../components/ui';
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api, { apiErrorMessage, getAllPages } from '../api'
@@ -5,7 +6,7 @@ import { useResource } from '../hooks/useResource'
 import WorkspaceLayout from '../components/layout/WorkspaceLayout'
 import AdminLayout from '../components/layout/AdminLayout'
 import adminStyles from './account/AdminAccounts.module.css'
-import { Button, ConfirmDialog, EmptyState, ErrorState, LoadingState, Pagination } from '../components/common'
+import { Button, ConfirmDialog, EmptyState, ErrorState, LoadingState, Pagination, Tabs } from '../components/common'
 
 const titles = {
   reschedules: 'Lịch sử đổi lịch',
@@ -65,14 +66,10 @@ function AdminReviews() {
     <AdminLayout title="Kiểm duyệt đánh giá"
       subtitle="Ẩn đánh giá vi phạm quy định nội dung. Đánh giá bị ẩn hiện lại được; Player không sửa, xóa được đánh giá.">
       <section className={adminStyles.board} aria-label="Danh sách đánh giá">
-        <div className={adminStyles.tabs} role="tablist" aria-label="Lọc theo hiển thị">
-          {REVIEW_TABS.map(([value, label]) => (
-            <button key={value} type="button" role="tab" aria-selected={tab === value}
-              className={tab === value ? adminStyles.tabOn : ''} onClick={() => setTab(value)}>{label}</button>
-          ))}
-        </div>
+        <Tabs label="Lọc theo hiển thị" value={tab} onChange={setTab}
+          items={REVIEW_TABS.map(([value, label]) => ({ value, label }))}>
         <div className={adminStyles.toolbar}>
-          <input className={adminStyles.search} type="search" aria-label="Lọc đánh giá"
+          <UiInput className={adminStyles.search} type="search" aria-label="Lọc đánh giá"
             placeholder="Lọc nhanh theo nội dung, người đánh giá, địa điểm (trên trang đang xem)"
             value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
@@ -97,16 +94,17 @@ function AdminReviews() {
                   <span className={`${adminStyles.badge} ${row.hidden ? adminStyles.badgeNeutral : adminStyles.badgeSuccess}`}>
                     {row.hidden ? 'Đã ẩn' : 'Đang hiển thị'}
                   </span>
-                  <button type="button" className={row.hidden ? adminStyles.view : adminStyles.dangerSmall}
+                  <UiButton variant="custom" type="button" className={row.hidden ? adminStyles.view : adminStyles.dangerSmall}
                     onClick={() => { setSaveError(''); setTarget(row) }}>
                     {row.hidden ? 'Hiện lại' : 'Ẩn đánh giá'}
-                  </button>
+                  </UiButton>
                 </div>
               </li>
             ))}
           </ul>
         )}
         {resource.data?.totalElements != null && <p className={adminStyles.footNote}>Tổng {resource.data.totalElements} đánh giá</p>}
+        </Tabs>
       </section>
       {resource.data?.totalPages > 1 && (
         <Pagination page={page + 1} totalPages={resource.data.totalPages} onPageChange={(next) => setPage(next - 1)} />

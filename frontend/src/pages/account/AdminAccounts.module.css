@@ -37,6 +37,39 @@
   overflow-x: auto;
 }
 
+.accountsBoard { display: flex; flex-direction: column; min-height: 0; }
+.accountToolbar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(150px, .7fr) minmax(160px, .7fr); flex: none; }
+.accountsScroll { flex: 1; min-height: 0; --account-sticky-start: var(--account-username-width); --account-sticky-end: var(--account-actions-width); }
+.accountTable.accountTable { min-width: var(--account-table-min-width); table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.accountTable.accountTable th, .accountTable.accountTable td { padding: var(--space-2) var(--space-3); overflow-wrap: anywhere; }
+.accountTable.accountTable th { position: sticky; top: 0; z-index: var(--table-sticky-header-z); white-space: normal; }
+.accountTable.accountTable th:first-child, .accountTable.accountTable td:first-child { position: sticky; left: 0; width: var(--account-username-width); background: var(--color-surface); z-index: var(--table-sticky-cell-z); box-shadow: var(--table-sticky-start-shadow); }
+.accountTable.accountTable th:last-child, .accountTable.accountTable td:last-child { position: sticky; right: 0; width: var(--account-actions-width); background: var(--color-surface); z-index: var(--table-sticky-cell-z); box-shadow: var(--table-sticky-shadow); text-align: center; }
+.accountTable.accountTable th:first-child, .accountTable.accountTable th:last-child { top: 0; z-index: var(--table-sticky-corner-z); background: var(--color-surface-muted); }
+.accountTable.accountTable th:nth-child(2) { width: var(--account-name-width); }
+.accountTable.accountTable th:nth-child(3) { width: var(--account-contact-width); }
+.accountTable.accountTable th:nth-child(4) { width: var(--account-role-width); }
+.accountTable.accountTable th:nth-child(5) { width: var(--account-location-width); }
+.accountTable.accountTable th:nth-child(6) { width: var(--account-status-width); }
+.accountTable.accountTable th:nth-child(7) { width: var(--account-login-width); }
+.accountTable.accountTable .role, .accountTable.accountTable .badge { max-width: 100%; white-space: normal; }
+.accountTable.accountTable tbody tr:hover td:first-child, .accountTable.accountTable tbody tr:hover td:last-child { background: var(--color-surface-muted); }
+.accountTable.accountTable .rowOn td:first-child, .accountTable.accountTable .rowOn td:last-child { background: var(--color-primary-soft); }
+.accountTable.accountTable .actionsCell { white-space: normal; }
+.accountsBoard .footNote { flex: none; }
+
+@media (width < 640px) {
+  .accountToolbar { grid-template-columns: minmax(0, 1fr); }
+  .accountsScroll { flex: none; --account-sticky-start: 0px; --account-sticky-end: 0px; }
+  .accountsScroll > div { height: auto; overflow: visible; }
+  .accountTable.accountTable, .accountTable.accountTable tbody { display: block; width: 100%; min-width: 0; }
+  .accountTable.accountTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .accountTable.accountTable tbody tr { display: block; padding: var(--space-3); border-bottom: 1px solid var(--color-border); }
+  .accountTable.accountTable tbody td, .accountTable.accountTable tbody td:first-child, .accountTable.accountTable tbody td:last-child { position: static; display: grid; grid-template-columns: minmax(100px, 38%) minmax(0, 1fr); width: auto; padding: var(--space-2) 0; border: 0; box-shadow: none; text-align: left; white-space: normal; gap: var(--space-2); }
+  .accountTable.accountTable td::before { content: attr(data-label); color: var(--color-text-muted); font-size: var(--text-xs); }
+  .accountTable.accountTable td > * { min-width: 0; justify-self: start; }
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -342,34 +375,6 @@
 }
 
 /* ------------------------------------------------------------ kiểm duyệt đánh giá (UC32) */
-.tabs {
-  display: flex;
-  gap: var(--space-1);
-  overflow-x: auto;
-  padding: 0 var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.tabs button {
-  flex: none;
-  min-height: 44px;
-  margin-bottom: -1px;
-  padding: var(--space-2) var(--space-4);
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--color-text-muted);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.tabs button.tabOn {
-  border-bottom-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
 .review {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
