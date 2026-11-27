@@ -25,3 +25,6 @@ dist-ssr
 
 /playwright-report/
 /test-results/
+
+# Unit test coverage (vitest)
+coverage
