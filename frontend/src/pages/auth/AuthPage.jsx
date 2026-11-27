@@ -217,6 +217,7 @@ export default function AuthPage() {
       setOtpFields(byField);
       setOtpError(Object.keys(byField).length ? '' : message);
       if (!resettingPassword && message.includes('Vui lòng đăng ký lại')) {
+        setOtpError(message);
         setRegistrationExpired(true);
         setPendingRegistrationEmail('');
       }
