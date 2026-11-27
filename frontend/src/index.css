@@ -2,6 +2,72 @@
 @import "tailwindcss";
 
 :root {
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: var(--color-border-strong);
+  --scrollbar-thumb-hover: var(--color-primary);
+  --scrollbar-track: transparent;
+  --scroll-fade-width: 28px;
+  --scroll-fade-z: 4;
+  --table-sticky-shadow: -4px 0 10px var(--color-focus-ring);
+  --table-sticky-start-shadow: 4px 0 10px var(--color-focus-ring);
+  --table-sticky-cell-z: 3;
+  --table-sticky-header-z: 5;
+  --table-sticky-corner-z: 6;
+  --account-username-width: 156px;
+  --account-actions-width: 96px;
+  --account-table-min-width: 1116px;
+  --account-name-width: 152px;
+  --account-contact-width: 208px;
+  --account-role-width: 112px;
+  --account-location-width: 104px;
+  --account-status-width: 128px;
+  --account-login-width: 160px;
+  --action-menu-width: 172px;
+  --tabs-indicator-size: 2px;
+  /* Shared form control tokens. Components reference these instead of local values. */
+  --control-height: 44px;
+  --control-height-sm: 40px;
+  --control-height-lg: 44px;
+  --control-hit-area: 40px;
+  --control-radius: 10px;
+  --control-popup-radius: 12px;
+  --control-popup-shadow: var(--shadow-lg);
+  --control-popup-z: 1500;
+  --control-popup-max-height: 320px;
+  --control-calendar-width: 332px;
+  --control-calendar-gap: 2px;
+  --control-icon-size: 20px;
+  --control-border-width: 1px;
+  --control-focus-width: 2px;
+  --control-focus-offset: 2px;
+  --control-focus-shadow: 0 0 0 4px var(--color-focus-ring);
+  --control-font-weight: 600;
+  --control-line-height: 1.4;
+  --control-disabled-opacity: .5;
+  --control-outside-opacity: .55;
+  --control-active-brightness: .94;
+  --control-transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  --control-spinner-size: 16px;
+  --control-spinner-duration: .8s;
+  --control-choice-size: 22px;
+  --control-choice-radius: 6px;
+  --control-check-width: 6px;
+  --control-check-height: 11px;
+  --control-check-offset: -2px;
+  --control-indeterminate-size: 12px;
+  --control-radio-dot: 10px;
+  --control-switch-width: 44px;
+  --control-switch-height: 26px;
+  --control-switch-thumb: 18px;
+  --control-switch-inset: 4px;
+  --control-switch-top: 11px;
+  --control-slider-track: 8px;
+  --control-slider-thumb: 24px;
+  --control-slider-border: 3px;
+  --control-slider-offset: -8px;
+  --control-date-min-width: 180px;
+  --control-time-min-width: 110px;
+  --control-hidden-size: 1px;
   /* 1. Brand & Semantic Colors */
   --color-primary: #0F766E;
   --color-primary-hover: #115E59;
@@ -183,3 +249,18 @@ img, svg { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Tailwind utility shared by every admin scroll surface, including portals. */
+@utility custom-scrollbar {
+  &, & * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    &::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
+    &::-webkit-scrollbar-track, &::-webkit-scrollbar-corner { background: var(--scrollbar-track); }
+    &::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: var(--radius-full); }
+    &::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+    &::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+    @supports selector(::-webkit-scrollbar) { scrollbar-width: auto; scrollbar-color: auto; }
+  }
+}
+html:has([data-admin-layout]) { @apply custom-scrollbar; }

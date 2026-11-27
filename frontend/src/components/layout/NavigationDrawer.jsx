@@ -5,6 +5,7 @@ import { trapDialogFocus } from '../common/dialogFocus';
 
 export default function NavigationDrawer({ label, left = false, onClose, children }) {
   const dialog = useRef(null);
+  const backdropPress = useRef(false);
 
   useLayoutEffect(() => {
     const element = dialog.current;
@@ -28,8 +29,10 @@ export default function NavigationDrawer({ label, left = false, onClose, childre
         onClose();
       }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (backdropPress.current && event.target === event.currentTarget) onClose();
+        backdropPress.current = false;
       }}
+      onPointerDown={(event) => { backdropPress.current = event.target === event.currentTarget; }}
     >
       <div className={`${styles.drawerPanel} ${left ? styles.drawerPanelDark : ''}`}>
         {children}

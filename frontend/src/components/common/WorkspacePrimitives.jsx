@@ -1,3 +1,4 @@
+import { Button as UiButton, Input as UiInput, Select as UiSelect } from '../ui';
 import { useId, useState } from 'react';
 import { Modal as SharedModal, ConfirmDialog as SharedConfirmDialog } from './Modal';
 import { LoadingState, ErrorState } from './States';
@@ -61,29 +62,21 @@ export function Field({ label, options, hint, error, ...props }) {
   const describedBy = hint || error ? id + '-hint' : undefined;
   const control = {
     ...props,
+    id: props.id || id,
+    'aria-label': props['aria-label'] || label,
     'aria-invalid': error ? true : undefined,
     'aria-describedby': describedBy,
   };
   return (
-    <label className="cw-field">
-      <span>{label}</span>
-      {options ? (
-        <select {...control}>
-          {options.map(([value, name]) => (
-            <option key={value} value={value}>
-              {name}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input {...control} />
-      )}
+    <div className="cw-field">
+      <label htmlFor={control.id}><span>{label}</span></label>
+      {options ? <UiSelect {...control} options={options} /> : <UiInput {...control} />}
       {describedBy && (
         <small id={describedBy} className={error ? 'cw-field-error' : undefined}>
           {uiMessage(error || hint)}
         </small>
       )}
-    </label>
+    </div>
   );
 }
 
@@ -118,7 +111,7 @@ export function ActionForm({
     const named = form.elements.namedItem(name);
     const control = named?.nodeType ? named : named?.[0];
     const label = control?.labels?.[0];
-    return errorSummaryLabels[name] || control?.getAttribute('aria-label')
+    return errorSummaryLabels[name] || control?.dataset.fieldLabel || control?.getAttribute('aria-label')
       || label?.querySelector('span')?.textContent?.trim() || label?.textContent?.trim();
   }
 
@@ -172,9 +165,9 @@ export function ActionForm({
         >
           {usesFieldErrors ? children(fieldErrors) : children}
           {errorSummaryLabels ? <div className="cw-form-submit">
-            <button className={tone === 'danger' ? 'cw-danger' : 'action'} type="submit">
+            <UiButton variant={tone === 'danger' ? 'danger' : 'primary'} type="submit">
               {busy ? 'Đang xử lý…' : label}
-            </button>
+            </UiButton>
             {Object.keys(fieldErrors).length > 0 && <div className="cw-feedback cw-feedback--error" role="alert">
               <strong>Vui lòng sửa các lỗi sau:</strong>
               <ul>{Object.entries(fieldErrors).map(([name, text]) => <li key={name}>
@@ -182,9 +175,9 @@ export function ActionForm({
               </li>)}</ul>
             </div>}
             {message?.error && <Feedback tone="error">{message.text}</Feedback>}
-          </div> : <button className={tone === 'danger' ? 'cw-danger' : 'action'} type="submit">
+          </div> : <UiButton variant={tone === 'danger' ? 'danger' : 'primary'} type="submit">
             {busy ? 'Đang xử lý…' : label}
-          </button>}
+          </UiButton>}
         </fieldset>
         {message && !(errorSummaryLabels && message.error) && (
           <Feedback tone={message.error ? 'error' : 'success'}>{message.text}</Feedback>

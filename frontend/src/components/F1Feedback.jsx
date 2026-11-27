@@ -1,3 +1,4 @@
+import { Button as UiButton } from './ui';
 import { Modal } from './common/Modal';
 import { uiMessage } from '../utils/formatters';
 import styles from './common/CommonUI.module.css';
@@ -8,21 +9,19 @@ export function F1Dialog({ message, onClose, onConfirm, title, confirmLabel = 'X
     <Modal title={title || 'Thông báo'} onClose={onClose}>
       <p className={styles.modalBody}>{uiMessage(message)}</p>
       <div className={styles.modalActions}>
-        <button
+        <UiButton variant={onConfirm ? 'secondary' : 'primary'}
           type="button"
-          className={`${styles.btn} ${styles.btnMd} ${onConfirm ? styles.btnSecondary : styles.btnPrimary}`}
           onClick={onClose}
         >
           {onConfirm ? 'Hủy' : 'Đã hiểu'}
-        </button>
+        </UiButton>
         {onConfirm && (
-          <button
+          <UiButton variant="danger"
             type="button"
-            className={`${styles.btn} ${styles.btnMd} ${styles.btnDanger}`}
             onClick={onConfirm}
           >
             {confirmLabel}
-          </button>
+          </UiButton>
         )}
       </div>
     </Modal>
