@@ -112,7 +112,7 @@ public class LoyaltyPointService {
     }
     @Transactional
     public PointTransactionResponse adjust(UserPrincipal u,@Valid LoyaltyAdjustmentRequest r) {
-        role(u,Role.OWNER); Long location=scope.selectedLocation(u).getId();
+        role(u,Role.OWNER); Long location=scope.selectedLocationForUpdate(u).getId();
         Booking b=lock(Booking.class,r.bookingId());
         if(!location.equals(b.getLocationId())) throw new AppException("Booking không thuộc địa điểm đã chọn",HttpStatus.FORBIDDEN);
         if(b.getPlayerId()==null || b.getBookingType()==BookingType.WALK_IN) throw new AppException("Booking không có Player nhận điểm");

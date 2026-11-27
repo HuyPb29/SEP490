@@ -169,7 +169,7 @@ export default function HistoryDetailDialog({ item, now, onClose, onPayment, onR
   const showAffected = !error && affectedReady && affected?.status === 'PENDING' && currentStatus === 'confirmed'
     && bookingStartsAfter(target?.booking_date, target?.start_time, now)
   const viewPayment = !error && item.booking_type !== 'session' && detail?.paymentId
-    && ['awaiting_confirmation', 'confirmed', 'in_use', 'completed', 'payment_rejected'].includes(currentStatus)
+    && ['awaiting_confirmation', 'confirmed', 'in_use', 'completed', 'payment_rejected', 'cancelled_by_facility'].includes(currentStatus)
   // BR55, D112: chỉ booking đã xác nhận, đặt dưới tên đội và chưa tới giờ chơi mới mở được kèo.
   const canCreateMatch = !error && !matchCreated && currentStatus === 'confirmed' && detail?.teamId
     && affectedReady && !blocksNormalBookingActions(affected)
