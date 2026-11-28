@@ -16,6 +16,7 @@ import {
 } from '../../api/locationApi'
 import { adminExpansions } from '../../api/courtExpansionApi'
 import AdminLayout from '../../components/layout/AdminLayout'
+import RegistrationVerificationDocuments from '../../components/location/RegistrationVerificationDocuments'
 import { Drawer } from '../../components/common/Drawer'
 import { Modal } from '../../components/common/Modal'
 import { FileInput } from '../../components/common/FileInput'
@@ -603,7 +604,7 @@ export default function AdminFacilitiesPage() {
         <Drawer title={openRequestRow.locationName} onClose={closeRequest} busy={saving}
           footer={<div className={styles.drawerActions}>
             <button type="button" className={styles.dangerButton} disabled={saving} onClick={() => handleReject(openRequestRow)}>Từ chối…</button>
-            <button type="button" className={styles.primaryButton} disabled={saving || !moneyChecked} onClick={() => handleApprove(openRequestRow)}>
+            <button type="button" className={styles.primaryButton} disabled={saving || !moneyChecked || !openRequestRow.hasIdentityDocument || !openRequestRow.hasBusinessLicense || !openRequestRow.privacyAcceptedAt} onClick={() => handleApprove(openRequestRow)}>
               {openRequestRow.requesterId ? 'Duyệt và gắn vào chủ sân' : 'Duyệt và tạo tài khoản'}
             </button>
           </div>}>
@@ -624,6 +625,7 @@ export default function AdminFacilitiesPage() {
             <dt>Số tiền thuê</dt><dd>{formatVnd(openRequestRow.rentalAmount)} <span className={styles.muted}>(P35: 10 triệu / 9 sân / năm)</span></dd>
           </dl>
           <section>
+            <RegistrationVerificationDocuments key={openRequestRow.id} request={openRequestRow} />
             <h3 className={styles.sectionLabel}>Ảnh chứng từ chuyển khoản</h3>
             {!openRequestRow.hasProof ? <p className={styles.muted}>Không có ảnh chứng từ.</p>
               : proof?.id === openRequestRow.id ? <img className={styles.proofImage} src={proof.url} alt="Ảnh chứng từ chuyển khoản tiền thuê" />
@@ -631,7 +633,7 @@ export default function AdminFacilitiesPage() {
           </section>
           <label className={styles.checkBox}>
             <input type="checkbox" checked={moneyChecked} disabled={saving} onChange={(event) => { setMoneyChecked(event.target.checked); setActionError('') }} />
-            <span><b>Tôi đã kiểm tra tài khoản bên vận hành, tiền về đủ {formatVnd(openRequestRow.rentalAmount)}.</b>
+            <span><b>Tôi đã kiểm tra CCCD, giấy phép kinh doanh và xác nhận tiền về đủ {formatVnd(openRequestRow.rentalAmount)}.</b>
               <small>Chuyển thiếu thì không duyệt; nhắn tin hoặc gọi cho chủ sân, yêu cầu vẫn chờ.</small></span>
           </label>
           <p className={styles.hint}>

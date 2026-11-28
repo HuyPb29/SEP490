@@ -54,6 +54,39 @@ public class FileStorageService {
         if (extension == null) {
             throw new AppException("Chỉ nhận ảnh JPG hoặc PNG");
         }
+        return store(file, folder, extension);
+    }
+
+    /** Giấy tờ xác minh: kiểm tra dung lượng, MIME và chữ ký tệp trước khi ghi bất kỳ tệp nào. */
+    public void validateRegistrationDocument(MultipartFile file, String label) {
+        if (file == null || file.isEmpty()) throw new AppException("Vui lòng đính kèm " + label);
+        if (file.getSize() > MAX_BYTES) throw new AppException(label + " tối đa 5 MB");
+        String type = file.getContentType();
+        if (!EXTENSIONS.containsKey(type == null ? "" : type) && !"application/pdf".equals(type)) {
+            throw new AppException(label + " chỉ nhận JPG, PNG hoặc PDF");
+        }
+        try (InputStream in = file.getInputStream()) {
+            byte[] header = in.readNBytes(8);
+            byte[] expected = switch (type) {
+                case "image/jpeg" -> new byte[] {(byte) 0xff, (byte) 0xd8, (byte) 0xff};
+                case "image/png" -> new byte[] {(byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
+                default -> new byte[] {0x25, 0x50, 0x44, 0x46, 0x2d};
+            };
+            if (header.length < expected.length || !java.util.Arrays.equals(expected, java.util.Arrays.copyOf(header, expected.length))) {
+                throw new AppException(label + " không đúng nội dung JPG, PNG hoặc PDF");
+            }
+        } catch (IOException ex) {
+            throw new AppException("Không đọc được " + label);
+        }
+    }
+
+    public String storeRegistrationDocument(MultipartFile file, String folder, String label) {
+        validateRegistrationDocument(file, label);
+        String extension = "application/pdf".equals(file.getContentType()) ? ".pdf" : EXTENSIONS.get(file.getContentType());
+        return store(file, folder, extension);
+    }
+
+    private String store(MultipartFile file, String folder, String extension) {
         LocalDate today = LocalDate.now();
         String relative = String.format("%s/%d/%02d/%s%s",
                 folder, today.getYear(), today.getMonthValue(), UUID.randomUUID(), extension);

@@ -168,13 +168,15 @@ export async function checkServiceRegistration(payload) {
 }
 
 /**
- * POST /api/service-registrations (multipart): phần "data" là JSON đơn, phần "proof" là ảnh chứng từ.
+ * Multipart: data (JSON), proof (ảnh chuyển khoản), identityDocument và businessLicense (JPG/PNG/PDF).
  * Trả nguyên body để lấy câu MSG99 trong message.
  */
-export async function submitServiceRegistration(payload, proofFile) {
+export async function submitServiceRegistration(payload, proofFile, documents = {}) {
   const body = new FormData()
   body.append('data', new Blob([JSON.stringify(payload)], { type: 'application/json' }))
   body.append('proof', proofFile)
+  if (documents.identityDocument) body.append('identityDocument', documents.identityDocument)
+  if (documents.businessLicense) body.append('businessLicense', documents.businessLicense)
   const { data } = await api.post('/service-registrations', body)
   return data
 }

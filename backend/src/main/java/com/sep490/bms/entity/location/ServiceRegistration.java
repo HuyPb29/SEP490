@@ -70,6 +70,15 @@ public class ServiceRegistration {
     @Column(name = "terms_accepted_at")
     private LocalDateTime termsAcceptedAt;
 
+    @Column(name = "identity_document_path", length = 255)
+    private String identityDocumentPath;
+
+    @Column(name = "business_license_path", length = 255)
+    private String businessLicensePath;
+
+    @Column(name = "privacy_accepted_at")
+    private LocalDateTime privacyAcceptedAt;
+
     @Column(name = "contact_name", length = 50)
     private String contactName;
 

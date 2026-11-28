@@ -51,6 +51,12 @@ public class ServiceRegistrationDto {
 
     private LocalDateTime termsAcceptedAt;
 
+    private boolean hasIdentityDocument;
+
+    private boolean hasBusinessLicense;
+
+    private LocalDateTime privacyAcceptedAt;
+
     private String contactName;
 
     private String contactPhone;
@@ -86,6 +92,9 @@ public class ServiceRegistrationDto {
                 .rentalAmount(entity.getRentalAmount())
                 .hasProof(entity.getProofImagePath() != null && !entity.getProofImagePath().isBlank())
                 .termsAcceptedAt(entity.getTermsAcceptedAt())
+                .hasIdentityDocument(entity.getIdentityDocumentPath() != null && !entity.getIdentityDocumentPath().isBlank())
+                .hasBusinessLicense(entity.getBusinessLicensePath() != null && !entity.getBusinessLicensePath().isBlank())
+                .privacyAcceptedAt(entity.getPrivacyAcceptedAt())
                 .contactName(entity.getContactName())
                 .contactPhone(entity.getContactPhone())
                 .contactEmail(entity.getContactEmail())

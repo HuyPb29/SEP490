@@ -1,6 +1,7 @@
 package com.sep490.bms.dto.location;
 
 import java.math.BigDecimal;
+import com.sep490.bms.dto.request.ValidationRules;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMax;
@@ -23,7 +24,8 @@ import lombok.Setter;
  * Feature: F2 - Quản lý địa điểm
  * Owner: Minh Anh
  * UC05 - Guest hoặc Owner gửi đơn đăng ký đưa địa điểm vào sử dụng hệ thống (FR10, DR19).
- * Gửi dạng multipart: phần "data" là JSON này, phần "proof" là ảnh chứng từ chuyển khoản.
+ * Multipart: "data" là JSON này; "proof" là ảnh chuyển khoản;
+ * "identityDocument" và "businessLicense" là giấy tờ JPG/PNG/PDF.
  * Không có trường số tiền: backend tự tính theo P35.
  *
  * Ràng buộc theo BMS_database.sql: ck_sreg_courts (court_count > 0),
@@ -68,10 +70,14 @@ public class CreateServiceRegistrationRequest {
     @AssertTrue(message = "Vui lòng đọc và đồng ý điều khoản sử dụng dịch vụ")
     private Boolean termsAccepted;
 
+    @AssertTrue(message = "Vui lòng đồng ý cam kết bảo mật và xác minh hồ sơ")
+    private Boolean privacyAccepted;
+
     @Size(max = 50, message = "Tên người liên hệ tối đa 50 ký tự")
+    @Pattern(regexp = ValidationRules.NAME, message = "Họ tên chỉ được chứa chữ và khoảng trắng, không chứa số hoặc ký tự đặc biệt")
     private String contactName;
 
-    @Pattern(regexp = "^[0-9]{10}$", message = "Số điện thoại liên hệ phải gồm đúng 10 chữ số")
+    @Pattern(regexp = "^0[0-9]{9}$", message = "Số điện thoại liên hệ phải gồm đúng 10 chữ số và bắt đầu bằng 0")
     private String contactPhone;
 
     @Email(message = "Email liên hệ không hợp lệ")

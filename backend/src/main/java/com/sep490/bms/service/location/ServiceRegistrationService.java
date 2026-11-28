@@ -18,6 +18,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.sep490.bms.dto.location.CreateServiceRegistrationRequest;
@@ -44,6 +46,7 @@ import com.sep490.bms.service.integration.FileStorageService;
 import com.sep490.bms.service.notification.NotificationService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Feature: F2 - Quản lý địa điểm
@@ -60,6 +63,7 @@ import lombok.RequiredArgsConstructor;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ServiceRegistrationService {
 
     private static final String STATUS_ACTIVE = "ACTIVE";
@@ -94,7 +98,7 @@ public class ServiceRegistrationService {
     /** UC05 - Guest đăng ký dịch vụ hoặc Owner đăng ký thêm địa điểm (FR10). */
     @Transactional
     public ServiceRegistrationDto submit(UserPrincipal user, CreateServiceRegistrationRequest request,
-            MultipartFile proof) {
+            MultipartFile proof, MultipartFile identityDocument, MultipartFile businessLicense) {
         requireCanRegister(user, request);
         if (!Boolean.TRUE.equals(request.getTermsAccepted())) {
             throw new AppException("Vui lòng đọc và đồng ý điều khoản sử dụng dịch vụ");
@@ -102,36 +106,73 @@ public class ServiceRegistrationService {
         if (proof == null || proof.isEmpty()) {
             throw new AppException("Vui lòng đính kèm ảnh chứng từ chuyển khoản tiền thuê");
         }
+        if (!Boolean.TRUE.equals(request.getPrivacyAccepted())) {
+            throw new AppException("Vui lòng đồng ý cam kết bảo mật và xác minh hồ sơ");
+        }
+        if (identityDocument == null || identityDocument.isEmpty()) throw new AppException("Vui lòng đính kèm CCCD chủ sân");
+        if (businessLicense == null || businessLicense.isEmpty()) throw new AppException("Vui lòng đính kèm giấy phép kinh doanh");
         // Kiểm tra lại toàn bộ dù form đã gọi check(): email, số điện thoại có thể vừa bị người khác dùng (D181).
         Draft draft = validateDraft(user, request, true);
+        files.validateRegistrationDocument(identityDocument, "CCCD chủ sân");
+        files.validateRegistrationDocument(businessLicense, "giấy phép kinh doanh");
 
         // Kiểm tra xong mọi thứ mới lưu ảnh, để đơn bị từ chối vì dữ liệu sai không để lại file rác.
-        String proofPath = files.storeImage(proof, "service-registration-proofs");
-        LocalDateTime now = LocalDateTime.now();
-        ServiceRegistration entity = ServiceRegistration.builder()
-                .requesterId(draft.owner() == null ? null : draft.owner().getId())
-                .locationName(draft.locationName())
-                .address(draft.address())
-                .latitude(request.getLatitude())
-                .longitude(request.getLongitude())
-                .courtCount(draft.courtCount())
-                .rentalYears(draft.rentalYears())
-                .rentalAmount(RentalFeeCalculator.amount(draft.courtCount(), draft.rentalYears()))
-                .proofImagePath(proofPath)
-                .termsAcceptedAt(now)
-                .contactName(draft.contactName())
-                .contactPhone(draft.contactPhone())
-                .contactEmail(draft.contactEmail())
-                .status(ApprovalStatus.PENDING)
-                .build();
-
-        ServiceRegistration saved = serviceRegistrationRepository.save(entity);
-        for (Account admin : accountRepository.findByRoleAndStatus(Role.ADMIN, AccountStatus.ACTIVE)) {
-            notifications.notifyOnce(admin.getId(), "SERVICE_REGISTRATION_SUBMITTED", "Có đơn đăng ký dịch vụ mới",
-                    "Địa điểm " + saved.getLocationName() + " đang chờ xét duyệt.",
-                    "SERVICE_REGISTRATION", saved.getId());
+        List<String> uploaded = new ArrayList<>();
+        boolean synchronizedTransaction = TransactionSynchronizationManager.isSynchronizationActive();
+        if (synchronizedTransaction) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCompletion(int status) {
+                    if (status != STATUS_COMMITTED) cleanupUploads(uploaded);
+                }
+            });
         }
-        return ServiceRegistrationDto.fromEntity(saved, draft.contactName());
+        try {
+            String proofPath = files.storeImage(proof, "service-registration-proofs");
+            uploaded.add(proofPath);
+            String identityPath = files.storeRegistrationDocument(identityDocument, "service-registration-identities", "CCCD chủ sân");
+            uploaded.add(identityPath);
+            String licensePath = files.storeRegistrationDocument(businessLicense, "service-registration-licenses", "giấy phép kinh doanh");
+            uploaded.add(licensePath);
+            LocalDateTime now = LocalDateTime.now();
+            ServiceRegistration entity = ServiceRegistration.builder()
+                    .requesterId(draft.owner() == null ? null : draft.owner().getId())
+                    .locationName(draft.locationName())
+                    .address(draft.address())
+                    .latitude(request.getLatitude())
+                    .longitude(request.getLongitude())
+                    .courtCount(draft.courtCount())
+                    .rentalYears(draft.rentalYears())
+                    .rentalAmount(RentalFeeCalculator.amount(draft.courtCount(), draft.rentalYears()))
+                    .proofImagePath(proofPath)
+                    .termsAcceptedAt(now)
+                    .identityDocumentPath(identityPath)
+                    .businessLicensePath(licensePath)
+                    .privacyAcceptedAt(now)
+                    .contactName(draft.contactName())
+                    .contactPhone(draft.contactPhone())
+                    .contactEmail(draft.contactEmail())
+                    .status(ApprovalStatus.PENDING)
+                    .build();
+
+            ServiceRegistration saved = serviceRegistrationRepository.save(entity);
+            for (Account admin : accountRepository.findByRoleAndStatus(Role.ADMIN, AccountStatus.ACTIVE)) {
+                notifications.notifyOnce(admin.getId(), "SERVICE_REGISTRATION_SUBMITTED", "Có đơn đăng ký dịch vụ mới",
+                        "Địa điểm " + saved.getLocationName() + " đang chờ xét duyệt.",
+                        "SERVICE_REGISTRATION", saved.getId());
+            }
+            return ServiceRegistrationDto.fromEntity(saved, draft.contactName());
+        } catch (RuntimeException ex) {
+            if (!synchronizedTransaction) cleanupUploads(uploaded);
+            throw ex;
+        }
+    }
+
+    private void cleanupUploads(List<String> paths) {
+        for (String path : paths) {
+            if (path == null) continue;
+            try { files.discardImage(path); }
+            catch (RuntimeException ex) { log.warn("Không dọn được tệp của hồ sơ đăng ký bị rollback", ex); }
+        }
     }
 
     /**
@@ -181,8 +222,11 @@ public class ServiceRegistrationService {
                 ? requireText(request.getContactEmail(), "Email", 100).toLowerCase(Locale.ROOT) : owner.getEmail();
         String locationName = requireText(request.getLocationName(), "Tên địa điểm", 100);
         String address = requireText(request.getAddress(), "Địa chỉ", 255);
-        if (contactPhone == null || !contactPhone.matches("^[0-9]{10}$")) {
-            throw new AppException("Số điện thoại liên hệ phải gồm đúng 10 chữ số");
+        if (contactName == null || !contactName.matches(com.sep490.bms.dto.request.ValidationRules.NAME)) {
+            throw new AppException("Họ tên chỉ được chứa chữ và khoảng trắng, không chứa số hoặc ký tự đặc biệt");
+        }
+        if (contactPhone == null || !contactPhone.matches("^0[0-9]{9}$")) {
+            throw new AppException("Số điện thoại liên hệ phải gồm đúng 10 chữ số và bắt đầu bằng 0");
         }
         if (contactEmail == null || !contactEmail.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
             throw new AppException("Email liên hệ không hợp lệ");
@@ -245,6 +289,20 @@ public class ServiceRegistrationService {
         return files.load(entity.getProofImagePath());
     }
 
+    @Transactional(readOnly = true)
+    public Resource loadVerificationDocument(UserPrincipal user, Long registrationId, String kind) {
+        if (user == null || user.getRole() != Role.ADMIN) {
+            throw new AppException("Chỉ Admin được xem giấy tờ xác minh", HttpStatus.FORBIDDEN);
+        }
+        if (registrationId == null || registrationId <= 0) throw new AppException("Mã đơn đăng ký không hợp lệ");
+        if (!"identity".equals(kind) && !"business-license".equals(kind)) throw new AppException("Loại giấy tờ không hợp lệ");
+        ServiceRegistration entity = serviceRegistrationRepository.findById(registrationId)
+                .orElseThrow(() -> new AppException("Không tìm thấy đơn đăng ký", HttpStatus.NOT_FOUND));
+        String path = "identity".equals(kind) ? entity.getIdentityDocumentPath() : entity.getBusinessLicensePath();
+        if (isBlank(path)) throw new AppException("Hồ sơ chưa có giấy tờ này", HttpStatus.NOT_FOUND);
+        return files.load(path);
+    }
+
     /**
      * UC06 #2 - Admin duyệt đơn khi đã thấy tiền thuê về (FR11, FR12): tạo địa điểm, sinh đủ số sân mà đơn
      * đã khai báo, ghi thời hạn từ ngày duyệt theo số năm thuê, tạo tài khoản Owner nếu là đơn của Guest
@@ -255,6 +313,10 @@ public class ServiceRegistrationService {
     @Transactional
     public ServiceRegistrationDto approve(UserPrincipal admin, Long registrationId) {
         ServiceRegistration entity = requirePending(registrationId);
+
+        if (isBlank(entity.getIdentityDocumentPath()) || isBlank(entity.getBusinessLicensePath()) || entity.getPrivacyAcceptedAt() == null) {
+            throw new AppException("Hồ sơ thiếu CCCD, giấy phép kinh doanh hoặc cam kết bảo mật. Vui lòng từ chối và yêu cầu nộp đơn mới.");
+        }
 
         if (isBlank(entity.getContactPhone())) {
             throw new AppException("Đơn thiếu số điện thoại liên hệ, không thể duyệt");

@@ -91,10 +91,85 @@ class ServiceRegistrationServiceTests {
             return account;
         });
         when(files.storeImage(any(), anyString())).thenReturn("service-registration-proofs/2026/11/a.png");
+        when(files.storeRegistrationDocument(any(), anyString(), anyString()))
+                .thenAnswer(call -> call.getArgument(1) + "/test.pdf");
         when(encoder.encode(anyString())).thenAnswer(call -> "hash:" + call.getArgument(0));
     }
 
     // ---------------------------------------------------------------- P35
+
+    @Test void verificationDocumentsAndConsentAreRequiredBeforeAnyFileIsStored() {
+        var request = guestRequest(1, 1);
+        request.setPrivacyAccepted(false);
+        assertThatThrownBy(() -> submit(null, request, proof)).hasMessageContaining("cam kết bảo mật");
+        request.setPrivacyAccepted(true);
+        assertThatThrownBy(() -> service.submit(null, request, proof, null, proof)).hasMessageContaining("CCCD");
+        assertThatThrownBy(() -> service.submit(null, request, proof, proof, null)).hasMessageContaining("giấy phép kinh doanh");
+        verifyNoInteractions(files);
+        verify(registrations, never()).save(any());
+    }
+
+    @Test void successfulSubmissionStoresBothDocumentsAndServerConsentTime() {
+        var response = submit(null, guestRequest(1, 1), proof);
+        assertThat(response.isHasIdentityDocument()).isTrue();
+        assertThat(response.isHasBusinessLicense()).isTrue();
+        assertThat(response.getPrivacyAcceptedAt()).isNotNull();
+        var entity = ArgumentCaptor.forClass(ServiceRegistration.class);
+        verify(registrations).save(entity.capture());
+        assertThat(entity.getValue().getIdentityDocumentPath()).startsWith("service-registration-identities/");
+        assertThat(entity.getValue().getBusinessLicensePath()).startsWith("service-registration-licenses/");
+    }
+
+    @Test void failedSubmissionCleansEveryUploadedFile() {
+        org.mockito.Mockito.doThrow(new IllegalStateException("database unavailable")).when(registrations).save(any());
+        assertThatThrownBy(() -> submit(null, guestRequest(1, 1), proof)).hasMessageContaining("database unavailable");
+        verify(files).discardImage("service-registration-proofs/2026/11/a.png");
+        verify(files).discardImage("service-registration-identities/test.pdf");
+        verify(files).discardImage("service-registration-licenses/test.pdf");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 1})
+    void filesFollowTheFinalTransactionOutcome(int completionStatus) {
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            submit(null, guestRequest(1, 1), proof);
+            verify(files, never()).discardImage(anyString());
+            org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(callback -> callback.afterCompletion(completionStatus));
+            if (completionStatus == 0) verify(files, never()).discardImage(anyString());
+            else {
+                verify(files).discardImage("service-registration-proofs/2026/11/a.png");
+                verify(files).discardImage("service-registration-identities/test.pdf");
+                verify(files).discardImage("service-registration-licenses/test.pdf");
+            }
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test void verificationDocumentsAreRestrictedToAdmin() {
+        var owner = UserPrincipal.builder().id(7L).role(Role.OWNER).build();
+        assertThatThrownBy(() -> service.loadVerificationDocument(null, 50L, "identity")).hasMessageContaining("Chỉ Admin");
+        assertThatThrownBy(() -> service.loadVerificationDocument(owner, 50L, "identity")).hasMessageContaining("Chỉ Admin");
+        verifyNoInteractions(files);
+        var row = pendingGuest(1, 1);
+        when(registrations.findById(50L)).thenReturn(Optional.of(row));
+        service.loadVerificationDocument(admin, 50L, "identity");
+        service.loadVerificationDocument(admin, 50L, "business-license");
+        verify(files).load("identities/test.png");
+        verify(files).load("licenses/test.pdf");
+        assertThatThrownBy(() -> service.loadVerificationDocument(admin, 50L, "../../file")).hasMessageContaining("Loại giấy tờ");
+    }
+
+    @Test void legacyPendingRequestCannotBeApprovedWithoutVerification() {
+        var row = pendingGuest(1, 1);
+        row.setIdentityDocumentPath(null);
+        when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(row));
+        assertThatThrownBy(() -> service.approve(admin, 50L)).hasMessageContaining("thiếu CCCD");
+        verify(accounts, never()).saveAndFlush(any());
+        verify(locations, never()).save(any());
+    }
 
     @Test
     void rentalFeeFollowsP35AndRoundsUpToThousand() {
@@ -122,7 +197,7 @@ class ServiceRegistrationServiceTests {
 
     @Test
     void guestSubmissionStoresYearsAmountProofAndTermsTime() {
-        var saved = service.submit(null, guestRequest(4, 2), proof);
+        var saved = submit(null, guestRequest(4, 2), proof);
 
         assertThat(saved.getStatus()).isEqualTo("PENDING");
         assertThat(saved.getRentalYears()).isEqualTo(2);
@@ -136,9 +211,9 @@ class ServiceRegistrationServiceTests {
     void submissionRequiresTermsAndProofBeforeStoringAnything() {
         CreateServiceRegistrationRequest noTerms = guestRequest(4, 1);
         noTerms.setTermsAccepted(false);
-        assertThatThrownBy(() -> service.submit(null, noTerms, proof))
+        assertThatThrownBy(() -> submit(null, noTerms, proof))
                 .isInstanceOf(AppException.class).hasMessageContaining("điều khoản");
-        assertThatThrownBy(() -> service.submit(null, guestRequest(4, 1), null))
+        assertThatThrownBy(() -> submit(null, guestRequest(4, 1), null))
                 .isInstanceOf(AppException.class).hasMessageContaining("chứng từ");
         verifyNoInteractions(files);
         verify(registrations, never()).save(any());
@@ -146,14 +221,14 @@ class ServiceRegistrationServiceTests {
 
     @Test
     void submissionRejectsRentalYearsBelowOne() {
-        assertThatThrownBy(() -> service.submit(null, guestRequest(4, 0), proof))
+        assertThatThrownBy(() -> submit(null, guestRequest(4, 0), proof))
                 .isInstanceOf(AppException.class).hasMessageContaining("tối thiểu là 1 năm");
     }
 
     @Test
     void guestEmailWithAccountGetsMsg103() {
         when(accounts.existsByEmail("chu.san@example.com")).thenReturn(true);
-        assertThatThrownBy(() -> service.submit(null, guestRequest(4, 1), proof))
+        assertThatThrownBy(() -> submit(null, guestRequest(4, 1), proof))
                 .isInstanceOfSatisfying(AppException.class, ex -> {
                     assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
                     assertThat(ex.getMessage()).contains("MSG103");
@@ -166,30 +241,52 @@ class ServiceRegistrationServiceTests {
     void invalidContactsAndCoordinatesNeverStoreProofOrRegistration() {
         var request = guestRequest(4, 1);
         request.setContactPhone("abc1234567");
-        assertThatThrownBy(() -> service.submit(null, request, proof)).hasMessageContaining("10 chữ số");
+        assertThatThrownBy(() -> submit(null, request, proof)).hasMessageContaining("10 chữ số");
         request.setContactPhone("0933444555");
         request.setContactEmail("owner@localhost");
-        assertThatThrownBy(() -> service.submit(null, request, proof)).hasMessageContaining("Email");
+        assertThatThrownBy(() -> submit(null, request, proof)).hasMessageContaining("Email");
         request.setContactEmail("owner@example.com");
         request.setLatitude(BigDecimal.valueOf(91));
-        assertThatThrownBy(() -> service.submit(null, request, proof)).hasMessageContaining("Tọa độ");
+        assertThatThrownBy(() -> submit(null, request, proof)).hasMessageContaining("Tọa độ");
         verifyNoInteractions(files);
         verify(registrations, never()).save(any());
     }
 
     @Test
+    void registrationRejectsNonZeroPhonePrefixAndNamesWithDigitsOrSymbols() {
+        var request = guestRequest(4, 1);
+        request.setContactPhone("1933444555");
+        assertThatThrownBy(() -> submit(null, request, proof)).hasMessageContaining("bắt đầu bằng 0");
+        request.setContactPhone("0933444555");
+        for (String name : List.of("Anh123", "123456", "Nguyễn @ Anh")) {
+            request.setContactName(name);
+            assertThatThrownBy(() -> submit(null, request, proof)).hasMessageContaining("Họ tên");
+        }
+        verifyNoInteractions(files);
+        verify(registrations, never()).save(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"Nguyễn Văn Anh", "Nguyen Van Anh", "Nguye\u0302\u0303n Va\u0306n Anh"})
+    void registrationAcceptsVietnameseAndUnaccentedNames(String name) {
+        var request = guestRequest(4, 1);
+        request.setContactName(name);
+        assertThat(submit(null, request, proof).getContactName()).isEqualTo(name);
+    }
+
+    @Test
     void duplicatePhoneOrPendingEmailOrPendingPhoneNeverCreatesRequest() {
         when(accounts.existsByPhone("0933444555")).thenReturn(true);
-        assertThatThrownBy(() -> service.submit(null, guestRequest(4, 1), proof)).hasMessageContaining("Số điện thoại");
+        assertThatThrownBy(() -> submit(null, guestRequest(4, 1), proof)).hasMessageContaining("Số điện thoại");
         when(accounts.existsByPhone("0933444555")).thenReturn(false);
         when(registrations.existsByRequesterIdIsNullAndStatusAndContactEmailIgnoreCase(
                 ApprovalStatus.PENDING, "chu.san@example.com")).thenReturn(true);
-        assertThatThrownBy(() -> service.submit(null, guestRequest(4, 1), proof)).hasMessageContaining("Email");
+        assertThatThrownBy(() -> submit(null, guestRequest(4, 1), proof)).hasMessageContaining("Email");
         when(registrations.existsByRequesterIdIsNullAndStatusAndContactEmailIgnoreCase(
                 ApprovalStatus.PENDING, "chu.san@example.com")).thenReturn(false);
         when(registrations.existsByRequesterIdIsNullAndStatusAndContactPhone(
                 ApprovalStatus.PENDING, "0933444555")).thenReturn(true);
-        assertThatThrownBy(() -> service.submit(null, guestRequest(4, 1), proof)).hasMessageContaining("Số điện thoại");
+        assertThatThrownBy(() -> submit(null, guestRequest(4, 1), proof)).hasMessageContaining("Số điện thoại");
         verifyNoInteractions(files);
         verify(registrations, never()).save(any());
     }
@@ -306,6 +403,12 @@ class ServiceRegistrationServiceTests {
         verifyNoInteractions(emails);
     }
 
+    private com.sep490.bms.dto.location.ServiceRegistrationDto submit(UserPrincipal user, CreateServiceRegistrationRequest request, org.springframework.web.multipart.MultipartFile transferProof) {
+        return service.submit(user, request, transferProof,
+                new MockMultipartFile("identityDocument", "cccd.png", "image/png", new byte[] {1}),
+                new MockMultipartFile("businessLicense", "license.pdf", "application/pdf", new byte[] {1}));
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private CreateServiceRegistrationRequest guestRequest(int courtCount, int years) {
@@ -317,6 +420,7 @@ class ServiceRegistrationServiceTests {
                 .courtCount(courtCount)
                 .rentalYears(years)
                 .termsAccepted(true)
+                .privacyAccepted(true)
                 .contactName("Đỗ Văn Nam")
                 .contactPhone("0933444555")
                 .contactEmail("Chu.San@example.com")
@@ -335,6 +439,9 @@ class ServiceRegistrationServiceTests {
                 .rentalYears(years)
                 .rentalAmount(RentalFeeCalculator.amount(courtCount, years))
                 .proofImagePath("service-registration-proofs/2026/11/a.png")
+                .identityDocumentPath("identities/test.png")
+                .businessLicensePath("licenses/test.pdf")
+                .privacyAcceptedAt(java.time.LocalDateTime.now())
                 .contactName("Đỗ Văn Nam")
                 .contactPhone("0933444555")
                 .contactEmail("chu.san@example.com")

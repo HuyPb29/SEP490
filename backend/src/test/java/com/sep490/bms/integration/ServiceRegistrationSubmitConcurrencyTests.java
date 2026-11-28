@@ -111,7 +111,7 @@ class ServiceRegistrationSubmitConcurrencyTests {
     }
 
     private int submit(Map<String, Object> form) throws Exception {
-        return mvc.perform(multipart("/api/service-registrations")
+        return mvc.perform(multipart("/api/service-registrations").file(identityDocumentFile()).file(businessLicenseFile())
                         .file(new MockMultipartFile("data", "", "application/json", json.writeValueAsBytes(form)))
                         .file(new MockMultipartFile("proof", "ck.png", "image/png", new byte[] {1, 2, 3})))
                 .andReturn().getResponse().getStatus();
@@ -132,6 +132,7 @@ class ServiceRegistrationSubmitConcurrencyTests {
         form.put("courtCount", 4);
         form.put("rentalYears", 1);
         form.put("termsAccepted", true);
+        form.put("privacyAccepted", true);
         form.put("contactName", "Chủ sân thử");
         form.put("contactPhone", phone);
         form.put("contactEmail", email);
@@ -141,4 +142,11 @@ class ServiceRegistrationSubmitConcurrencyTests {
     private static String phone() {
         return "0" + String.format("%09d", Math.floorMod(UUID.randomUUID().getMostSignificantBits(), 1000000000L));
     }
+    private MockMultipartFile identityDocumentFile() {
+        return new MockMultipartFile("identityDocument", "cccd.png", "image/png", new byte[] {(byte)137,80,78,71,13,10,26,10});
+    }
+    private MockMultipartFile businessLicenseFile() {
+        return new MockMultipartFile("businessLicense", "license.pdf", "application/pdf", "%PDF-1.4\n%%EOF".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+    }
+
 }

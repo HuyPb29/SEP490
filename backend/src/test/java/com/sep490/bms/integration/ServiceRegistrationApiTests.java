@@ -88,7 +88,7 @@ class ServiceRegistrationApiTests {
     @Test
     void guestSubmitsMultipartThenAdminSeesProofAndApprovesWithEmail() throws Exception {
         String email = "g" + suffix + "@example.com";
-        var sent = mvc.perform(multipart("/api/service-registrations")
+        var sent = mvc.perform(multipart("/api/service-registrations").file(identityDocumentFile()).file(businessLicenseFile())
                         .file(data(form(email, true)))
                         .file(new MockMultipartFile("proof", "ck.png", "image/png", new byte[] {1, 2, 3})))
                 .andExpect(status().isCreated())
@@ -141,11 +141,11 @@ class ServiceRegistrationApiTests {
     @Test
     void submissionWithoutTermsOrProofIsRejected() throws Exception {
         String email = "t" + suffix + "@example.com";
-        mvc.perform(multipart("/api/service-registrations")
+        mvc.perform(multipart("/api/service-registrations").file(identityDocumentFile()).file(businessLicenseFile())
                         .file(data(form(email, false)))
                         .file(new MockMultipartFile("proof", "ck.png", "image/png", new byte[] {1})))
                 .andExpect(status().isBadRequest());
-        mvc.perform(multipart("/api/service-registrations").file(data(form(email, true))))
+        mvc.perform(multipart("/api/service-registrations").file(identityDocumentFile()).file(businessLicenseFile()).file(data(form(email, true))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -166,7 +166,7 @@ class ServiceRegistrationApiTests {
     @Test
     void rejectingSendsReasonEmail() throws Exception {
         String email = "r" + suffix + "@example.com";
-        var sent = mvc.perform(multipart("/api/service-registrations")
+        var sent = mvc.perform(multipart("/api/service-registrations").file(identityDocumentFile()).file(businessLicenseFile())
                         .file(data(form(email, true)))
                         .file(new MockMultipartFile("proof", "ck.jpg", "image/jpeg", new byte[] {1})))
                 .andExpect(status().isCreated()).andReturn();
@@ -209,7 +209,9 @@ class ServiceRegistrationApiTests {
         existingAccount.put("contactPhone", admin.getPhone());
         submit(existingAccount, 409);
         for (var invalid : java.util.List.of(Map.of("contactEmail", "invalid@localhost"),
-                Map.of("contactPhone", "12345"), Map.of("contactName", "  "),
+                Map.of("contactPhone", "12345"), Map.of("contactPhone", "1234567890"),
+                Map.of("contactName", "Anh123"), Map.of("contactName", "12345"),
+                Map.of("contactName", "Nguyễn @ Anh"), Map.of("contactName", "  "),
                 Map.of("latitude", "91"), Map.of("termsAccepted", false))) {
             var candidate = form("invalid" + suffix + "@example.com", true);
             candidate.putAll(invalid);
@@ -252,7 +254,7 @@ class ServiceRegistrationApiTests {
         Account owner = accounts.saveAndFlush(Account.builder().username("o" + suffix).email("o" + suffix + "@example.com")
                 .phone(phone()).fullName("Owner test").passwordHash("unused").role(Role.OWNER)
                 .status(AccountStatus.ACTIVE).build());
-        mvc.perform(multipart("/api/service-registrations").file(data(form(null, true)))
+        mvc.perform(multipart("/api/service-registrations").file(identityDocumentFile()).file(businessLicenseFile()).file(data(form(null, true)))
                         .file(new MockMultipartFile("proof", "ck.png", "image/png", new byte[] {1}))
                         .header("Authorization", token(owner)))
                 .andExpect(status().isCreated());
@@ -276,7 +278,7 @@ class ServiceRegistrationApiTests {
     }
 
     private void submit(Map<String, Object> form, int expectedStatus) throws Exception {
-        mvc.perform(multipart("/api/service-registrations").file(data(form))
+        mvc.perform(multipart("/api/service-registrations").file(identityDocumentFile()).file(businessLicenseFile()).file(data(form))
                         .file(new MockMultipartFile("proof", "ck.png", "image/png", new byte[] {1})))
                 .andExpect(status().is(expectedStatus));
     }
@@ -290,6 +292,7 @@ class ServiceRegistrationApiTests {
         form.put("courtCount", 4);
         form.put("rentalYears", 2);
         form.put("termsAccepted", termsAccepted);
+        form.put("privacyAccepted", true);
         form.put("contactName", "Chủ sân thử");
         form.put("contactPhone", phone());
         form.put("contactEmail", email);
@@ -307,4 +310,11 @@ class ServiceRegistrationApiTests {
     private static String phone() {
         return "0" + String.format("%09d", Math.floorMod(UUID.randomUUID().getMostSignificantBits(), 1000000000L));
     }
+    private MockMultipartFile identityDocumentFile() {
+        return new MockMultipartFile("identityDocument", "cccd.png", "image/png", new byte[] {(byte)137,80,78,71,13,10,26,10});
+    }
+    private MockMultipartFile businessLicenseFile() {
+        return new MockMultipartFile("businessLicense", "license.pdf", "application/pdf", "%PDF-1.4\n%%EOF".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+    }
+
 }

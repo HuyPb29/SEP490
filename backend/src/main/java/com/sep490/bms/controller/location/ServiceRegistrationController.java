@@ -4,6 +4,8 @@ import java.util.List;
 
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.MediaType;
 import org.springframework.http.MediaTypeFactory;
 import org.springframework.http.ResponseEntity;
@@ -51,14 +53,16 @@ public class ServiceRegistrationController {
      * UC05 – Đăng ký sử dụng dịch vụ (FR10)
      * Status: IMPLEMENTED
      *
-     * multipart/form-data: phần "data" (JSON CreateServiceRegistrationRequest) và phần "proof" (ảnh chứng từ).
+     * multipart/form-data: data (JSON), proof (ảnh chuyển khoản), identityDocument và businessLicense (JPG/PNG/PDF).
      */
     @PostMapping(path = "/api/service-registrations", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<ServiceRegistrationDto>> postServiceRegistrations(
             @AuthenticationPrincipal UserPrincipal currentUser,
             @Valid @RequestPart("data") CreateServiceRegistrationRequest request,
-            @RequestPart(value = "proof", required = false) MultipartFile proof) {
-        ServiceRegistrationDto created = serviceRegistrationService.submit(currentUser, request, proof);
+            @RequestPart(value = "proof", required = false) MultipartFile proof,
+            @RequestPart(value = "identityDocument", required = false) MultipartFile identityDocument,
+            @RequestPart(value = "businessLicense", required = false) MultipartFile businessLicense) {
+        ServiceRegistrationDto created = serviceRegistrationService.submit(currentUser, request, proof, identityDocument, businessLicense);
         // MSG99
         String message = "Đã gửi yêu cầu đăng ký. Sau khi kiểm tra tiền thuê đã về, chúng tôi sẽ gửi kết quả tới email "
                 + created.getContactEmail() + ".";
@@ -131,6 +135,18 @@ public class ServiceRegistrationController {
     @GetMapping("/api/admin/service-registrations/{id}/proof")
     public ResponseEntity<Resource> getAdminServiceRegistrationProof(@PathVariable("id") Long id) {
         return image(serviceRegistrationService.loadProof(id));
+    }
+
+    @GetMapping("/api/admin/service-registrations/{id}/documents/{kind}")
+    public ResponseEntity<Resource> getRegistrationDocument(@AuthenticationPrincipal UserPrincipal user,
+            @PathVariable("id") Long id, @PathVariable("kind") String kind) {
+        Resource document = serviceRegistrationService.loadVerificationDocument(user, id, kind);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Disposition", ContentDisposition.attachment().filename(document.getFilename()).build().toString())
+                .contentType(MediaTypeFactory.getMediaType(document).orElse(MediaType.APPLICATION_OCTET_STREAM))
+                .body(document);
     }
 
     /**

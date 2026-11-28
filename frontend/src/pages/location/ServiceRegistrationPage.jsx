@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import LocationMap from '../../components/map/LocationMap';
 import GoogleLocationPicker, { hasGoogleMapsKey, loadMaps } from '../../components/map/GoogleLocationPicker';
 import PublicLayout from '../../components/layout/PublicLayout';
+import RegistrationDocumentUpload from '../../components/location/RegistrationDocumentUpload';
 import { Link } from 'react-router-dom';
 import { money, shortDate, uiMessage } from '../../utils/formatters';
 import { FileInput } from '../../components/common/FileInput';
@@ -64,6 +65,8 @@ export default function ServiceRegistrationPage() {
     contactEmail: '',
   });
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [documents, setDocuments] = useState({ identityDocument: null, businessLicense: null });
   const [proofFile, setProofFile] = useState(null);
   const [proofPreview, setProofPreview] = useState('');
   const [paymentInfo, setPaymentInfo] = useState(null);
@@ -227,7 +230,8 @@ export default function ServiceRegistrationPage() {
       if (field === 'provinceCode') delete next.wardCode;
       return next;
     });
-    setMapAddress('');    setMapAddressError('');
+    setMapAddress('');
+    setMapAddressError('');
     setLocationError('');
     setSubmitError('');
   };
@@ -254,7 +258,8 @@ export default function ServiceRegistrationPage() {
 
   const handleMapPick = (latitude, longitude) => {
     if (submitInProgress.current) return;
-    fillCoordinates(latitude, longitude);    setMapAddress('');
+    fillCoordinates(latitude, longitude);
+    setMapAddress('');
     setMapAddressError('');
     if (hasGoogleMapsKey) lookupMapAddress({ location: { lat: latitude, lng: longitude } });
   };
@@ -320,6 +325,12 @@ export default function ServiceRegistrationPage() {
       errors.rentalYears = `Số năm thuê tối đa là ${MAX_RENTAL_YEARS} năm.`;
     }
 
+    if (payment) {
+      if (!documents.identityDocument) errors.identityDocument = fieldErrors.identityDocument || 'Vui lòng đính kèm CCCD chủ sân.';
+      if (!documents.businessLicense) errors.businessLicense = fieldErrors.businessLicense || 'Vui lòng đính kèm giấy phép đăng ký kinh doanh.';
+      if (!privacyAccepted) errors.privacy = 'Vui lòng đồng ý cam kết bảo mật và xác minh hồ sơ.';
+    }
+
     if (payment && !proofFile) {
       errors.proof = 'Vui lòng đính kèm ảnh chứng từ chuyển khoản tiền thuê.';
     }
@@ -332,9 +343,11 @@ export default function ServiceRegistrationPage() {
         errors.contactName = 'Tên người liên hệ không được để trống.';
       } else if (formData.contactName.trim().length > 50) {
         errors.contactName = 'Tên người liên hệ tối đa 50 ký tự.';
+      } else if (!/^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)*$/u.test(formData.contactName.trim())) {
+        errors.contactName = 'Họ tên chỉ được chứa chữ và khoảng trắng, không chứa số hoặc ký tự đặc biệt.';
       }
-      if (!/^[0-9]{10}$/.test(formData.contactPhone.trim())) {
-        errors.contactPhone = 'Số điện thoại liên hệ phải gồm đúng 10 chữ số.';
+      if (!/^0[0-9]{9}$/.test(formData.contactPhone.trim())) {
+        errors.contactPhone = 'Số điện thoại liên hệ phải gồm đúng 10 chữ số và bắt đầu bằng 0.';
       }
       if (formData.contactEmail.trim().length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contactEmail.trim())) {
         errors.contactEmail = 'Nhập email hợp lệ để nhận quyền truy cập tài khoản sau khi được duyệt.';
@@ -362,6 +375,13 @@ export default function ServiceRegistrationPage() {
   const showServerError = (err, fallback) => {
     const message = apiErrorMessage(err, fallback);
     setSubmitError(message);
+    const documentField = /CCCD/i.test(message) ? 'identityDocument' : /giấy phép/i.test(message) ? 'businessLicense' : /cam kết bảo mật/i.test(message) ? 'privacy' : null;
+    if (documentField) {
+      setFieldErrors(current => ({ ...current, [documentField]: message }));
+      pendingFocus.current = documentField;
+      setStep(3);
+      return;
+    }
     const field = /email/i.test(message) ? 'contactEmail'
       : /số điện thoại/i.test(message) ? 'contactPhone'
         : /^Địa điểm này/i.test(message) ? 'locationName' : null;
@@ -412,7 +432,7 @@ export default function ServiceRegistrationPage() {
     setLookingUpAddress(false);
     setIsSubmitting(true);
     try {
-      const res = await submitServiceRegistration({ ...buildPayload(), termsAccepted }, proofFile);
+      const res = await submitServiceRegistration({ ...buildPayload(), termsAccepted, privacyAccepted }, proofFile, documents);
       // MSG99 do backend trả về, có email nhận kết quả.
       setStep(3);
       setSubmitSuccess(res?.message || 'Đã gửi yêu cầu đăng ký.');
@@ -429,6 +449,8 @@ export default function ServiceRegistrationPage() {
       setProofFile(null);
       setProofPreview('');
       setTermsAccepted(false);
+      setPrivacyAccepted(false);
+      setDocuments({ identityDocument: null, businessLicense: null });
       setFieldErrors({});
       setCheckedKey('');
       loadMyRegistrations();
@@ -443,7 +465,7 @@ export default function ServiceRegistrationPage() {
   const steps = ['Địa điểm', 'Vị trí trên bản đồ', 'Người đại diện', 'Xem lại & gửi'];
   const stepFields = [
     ['locationName', 'provinceCode', 'wardCode', 'addressDetail', 'address', 'courtCount', 'rentalYears'],
-    ['latitude', 'longitude'], ['contactName', 'contactPhone', 'contactEmail'], ['proof', 'terms'],
+    ['latitude', 'longitude'], ['contactName', 'contactPhone', 'contactEmail'], ['proof', 'terms', 'identityDocument', 'businessLicense', 'privacy'],
   ];
   function stepForField(field) { return Math.max(0, stepFields.findIndex(fields => fields.includes(field))); }
   function nextStep() {
@@ -551,6 +573,15 @@ export default function ServiceRegistrationPage() {
                   {proofPreview && <img className={styles.proofPreview} src={proofPreview} alt="Ảnh chứng từ đã chọn" />}
                   {proofFile && <Button variant="ghost" disabled={isSubmitting} onClick={() => handleProofChange(null)}>Bỏ ảnh đã chọn</Button>}
                 </FormField>
+                <section aria-labelledby="verification-title"><h3 id="verification-title">Giấy tờ xác minh chủ sân</h3><p className={styles.helper}>Giấy tờ chỉ được Admin xem để xét duyệt hồ sơ, không hiển thị công khai.</p>
+                  <div className={styles.row}>{[['identityDocument', 'CCCD chủ sân'], ['businessLicense', 'Giấy phép đăng ký kinh doanh']].map(([id, label]) => <RegistrationDocumentUpload key={id} id={id} label={label} file={documents[id]} disabled={isSubmitting} error={errorText(id)} onChange={file => {
+                    const invalid = file && (!['image/jpeg', 'image/png', 'application/pdf'].includes(file.type) || !file.size || file.size > PROOF_MAX_BYTES);
+                    setDocuments(current => ({ ...current, [id]: invalid ? null : file }));
+                    setFieldErrors(current => ({ ...current, [id]: invalid ? `${label} phải là JPG, PNG hoặc PDF, tối đa 5 MB.` : undefined }));
+                  }} />)}</div>
+                  <label className={styles.checkbox}><input id="privacy" type="checkbox" checked={privacyAccepted} disabled={isSubmitting} aria-invalid={Boolean(fieldErrors.privacy)} aria-describedby={fieldErrors.privacy ? 'privacy-error' : undefined} onChange={event => { setPrivacyAccepted(event.target.checked); clearFieldError('privacy'); }} /><span>Tôi cam kết giấy tờ cung cấp là chính xác và hợp pháp; bảo mật dữ liệu khách hàng và chỉ sử dụng cho việc vận hành địa điểm. Tôi đồng ý để BMS sử dụng giấy tờ nhằm xét duyệt hồ sơ.</span></label>
+                  {fieldErrors.privacy && <p className={styles.error} id="privacy-error" role="alert">{errorText('privacy')}</p>}
+                </section>
                 <section aria-labelledby="terms-title"><h3 id="terms-title">Điều khoản sử dụng dịch vụ</h3><div role="region" aria-label="Nội dung điều khoản" tabIndex={0} className={styles.terms}><ol>{SERVICE_TERMS.map(term => <li key={term}>{term}</li>)}</ol></div>
                   <label className={styles.checkbox}><input id="terms" type="checkbox" checked={termsAccepted} disabled={isSubmitting} aria-invalid={Boolean(fieldErrors.terms)} aria-describedby={fieldErrors.terms ? 'terms-error' : undefined} onChange={event => { setTermsAccepted(event.target.checked); clearFieldError('terms'); }} /><span>Tôi đã đọc và đồng ý các điều khoản sử dụng dịch vụ.</span></label>
                   {fieldErrors.terms && <p className={styles.error} id="terms-error" role="alert">{errorText('terms')}</p>}
