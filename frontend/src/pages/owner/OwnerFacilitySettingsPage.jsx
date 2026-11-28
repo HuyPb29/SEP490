@@ -16,6 +16,7 @@ import {
   ErrorState,
   FormField,
   Input,
+  Select,
   LoadingState,
   StatusBadge,
   Toast,
@@ -23,6 +24,8 @@ import {
 import { FileInput } from '../../components/common/FileInput'
 import LocationMap from '../../components/map/LocationMap'
 import { dateTime, errorMessage, shortDate, today } from '../../utils/formatters'
+// Danh mục cục bộ từ https://api.vietqr.io/v2/banks (28/11/2026); không gọi dịch vụ ngoài khi mở form.
+import vietnamBanks from '../../data/vietnamBanks.json'
 import styles from './OwnerFacilitySettingsPage.module.css'
 
 /** Khớp ràng buộc trong UpdateLocationRequest để báo lỗi ngay, khỏi gọi API. */
@@ -30,7 +33,6 @@ const PHONE_PATTERN = /^0\d{9}$/
 const LIMITS = {
   name: 100,
   address: 255,
-  bankName: 100,
   bankAccountNo: 30,
   bankAccountHolder: 100,
   advanceBookingDays: { min: 1, max: 365 },
@@ -500,9 +502,16 @@ export default function OwnerFacilitySettingsPage() {
             >
               <div className={styles.bankLayout}>
                 <div className={styles.fieldStack}>
-                  <FormField label="Ngân hàng">
-                    <Input type="text" maxLength={LIMITS.bankName} placeholder="Vietcombank" value={form.bankName}
-                      disabled={disabled} onChange={updateField('bankName')} />
+                  <FormField label="Ngân hàng" hint="Chọn ngân hàng nhận tiền. Khi đổi tài khoản, hãy kiểm tra và cập nhật ảnh QR cho khớp.">
+                    <Select value={form.bankName} disabled={disabled} onChange={updateField('bankName')}>
+                      <option value="" disabled>Chọn ngân hàng</option>
+                      {original.bankName && !vietnamBanks.some(bank => bank.shortName === original.bankName) && (
+                        <option value={original.bankName}>{original.bankName} (đã lưu)</option>
+                      )}
+                      {vietnamBanks.map(bank => (
+                        <option key={bank.bin} value={bank.shortName}>{bank.shortName} — {bank.name}</option>
+                      ))}
+                    </Select>
                   </FormField>
                   <FormField label="Số tài khoản">
                     <Input type="text" inputMode="numeric" maxLength={LIMITS.bankAccountNo} value={form.bankAccountNo}
