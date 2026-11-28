@@ -80,6 +80,7 @@ class ServiceRegistrationServiceTests {
             }
             return entity;
         });
+        when(registrations.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
         when(locations.save(any())).thenAnswer(call -> {
             Location location = call.getArgument(0);
             location.setId(9L);
@@ -297,12 +298,16 @@ class ServiceRegistrationServiceTests {
         when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(pending));
         assertThatThrownBy(() -> service.reject(admin, 50L, new RejectServiceRegistrationRequest("   ")))
                 .hasMessageContaining("Lý do từ chối");
+        assertThatThrownBy(() -> service.reject(admin, 50L, null)).hasMessageContaining("Lý do từ chối");
+        assertThatThrownBy(() -> service.reject(admin, 50L, new RejectServiceRegistrationRequest("x".repeat(501))))
+                .hasMessageContaining("Lý do từ chối");
         pending.setContactEmail(null);
         assertThatThrownBy(() -> service.reject(admin, 50L, new RejectServiceRegistrationRequest("Không hợp lệ")))
                 .hasMessageContaining("Email");
         assertThat(pending.getStatus()).isEqualTo(ApprovalStatus.PENDING);
         verifyNoInteractions(emails);
         verify(registrations, never()).save(any());
+        verify(registrations, never()).saveAndFlush(any());
     }
 
     @Test
@@ -384,11 +389,63 @@ class ServiceRegistrationServiceTests {
         ServiceRegistration pending = pendingGuest(2, 1);
         when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(pending));
 
-        service.reject(admin, 50L, new RejectServiceRegistrationRequest("Chưa nhận được tiền thuê"));
+        service.reject(admin, 50L, new RejectServiceRegistrationRequest("  Chứng từ sai dù đã chuyển tiền  "));
 
         assertThat(pending.getStatus()).isEqualTo(ApprovalStatus.REJECTED);
-        verify(emails).sendServiceRegistrationRejected("chu.san@example.com", "Sân Bình Minh",
-                "Chưa nhận được tiền thuê");
+        assertThat(pending.getRejectReason()).isEqualTo("Chứng từ sai dù đã chuyển tiền");
+        assertThat(pending.getProcessedBy()).isEqualTo(admin.getId());
+        assertThat(pending.getProcessedAt()).isNotNull();
+        var ordered = org.mockito.Mockito.inOrder(registrations, emails);
+        ordered.verify(registrations).saveAndFlush(pending);
+        ordered.verify(emails).sendServiceRegistrationRejected("chu.san@example.com", "Sân Bình Minh",
+                "Chứng từ sai dù đã chuyển tiền");
+        verifyNoInteractions(locations, courts, terms);
+        verify(accounts, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void rejectionDatabaseFailureDoesNotSendEmail() {
+        var pending = pendingGuest(2, 1);
+        when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(pending));
+        org.mockito.Mockito.doThrow(new org.springframework.dao.DataIntegrityViolationException("fixture"))
+                .when(registrations).saveAndFlush(pending);
+        assertThatThrownBy(() -> service.reject(admin, 50L, new RejectServiceRegistrationRequest("Giấy tờ sai")))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        verifyNoInteractions(emails);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ApprovalStatus.class, names = {"REJECTED", "APPROVED"})
+    void processedRequestCannotBeRejectedOrApprovedAgain(ApprovalStatus status) {
+        var done = pendingGuest(2, 1);
+        done.setStatus(status);
+        when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(done));
+        assertThatThrownBy(() -> service.reject(admin, 50L, new RejectServiceRegistrationRequest("Giấy tờ sai")))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT));
+        assertThatThrownBy(() -> service.approve(admin, 50L))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT));
+        verifyNoInteractions(emails, locations, courts, terms);
+        verify(registrations, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void rejectedGuestCanCreateNewRequestWithSameContactsAndNewDocuments() {
+        var old = pendingGuest(2, 1);
+        when(registrations.findByIdForUpdate(50L)).thenReturn(Optional.of(old));
+        service.reject(admin, 50L, new RejectServiceRegistrationRequest("Giấy tờ không rõ"));
+        var fresh = submit(null, guestRequest(2, 1), proof);
+        assertThat(fresh.getStatus()).isEqualTo("PENDING");
+        assertThat(fresh.getContactEmail()).isEqualTo(old.getContactEmail());
+        assertThat(fresh.getContactPhone()).isEqualTo(old.getContactPhone());
+        assertThat(fresh.getRejectReason()).isNull();
+        assertThat(old.getStatus()).isEqualTo(ApprovalStatus.REJECTED);
+        verify(registrations).existsByRequesterIdIsNullAndStatusAndContactEmailIgnoreCase(
+                ApprovalStatus.PENDING, old.getContactEmail());
+        verify(registrations).existsByRequesterIdIsNullAndStatusAndContactPhone(
+                ApprovalStatus.PENDING, old.getContactPhone());
+        verifyNoInteractions(locations, courts, terms);
     }
 
     @Test

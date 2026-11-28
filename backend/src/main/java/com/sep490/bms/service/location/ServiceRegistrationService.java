@@ -388,7 +388,8 @@ public class ServiceRegistrationService {
         entity.setProcessedBy(admin == null ? null : admin.getId());
         entity.setProcessedAt(LocalDateTime.now());
 
-        ServiceRegistration saved = serviceRegistrationRepository.save(entity);
+        // Kiểm tra ràng buộc DB trước khi gửi email; lỗi SMTP vẫn rollback toàn bộ giao dịch.
+        ServiceRegistration saved = serviceRegistrationRepository.saveAndFlush(entity);
         emails.sendServiceRegistrationRejected(email, saved.getLocationName(), reason);
         return ServiceRegistrationDto.fromEntity(saved, requesterName(saved.getRequesterId()));
     }

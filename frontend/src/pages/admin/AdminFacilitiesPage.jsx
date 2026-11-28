@@ -306,6 +306,7 @@ export default function AdminFacilitiesPage() {
       setActionError('Vui lòng nhập lý do từ chối.')
       return
     }
+    setActionError('')
     processingRegistration.current = true
     setSaving(true)
     try {
@@ -647,16 +648,17 @@ export default function AdminFacilitiesPage() {
       {modal?.type === 'reject' && (
         <Modal title="Từ chối đơn đăng ký dịch vụ" busy={saving} onClose={closeModal} className={styles.modal}>
           <form onSubmit={handleConfirmRejection} className={styles.modalForm}>
-            <p className={styles.muted}>Hệ thống gửi email lý do tới chủ sân của "{modal.locationName}" (MSG117), kèm câu bên vận hành sẽ liên hệ hoàn tiền thuê đã chuyển.</p>
+            <p className={styles.muted}>Hệ thống gửi email lý do và hướng dẫn tạo đơn mới tới chủ sân của "{modal.locationName}". Có thể từ chối hồ sơ hoặc chứng từ sai dù đã chuyển tiền. Nếu có tiền thực nhận, bên vận hành đối soát và hoàn tiền ngoài BMS.</p>
             {actionError && <p className={styles.modalError} role="alert">{actionError}</p>}
             <label className={styles.field}>
               <span>Lý do từ chối</span>
               <textarea autoFocus required disabled={saving} rows="4" maxLength={500} value={modal.reason}
+                placeholder="Nêu rõ thông tin hoặc giấy tờ cần sửa để chủ sân nộp lại."
                 onChange={(event) => updateModalField('reason', event.target.value)} />
             </label>
             <div className={styles.modalActions}>
               <button className={styles.secondaryButton} type="button" onClick={closeModal} disabled={saving}>Hủy</button>
-              <button className={styles.dangerSolid} type="submit" disabled={saving}>Gửi từ chối</button>
+              <button className={styles.dangerSolid} type="submit" disabled={saving}>{saving ? 'Đang gửi email…' : 'Gửi từ chối'}</button>
             </div>
           </form>
         </Modal>

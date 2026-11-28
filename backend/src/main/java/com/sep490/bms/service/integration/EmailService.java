@@ -79,9 +79,15 @@ public class EmailService {
         String content = "Xin chào,\n\n"
                 + "Yêu cầu đăng ký địa điểm " + locationName + " chưa được duyệt.\n"
                 + "Lý do: " + reason + "\n"
-                + "Bên vận hành sẽ liên hệ với anh/chị để hoàn lại tiền thuê đã chuyển.\n\n"
-                + "Anh/chị có thể sửa thông tin và gửi hồ sơ mới tại mục Đăng ký chủ sân trên website BMS. "
-                + "Email và số điện thoại trong hồ sơ bị từ chối được dùng lại nếu chưa có tài khoản hoặc hồ sơ đang chờ duyệt.\n\n"
+                + "Nếu đã chuyển tiền, bên vận hành sẽ liên hệ để đối soát và hoàn lại tiền thuê thực nhận ngoài BMS. "
+                + "BMS không tự chuyển tiền hoàn và không tự chuyển khoản tiền này sang hồ sơ mới.\n\n"
+                + "Hướng dẫn nộp lại:\n"
+                + "1. Mở mục Đăng ký chủ sân trên website BMS để tạo đơn mới; đơn bị từ chối được giữ nguyên để tra cứu. "
+                + "Nếu đã có tài khoản chủ sân, anh/chị đăng nhập tài khoản đó để đăng ký thêm địa điểm.\n"
+                + "2. Sửa thông tin theo lý do trên, chọn lại CCCD, giấy phép kinh doanh và chứng từ chuyển khoản phù hợp với đơn mới; "
+                + "đọc và xác nhận các điều khoản, cam kết trước khi gửi.\n"
+                + "3. Email và số điện thoại trong hồ sơ bị từ chối được dùng lại nếu chưa có tài khoản hoặc hồ sơ đang chờ duyệt. "
+                + "Kết quả của đơn mới sẽ được gửi qua email sau khi Admin xét duyệt.\n\n"
                 + "Trân trọng,\n"
                 + "Đội ngũ quản trị BMS";
         sendEmail(toEmail, subject, content, "Không gửi được email kết quả cho chủ sân. Vui lòng thử lại sau");

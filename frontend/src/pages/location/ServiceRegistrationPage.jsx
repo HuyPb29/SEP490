@@ -506,6 +506,7 @@ export default function ServiceRegistrationPage() {
       <PageHeader eyebrow="Dành cho chủ sân" title={isOwner ? 'Đăng ký thêm địa điểm' : 'Đưa sân của bạn lên Courtly'}
         subtitle={isOwner ? 'Địa điểm mới được gắn với tài khoản của bạn sau khi được duyệt.' : 'Một nơi để quản lý lịch sân, vận hành địa điểm và kết nối người chơi.'}
         breadcrumbs={[{ to: '/', label: 'Trang chủ' }, { label: 'Đăng ký sử dụng dịch vụ' }]} />
+      {canSubmit && !submitSuccess && <p className={styles.helper}>Nếu đơn trước bị từ chối, hãy sửa theo lý do trong email và tạo đơn mới, chọn lại giấy tờ và chứng từ phù hợp. Email/SĐT được dùng lại khi chưa gắn với tài khoản hoặc đơn đang chờ duyệt.</p>}
       {!canSubmit ? <ErrorState message="Chỉ khách chưa đăng nhập hoặc tài khoản Chủ sân có thể gửi yêu cầu đăng ký dịch vụ." /> : submitSuccess ?
         <section className={`${styles.card} ${styles.success}`} aria-labelledby="success-title">
           <span className={styles.successIcon} aria-hidden="true">✓</span>

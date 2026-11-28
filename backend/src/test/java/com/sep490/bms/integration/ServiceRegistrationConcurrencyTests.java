@@ -56,6 +56,8 @@ class ServiceRegistrationConcurrencyTests {
                 .address("1 Đường kiểm thử, Hà Nội").latitude(BigDecimal.valueOf(21))
                 .longitude(BigDecimal.valueOf(105)).courtCount(2).rentalYears(1).rentalAmount(BigDecimal.valueOf(2223000))
                 .proofImagePath("fixture.png").termsAcceptedAt(java.time.LocalDateTime.now())
+                .identityDocumentPath("fixture-identity.png").businessLicensePath("fixture-license.pdf")
+                .privacyAcceptedAt(java.time.LocalDateTime.now())
                 .contactName("Chủ sân fixture").contactEmail(suffix + "@example.com").contactPhone(phone())
                 .status(ApprovalStatus.PENDING).build());
     }
@@ -120,6 +122,58 @@ class ServiceRegistrationConcurrencyTests {
         assertThat(stored.getStatus()).isEqualTo(ApprovalStatus.PENDING);
         assertThat(stored.getRejectReason()).isNull();
         assertThat(stored.getProcessedAt()).isNull();
+        assertThat(stored.getProcessedBy()).isNull();
+        assertThat(stored.getLocationId()).isNull();
+        assertThat(stored.getRequesterId()).isNull();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM account WHERE email=?", Integer.class,
+                request.getContactEmail())).isZero();
+    }
+
+    @Test void twoTabsRejectOnlyOnceAndOldRequestCannotBeApproved() throws Exception {
+        CountDownLatch emailReached = new CountDownLatch(1);
+        CountDownLatch releaseEmail = new CountDownLatch(1);
+        doAnswer(call -> {
+            emailReached.countDown();
+            assertThat(releaseEmail.await(10, TimeUnit.SECONDS)).isTrue();
+            return null;
+        }).when(mail).sendServiceRegistrationRejected(anyString(), anyString(), anyString());
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> first = pool.submit(this::reject);
+            assertThat(emailReached.await(10, TimeUnit.SECONDS)).isTrue();
+            Future<Integer> second = pool.submit(this::reject);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> second.get(200, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+            releaseEmail.countDown();
+            assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+            assertThat(reject()).isEqualTo(409);
+            assertThat(approve()).isEqualTo(409);
+            var stored = registrations.findById(request.getId()).orElseThrow();
+            assertThat(stored.getStatus()).isEqualTo(ApprovalStatus.REJECTED);
+            assertThat(stored.getRejectReason()).isEqualTo("Chứng từ sai dù đã chuyển tiền");
+            assertThat(stored.getProcessedBy()).isEqualTo(admin.getId());
+            assertThat(stored.getProcessedAt()).isNotNull();
+            assertThat(stored.getLocationId()).isNull();
+            assertThat(stored.getRequesterId()).isNull();
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM account WHERE email=?", Integer.class,
+                    request.getContactEmail())).isZero();
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM location WHERE name=?", Integer.class,
+                    request.getLocationName())).isZero();
+            verify(mail, times(1)).sendServiceRegistrationRejected(request.getContactEmail(),
+                    request.getLocationName(), "Chứng từ sai dù đã chuyển tiền");
+        } finally {
+            releaseEmail.countDown();
+            pool.shutdown();
+            assertThat(pool.awaitTermination(25, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private int reject() throws Exception {
+        return mvc.perform(post("/api/admin/service-registrations/" + request.getId() + "/reject")
+                .header("Authorization", "Bearer " + jwt.generateToken(admin)).contentType("application/json")
+                .content("{\"reason\":\"Chứng từ sai dù đã chuyển tiền\"}"))
+                .andReturn().getResponse().getStatus();
     }
 
     private int approve() throws Exception {

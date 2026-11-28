@@ -177,6 +177,13 @@ class ServiceRegistrationApiTests {
                 .andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT status FROM service_registration WHERE id = ?", String.class, id))
                 .isEqualTo("PENDING");
+        mvc.perform(post("/api/admin/service-registrations/" + id + "/reject").header("Authorization", token(admin))
+                        .contentType("application/json").content(json.writeValueAsString(Map.of("reason", "x".repeat(501)))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/admin/service-registrations/" + id + "/reject").header("Authorization", token(admin))
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isBadRequest());
+        org.mockito.Mockito.verifyNoInteractions(mail);
 
         mvc.perform(post("/api/admin/service-registrations/" + id + "/reject").header("Authorization", token(admin))
                         .contentType("application/json").content("{\"reason\":\"Chưa nhận được tiền thuê\"}"))
@@ -186,7 +193,18 @@ class ServiceRegistrationApiTests {
         verify(mail).sendServiceRegistrationRejected(email, "Sân thử D168 " + suffix, "Chưa nhận được tiền thuê");
         var retry = form(email, true);
         retry.put("contactPhone", jdbc.queryForObject("SELECT contact_phone FROM service_registration WHERE id=?", String.class, id));
+        check(retry, null, 200);
         submit(retry, 201);
+        Long newId = jdbc.queryForObject("SELECT id FROM service_registration WHERE contact_email=? AND status='PENDING'",
+                Long.class, email);
+        assertThat(newId).isNotEqualTo(id);
+        assertThat(jdbc.queryForObject("SELECT status FROM service_registration WHERE id=?", String.class, id))
+                .isEqualTo("REJECTED");
+        assertThat(jdbc.queryForObject("SELECT reject_reason FROM service_registration WHERE id=?", String.class, id))
+                .isEqualTo("Chưa nhận được tiền thuê");
+        // Đơn mới vẫn chặn gửi đúp và không cấp tài khoản trước khi Admin duyệt.
+        submit(retry, 409);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM account WHERE email=?", Integer.class, email)).isZero();
         org.mockito.Mockito.verify(mail, org.mockito.Mockito.never()).sendServiceRegistrationApproved(
                 anyString(), anyString(), anyInt(), anyString(), anyString(), anyString(), anyString(), anyString());
     }
