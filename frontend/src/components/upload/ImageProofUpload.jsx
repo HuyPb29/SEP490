@@ -31,7 +31,7 @@ export default function ImageProofUpload({ file, onChange, onDropFile, onClear, 
     {file && <div className={styles.selected}>
       {preview?.file === file && previewError !== file && <img src={preview.url} alt={previewAlt} onError={() => setPreviewError(file)} />}
       {previewError === file && <p role="status">Không xem trước được ảnh này. Bạn có thể đổi ảnh để kiểm tra nội dung.</p>}
-      <div className={styles.meta}><div><strong>{file.name}</strong><span>{size}</span></div><Button variant="ghost" disabled={disabled} onClick={onClear}>Bỏ ảnh</Button></div>
+      <div className={styles.meta}><div><strong>{file.name}</strong><span>{size}</span></div><Button variant="ghost" className={styles.clearButton} disabled={disabled} onClick={onClear}>Bỏ ảnh</Button></div>
     </div>}
     {error && <p id={`${id}-error`} className={styles.error} role="alert">{error}</p>}
   </div>;
