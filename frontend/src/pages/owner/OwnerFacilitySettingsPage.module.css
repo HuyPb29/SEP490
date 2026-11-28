@@ -187,9 +187,13 @@
 }
 
 .qrFrame {
+  position: relative;
   display: grid;
   place-items: center;
+  width: 100%;
+  min-width: 0;
   aspect-ratio: 1;
+  overflow: hidden;
   padding: var(--space-3);
   background: var(--color-surface-muted);
   border: 1px dashed var(--color-border-strong);
@@ -197,8 +201,12 @@
 }
 
 .qrImage {
-  width: 100%;
-  height: 100%;
+  /* Ảnh không tham gia tính kích thước grid, tránh ảnh dọc kéo giãn khung QR. */
+  position: absolute;
+  inset: var(--space-3);
+  display: block;
+  width: calc(100% - 2 * var(--space-3));
+  height: calc(100% - 2 * var(--space-3));
   object-fit: contain;
   background: var(--color-surface);
   border-radius: var(--radius-sm);
