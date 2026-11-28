@@ -84,7 +84,7 @@ export default function ManagementLayout({
     { to: '/owner/workspace', label: 'Tổng quan & Vận hành', end: true, badge: (liveBadges.complaints || 0) + (liveBadges.refund || 0) },
     { to: '/owner/courts-pricing', label: 'Sân & Bảng giá' },
     { to: '/owner/opening-hours', label: "Giờ mở cửa & khung giờ" },
-    { to: '/owner/facility-settings', label: 'Hồ sơ địa điểm' },
+    { to: '/owner/facility-settings', label: 'Cài đặt địa điểm' },
     { to: '/owner/workspace?tab=reviews', label: 'Đánh giá' },
     { to: '/staff/confirm-payments', label: 'Xác nhận thanh toán', badge: liveBadges.payments, urgent: liveBadges.urgentPayments },
     { to: '/owner/reconciliations', label: 'Đối soát doanh thu' },
