@@ -46,6 +46,9 @@ const WEEK_DAYS = [
 const WEEKDAY_VALUES = [1, 2, 3, 4, 5]
 const WEEKEND_VALUES = [6, 7]
 const SLOT_STEP = 30
+const SLOTS_PER_HOUR = 60 / SLOT_STEP
+// price_rule.price_per_slot là DECIMAL(12,0); không làm tròn âm thầm số tiền cho mỗi khung.
+const MAX_HOURLY_PRICE = 999_999_999_999 * SLOTS_PER_HOUR
 
 const DAY_LOOKUP = Object.fromEntries(WEEK_DAYS.map((day) => [day.value, day]))
 const SLOT_TIMES = Array.from({ length: 49 }, (_, index) =>
@@ -68,7 +71,7 @@ function emptyRuleForm(courtId = 'all') {
     days: [...WEEKEND_VALUES],
     startTime: '17:00',
     endTime: '23:00',
-    price: '95000',
+    price: '',
     validFrom: todayIso(),
     validTo: '',
   }
@@ -422,7 +425,7 @@ export default function OwnerCourtsPricingPage() {
       days: rule.days?.length ? [...rule.days] : [...WEEKEND_VALUES],
       startTime: rule.startTime,
       endTime: rule.endTime,
-      price: String(rule.pricePerSlot),
+      price: String(Number(rule.pricePerSlot) * SLOTS_PER_HOUR),
       validFrom: rule.validFrom ?? todayIso(),
       validTo: rule.validTo ?? '',
     })
@@ -436,6 +439,9 @@ export default function OwnerCourtsPricingPage() {
 
   const ruleTimeInvalid = ruleForm.startTime >= ruleForm.endTime
   const ruleDateInvalid = Boolean(ruleForm.validTo && ruleForm.validFrom && ruleForm.validTo < ruleForm.validFrom)
+  const hourlyPrice = Number(ruleForm.price)
+  const hourlyPriceValid = Number.isSafeInteger(hourlyPrice) && hourlyPrice >= SLOTS_PER_HOUR
+    && hourlyPrice <= MAX_HOURLY_PRICE && hourlyPrice % SLOTS_PER_HOUR === 0
 
   const handleSavePriceRule = async (event) => {
     event.preventDefault()
@@ -447,9 +453,12 @@ export default function OwnerCourtsPricingPage() {
       setRuleError('Chọn ít nhất một ngày áp dụng.')
       return
     }
-    const price = Number(ruleForm.price)
-    if (!Number.isFinite(price) || price <= 0) {
-      setRuleError('Nhập giá hợp lệ lớn hơn 0.')
+    if (!Number.isSafeInteger(hourlyPrice) || hourlyPrice < SLOTS_PER_HOUR || hourlyPrice > MAX_HOURLY_PRICE) {
+      setRuleError(`Nhập giá mỗi giờ là số nguyên từ ${formatPrice(SLOTS_PER_HOUR)} đến ${formatPrice(MAX_HOURLY_PRICE)} đồng.`)
+      return
+    }
+    if (hourlyPrice % SLOTS_PER_HOUR !== 0) {
+      setRuleError('Giá mỗi giờ phải là số chẵn để mỗi khung 30 phút có giá nguyên đồng. Hệ thống không tự làm tròn giá.')
       return
     }
     if (ruleDateInvalid) {
@@ -460,7 +469,7 @@ export default function OwnerCourtsPricingPage() {
       days: ruleForm.days,
       startTime: ruleForm.startTime,
       endTime: ruleForm.endTime,
-      pricePerSlot: price,
+      pricePerSlot: hourlyPrice / SLOTS_PER_HOUR,
       validFrom: ruleForm.validFrom,
       validTo: ruleForm.validTo || null,
     }
@@ -558,6 +567,7 @@ export default function OwnerCourtsPricingPage() {
 
   const pricingPanel = selectedCourt && (
     <div className={styles.pricingPanel}>
+      <p className={styles.formNote}>Cấu hình giá theo giờ; hệ thống chia đôi cho mỗi khung 30 phút. Chọn “Tất cả sân” khi thêm mức giá để áp dụng cùng giá cho cả cụm sân.</p>
       <PriceGrid grid={grid} loading={hoursLoading} error={hoursError} onRetry={() => setHoursKey((value) => value + 1)} />
       <div className={styles.subHeader}>
         <h3>Mức giá của {selectedCourt.name} ({courtRules.length})</h3>
@@ -580,7 +590,7 @@ export default function OwnerCourtsPricingPage() {
             <tr>
               <th scope="col">Ngày áp dụng</th>
               <th scope="col">Khung giờ</th>
-              <th scope="col">Giá / 30 phút</th>
+              <th scope="col">Giá / giờ</th>
               <th scope="col">Hiệu lực</th>
               <th scope="col"><span className={styles.srOnly}>Thao tác</span></th>
             </tr>
@@ -590,7 +600,10 @@ export default function OwnerCourtsPricingPage() {
               <tr key={rule.id}>
                 <td>{daySummary(rule.days)}</td>
                 <td className={styles.numeric}>{rule.startTime}–{rule.endTime}</td>
-                <td className={styles.numeric}><strong>{priceLabel(rule.pricePerSlot)}</strong></td>
+                <td className={styles.numeric}>
+                  <strong>{priceLabel(Number(rule.pricePerSlot) * SLOTS_PER_HOUR)}</strong>
+                  <span className={styles.slotPrice}>{priceLabel(rule.pricePerSlot)} / 30 phút</span>
+                </td>
                 <td>
                   <span className={styles.validity}>
                     {shortDate(rule.validFrom)} → {rule.validTo ? shortDate(rule.validTo) : 'không thời hạn'}
@@ -617,8 +630,8 @@ export default function OwnerCourtsPricingPage() {
       role="owner"
       title="Sân và bảng giá"
       subtitle={selectedLocation
-        ? `${selectedLocation.name} · Thông tin từng sân và giá mỗi khung 30 phút`
-        : 'Thông tin từng sân và giá mỗi khung 30 phút'}
+        ? `${selectedLocation.name} · Cấu hình giá theo giờ, đặt sân theo khung 30 phút`
+        : 'Cấu hình giá theo giờ, đặt sân theo khung 30 phút'}
       actions={<Button onClick={openExpansion} disabled={!selectedLocation || locked}>Đăng ký thêm sân</Button>}
       locations={locations}
       locationId={selectedLocationId}
@@ -741,7 +754,7 @@ export default function OwnerCourtsPricingPage() {
 
       <Modal open={Boolean(ruleModal)} title={ruleModal?.id ? 'Sửa mức giá' : 'Thêm mức giá'} onClose={closeRuleModal} busy={saving}>
         <form className={styles.modalForm} onSubmit={handleSavePriceRule}>
-          <FormField label="Sân" hint={ruleModal?.id ? 'Không đổi sân khi sửa mức giá.' : undefined}>
+          <FormField label="Sân" hint={ruleModal?.id ? 'Không đổi sân khi sửa mức giá.' : 'Chọn Tất cả sân để chỉ cần nhập một lần cho cả cụm sân.'}>
             <Select value={ruleForm.courtId} disabled={Boolean(ruleModal?.id)}
               onChange={(event) => updateRuleForm('courtId', event.target.value)}>
               {!ruleModal?.id && <option value="all">Tất cả sân ({courts.length})</option>}
@@ -783,14 +796,19 @@ export default function OwnerCourtsPricingPage() {
             </FormField>
           </div>
 
-          <FormField label="Giá mỗi khung 30 phút (đồng)" required>
+          <FormField label="Giá mỗi giờ (đồng)" required hint="Nhập số tiền chẵn; mỗi khung 30 phút bằng một nửa giá mỗi giờ.">
             <Input
               type="text"
               inputMode="numeric"
+              required
+              placeholder="Ví dụ: 120.000"
               value={formatPrice(ruleForm.price)}
               onChange={(event) => updateRuleForm('price', event.target.value.replace(/\D/g, ''))}
             />
           </FormField>
+          {hourlyPriceValid && <p className={styles.priceConversion} role="status">
+            {priceLabel(hourlyPrice)} / giờ = {priceLabel(hourlyPrice / SLOTS_PER_HOUR)} / 30 phút.
+          </p>}
 
           <div className={styles.twoCols}>
             <FormField label="Hiệu lực từ" required>
@@ -842,7 +860,7 @@ export default function OwnerCourtsPricingPage() {
       >
         {pendingDeleteRule && (
           <p>
-            Xóa mức {priceLabel(pendingDeleteRule.pricePerSlot)} ({daySummary(pendingDeleteRule.days)},{' '}
+            Xóa mức {priceLabel(Number(pendingDeleteRule.pricePerSlot) * SLOTS_PER_HOUR)} / giờ ({priceLabel(pendingDeleteRule.pricePerSlot)} / 30 phút; {daySummary(pendingDeleteRule.days)},{' '}
             {pendingDeleteRule.startTime}–{pendingDeleteRule.endTime}) của {pendingDeleteRule.courtName}?
             Khung giờ không còn giá sẽ khiến sân không bật lại được cho đến khi thêm giá mới.
           </p>

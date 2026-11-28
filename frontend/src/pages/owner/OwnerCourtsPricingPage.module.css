@@ -318,6 +318,23 @@
   white-space: nowrap;
 }
 
+.slotPrice {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.priceConversion {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.6;
+}
+
 .validity {
   display: inline-flex;
   flex-wrap: wrap;
