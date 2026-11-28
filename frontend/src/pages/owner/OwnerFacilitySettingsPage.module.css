@@ -150,6 +150,48 @@
   letter-spacing: 0.04em;
 }
 
+.pointsPanel {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.pointsPanel h3 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+
+.pointsDescription,
+.pointsExample {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.pointsDescription {
+  color: var(--color-text-secondary);
+}
+
+.pointsExample {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-soft);
+}
+
+.pointsValue {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --------------------------------------------------------------- bản đồ */
 
 .mapBlock {

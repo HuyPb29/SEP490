@@ -23,7 +23,7 @@ import {
 } from '../../components/common'
 import { FileInput } from '../../components/common/FileInput'
 import LocationMap from '../../components/map/LocationMap'
-import { dateTime, errorMessage, shortDate, today } from '../../utils/formatters'
+import { dateTime, errorMessage, formatVnd, shortDate, today } from '../../utils/formatters'
 // Danh mục cục bộ từ https://api.vietqr.io/v2/banks (28/11/2026); không gọi dịch vụ ngoài khi mở form.
 import vietnamBanks from '../../data/vietnamBanks.json'
 import styles from './OwnerFacilitySettingsPage.module.css'
@@ -39,6 +39,8 @@ const LIMITS = {
   pointEarningRate: { min: 1000, max: 100000 },
 }
 const DEFAULT_MAP_CENTER = { latitude: 21.028511, longitude: 105.854444 }
+// P10 / Location.POINT_REDEMPTION_VALUE: Owner chỉ cấu hình tỷ lệ tích, không sửa giá trị đổi điểm.
+const POINT_REDEMPTION_VALUE = 500
 
 /** Mỗi khối có nút Lưu riêng và chỉ gửi các trường của khối đó. */
 const GROUPS = {
@@ -104,6 +106,7 @@ function validateGroup(form, keys) {
     if (!raw) continue
     const value = Number(raw)
     if (!Number.isFinite(value)) errors[field] = `${label} phải là số.`
+    else if (!Number.isInteger(value)) errors[field] = `${label} phải là số nguyên.`
     else if (value < range.min || value > range.max) {
       errors[field] = `${label} phải trong khoảng ${range.min.toLocaleString('vi-VN')} đến ${range.max.toLocaleString('vi-VN')}.`
     }
@@ -394,6 +397,10 @@ export default function OwnerFacilitySettingsPage() {
   )
 
   const disabled = locked || !selectedLocationId
+  const earningRate = Number(form.pointEarningRate)
+  const validEarningRate = form.pointEarningRate.trim() !== '' && Number.isInteger(earningRate)
+    && earningRate >= LIMITS.pointEarningRate.min && earningRate <= LIMITS.pointEarningRate.max
+  const examplePoints = validEarningRate ? Math.floor(100000 / earningRate) : null
 
   return (
     <ManagementLayout
@@ -557,19 +564,35 @@ export default function OwnerFacilitySettingsPage() {
               footer={groupFooter('policy', 'Lưu chính sách')}
             >
               <div className={styles.fieldGrid}>
-                <FormField label="Số ngày đặt trước tối đa" error={fieldErrors.advanceBookingDays}
+                <FormField label="Số ngày đặt trước tối đa" error={fieldErrors.advanceBookingDays} className={styles.fieldWide}
                   hint="Từ 1 đến 365 ngày. Mặc định 30 ngày.">
                   <Input type="number" min={LIMITS.advanceBookingDays.min} max={LIMITS.advanceBookingDays.max}
                     placeholder="30" value={form.advanceBookingDays} disabled={disabled}
                     onChange={updateField('advanceBookingDays')} />
                 </FormField>
-                <FormField label="Tỷ lệ tích điểm (số đồng được 1 điểm)" error={fieldErrors.pointEarningRate}
-                  hint="Từ 1.000 đến 100.000 đồng. Chỉ áp dụng cho các lần tích điểm sau khi lưu.">
-                  <Input type="number" min={LIMITS.pointEarningRate.min} max={LIMITS.pointEarningRate.max}
-                    step="1000" placeholder="10000" value={form.pointEarningRate} disabled={disabled}
-                    onChange={updateField('pointEarningRate')} />
-                </FormField>
+                <section className={styles.pointsPanel} aria-labelledby="points-earning-title">
+                  <h3 id="points-earning-title">Tích điểm khi thanh toán</h3>
+                  <FormField label="Số tiền thanh toán để nhận 1 điểm (đồng)" error={fieldErrors.pointEarningRate}
+                    hint="Nhập số nguyên từ 1.000 đến 100.000 đồng/điểm.">
+                    <Input type="number" min={LIMITS.pointEarningRate.min} max={LIMITS.pointEarningRate.max}
+                      step="1" placeholder="10000" value={form.pointEarningRate} disabled={disabled}
+                      onChange={updateField('pointEarningRate')} />
+                  </FormField>
+                  <p className={styles.pointsDescription}>Điểm được cộng khi thanh toán được xác nhận, tính trên tiền thực thanh toán và lấy phần nguyên.</p>
+                  <p className={styles.pointsExample} aria-live="polite">
+                    {validEarningRate
+                      ? `Minh họa theo tỷ lệ đang nhập: cứ ${formatVnd(earningRate)} nhận 1 điểm. Thanh toán 100.000 đồng nhận ${examplePoints} điểm.`
+                      : 'Nhập tỷ lệ hợp lệ để xem minh họa tích điểm.'}
+                  </p>
+                </section>
+                <section className={styles.pointsPanel} aria-labelledby="points-redemption-title">
+                  <h3 id="points-redemption-title">Đổi điểm để giảm tiền</h3>
+                  <p className={styles.pointsValue}>1 điểm = {formatVnd(POINT_REDEMPTION_VALUE)}</p>
+                  <p className={styles.pointsDescription}>Giá trị quy đổi cố định của hệ thống. Chủ sân không thể chỉnh sửa.</p>
+                  <p className={styles.pointsExample}>Ví dụ: dùng 10 điểm được giảm {formatVnd(10 * POINT_REDEMPTION_VALUE)}. Việc dùng điểm tuân theo số dư và giới hạn của đơn đặt sân.</p>
+                </section>
               </div>
+              <p className={styles.pointsDescription}>Tỷ lệ tích điểm mới áp dụng cho đơn tạo sau khi bấm “Lưu chính sách”. Đơn đã tạo giữ tỷ lệ được chốt trước đó. Điểm tích lũy được sử dụng tại cùng địa điểm cho lần đặt sau.</p>
             </SettingsCard>
 
             <SettingsCard
