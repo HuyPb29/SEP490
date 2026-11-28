@@ -252,6 +252,7 @@ export default function BookingPaymentPage() {
   const isFacilityCancelled = bookingData.status === 'CANCELLED_BY_FACILITY';
   const isRejected = ['PAYMENT_REJECTED', 'REJECTED'].includes(bookingData.status) || isFacilityCancelled;
   const finalAmount = bookingData.amount;
+  const amountText = formatVnd(finalAmount);
   const bankInfo = bookingData.instructions ?? {};
   const canSubmit = bookingData.canPay && !isExpired && !deadlineElapsed && Number.isFinite(deadline);
   const proofSent = Boolean(isConfirmedWait || isConfirmedDone);
@@ -299,7 +300,7 @@ export default function BookingPaymentPage() {
       <div className={styles.contentGrid}>
         <div className={styles.leftColumn}>
           {canSubmit ? <section className={styles.card} aria-labelledby="transfer-heading"><header className={styles.cardHeader}><span className={styles.stepNumber}>1</span><h2 id="transfer-heading">Chuyển khoản đến tài khoản sân</h2></header><p className={styles.amountLabel}>{bookingData.resubmitting && bookingData.receivedAmount > 0 ? 'Số tiền còn thiếu' : 'Số tiền cần chuyển'}</p>
-            <div className={styles.amountRow}><strong>{formatVnd(finalAmount)}</strong><Button variant="ghost" aria-label="Sao chép số tiền" onClick={() => copyTransferField(finalAmount, 'số tiền')}>Sao chép</Button></div>
+            <div className={styles.amountRow}><strong style={{ '--amount-characters': amountText.length }}>{amountText}</strong><Button variant="ghost" aria-label="Sao chép số tiền" onClick={() => copyTransferField(finalAmount, 'số tiền')}>Sao chép</Button></div>
             <div className={styles.qrArea}>{qrPath ? qrUrl && qrError !== qrPath ? <><img src={qrUrl} className={styles.qrImage} alt="Mã QR nhận thanh toán" onError={() => { setQrError(qrPath); setQrErrorMessage('Ảnh QR không hiển thị được. Vui lòng thử tải lại hoặc liên hệ chủ sân cập nhật ảnh JPG/PNG đúng tài khoản.'); }} /><a className={styles.outlineLink} href={qrUrl} download={'QR_' + id + (qrImage?.type === 'image/jpeg' ? '.jpg' : qrImage?.type === 'image/svg+xml' ? '.svg' : '.png')}>Lưu ảnh QR</a></> : qrError === qrPath ? <ErrorState message={qrErrorMessage || 'Không tải được mã QR. Bạn vẫn có thể dùng thông tin chuyển khoản bên dưới.'} onRetry={() => { setQrImage(null); setQrError(''); setQrErrorMessage(''); setQrAttempt(value => value + 1); }} /> : <LoadingState message="Đang tải mã QR…" /> : <EmptyState title="Chưa có mã QR" description="Dùng thông tin tài khoản bên dưới để chuyển khoản thủ công." action={<Button variant="secondary" onClick={() => document.getElementById('bank-details')?.focus()}>Xem thông tin tài khoản</Button>} />}</div>
             <dl className={styles.bankDetails} id="bank-details" tabIndex={-1}>{transferRows.map(([label, value, copyLabel]) => <div key={label}><div><dt>{label}</dt><dd>{value || '—'}</dd></div><Button variant="secondary" size="sm" disabled={!value} aria-label={'Sao chép ' + copyLabel} onClick={() => copyTransferField(value, copyLabel)}>Sao chép</Button></div>)}</dl>
             {copyStatus && <p className={copyStatus.startsWith('Không thể') ? styles.errorBanner : styles.copyNotice} role="status">{copyStatus}</p>}
